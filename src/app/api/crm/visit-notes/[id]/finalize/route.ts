@@ -38,6 +38,11 @@ import {
 } from "@/server/visit-notes/revisions";
 import { storageKeyFromUrl } from "@/lib/storage-ref";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
+import {
+  FOLLOW_UP_DATE_REFUSED,
+  storedFollowUpDateProblem,
+} from "@/lib/visit-follow-up";
+import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
 
 /**
  * Thrown inside the transaction when the visit left IN_PROGRESS between the
@@ -117,6 +122,29 @@ export const POST = createApiHandler(
         return conflict("appointment_not_active", {
           appointmentId: note.appointment.id,
           from: note.appointment.status,
+        });
+      }
+    }
+
+    // An exact control-visit day must still be ahead when it is issued. It
+    // was checked when picked, but drafts here are often signed days after
+    // the visit: «03.10» picked on 01.10 and signed on 12.10 went onto the
+    // patient's PDF as a day already gone, and reception got a task that
+    // was overdue at birth (or already expired and swept unseen). «Через N
+    // дней» has no such problem, it counts from the signature. Refused
+    // before anything is written, with the reason a PATCH uses, so the
+    // doctor picks a new day on the card, which already shows this one in
+    // red. Only while the note can still be corrected: a visit reverted
+    // after the 24h window reopens a draft the PATCH will not touch, and
+    // refusing its signature too would leave it unsignable for good. It is
+    // signed as it stands, and its task still gets a week in the list.
+    const signedBefore = note.firstFinalizedAt ?? note.finalizedAt;
+    if (!signedBefore || !isEditWindowExpired(signedBefore)) {
+      const problem = storedFollowUpDateProblem(note.followUpDate);
+      if (problem) {
+        return err("Validation", 400, {
+          reason: FOLLOW_UP_DATE_REFUSED,
+          problem,
         });
       }
     }

@@ -11,6 +11,8 @@
  *   3. The date box offers tomorrow to a year ahead.
  *   4. A signed note is read-only: disabled controls, no ×, and only the
  *      choice that holds.
+ *   5. A draft whose exact day has gone by since it was picked says so on
+ *      sight (signing refuses it); a signed or locked note does not.
  */
 import * as React from "react";
 import { readFileSync } from "node:fs";
@@ -146,6 +148,56 @@ describe("the card", () => {
     const html = render(row({ followUpDays: 21 }), { locale: "uz" });
     expect(html).toMatch(/<input[^>]*value="21"[^>]*\/?> kundan keyin<\/label>/);
     expect(html).toContain("yoki sana");
+  });
+});
+
+describe("an exact day gone by", () => {
+  // Picked for 27 Sep, the draft opened again on the 29th.
+  const stale = { followUpDays: 2, followUpDate: "2026-09-27T00:00:00.000Z" };
+
+  it("a draft shows it in red with the reason, before anyone touches it", () => {
+    const html = render(row(stale));
+    expect(html).toContain('role="alert"');
+    expect(html).toContain(
+      "Эта дата уже наступила. Выберите день не раньше 30 сентября.",
+    );
+    const box = tag(html, DATE_BOX);
+    expect(box).toContain("border-destructive");
+    expect(box).toContain('aria-invalid="true"');
+    expect(box).not.toContain(ACTIVE);
+    // The header day too, no longer in the calm primary colour.
+    expect(tag(html, "вс, 27 сентября")).toContain("text-destructive");
+  });
+
+  it("today counts as gone, as when picking", () => {
+    const html = render(row({ followUpDate: "2026-09-29T00:00:00.000Z" }));
+    expect(html).toContain('role="alert"');
+  });
+
+  it("uz: the same reason in Uzbek", () => {
+    const html = render(row(stale), { locale: "uz" });
+    expect(html).toContain("Bu sana allaqachon kelgan.");
+  });
+
+  it("a day still ahead is not flagged", () => {
+    const html = render(row({ followUpDate: "2026-09-30T00:00:00.000Z" }));
+    expect(html).not.toContain('role="alert"');
+    expect(tag(html, DATE_BOX)).toContain(ACTIVE);
+  });
+
+  it("a signed note, or a locked draft, is not flagged", () => {
+    expect(
+      render(row({ ...stale, status: "FINALIZED" }), { disabled: true }),
+    ).not.toContain('role="alert"');
+    expect(render(row(stale), { disabled: true })).not.toContain('role="alert"');
+    // Reopened after its window: finalize signs it as it stands.
+    expect(
+      render(row({ ...stale, firstFinalizedAt: "2026-09-25T07:00:00.000Z" })),
+    ).not.toContain('role="alert"');
+    // Reopened inside it: still the doctor's to fix.
+    expect(
+      render(row({ ...stale, firstFinalizedAt: "2026-09-29T05:00:00.000Z" })),
+    ).toContain('role="alert"');
   });
 });
 

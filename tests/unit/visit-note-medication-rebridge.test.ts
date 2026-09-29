@@ -85,6 +85,7 @@ vi.mock("@/server/prescription/cipher-fields", () => ({
 
 vi.mock("@/server/actions/repository", () => ({
   upsertAction: vi.fn(async () => undefined),
+  retireActions: vi.fn(async () => 0),
 }));
 
 vi.mock("@/server/realtime/outbox", () => ({
@@ -255,6 +256,8 @@ vi.mock("@/lib/prisma", () => {
       prescription,
       medicationReminderSend,
       doctor: { findFirst: vi.fn(async () => ({ id: "doc_1" })) },
+      // No control-visit task on record: a note without a plan finds none.
+      action: { findUnique: vi.fn(async () => null) },
       clinic: {
         findUnique: vi.fn(async () => ({
           medicationRemindersEnabled: true,
@@ -298,6 +301,10 @@ function finalizedNote(hoursAgo: number): Record<string, unknown> {
     medicationsBridgedAt: new Date(Date.now() - hoursAgo * 60 * 60 * 1000),
     handoutStaleAt: null,
     updatedAt: new Date(),
+    // The PATCH reads them for the handout's letterhead and the
+    // control-visit task.
+    patient: { fullName: "Тест Пациент" },
+    doctor: { nameRu: "Иванов И.И." },
   };
 }
 
@@ -427,6 +434,14 @@ describe("PATCH — medication bridge reset on prescription edits", () => {
     expect(data.followUpDays).toBe(14);
     // Follow-up/diagnosis are not prescriptions — the bridge stays as is.
     expect("medicationsBridgedAt" in data).toBe(false);
+    // The reception task follows the plan directly instead.
+    const repo = await import("@/server/actions/repository");
+    const upsert = vi.mocked(repo.upsertAction);
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0]![2]).toMatchObject({
+      type: "VISIT_FOLLOW_UP_DUE",
+      followUpNote: "контроль АД",
+    });
   });
 });
 

@@ -35,6 +35,7 @@ import {
   isFollowUpDays,
   parseFollowUpDays,
   resolveFollowUpWrite,
+  storedFollowUpDateProblem,
   tashkentDayDistance,
 } from "@/lib/visit-follow-up";
 import { formatActionTitle, type Translator } from "@/lib/actions/format";
@@ -45,6 +46,7 @@ import {
 } from "@/server/visit-notes/revisions";
 import {
   isFollowUpDateRefused,
+  VisitNoteFinalizeError,
   VisitNotePatchError,
 } from "@/app/[locale]/doctor/reception/_hooks/use-visit-note";
 
@@ -152,6 +154,23 @@ describe("validation", () => {
     expect(followUpDateProblem("2026-10-15", NOW)).toBeNull();
     expect(followUpDateProblem("2027-09-29", NOW)).toBeNull();
   });
+
+  it("a stored day is judged again later: picked ahead, gone by signing", () => {
+    // Picked on 29 Sep for 1 Oct: fine then.
+    expect(storedFollowUpDateProblem(new Date("2026-10-01T00:00:00.000Z"), NOW)).toBeNull();
+    // The draft is signed on 5 Oct (noon Tashkent): the day has gone by.
+    const oct5 = new Date("2026-10-05T07:00:00.000Z");
+    expect(storedFollowUpDateProblem(new Date("2026-10-01T00:00:00.000Z"), oct5)).toBe("past");
+    // The day itself counts as gone, as when picking.
+    expect(storedFollowUpDateProblem("2026-10-05T00:00:00.000Z", oct5)).toBe("past");
+    expect(storedFollowUpDateProblem("2026-10-06", oct5)).toBeNull();
+  });
+
+  it("no stored day, no problem", () => {
+    expect(storedFollowUpDateProblem(null, NOW)).toBeNull();
+    expect(storedFollowUpDateProblem(undefined, NOW)).toBeNull();
+    expect(storedFollowUpDateProblem("", NOW)).toBeNull();
+  });
 });
 
 describe("the refusal the card puts into words", () => {
@@ -166,6 +185,19 @@ describe("the refusal the card puts into words", () => {
       isFollowUpDateRefused(new VisitNotePatchError(403, "edit_window_expired")),
     ).toBe(false);
     expect(isFollowUpDateRefused(new Error("x"))).toBe(false);
+  });
+
+  it("a signature refused for a day gone by reads the same way", () => {
+    expect(
+      isFollowUpDateRefused(
+        new VisitNoteFinalizeError(400, "follow_up_date_out_of_range"),
+      ),
+    ).toBe(true);
+    expect(
+      isFollowUpDateRefused(
+        new VisitNoteFinalizeError(409, "appointment_not_active"),
+      ),
+    ).toBe(false);
   });
 });
 

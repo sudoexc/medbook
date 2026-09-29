@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { VisitDiagnosis } from "@/lib/visit-diagnoses";
+import { FOLLOW_UP_DATE_REFUSED } from "@/lib/visit-follow-up";
 import {
   emptyConclusionSections,
   type ConclusionSection,
@@ -218,14 +219,16 @@ export function isEditWindowExpired(e: unknown): boolean {
 
 /**
  * The server refused a control-visit date outside tomorrow .. a year ahead.
- * The card checks the same bounds first, so this is a page left open past
- * midnight, and it needs its own words, not «не удалось сохранить».
+ * On a save the card checks the same bounds first, so this is a page left
+ * open past midnight. On a signature it is a draft whose day has come and
+ * gone since it was picked (finalize refuses to issue it). Either way it
+ * needs its own words, not «не удалось сохранить / подписать».
  */
 export function isFollowUpDateRefused(e: unknown): boolean {
   return (
-    e instanceof VisitNotePatchError &&
+    (e instanceof VisitNotePatchError || e instanceof VisitNoteFinalizeError) &&
     e.status === 400 &&
-    e.reason === "follow_up_date_out_of_range"
+    e.reason === FOLLOW_UP_DATE_REFUSED
   );
 }
 

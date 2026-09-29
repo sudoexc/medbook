@@ -8,7 +8,9 @@
  *      date for an exact day (ru and uz), and the sweep asks for the day.
  *   2. The reception task falls due on the named day (marked exact, so the
  *      card drops «~»), or on the signature's Tashkent calendar day plus N;
- *      it surfaces a week ahead and expires after the seventh day past due.
+ *      it surfaces a week ahead and expires after the seventh day past due,
+ *      never already expired at birth. A plan cleared before a re-signature
+ *      retires the task left from the first one.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,6 +22,8 @@ const state = {
   notes: [] as Row[],
   findManyArgs: [] as Row[],
   renders: [] as Row[],
+  /** The reception task already on record for the note, if any. */
+  task: null as Row | null,
 };
 
 vi.mock("@/lib/tenant-context", () => ({
@@ -52,6 +56,7 @@ vi.mock("@/server/prescription/cipher-fields", () => ({
 }));
 vi.mock("@/server/actions/repository", () => ({
   upsertAction: vi.fn(async () => undefined),
+  retireActions: vi.fn(async () => 1),
 }));
 vi.mock("@/server/realtime/outbox", () => ({
   newCorrelationId: () => "corr_test",
@@ -96,6 +101,7 @@ vi.mock("@/lib/prisma", () => {
           medicationSlotTimes: null,
         })),
       },
+      action: { findUnique: vi.fn(async () => state.task) },
       document: tx.document,
       prescription: tx.prescription,
       visitNoteRevision: tx.visitNoteRevision,
@@ -136,6 +142,7 @@ beforeEach(() => {
   state.notes = [];
   state.findManyArgs = [];
   state.renders = [];
+  state.task = null;
 });
 
 describe("the patient's PDF", () => {
@@ -183,12 +190,12 @@ describe("the patient's PDF", () => {
 });
 
 describe("the reception task", () => {
-  async function bridge(over: Row) {
+  async function bridge(over: Row, tick: Date = NOW) {
     vi.resetModules();
     const mod = await import("@/server/workers/visit-note-handout");
     const repo = await import("@/server/actions/repository");
     state.notes = [sweepNote(over)];
-    await mod.runMedicationBridgeTick(NOW);
+    await mod.runMedicationBridgeTick(tick);
     return vi.mocked(repo.upsertAction);
   }
 
@@ -228,5 +235,43 @@ describe("the reception task", () => {
   it("no plan, no task", async () => {
     const upsert = await bridge({});
     expect(upsert).not.toHaveBeenCalled();
+    const repo = await import("@/server/actions/repository");
+    expect(vi.mocked(repo.retireActions)).not.toHaveBeenCalled();
+  });
+
+  it("a plan cleared before a re-signature retires the open task", async () => {
+    state.task = {
+      id: "act_1",
+      type: "VISIT_FOLLOW_UP_DUE",
+      severity: "medium",
+      status: "SNOOZED",
+      outcome: null,
+    };
+    const upsert = await bridge({});
+    expect(upsert).not.toHaveBeenCalled();
+    const repo = await import("@/server/actions/repository");
+    const retire = vi.mocked(repo.retireActions);
+    expect(retire).toHaveBeenCalledTimes(1);
+    expect(retire.mock.calls[0]![2]).toEqual([
+      expect.objectContaining({ id: "act_1" }),
+    ]);
+  });
+
+  it("a day already gone by still gets its week in the list", async () => {
+    // A note naming 3 Oct bridged on 12 Oct (signed before signing refused
+    // such a day, or a locked reopened draft): counted from the due day the
+    // task would expire on 11 Oct, before it was even written.
+    const upsert = await bridge(
+      {
+        followUpDays: 2,
+        followUpDate: new Date("2026-10-03T00:00:00.000Z"),
+        finalizedAt: new Date("2026-10-12T06:00:00.000Z"),
+      },
+      new Date("2026-10-12T07:00:00.000Z"),
+    );
+    const [, , payload, options] = upsert.mock.calls[0]!;
+    expect(payload).toMatchObject({ dueDate: "2026-10-03", exactDate: true });
+    // A week from 12 Oct: gone at midnight after 19 Oct.
+    expect(options?.expiresAt?.toISOString()).toBe("2026-10-19T19:00:00.000Z");
   });
 });

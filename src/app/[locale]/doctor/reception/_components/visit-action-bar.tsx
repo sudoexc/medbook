@@ -41,6 +41,7 @@ import { useReceptionContext } from "../_hooks/reception-context";
 import { cdsDrugCheckPatientKey } from "../_hooks/use-cds-drug-check";
 import {
   isAppointmentNotActive,
+  isFollowUpDateRefused,
   isVersionConflict,
   signVisitNoteWhenSaved,
   useFinalizeVisitNote,
@@ -154,6 +155,14 @@ export function VisitActionBar() {
         // this screen was stale. Nothing was signed; show the real state.
         toast.error(t("activePatient.finalizeNotActive"));
         void qc.invalidateQueries({ queryKey: ["doctor", "reception"] });
+        return;
+      }
+      if (isFollowUpDateRefused(e)) {
+        // The exact control-visit day has come and gone since it was
+        // picked. Nothing was signed; the card shows that day in red, and
+        // the doctor picks a new one there.
+        toast.error(t("followUp.signDatePast"));
+        void noteQuery.refetch();
         return;
       }
       // The diagnosis is no longer a gate, so no failure here is the

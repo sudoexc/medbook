@@ -26,7 +26,6 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { formatDate } from "@/lib/format";
-import { addTashkentDays, tashkentDayWindow } from "@/lib/tashkent-time";
 import { followUpDue, formatFollowUpLine } from "@/lib/visit-follow-up";
 
 import { newVerifyToken } from "@/server/clinical-forms/numbering";
@@ -34,12 +33,7 @@ import { getQueue } from "@/server/queue";
 import { uploadObject } from "@/server/storage/minio";
 import { renderConclusionPdf } from "@/server/visit-notes/conclusion-pdf";
 import { serializePrescriptionForWrite } from "@/server/prescription/cipher-fields";
-import { upsertAction } from "@/server/actions/repository";
-import { clinicMorningBefore } from "@/server/actions/clinic-day";
-import {
-  VISIT_FOLLOW_UP_GRACE_DAYS,
-  VISIT_FOLLOW_UP_LEAD_DAYS,
-} from "@/server/actions/config";
+import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
@@ -666,49 +660,12 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
     });
   });
 
-  // Follow-up reception task — idempotent via the Action dedupeKey, so it
-  // lives outside the row transaction (a retry converges either way). A
-  // re-bridge after a note edit does not reopen a task reception already
-  // closed; only a moved due date does (upsertAction, audit AC-08).
-  // The due day follows the one rule every reader shares: the day the
-  // doctor named, or «через N дней» counted in Tashkent calendar days from
-  // the signature.
-  const due = followUpDue(note, startsAt, now);
-  if (due) {
-    const dueDate = due.date;
-    await upsertAction(
-      prisma,
-      note.clinicId,
-      {
-        type: "VISIT_FOLLOW_UP_DUE",
-        visitNoteId: note.id,
-        patientId: note.patientId,
-        patientName: note.patient.fullName,
-        doctorId: note.doctorId,
-        doctorName: note.doctor?.nameRu ?? "—",
-        dueDate,
-        followUpNote: note.followUpNote?.trim() ?? "",
-        // Only when true: a «через N дней» payload stays byte-identical to
-        // the ones written before exact dates existed.
-        ...(due.exact ? { exactDate: true } : {}),
-      },
-      {
-        deeplinkPath: `/crm/patients/${note.patientId}`,
-        // Keep the card around for a week past due, then auto-expire: to
-        // the end of the seventh clinic day after it, whole days being what
-        // reception plans in. The explicit expiry is also what shields the
-        // row from the engine's 48h sweep: nothing re-upserts it after this
-        // bridge (audit AC-03).
-        expiresAt: tashkentDayWindow(
-          addTashkentDays(dueDate, VISIT_FOLLOW_UP_GRACE_DAYS + 1),
-        ).from,
-        // Reception needs the call a week ahead of the control visit, not on
-        // the day of finalize: a 30-day follow-up would otherwise sit in the
-        // list for a month and get tuned out. Short intervals show at once.
-        surfaceAt: clinicMorningBefore(dueDate, VISIT_FOLLOW_UP_LEAD_DAYS),
-      },
-    );
-  }
+  // Follow-up reception task, outside the row transaction: it is idempotent
+  // via the Action dedupeKey, so a retry converges either way. The same
+  // function serves an in-window correction of the plan (the visit-notes
+  // PATCH), so the two writers cannot disagree; a plan the doctor cleared
+  // before a re-signature retires the task left from the first one.
+  await syncFollowUpAction(prisma, note, now);
 
   // Stamp LAST — anything above failing leaves the note in the sweep.
   await prisma.visitNote.update({

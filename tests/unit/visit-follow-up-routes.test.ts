@@ -14,6 +14,9 @@
  *      the date for an exact day, in ru and uz.
  *   4. The Mini App (visit summary and visits list) gets the day and says
  *      whether the doctor named it.
+ *   5. Review fixes: signing refuses an exact day that has gone by since it
+ *      was picked (unless the note is locked), and a plan corrected on a
+ *      signed note moves or retires the reception's task at once.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +33,11 @@ const state = {
   revisions: [] as Row[],
   findFirstArgs: [] as Row[],
   appointmentRows: [] as Row[],
+  actions: [] as Row[],
+  actionLookups: 0,
 };
+
+const TASK_KEY = "VISIT_FOLLOW_UP_DUE:visitNoteId=vn_1";
 
 function note(over: Row = {}): Row {
   return {
@@ -241,6 +248,51 @@ vi.mock("@/lib/prisma", () => {
       create: vi.fn(async () => ({ id: "pd_1" })),
       update: vi.fn(async () => ({ id: "pd_1" })),
     },
+    // The reception's tasks, in memory, behind the real upsert / retire.
+    action: {
+      findUnique: vi.fn(
+        async ({ where }: { where: { clinicId_dedupeKey: Row } }) => {
+          state.actionLookups += 1;
+          return (
+            state.actions.find(
+              (a) => a.dedupeKey === where.clinicId_dedupeKey.dedupeKey,
+            ) ?? null
+          );
+        },
+      ),
+      create: vi.fn(async ({ data }: { data: Row }) => {
+        const row = { id: `act_${state.actions.length + 1}`, ...data };
+        state.actions.push(row);
+        return row;
+      }),
+      update: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
+        const row = state.actions.find((a) => a.id === where.id)!;
+        Object.assign(row, data);
+        return row;
+      }),
+      updateMany: vi.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { id: { in: string[] }; status: { in: string[] } };
+          data: Row;
+        }) => {
+          let count = 0;
+          for (const a of state.actions) {
+            if (
+              where.id.in.includes(a.id as string) &&
+              where.status.in.includes(a.status as string)
+            ) {
+              Object.assign(a, data);
+              count += 1;
+            }
+          }
+          return { count };
+        },
+      ),
+    },
+    auditLog: { create: vi.fn(async () => ({})) },
     $transaction: vi.fn(async <T,>(fn: (tx: unknown) => Promise<T>) => fn(prisma)),
   };
   return { prisma };
@@ -286,6 +338,8 @@ beforeEach(() => {
   state.revisions = [];
   state.findFirstArgs = [];
   state.appointmentRows = [];
+  state.actions = [];
+  state.actionLookups = 0;
 });
 
 afterEach(() => {
@@ -380,17 +434,171 @@ describe("a signed note corrected in the window", () => {
   });
 });
 
+async function finalize(): Promise<Response> {
+  vi.resetModules();
+  const { POST } = await import("@/app/api/crm/visit-notes/[id]/finalize/route");
+  return POST(
+    new Request("https://x/api/crm/visit-notes/vn_1/finalize", { method: "POST" }),
+  );
+}
+
 describe("finalize", () => {
   it("the SIGNED revision holds the day", async () => {
     state.note = note({ followUpDate: OCT_15, followUpDays: 16 });
-    vi.resetModules();
-    const { POST } = await import("@/app/api/crm/visit-notes/[id]/finalize/route");
-    const res = await POST(
-      new Request("https://x/api/crm/visit-notes/vn_1/finalize", { method: "POST" }),
-    );
+    const res = await finalize();
     expect(res.status).toBe(200);
     const signedRev = state.revisions.find((r) => r.kind === "SIGNED")!;
     expect((signedRev.content as Row).followUpDate).toBe("2026-10-15");
+  });
+
+  // Picked on 25 Sep for the 27th, the draft signed on the 29th: the day
+  // would reach the patient's PDF and reception already gone.
+  for (const [label, day] of [
+    ["a day gone by", "2026-09-27"],
+    ["today", "2026-09-29"],
+  ] as const) {
+    it(`refuses to sign ${label} and writes nothing`, async () => {
+      state.note = note({
+        followUpDate: new Date(`${day}T00:00:00.000Z`),
+        followUpDays: 2,
+      });
+      const res = await finalize();
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        reason: "follow_up_date_out_of_range",
+        problem: "past",
+      });
+      expect(state.noteUpdates).toHaveLength(0);
+      expect(state.revisions).toHaveLength(0);
+    });
+  }
+
+  it("signs a day still ahead, and «через N дней» however late", async () => {
+    state.note = note({
+      followUpDate: new Date("2026-09-30T00:00:00.000Z"),
+      followUpDays: 1,
+    });
+    expect((await finalize()).status).toBe(200);
+
+    state.note = note({ followUpDays: 3 });
+    state.noteUpdates = [];
+    expect((await finalize()).status).toBe(200);
+  });
+
+  it("a locked reopened draft is signed as it stands", async () => {
+    // Signed on the 25th, reverted after its 24h window: the PATCH would
+    // refuse a new day, so refusing the signature would leave it stuck.
+    const long = new Date(NOW.getTime() - 4 * 24 * HOUR);
+    state.note = note({
+      firstFinalizedAt: long,
+      documentNumber: "NF-2026-000042",
+      followUpDate: new Date("2026-09-27T00:00:00.000Z"),
+      followUpDays: 2,
+      appointment: { ...(note().appointment as Row), status: "COMPLETED", completedAt: long },
+    });
+    expect((await finalize()).status).toBe(200);
+    expect(state.noteUpdates[0]).toMatchObject({ status: "FINALIZED" });
+  });
+});
+
+// ----- the reception task after a correction -------------------------------
+
+describe("a signed note's plan corrected in the window", () => {
+  /** The task the bridge wrote at the signature: «через 14 дн.», 13 Oct. */
+  function bridgedTask(over: Row = {}): Row {
+    return {
+      id: "act_bridge",
+      clinicId: "c1",
+      dedupeKey: TASK_KEY,
+      type: "VISIT_FOLLOW_UP_DUE",
+      severity: "medium",
+      status: "SNOOZED",
+      snoozeUntil: new Date("2026-10-06T04:00:00.000Z"),
+      assigneeRole: "RECEPTIONIST",
+      deeplinkPath: "/crm/patients/p1",
+      expiresAt: new Date("2026-10-20T19:00:00.000Z"),
+      doneAt: null,
+      dismissedAt: null,
+      outcome: null,
+      updatedAt: new Date(NOW.getTime() - HOUR),
+      payload: {
+        type: "VISIT_FOLLOW_UP_DUE",
+        visitNoteId: "vn_1",
+        patientId: "p1",
+        patientName: "Рахимов Сардор",
+        doctorId: "doc_1",
+        doctorName: "Султанов Азиз",
+        dueDate: "2026-10-13",
+        followUpNote: "",
+      },
+      ...over,
+    };
+  }
+
+  it("an exact day moves the task to that day, marked exact", async () => {
+    state.note = signed({ followUpDays: 14 });
+    state.actions = [bridgedTask()];
+    const res = await patch({ followUpDate: "2026-10-20", followUpNote: "ЭЭГ" });
+    expect(res.status).toBe(200);
+
+    expect(state.actions).toHaveLength(1);
+    const task = state.actions[0]!;
+    expect(task.payload).toMatchObject({
+      dueDate: "2026-10-20",
+      exactDate: true,
+      followUpNote: "ЭЭГ",
+    });
+    // A week ahead at 09:00, gone after the seventh day past it.
+    expect(task.snoozeUntil).toEqual(new Date("2026-10-13T04:00:00.000Z"));
+    expect(task.expiresAt).toEqual(new Date("2026-10-27T19:00:00.000Z"));
+  });
+
+  it("a new count of days moves it too, from the signature", async () => {
+    state.note = signed({ followUpDays: 16, followUpDate: OCT_15 });
+    state.actions = [
+      bridgedTask({
+        payload: {
+          ...(bridgedTask().payload as Row),
+          dueDate: "2026-10-15",
+          exactDate: true,
+        },
+      }),
+    ];
+    await patch({ followUpDays: 30 });
+    const payload = state.actions[0]!.payload as Row;
+    expect(payload.dueDate).toBe("2026-10-29");
+    expect(payload).not.toHaveProperty("exactDate");
+  });
+
+  it("the × retires the task instead of leaving a call for nothing", async () => {
+    state.note = signed({ followUpDays: 14, followUpNote: "ЭЭГ" });
+    state.actions = [bridgedTask()];
+    const res = await patch({
+      followUpDays: null,
+      followUpDate: null,
+      followUpNote: null,
+    });
+    expect(res.status).toBe(200);
+    expect(state.actions[0]!.status).toBe("EXPIRED");
+  });
+
+  it("a call reception already made stays theirs", async () => {
+    state.note = signed({ followUpDays: 14 });
+    state.actions = [bridgedTask({ status: "DONE", doneAt: new Date(NOW.getTime() - HOUR) })];
+    await patch({ followUpDays: null, followUpDate: null });
+    expect(state.actions[0]!.status).toBe("DONE");
+  });
+
+  it("other corrections, and a draft's plan, leave reception alone", async () => {
+    state.note = signed({ followUpDays: 14 });
+    state.actions = [bridgedTask()];
+    await patch({ advice: ["Режим сна", "Меньше экранов"] });
+
+    state.note = note();
+    await patch({ followUpDate: "2026-10-20" });
+
+    expect(state.actionLookups).toBe(0);
+    expect((state.actions[0]!.payload as Row).dueDate).toBe("2026-10-13");
   });
 });
 

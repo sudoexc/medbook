@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
+import { FOLLOW_UP_DATE_REFUSED } from "@/lib/visit-follow-up";
 import { scheduleStatusOf } from "@/lib/doctor-schedule-status";
 
 import {
@@ -105,11 +106,13 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       if (!signed.ok) {
         // VW-03 — reception cancelled the visit (or marked a no-show) in the
         // meantime; finalize refuses and signs nothing. Say that, not «try
-        // again from Заключения».
+        // again from Заключения». The same for an exact control-visit day
+        // that has gone by: the doctor has to pick a new one first.
         const refused = await readErrorEnvelope(signed);
         throw new Error(
-          refused.reason === "appointment_not_active"
-            ? "appointment_not_active"
+          refused.reason === "appointment_not_active" ||
+            refused.reason === FOLLOW_UP_DATE_REFUSED
+            ? refused.reason
             : "sign_failed",
         );
       }
@@ -429,6 +432,9 @@ function messageFor(
   }
   if (raw === "appointment_not_active") {
     return t("statusToast.errNotActive");
+  }
+  if (raw === FOLLOW_UP_DATE_REFUSED) {
+    return t("statusToast.errFollowUpDatePast");
   }
   // Q-05: the call and the start only on the visit's own clinic day.
   if (raw === "not_today") {

@@ -32,12 +32,20 @@ import {
   sameNoteDiagnoses,
   visitDiagnosisKey,
 } from "@/lib/visit-diagnoses";
-import { resolveFollowUpWrite } from "@/lib/visit-follow-up";
+import {
+  FOLLOW_UP_DATE_REFUSED,
+  resolveFollowUpWrite,
+} from "@/lib/visit-follow-up";
+import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
-/** 400 reason of a control-visit date outside tomorrow .. a year ahead. */
-const FOLLOW_UP_DATE_REFUSED = "follow_up_date_out_of_range";
+/** The note's fields the reception's control-visit task is made of. */
+const FOLLOW_UP_FIELDS: ReadonlySet<string> = new Set([
+  "followUpDays",
+  "followUpDate",
+  "followUpNote",
+]);
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -482,6 +490,36 @@ export const PATCH = createApiHandler(
         ...(revisions ? { revisions } : {}),
       },
     });
+
+    // The reception's control-visit task follows a corrected plan. The
+    // bridge writes it once after the signature and runs again only when
+    // the prescriptions change, so a plan moved from «через 14 дн.» to an
+    // exact 20.10, or cleared with ×, left reception calling on the old day
+    // (or for a control visit the doctor had cancelled) while the print,
+    // the PDF and the Mini App showed the new one. Only this task, not a
+    // whole re-bridge: that would also rewrite the medication courses and
+    // could bring back one someone else cancelled.
+    //
+    // After the commit, and a failure only logged: the correction is saved
+    // and is what the doctor sees; refusing it over the task would be worse.
+    if (isSigned && changedFields.some((f) => FOLLOW_UP_FIELDS.has(f))) {
+      try {
+        await syncFollowUpAction(prisma, {
+          id: updated.id,
+          clinicId: updated.clinicId,
+          patientId: updated.patientId,
+          doctorId: updated.doctorId,
+          finalizedAt: updated.finalizedAt,
+          followUpDays: updated.followUpDays,
+          followUpDate: updated.followUpDate,
+          followUpNote: updated.followUpNote,
+          patient: before.patient,
+          doctor: before.doctor,
+        });
+      } catch (e) {
+        console.error(`[visit-note] follow-up task of ${id} not synced`, e);
+      }
+    }
 
     // A diagnosis written in the doctor's own words (or with a code the
     // static list lacks) joins the clinic's list the moment it is chosen,

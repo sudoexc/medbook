@@ -144,6 +144,28 @@ export function followUpDateProblem(
   return null;
 }
 
+/**
+ * The 400 reason for an exact day outside tomorrow .. a year ahead: a PATCH
+ * that picks one, and a signature that would issue one. The client turns it
+ * into words (`isFollowUpDateRefused`).
+ */
+export const FOLLOW_UP_DATE_REFUSED = "follow_up_date_out_of_range";
+
+/**
+ * What is wrong with the exact day a note already holds, or null (no exact
+ * day, or one still ahead). The day was checked when it was picked, but
+ * drafts here are often signed days after the visit, and «tomorrow» on the
+ * day of the visit has come and gone by the signature. The card warns with
+ * this and finalize refuses with it, so both judge the same way.
+ */
+export function storedFollowUpDateProblem(
+  value: Date | string | null | undefined,
+  now: Date = new Date(),
+): FollowUpDateProblem | null {
+  const key = followUpDateKey(value);
+  return key ? followUpDateProblem(key, now) : null;
+}
+
 export function isFollowUpDays(value: unknown): value is number {
   return (
     typeof value === "number" &&

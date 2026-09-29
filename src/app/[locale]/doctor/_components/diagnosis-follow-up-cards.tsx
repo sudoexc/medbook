@@ -55,8 +55,10 @@ import {
   followUpDayInstant,
   followUpDue,
   parseFollowUpDays,
+  storedFollowUpDateProblem,
   type FollowUpDateProblem,
 } from "@/lib/visit-follow-up";
+import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
 
 import { useIcd10Search } from "../reception/_hooks/use-icd10";
 import {
@@ -160,6 +162,28 @@ export function FollowUpCard({
     setDateProblem(null);
   }, [dateKey]);
 
+  // A draft signed days after the visit can hold a day that has gone by
+  // since it was picked. Said on sight, not only once the doctor happens to
+  // touch the box: signing refuses such a day (finalize), so it has to be
+  // replaced first. Exactly when finalize refuses it: not on a signed note,
+  // whose day was issued as it was, nor on one that can no longer be
+  // changed (read-only here, or reopened after its 24h window, which
+  // finalize signs as it stands).
+  const correctable =
+    note.status !== "FINALIZED" &&
+    !disabled &&
+    !(
+      note.firstFinalizedAt &&
+      isEditWindowExpired(new Date(note.firstFinalizedAt))
+    );
+  const storedProblem = correctable
+    ? storedFollowUpDateProblem(note.followUpDate)
+    : null;
+  // The doctor's own pick speaks first; the stored day's problem only while
+  // the box still shows that day.
+  const shownDateProblem =
+    dateProblem ?? (dateDraft === (dateKey ?? "") ? storedProblem : null);
+
   // The blur that follows a save made on Enter or on a pick must not send
   // the same value again. A later blur may: that is the retry after a
   // failed save, whose value is still in the box. Anything else the doctor
@@ -238,11 +262,11 @@ export function FollowUpCard({
       timeZone: "Asia/Tashkent",
     });
   const problemText =
-    dateProblem === "past"
+    shownDateProblem === "past"
       ? t("followUp.datePast", { date: dayLabel(bounds.min) })
-      : dateProblem === "too_far"
+      : shownDateProblem === "too_far"
         ? t("followUp.dateTooFar", { date: dayLabel(bounds.max) })
-        : dateProblem === "invalid"
+        : shownDateProblem === "invalid"
           ? t("followUp.dateInvalid")
           : daysInvalid
             ? t("followUp.daysInvalid")
@@ -289,7 +313,11 @@ export function FollowUpCard({
           <span
             className={cn(
               "font-medium tabular-nums",
-              due.exact ? "text-primary" : "text-muted-foreground",
+              due.exact
+                ? storedProblem
+                  ? "text-destructive"
+                  : "text-primary"
+                : "text-muted-foreground",
               big ? "text-sm" : "text-[11px]",
             )}
           >
@@ -423,7 +451,7 @@ export function FollowUpCard({
                 max={bounds.max}
                 value={dateDraft}
                 aria-label={t("followUp.dateLabel")}
-                aria-invalid={dateProblem != null || undefined}
+                aria-invalid={shownDateProblem != null || undefined}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -452,7 +480,7 @@ export function FollowUpCard({
                 className={cn(
                   fieldClass,
                   big ? "px-2.5" : "px-1.5",
-                  dateProblem
+                  shownDateProblem
                     ? "border-destructive text-destructive"
                     : dateKey != null
                       ? activeField

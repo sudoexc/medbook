@@ -123,6 +123,7 @@ vi.mock("@/server/prescription/cipher-fields", () => ({
 
 vi.mock("@/server/actions/repository", () => ({
   upsertAction: vi.fn(async () => undefined),
+  retireActions: vi.fn(async () => 0),
 }));
 
 vi.mock("@/server/realtime/outbox", () => ({
@@ -180,6 +181,8 @@ vi.mock("@/lib/prisma", () => {
       },
       visitPrescription: tx.visitPrescription,
       doctor: { findFirst: vi.fn(async () => ({ id: "doc_1" })) },
+      // No control-visit task on record: a note without a plan finds none.
+      action: { findUnique: vi.fn(async () => null) },
       clinic: {
         findUnique: vi.fn(async () => ({
           nameRu: "Клиника",

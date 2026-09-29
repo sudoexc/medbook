@@ -269,8 +269,15 @@ export function ConclusionDetail({
       await finalize.mutateAsync();
       toast.success(tr("detail.signed"));
       void qc.invalidateQueries({ queryKey: ["doctor", "conclusions"] });
-    } catch {
-      toast.error(tr("detail.signError"));
+    } catch (e) {
+      // A draft signed days after the visit can hold an exact control-visit
+      // day that has gone by: finalize refuses it, and the card here shows
+      // the day in red for the doctor to replace.
+      toast.error(
+        isFollowUpDateRefused(e)
+          ? tFollowUp("signDatePast")
+          : tr("detail.signError"),
+      );
     } finally {
       signingRef.current = false;
       setSigning(false);

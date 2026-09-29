@@ -6250,7 +6250,7 @@
         "tabConclusion": "Xulosa",
         "tabHandout": "Bemorga eslatma",
         "autosaveLabel": "Avto-saqlash",
-        "conclusionPlaceholder": "Xulosaning klinik matni — ko‘rik, holat, asoslash. Chap paneldagi tashxis, tayinlovlar va tavsiyalar chop shakliga avtomatik kiradi.",
+        "conclusionPlaceholder": "Xulosaning klinik matni: ko‘rik, holat, asoslash. Tashxislar, tayinlovlar va tavsiyalar chop shakliga avtomatik kiradi.",
         "viewText": "Matn",
         "viewPreview": "Oldindan ko‘rish",
         "viewEdit": "Tahrirlash",

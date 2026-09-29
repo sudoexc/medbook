@@ -82,6 +82,7 @@ function baseNote(
     advice: [],
     diagnosisCode: "G43.0",
     diagnosisName: "Мигрень без ауры",
+    additionalDiagnoses: [],
     bodyMarkdown: "Заключение",
     patientHandoutMarkdown: null,
     followUpDays: null,

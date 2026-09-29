@@ -38,6 +38,11 @@ export type HandoutInput = {
   clinicName?: string | null;
   visitDate?: Date | null;
   diagnosisName?: string | null;
+  /**
+   * The visit's other diagnoses, by name, in the doctor's order (a visit has
+   * a main one and up to three more). Listed under the main one.
+   */
+  additionalDiagnosisNames?: string[];
   /** Free-text complaint chips from the visit note. */
   complaints?: string[];
   /** Prescription lines (already composed by the dosage builder). */
@@ -103,6 +108,7 @@ const STRINGS = {
     introDoctor: (doctor: string) => `у врача ${doctor}`,
     introTail: "подготовлены следующие рекомендации:",
     diagnosis: "**Диагноз:**",
+    additionalDiagnoses: "**Сопутствующие диагнозы:**",
     complaints: "**Жалобы, с которыми вы обратились:**",
     whatToDo: "**Что делать:**",
     prescriptions: "**Назначения — что и как принимать:**",
@@ -127,6 +133,7 @@ const STRINGS = {
     introDoctor: (doctor: string) => `shifokor ${doctor} tomonidan`,
     introTail: "quyidagi tavsiyalar tayyorlandi:",
     diagnosis: "**Tashxis:**",
+    additionalDiagnoses: "**Yondosh tashxislar:**",
     complaints: "**Siz murojaat qilgan shikoyatlar:**",
     whatToDo: "**Nima qilish kerak:**",
     prescriptions: "**Dori-darmonlar — nimani va qanday qabul qilish:**",
@@ -169,6 +176,9 @@ export function composePatientHandout(input: HandoutInput): string {
   const complaints = (input.complaints ?? []).filter(Boolean);
   const prescriptions = (input.prescriptions ?? []).filter(Boolean);
   const advice = (input.advice ?? []).filter(Boolean);
+  const additionalDiagnoses = (input.additionalDiagnosisNames ?? [])
+    .map((d) => d.trim())
+    .filter(Boolean);
   const guide = input.guide ?? null;
   const guideWhatToDo = guide?.whatToDo?.trim() || null;
   const guideCare = guide?.care?.trim() || null;
@@ -183,7 +193,8 @@ export function composePatientHandout(input: HandoutInput): string {
     prescriptions.length > 0 ||
     advice.length > 0 ||
     hasGuide ||
-    !!input.diagnosisName?.trim();
+    !!input.diagnosisName?.trim() ||
+    additionalDiagnoses.length > 0;
 
   if (!hasContent) return "";
 
@@ -210,6 +221,12 @@ export function composePatientHandout(input: HandoutInput): string {
   // ── Diagnosis (no МКБ code) ────────────────────────────
   if (input.diagnosisName?.trim()) {
     parts.push(`${s.diagnosis} ${input.diagnosisName.trim()}`);
+    parts.push("");
+  }
+  // The others after the main one, on one line. A semicolon between them:
+  // a diagnosis name often has a comma of its own.
+  if (additionalDiagnoses.length > 0) {
+    parts.push(`${s.additionalDiagnoses} ${additionalDiagnoses.join("; ")}`);
     parts.push("");
   }
 

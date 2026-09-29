@@ -4,6 +4,7 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
+import { visitDiagnosesOf } from "@/lib/visit-diagnoses";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
@@ -330,6 +331,7 @@ export function StructuredFieldsPanel() {
             prescriptions={cdsTextLines}
             drugRows={cdsDrugRows}
             diagnosisCode={note.diagnosisCode ?? null}
+            diagnoses={visitDiagnosesOf(note)}
             appointmentId={activeAppointment?.id ?? null}
             visitNoteId={visitNoteId}
           />

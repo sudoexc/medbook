@@ -4,7 +4,7 @@
  * GET /api/miniapp/visit-summary/:appointmentId
  *
  * Returns the FINALIZED VisitNote for the patient's own (or family-linked,
- * via `?onBehalfOf=`) appointment: diagnosis, the patient-facing handout
+ * via `?onBehalfOf=`) appointment: diagnoses, the patient-facing handout
  * markdown, follow-up date and the conclusion PDF link. DRAFT notes are
  * invisible to the patient by design — until the doctor finalizes, the
  * screen shows «заключение готовится».
@@ -18,6 +18,7 @@ import { err, ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
+import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const url = new URL(request.url);
@@ -46,6 +47,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
     },
     select: {
       diagnosisName: true,
+      additionalDiagnoses: true,
       patientHandoutMarkdown: true,
       followUpDays: true,
       finalizedAt: true,
@@ -74,6 +76,11 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       finalizedAt: note.finalizedAt,
       documentNumber: note.documentNumber,
       diagnosisName: note.diagnosisName,
+      // The visit's other diagnoses, by name: the patient's view never
+      // carries ICD codes (same rule as the handout).
+      additionalDiagnosisNames: parseAdditionalDiagnoses(
+        note.additionalDiagnoses,
+      ).map((d) => d.name),
       handoutMarkdown: note.patientHandoutMarkdown,
       doctor: note.doctor,
       followUpAt:

@@ -21,6 +21,10 @@ import { prisma } from "@/lib/prisma";
 import { tashkentComponents } from "@/lib/booking-validation";
 import { audit } from "@/lib/audit";
 import { err, notFound } from "@/server/http";
+import {
+  formatVisitDiagnosis,
+  parseAdditionalDiagnoses,
+} from "@/lib/visit-diagnoses";
 
 const MAX_ROWS = 5000;
 
@@ -104,6 +108,7 @@ export const GET = createApiListHandler(
           select: {
             diagnosisCode: true,
             diagnosisName: true,
+            additionalDiagnoses: true,
             prescriptions: true,
             advice: true,
             bodyMarkdown: true,
@@ -145,6 +150,7 @@ export const GET = createApiListHandler(
       "Тип",
       "МКБ-10",
       "Диагноз",
+      "Сопутствующие",
       "Врач",
       "Услуга",
       "Назначения",
@@ -166,6 +172,11 @@ export const GET = createApiListHandler(
           type,
           a.visitNote?.diagnosisCode ?? "",
           a.visitNote?.diagnosisName ?? "",
+          // The visit's other diagnoses, code and name each, like the lists
+          // in the columns after it.
+          parseAdditionalDiagnoses(a.visitNote?.additionalDiagnoses)
+            .map((d) => formatVisitDiagnosis(d))
+            .join(" | "),
           doctor.nameRu,
           a.primaryService?.nameRu ?? "",
           (a.visitNote?.prescriptions ?? []).join(" | "),

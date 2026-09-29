@@ -10,6 +10,11 @@ export type VisitSummary = {
   finalizedAt: string | null;
   documentNumber: string | null;
   diagnosisName: string | null;
+  /**
+   * The visit's other diagnoses after the main one, by name. Optional: a
+   * server on the previous build omits it.
+   */
+  additionalDiagnosisNames?: string[];
   handoutMarkdown: string | null;
   doctor: {
     id: string;

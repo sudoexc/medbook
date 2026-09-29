@@ -18,6 +18,7 @@ import {
   UpsertVisitNoteSchema,
   QueryVisitNoteSchema,
 } from "@/server/schemas/visit-note";
+import { MAX_ADDITIONAL_DIAGNOSES } from "@/lib/visit-diagnoses";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR"] },
@@ -54,6 +55,17 @@ export const GET = createApiListHandler(
       where.OR = [
         { diagnosisName: { contains: term, mode: "insensitive" } },
         { diagnosisCode: { contains: term, mode: "insensitive" } },
+        // The visit's other diagnoses: a conclusion is found by any of them.
+        // JSON paths by position, one per possible entry.
+        ...Array.from({ length: MAX_ADDITIONAL_DIAGNOSES }, (_, i) =>
+          (["name", "code"] as const).map((field) => ({
+            additionalDiagnoses: {
+              path: [String(i), field],
+              string_contains: term,
+              mode: "insensitive",
+            },
+          })),
+        ).flat(),
         { patient: { fullName: { contains: term, mode: "insensitive" } } },
       ];
     }

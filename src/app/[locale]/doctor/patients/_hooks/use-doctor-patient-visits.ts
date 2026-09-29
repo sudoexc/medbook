@@ -2,6 +2,8 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 
+import type { VisitDiagnosis } from "@/lib/visit-diagnoses";
+
 export type DoctorPatientVisitRow = {
   id: string;
   date: string;
@@ -13,6 +15,8 @@ export type DoctorPatientVisitRow = {
   serviceName: string | null;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The visit's diagnoses after the main one, in order (up to three). */
+  additionalDiagnoses: VisitDiagnosis[];
   prescriptions: string[];
   advice: string[];
   hasVisitNote: boolean;

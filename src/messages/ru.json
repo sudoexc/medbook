@@ -7712,6 +7712,7 @@
         "hide": "Скрыть",
         "none": "нет",
         "followUpDays": "через {n} дн.",
+        "additionalDiagnoses": "Сопутствующие: {list}",
         "fields": {
           "diagnosis": "диагноз",
           "prescriptions": "назначения",

@@ -8,11 +8,19 @@
  * conclusion still a draft.
  */
 
+import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
+
 export type ConclusionSection = "diagnosis" | "conclusion" | "prescriptions";
 
 export type NoteSectionsInput = {
   diagnosisCode?: string | null;
   diagnosisName?: string | null;
+  /**
+   * The visit's other diagnoses (JSON as stored, or parsed). Optional ones:
+   * they never stand in for the main diagnosis, but a draft holding only
+   * them is not blank.
+   */
+  additionalDiagnoses?: unknown;
   bodyMarkdown?: string | null;
   prescriptions?: readonly string[] | null;
   complaints?: readonly string[] | null;
@@ -25,7 +33,9 @@ export type NoteSectionsInput = {
 
 /**
  * Sections worth a confirmation before signing: a conclusion may be signed
- * without them (clinic decision 23.09.2026), but never by accident.
+ * without them (clinic decision 23.09.2026), but never by accident. The
+ * diagnosis section means the MAIN diagnosis: the others are optional, and
+ * the server never keeps others without a main one (visit-diagnoses.ts).
  */
 export function emptyConclusionSections(
   n: NoteSectionsInput,
@@ -48,6 +58,7 @@ export function draftHasContent(n: NoteSectionsInput): boolean {
     (xs ?? []).some((x) => x.trim().length > 0);
   return (
     emptyConclusionSections(n).length < 3 ||
+    parseAdditionalDiagnoses(n.additionalDiagnoses).length > 0 ||
     any(n.complaints) ||
     any(n.anamnesis) ||
     any(n.examination) ||

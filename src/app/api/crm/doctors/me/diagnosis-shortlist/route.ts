@@ -2,8 +2,9 @@
  * GET /api/crm/doctors/me/diagnosis-shortlist — the diagnoses that open when
  * the doctor taps the diagnosis field with nothing typed yet: his starred
  * codes, then what he actually writes most (drafts included — most visits
- * here are never signed). Everything else in the ICD catalog and the
- * clinic's learned list stays behind search.
+ * here are never signed), as the main diagnosis or as one of the others.
+ * Everything else in the ICD catalog and the clinic's learned list stays
+ * behind search.
  *
  * Ranking lives in `buildDiagnosisShortlist` (unit-tested).
  */
@@ -13,7 +14,10 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { err, ok, parseQuery } from "@/server/http";
 import { ICD10_ENTRIES } from "@/server/icd10/data";
-import { buildDiagnosisShortlist } from "@/server/catalog/shortlist";
+import {
+  buildDiagnosisShortlist,
+  noteDiagnosisUses,
+} from "@/server/catalog/shortlist";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(30).default(12),
@@ -58,7 +62,12 @@ export const GET = createApiListHandler(
           createdAt: { gte: since },
           diagnosisName: { not: null },
         },
-        select: { diagnosisCode: true, diagnosisName: true, createdAt: true },
+        select: {
+          diagnosisCode: true,
+          diagnosisName: true,
+          additionalDiagnoses: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: "desc" },
         take: 3000,
       }),
@@ -78,11 +87,7 @@ export const GET = createApiListHandler(
 
     const rows = buildDiagnosisShortlist({
       pinnedCodes: favorites.map((f) => f.entityCode),
-      uses: notes.map((n) => ({
-        code: n.diagnosisCode,
-        name: n.diagnosisName,
-        at: n.createdAt,
-      })),
+      uses: notes.flatMap(noteDiagnosisUses),
       nameForCode: (code) => staticName(code) ?? learnedNames.get(code) ?? null,
       limit,
     });

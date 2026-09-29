@@ -24,6 +24,7 @@ import { ok, err } from "@/server/http";
 import { pickCurrentVisit } from "@/lib/doctor-current-visit";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
+import { visitDiagnosesOf } from "@/lib/visit-diagnoses";
 
 type PatientTag = "active" | "first_visit" | "vip" | "new";
 
@@ -272,7 +273,11 @@ export const GET = createApiListHandler(
           date: true,
           primaryService: { select: { nameRu: true } },
           visitNote: {
-            select: { diagnosisCode: true, diagnosisName: true },
+            select: {
+              diagnosisCode: true,
+              diagnosisName: true,
+              additionalDiagnoses: true,
+            },
           },
         },
       });
@@ -321,16 +326,14 @@ export const GET = createApiListHandler(
                 lastVisit.primaryService?.nameRu ?? "Приём",
             }
           : null,
+        // Every coded diagnosis of that visit, the main one first (a visit
+        // has up to four).
         lastDiagnosis: {
-          codes:
-            lastVisit?.visitNote?.diagnosisCode && lastVisit.visitNote.diagnosisName
-              ? [
-                  {
-                    code: lastVisit.visitNote.diagnosisCode,
-                    name: lastVisit.visitNote.diagnosisName,
-                  },
-                ]
-              : [],
+          codes: lastVisit?.visitNote
+            ? visitDiagnosesOf(lastVisit.visitNote).flatMap((d) =>
+                d.code && d.name ? [{ code: d.code, name: d.name }] : [],
+              )
+            : [],
         },
         ticketNumber: ticketNumberFor(
           doctor,

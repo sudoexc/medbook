@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import type { VisitDiagnosis } from "@/lib/visit-diagnoses";
 import {
   emptyConclusionSections,
   type ConclusionSection,
@@ -78,6 +79,12 @@ export type VisitNoteRow = {
   advice: string[];
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /**
+   * The diagnoses after the main one, in order (at most three). The server
+   * keeps the set normalised: never a duplicate of the main one or of each
+   * other, and never others without a main one (see visit-diagnoses.ts).
+   */
+  additionalDiagnoses: VisitDiagnosis[];
   bodyMarkdown: string | null;
   patientHandoutMarkdown: string | null;
   followUpDays: number | null;
@@ -151,6 +158,8 @@ export type VisitNotePatch = Partial<{
   advice: string[];
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** Replace-all; `[]` clears them. The response carries the settled set. */
+  additionalDiagnoses: VisitDiagnosis[];
   bodyMarkdown: string | null;
   patientHandoutMarkdown: string | null;
   followUpDays: number | null;
@@ -225,6 +234,9 @@ export const OPTIMISTIC_FIELDS = [
   "visitPrescriptions",
   "prescriptions",
   "advice",
+  // Replace-all like the lists above: a second diagnosis added before the
+  // first one's save answers must be added to the list that holds the first.
+  "additionalDiagnoses",
 ] as const;
 type OptimisticField = (typeof OPTIMISTIC_FIELDS)[number];
 
@@ -266,6 +278,9 @@ export function foldPatchIntoRow(
   const next: VisitNoteRow = { ...prev };
   if (patch.prescriptions !== undefined) next.prescriptions = patch.prescriptions;
   if (patch.advice !== undefined) next.advice = patch.advice;
+  if (patch.additionalDiagnoses !== undefined) {
+    next.additionalDiagnoses = patch.additionalDiagnoses;
+  }
   if (patch.visitPrescriptions !== undefined) {
     const before = prev.visitPrescriptions ?? [];
     next.visitPrescriptions = patch.visitPrescriptions.map((draft, i) => ({

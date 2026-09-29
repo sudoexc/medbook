@@ -39,6 +39,7 @@ import {
   type CdsDrugRow,
   type CdsResolvedDrug,
   type CdsSeverity,
+  type CdsVisitDiagnosis,
   type CdsWarning,
   type CdsWarningKind,
 } from "../_hooks/use-cds-drug-check";
@@ -91,6 +92,8 @@ type Props = {
   /** Ф2 — catalog-picked structured rows, by id with their labels. */
   drugRows?: CdsDrugRow[];
   diagnosisCode: string | null;
+  /** Every diagnosis of the visit, main first; each is checked. */
+  diagnoses?: CdsVisitDiagnosis[];
   // G8 — contextual ids forwarded to the override mutation. Optional so the
   // card still renders in the future patient drawer (no active visit there).
   appointmentId?: string | null;
@@ -111,6 +114,7 @@ export function CdsWarningsCard({
   prescriptions,
   drugRows = [],
   diagnosisCode,
+  diagnoses,
   appointmentId,
   visitNoteId,
 }: Props) {
@@ -120,6 +124,7 @@ export function CdsWarningsCard({
     prescriptions,
     drugRows,
     diagnosisCode,
+    diagnoses,
     visitNoteId,
   });
   const [acknowledged, setAcknowledged] = React.useState<Set<string>>(

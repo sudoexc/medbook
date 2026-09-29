@@ -4,7 +4,8 @@
  *
  * Backs the «История диагнозов» card on the reception screen: every finalized
  * VisitNote that carries an ICD-10 code, newest first, with the code + name,
- * the visit date, and who diagnosed it. A repeat of the same code on a later
+ * the visit date, and who diagnosed it. One row per visit: the visit's other
+ * diagnoses (up to three after the main one) ride along on the row. A repeat of the same code on a later
  * visit is a distinct row on purpose — this is chronological history, not the
  * deduplicated `PatientDiagnosis` problem list.
  *
@@ -18,6 +19,10 @@ import { z } from "zod";
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound, parseQuery } from "@/server/http";
+import {
+  parseAdditionalDiagnoses,
+  type VisitDiagnosis,
+} from "@/lib/visit-diagnoses";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -30,6 +35,8 @@ type DiagnosisRow = {
   /** Null for a free-text diagnosis — the name carries it then. */
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The visit's diagnoses after the main one, in order (up to three). */
+  additionalDiagnoses: VisitDiagnosis[];
   doctorName: string;
   doctorSpecialty: string | null;
 };
@@ -98,6 +105,7 @@ export const GET = createApiListHandler(
         finalizedAt: true,
         diagnosisCode: true,
         diagnosisName: true,
+        additionalDiagnoses: true,
         doctor: { select: { nameRu: true, specializationRu: true } },
         appointment: { select: { date: true } },
       },
@@ -113,6 +121,7 @@ export const GET = createApiListHandler(
       date: (r.appointment?.date ?? r.finalizedAt ?? new Date(0)).toISOString(),
       diagnosisCode: r.diagnosisCode,
       diagnosisName: r.diagnosisName,
+      additionalDiagnoses: parseAdditionalDiagnoses(r.additionalDiagnoses),
       doctorName: r.doctor?.nameRu ?? "—",
       doctorSpecialty: r.doctor?.specializationRu ?? null,
     }));

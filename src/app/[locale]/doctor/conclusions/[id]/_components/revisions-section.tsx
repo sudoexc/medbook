@@ -16,6 +16,11 @@ import { ChevronDownIcon, FileTextIcon, Loader2Icon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
+  formatVisitDiagnosis,
+  parseAdditionalDiagnoses,
+  type VisitDiagnosis,
+} from "@/lib/visit-diagnoses";
+import {
   formatPrescriptionLine,
   type PrescriptionLikeRow,
   type PrescriptionLocale,
@@ -26,6 +31,8 @@ type RevisionKind = "SIGNED" | "EDITED" | "PRE_EDIT";
 type RevisionContent = {
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** Absent in a version with a single diagnosis (and in older ones). */
+  additionalDiagnoses?: VisitDiagnosis[];
   prescriptions: string[];
   visitPrescriptions: PrescriptionLikeRow[];
   advice: string[];
@@ -69,6 +76,7 @@ function useRevisions(noteId: string, updatedAt: string) {
 const FIELD_GROUP: Record<string, string> = {
   diagnosisCode: "diagnosis",
   diagnosisName: "diagnosis",
+  additionalDiagnoses: "diagnosis",
   visitPrescriptions: "prescriptions",
   prescriptions: "prescriptions",
   advice: "advice",
@@ -147,6 +155,12 @@ export function RevisionsSection({
             const diagnosis = [c.diagnosisCode, c.diagnosisName]
               .filter((v) => Boolean(v && v.trim()))
               .join(" · ");
+            // The others signed with it, after the main one.
+            const additionalDiagnoses = parseAdditionalDiagnoses(
+              c.additionalDiagnoses,
+            )
+              .map((d) => formatVisitDiagnosis(d))
+              .join("; ");
             const rxLines = [
               ...(c.visitPrescriptions ?? []).map((row) =>
                 formatPrescriptionLine(row, rxLocale),
@@ -209,6 +223,11 @@ export function RevisionsSection({
                   <dl className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-background p-3 text-xs">
                     <Entry label={tr("fields.diagnosis")}>
                       {diagnosis || tr("none")}
+                      {additionalDiagnoses && (
+                        <div>
+                          {tr("additionalDiagnoses", { list: additionalDiagnoses })}
+                        </div>
+                      )}
                     </Entry>
                     <Entry label={tr("fields.prescriptions")}>
                       {rxLines.length > 0 ? (

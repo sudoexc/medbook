@@ -67,11 +67,19 @@ export type CdsCurrentTherapyDrug = {
  */
 export type CdsDrugRow = { id: string; displayName: string };
 
+/** One diagnosis of the visit: a code, or the clinic's own words. */
+export type CdsVisitDiagnosis = { code: string | null; name: string | null };
+
 type Args = {
   patientId: string | null;
   prescriptions: string[];
   drugRows?: CdsDrugRow[];
   diagnosisCode: string | null;
+  /**
+   * Every diagnosis of the visit, main first (`visitDiagnosesOf`). Left out,
+   * the server reads the visit's other diagnoses from `visitNoteId`.
+   */
+  diagnoses?: CdsVisitDiagnosis[];
   /** The visit on screen: its own signed rows are not current therapy. */
   visitNoteId?: string | null;
 };
@@ -90,6 +98,8 @@ export function cdsDrugCheckKey(args: Args) {
   return [
     ...cdsDrugCheckPatientKey(args.patientId ?? ""),
     args.diagnosisCode,
+    // Adding a second diagnosis can raise a contraindication by itself.
+    (args.diagnoses ?? []).map((d) => `${d.code ?? ""}:${d.name ?? ""}`).join("|"),
     args.prescriptions.join("|"),
     // A renamed row changes the check: key on the label as well as the id.
     (args.drugRows ?? []).map((r) => `${r.id}:${r.displayName}`).join("|"),
@@ -106,6 +116,7 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
       prescriptions: args.prescriptions,
       drugRows: args.drugRows ?? [],
       diagnosisCode: args.diagnosisCode ?? null,
+      ...(args.diagnoses ? { diagnoses: args.diagnoses } : {}),
       visitNoteId: args.visitNoteId ?? null,
     }),
   });

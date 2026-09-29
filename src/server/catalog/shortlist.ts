@@ -16,6 +16,7 @@
  * a list built from signed notes alone would be empty for the busiest doctor.
  */
 import { prescriptionLabel } from "@/lib/catalogs/brand-match";
+import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 import { normalizeCatalogTerm } from "@/server/catalog/formulary";
 import {
   buildDrugTextIndex,
@@ -44,6 +45,27 @@ export type DiagnosisUse = {
   name: string | null;
   at: Date;
 };
+
+/**
+ * Every diagnosis a note records, one use each: the main one and the others
+ * after it (a visit has up to four). The tension headache he writes as the
+ * second diagnosis of every migraine visit is one of his frequent ones too.
+ */
+export function noteDiagnosisUses(note: {
+  diagnosisCode: string | null;
+  diagnosisName: string | null;
+  additionalDiagnoses?: unknown;
+  createdAt: Date;
+}): DiagnosisUse[] {
+  return [
+    { code: note.diagnosisCode, name: note.diagnosisName, at: note.createdAt },
+    ...parseAdditionalDiagnoses(note.additionalDiagnoses).map((d) => ({
+      code: d.code,
+      name: d.name,
+      at: note.createdAt,
+    })),
+  ];
+}
 
 export type DiagnosisShortItem = {
   code: string | null;

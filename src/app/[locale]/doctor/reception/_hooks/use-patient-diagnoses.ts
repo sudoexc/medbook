@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import type { VisitDiagnosis } from "@/lib/visit-diagnoses";
+
 export type PatientDiagnosisRow = {
   visitNoteId: string;
   appointmentId: string;
@@ -9,6 +11,8 @@ export type PatientDiagnosisRow = {
   /** Null for a free-text diagnosis — the name carries it then. */
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The visit's diagnoses after the main one, in order (up to three). */
+  additionalDiagnoses: VisitDiagnosis[];
   doctorName: string;
   doctorSpecialty: string | null;
 };

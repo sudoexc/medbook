@@ -206,6 +206,7 @@ export const uzDict = {
   visit: {
     title: "Shifokor nima dedi",
     diagnosis: "Tashxis",
+    diagnosisAdditional: "Yondosh tashxislar",
     followUp: "Nazorat qabuli ~{date}",
     openPdf: "Xulosani ochish (PDF)",
     bookFollowUp: "Nazorat qabuliga yozilish",

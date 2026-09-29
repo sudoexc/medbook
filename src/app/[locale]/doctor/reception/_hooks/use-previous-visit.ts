@@ -9,6 +9,8 @@
  */
 import { useQuery } from "@tanstack/react-query";
 
+import type { VisitDiagnosis } from "@/lib/visit-diagnoses";
+
 import type { BodyMapPoint, VisitPrescriptionRow } from "./use-visit-note";
 
 export type PreviousVisitRow = {
@@ -16,6 +18,8 @@ export type PreviousVisitRow = {
   finalizedAt: string | null;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The diagnoses after the main one, in order. */
+  additionalDiagnoses: VisitDiagnosis[];
   complaints: string[];
   anamnesis: string[];
   dynamics: "IMPROVED" | "STABLE" | "WORSE" | null;

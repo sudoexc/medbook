@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { MAX_ADDITIONAL_DIAGNOSES } from "@/lib/visit-diagnoses";
+
 export const VisitNoteStatusEnum = z.enum(["DRAFT", "FINALIZED"]);
 
 const ChipArray = z.array(z.string().min(1).max(500)).max(40);
@@ -54,6 +56,16 @@ export const BodyMapPointSchema = z.object({
 
 export type BodyMapPointInput = z.infer<typeof BodyMapPointSchema>;
 
+// One more diagnosis of the visit, held to the same limits as the main one
+// (code ≤ 20, name ≤ 500). A null code is a diagnosis in the clinic's own
+// words. Trimming, duplicates and order are settled by
+// `normalizeNoteDiagnoses` in the route, not rejected here: an autosave that
+// 400s loses the doctor's edit.
+export const VisitDiagnosisSchema = z.object({
+  code: z.string().trim().max(20).nullable().optional(),
+  name: z.string().trim().min(1).max(500),
+});
+
 export const UpdateVisitNoteSchema = z.object({
   // Optimistic-concurrency token, not a data field. The client echoes the
   // `updatedAt` of the note revision it was editing; the PATCH route compares
@@ -69,6 +81,12 @@ export const UpdateVisitNoteSchema = z.object({
   advice: ChipArray.optional(),
   diagnosisCode: z.string().max(20).nullable().optional(),
   diagnosisName: z.string().max(500).nullable().optional(),
+  // The diagnoses after the main one, in order; replace-all like
+  // visitPrescriptions, an empty array clears them. See visit-diagnoses.ts.
+  additionalDiagnoses: z
+    .array(VisitDiagnosisSchema)
+    .max(MAX_ADDITIONAL_DIAGNOSES)
+    .optional(),
   bodyMarkdown: z.string().max(64_000).nullable().optional(),
   patientHandoutMarkdown: z.string().max(64_000).nullable().optional(),
   followUpDays: z.number().int().min(1).max(365).nullable().optional(),

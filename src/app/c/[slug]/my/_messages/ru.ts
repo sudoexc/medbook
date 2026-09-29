@@ -206,6 +206,7 @@ export const ruDict = {
   visit: {
     title: "Что сказал врач",
     diagnosis: "Диагноз",
+    diagnosisAdditional: "Сопутствующие диагнозы",
     followUp: "Контрольный визит ~{date}",
     openPdf: "Открыть заключение (PDF)",
     bookFollowUp: "Записаться на контроль",

@@ -37,6 +37,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 import { parsePreVisitData } from "@/lib/patient-experience/pre-visit";
+import { visitDiagnosisKey } from "@/lib/visit-diagnoses";
 
 import { matchAllergy, type AllergyDrug, type AllergyMatch } from "./allergy-match";
 import {
@@ -128,7 +129,16 @@ export type CdsCheckInput = {
    * sends them. Each counts as a row under the drug's own name.
    */
   drugIds?: string[];
+  /** The visit's main diagnosis code, as the reception screen shows it. */
   diagnosisCode: string | null;
+  /**
+   * Every diagnosis of the visit, main first (a visit has up to four since
+   * 29.09.2026). Each is checked like the main one: its code against the
+   * curated pairs' riskDiagnoses and the contraindication lines, and a
+   * diagnosis in the clinic's own words by its words. May repeat
+   * `diagnosisCode`; duplicates count once.
+   */
+  visitDiagnoses?: ReadonlyArray<{ code?: string | null; name?: string | null }>;
   /**
    * The visit being checked. Its own rows, once signed, are mirrored into
    * medication courses: those are this basket, not the patient's current
@@ -613,6 +623,29 @@ function currentOnly(
   });
 }
 
+/**
+ * The visit's diagnoses as conditions, main first, each once. A coded one is
+ * judged by its code alone (see `recordShows`), so its words are left out
+ * and the warning reads «G40.9, диагноз этого визита» as it always did; one
+ * in the clinic's own words has only its words to be judged by.
+ */
+export function visitConditions(
+  diagnosisCode: string | null,
+  visitDiagnoses: ReadonlyArray<{ code?: string | null; name?: string | null }>,
+): PatientCondition[] {
+  const out: PatientCondition[] = [];
+  const seen = new Set<string>();
+  for (const d of [{ code: diagnosisCode, name: null }, ...visitDiagnoses]) {
+    const code = d.code?.trim() || null;
+    const name = d.name?.trim() || null;
+    const key = visitDiagnosisKey({ code, name });
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ code, label: code ? null : name, origin: "VISIT" });
+  }
+  return out;
+}
+
 export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult> {
   const { clinicId, patientId, prescriptionLines, diagnosisCode } = input;
   const now = input.now ?? new Date();
@@ -741,12 +774,10 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     .map((t) => ({ ...views.get(t.drug.id)!, source: t.source, since: t.since }))
     .filter((c) => !basket.some((b) => sameSubstance(b, c)));
 
-  // The patient's conditions: the visit diagnosis, the active diagnoses on
-  // the card and the chronic list (a code in the record, else its words).
+  // The patient's conditions: the visit's diagnoses, the active diagnoses
+  // on the card and the chronic list (a code in the record, else its words).
   const records: PatientCondition[] = [
-    ...(diagnosisCode
-      ? [{ code: diagnosisCode, label: null, origin: "VISIT" as const }]
-      : []),
+    ...visitConditions(diagnosisCode, input.visitDiagnoses ?? []),
     ...diagnoses.map((d) => ({
       code: d.icd10Code?.trim() || null,
       label: d.label,

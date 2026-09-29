@@ -2,7 +2,7 @@
  * /api/crm/cds/drug-check — POST drug interaction + allergy guard.
  *
  * Body: { patientId, prescriptions[], drugRows[]?, drugIds[]?, diagnosisCode?,
- *         visitNoteId? }
+ *         diagnoses[]?, visitNoteId? }
  *
  * The reception UI calls this on every prescription change (debounced) to
  * surface warnings inline. Doctors must still acknowledge/override —
@@ -12,6 +12,11 @@
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
+import { prisma } from "@/lib/prisma";
+import {
+  MAX_ADDITIONAL_DIAGNOSES,
+  parseAdditionalDiagnoses,
+} from "@/lib/visit-diagnoses";
 import { runDrugCheck } from "@/server/cds/drug-check";
 import { ok, err } from "@/server/http";
 
@@ -33,6 +38,18 @@ const BodySchema = z.object({
   // Bare ids, as a page still on the previous build sends them.
   drugIds: z.array(z.string().min(1)).max(50).optional(),
   diagnosisCode: z.string().trim().nullish(),
+  // Every diagnosis of the visit on screen, main first (up to four since
+  // 29.09.2026). A diagnosis in the clinic's own words has a name and no
+  // code; the engine checks it by its words.
+  diagnoses: z
+    .array(
+      z.object({
+        code: z.string().trim().max(20).nullish(),
+        name: z.string().trim().max(500).nullish(),
+      }),
+    )
+    .max(1 + MAX_ADDITIONAL_DIAGNOSES)
+    .optional(),
   // The visit on screen: once signed, its rows are mirrored into medication
   // courses, which must not be checked against the rows themselves as the
   // patient's current therapy (audit G4-03).
@@ -44,6 +61,23 @@ export const POST = createApiHandler(
   async ({ body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
+    // A page that sends only the main code (the previous build, or a screen
+    // that has not learned about the others) still gets the visit's other
+    // diagnoses checked: they are read from the note it names. The main
+    // one stays the code on screen, which may be ahead of the saved row.
+    let diagnoses = body.diagnoses;
+    if (diagnoses === undefined && body.visitNoteId) {
+      const note = await prisma.visitNote.findFirst({
+        where: {
+          id: body.visitNoteId,
+          clinicId: ctx.clinicId,
+          patientId: body.patientId,
+        },
+        select: { additionalDiagnoses: true },
+      });
+      diagnoses = parseAdditionalDiagnoses(note?.additionalDiagnoses);
+    }
+
     const result = await runDrugCheck({
       clinicId: ctx.clinicId,
       patientId: body.patientId,
@@ -51,6 +85,7 @@ export const POST = createApiHandler(
       drugRows: body.drugRows ?? [],
       drugIds: body.drugIds ?? [],
       diagnosisCode: body.diagnosisCode ?? null,
+      visitDiagnoses: diagnoses ?? [],
       visitNoteId: body.visitNoteId ?? null,
     });
 

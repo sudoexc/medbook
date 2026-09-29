@@ -18,6 +18,10 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound, parseQuery } from "@/server/http";
 import { staffFileHref } from "@/lib/storage-ref";
+import {
+  parseAdditionalDiagnoses,
+  type VisitDiagnosis,
+} from "@/lib/visit-diagnoses";
 
 const QuerySchema = z.object({
   cursor: z.string().min(1).optional(),
@@ -35,6 +39,8 @@ type VisitRow = {
   serviceName: string | null;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The visit's diagnoses after the main one, in order (up to three). */
+  additionalDiagnoses: VisitDiagnosis[];
   prescriptions: string[];
   advice: string[];
   hasVisitNote: boolean;
@@ -130,6 +136,7 @@ export const GET = createApiListHandler(
             status: true,
             diagnosisCode: true,
             diagnosisName: true,
+            additionalDiagnoses: true,
             prescriptions: true,
             advice: true,
             // Structured medications of THIS visit. The free-text
@@ -226,6 +233,9 @@ export const GET = createApiListHandler(
         serviceName: a.primaryService?.nameRu ?? null,
         diagnosisCode: a.visitNote?.diagnosisCode ?? null,
         diagnosisName: a.visitNote?.diagnosisName ?? null,
+        additionalDiagnoses: parseAdditionalDiagnoses(
+          a.visitNote?.additionalDiagnoses,
+        ),
         prescriptions: a.visitNote?.prescriptions ?? [],
         advice: a.visitNote?.advice ?? [],
         hasVisitNote: a.visitNote !== null && a.visitNote !== undefined,

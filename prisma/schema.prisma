@@ -2191,6 +2191,15 @@ model VisitNote {
   // copy for display so the editor doesn't need a lookup roundtrip.
   diagnosisCode String?
   diagnosisName String?
+  // Up to three further diagnoses of the same visit (clinic request
+  // 29.09.2026: one patient often leaves with one to four). The two columns
+  // above stay the MAIN diagnosis, so every reader of them keeps working;
+  // these follow it in the doctor's order as [{ code, name }], a null code
+  // being a diagnosis in the clinic's own words. See src/lib/visit-diagnoses.ts.
+  // JSON rather than a child table: a revision snapshots the note as one
+  // JSON value and must stay self-contained, and every reader that already
+  // loads the note gets them without another join. Empty for older notes.
+  additionalDiagnoses Json @default("[]")
 
   // Ф6 (TZ-smart-constructor) — follow-up plan. Prefilled from the diagnosis
   // guide / protocol, hand-editable. On finalize: printed in the conclusion,

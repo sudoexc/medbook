@@ -26,6 +26,12 @@ import {
   revisionContentOf,
 } from "@/server/visit-notes/revisions";
 import { storageKeyFromUrl } from "@/lib/storage-ref";
+import {
+  normalizeNoteDiagnoses,
+  parseAdditionalDiagnoses,
+  sameNoteDiagnoses,
+  visitDiagnosisKey,
+} from "@/lib/visit-diagnoses";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
@@ -140,8 +146,59 @@ export const PATCH = createApiHandler(
     ] as const) {
       if (body[key] !== undefined) data[key] = body[key];
     }
-    if (body.diagnosisCode !== undefined) data.diagnosisCode = body.diagnosisCode;
-    if (body.diagnosisName !== undefined) data.diagnosisName = body.diagnosisName;
+    // The visit's diagnoses: the main one and up to three more, settled as
+    // one set whichever part the editor sent (see visit-diagnoses.ts): the
+    // main one picked from among the others leaves them, a cleared main one
+    // hands its place to the first of the others. A field is written when
+    // the editor sent it or when settling the set moved it.
+    const beforeDiagnoses = {
+      diagnosisCode: before.diagnosisCode ?? null,
+      diagnosisName: before.diagnosisName ?? null,
+      additionalDiagnoses: parseAdditionalDiagnoses(before.additionalDiagnoses),
+    };
+    const touchesDiagnoses =
+      body.diagnosisCode !== undefined ||
+      body.diagnosisName !== undefined ||
+      body.additionalDiagnoses !== undefined;
+    const nextDiagnoses = touchesDiagnoses
+      ? normalizeNoteDiagnoses({
+          diagnosisCode:
+            body.diagnosisCode !== undefined
+              ? body.diagnosisCode
+              : beforeDiagnoses.diagnosisCode,
+          diagnosisName:
+            body.diagnosisName !== undefined
+              ? body.diagnosisName
+              : beforeDiagnoses.diagnosisName,
+          additionalDiagnoses:
+            body.additionalDiagnoses !== undefined
+              ? body.additionalDiagnoses
+              : beforeDiagnoses.additionalDiagnoses,
+        })
+      : beforeDiagnoses;
+    if (touchesDiagnoses) {
+      if (
+        body.diagnosisCode !== undefined ||
+        nextDiagnoses.diagnosisCode !== beforeDiagnoses.diagnosisCode
+      ) {
+        data.diagnosisCode = nextDiagnoses.diagnosisCode;
+      }
+      if (
+        body.diagnosisName !== undefined ||
+        nextDiagnoses.diagnosisName !== beforeDiagnoses.diagnosisName
+      ) {
+        data.diagnosisName = nextDiagnoses.diagnosisName;
+      }
+      if (
+        body.additionalDiagnoses !== undefined ||
+        !sameNoteDiagnoses(
+          { additionalDiagnoses: nextDiagnoses.additionalDiagnoses },
+          { additionalDiagnoses: beforeDiagnoses.additionalDiagnoses },
+        )
+      ) {
+        data.additionalDiagnoses = nextDiagnoses.additionalDiagnoses;
+      }
+    }
     if (body.bodyMarkdown !== undefined) data.bodyMarkdown = body.bodyMarkdown;
     if (body.patientHandoutMarkdown !== undefined) {
       data.patientHandoutMarkdown = body.patientHandoutMarkdown;
@@ -215,6 +272,7 @@ export const PATCH = createApiHandler(
       const next = { ...before, ...data } as typeof before;
       data.patientHandoutMarkdown = composeNoteHandout(before, {
         diagnosisName: next.diagnosisName,
+        additionalDiagnoses: next.additionalDiagnoses,
         complaints: next.complaints,
         prescriptions: next.prescriptions,
         advice: next.advice,
@@ -255,12 +313,10 @@ export const PATCH = createApiHandler(
     }
 
     // VW-10 — a signed note's diagnosis corrected in the window must reach
-    // the patient's card too; it used to change only on the note.
+    // the patient's card too; it used to change only on the note. Any of
+    // its diagnoses: an added, removed or corrected additional one counts.
     const diagnosisChanged =
-      (body.diagnosisCode !== undefined &&
-        (body.diagnosisCode ?? null) !== (before.diagnosisCode ?? null)) ||
-      (body.diagnosisName !== undefined &&
-        (body.diagnosisName ?? null) !== (before.diagnosisName ?? null));
+      touchesDiagnoses && !sameNoteDiagnoses(nextDiagnoses, beforeDiagnoses);
 
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
@@ -353,6 +409,7 @@ export const PATCH = createApiHandler(
           visitNoteId: id,
           diagnosisCode: row.diagnosisCode,
           diagnosisName: row.diagnosisName,
+          additionalDiagnoses: parseAdditionalDiagnoses(row.additionalDiagnoses),
           now: new Date(),
           signedBefore: true,
           ctx,
@@ -411,16 +468,37 @@ export const PATCH = createApiHandler(
     // gate meant nothing was ever shared. Choosing is already deliberate —
     // the field only saves on a pick, never per keystroke. The use is
     // counted at signing, as before. Fire-and-forget.
-    if (
-      body.diagnosisName !== undefined &&
-      (body.diagnosisName ?? null) !== (before.diagnosisName ?? null)
-    ) {
-      void learnClinicDiagnosis({
-        code: updated.diagnosisCode ?? null,
-        nameRu: updated.diagnosisName ?? null,
-        createdById: ctx.userId,
-        countUse: false,
-      });
+    //
+    // Each additional diagnosis the doctor adds is chosen the same way and
+    // joins the list the same way; one that was on the note already (the
+    // main one moved among the others, say) is not new.
+    if (diagnosisChanged) {
+      const known = new Set(
+        [
+          { code: beforeDiagnoses.diagnosisCode, name: beforeDiagnoses.diagnosisName },
+          ...beforeDiagnoses.additionalDiagnoses,
+        ].map((d) => visitDiagnosisKey(d)),
+      );
+      const chosen = [
+        nextDiagnoses.diagnosisName !== beforeDiagnoses.diagnosisName
+          ? {
+              code: nextDiagnoses.diagnosisCode,
+              name: nextDiagnoses.diagnosisName,
+            }
+          : null,
+        ...nextDiagnoses.additionalDiagnoses.filter(
+          (d) => !known.has(visitDiagnosisKey(d)),
+        ),
+      ];
+      for (const d of chosen) {
+        if (!d) continue;
+        void learnClinicDiagnosis({
+          code: d.code ?? null,
+          nameRu: d.name ?? null,
+          createdById: ctx.userId,
+          countUse: false,
+        });
+      }
     }
 
     return ok(updated);

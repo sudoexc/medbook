@@ -14,6 +14,7 @@
  * One composer for both paths, so the text cannot drift between them.
  */
 import { composePatientHandout } from "@/lib/catalogs/handout-composer";
+import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 import {
   formatPrescriptionLines,
   type PrescriptionLikeRow,
@@ -26,6 +27,7 @@ import {
  */
 export const HANDOUT_SOURCE_FIELDS = [
   "diagnosisName",
+  "additionalDiagnoses",
   "complaints",
   "prescriptions",
   "advice",
@@ -50,6 +52,11 @@ export type HandoutContext = {
 /** What the handout says. */
 export type HandoutFields = {
   diagnosisName: string | null;
+  /**
+   * The visit's other diagnoses, as the note stores them (the JSON column)
+   * or already parsed. Optional: a note without them composes as before.
+   */
+  additionalDiagnoses?: unknown;
   complaints: string[] | null;
   prescriptions: string[] | null;
   advice: string[] | null;
@@ -75,6 +82,10 @@ export function composeNoteHandout(
       clinicName: context.clinic?.nameRu ?? null,
       visitDate: context.appointment?.date ?? now,
       diagnosisName: fields.diagnosisName,
+      // Names only: the patient's copy never carries ICD codes.
+      additionalDiagnosisNames: parseAdditionalDiagnoses(
+        fields.additionalDiagnoses,
+      ).map((d) => d.name),
       complaints: fields.complaints ?? [],
       prescriptions: [
         ...formatPrescriptionLines(fields.visitPrescriptions ?? [], "ru", {

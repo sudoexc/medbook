@@ -22,9 +22,14 @@
  *     a line saying why, and the note's revisions keep what was signed.
  * Rows the note did not create (typed in the card, or created by another
  * visit and only re-activated here) are never moved or resolved.
+ *
+ * A note carries its main diagnosis and up to three more (29.09.2026); each
+ * of them is followed onto the card the same way, and «another signed note
+ * carries it» counts the other notes' additional diagnoses too.
  */
 import type { prisma as prismaT } from "@/lib/prisma";
 import type { TenantContext } from "@/lib/tenant-context";
+import { visitDiagnosisKey, type VisitDiagnosis } from "@/lib/visit-diagnoses";
 import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
 import type { OutboxTx } from "@/server/realtime/outbox";
 
@@ -37,6 +42,8 @@ type DiagnosisRow = {
   status: string;
   notes: string | null;
 };
+
+type Target = { code: string | null; name: string | null };
 
 /** Code when there is one; the label names an uncoded diagnosis. */
 function sameDiagnosis(
@@ -53,15 +60,42 @@ function withLine(notes: string | null, line: string): string {
   return notes?.trim() ? `${notes.trim()}\n${line}` : line;
 }
 
+/**
+ * The note's diagnoses to put on the card, main first, each once. Since
+ * 29.09.2026 a visit has up to three more after the main one, and each is a
+ * diagnosis of the patient like the main one.
+ */
+function targetsOf(args: {
+  diagnosisCode: string | null;
+  diagnosisName: string | null;
+  additionalDiagnoses?: readonly VisitDiagnosis[] | null;
+}): Target[] {
+  const out: Target[] = [];
+  const seen = new Set<string>();
+  const push = (rawCode: string | null, rawName: string | null) => {
+    const code = rawCode?.trim() || null;
+    const name = rawName?.trim() || null;
+    const key = visitDiagnosisKey({ code, name });
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ code, name });
+  };
+  push(args.diagnosisCode, args.diagnosisName);
+  for (const d of args.additionalDiagnoses ?? []) push(d.code, d.name);
+  return out;
+}
+
 export async function syncPatientDiagnosisWithNote(
   tx: OutboxTx,
   args: {
     clinicId: string;
     patientId: string;
     visitNoteId: string;
-    /** The note's diagnosis as it is now signed. */
+    /** The note's main diagnosis as it is now signed. */
     diagnosisCode: string | null;
     diagnosisName: string | null;
+    /** The note's other diagnoses as now signed, in order. */
+    additionalDiagnoses?: readonly VisitDiagnosis[] | null;
     now: Date;
     /**
      * Whether the note can own rows already: it was signed before (a
@@ -71,13 +105,14 @@ export async function syncPatientDiagnosisWithNote(
     signedBefore: boolean;
     ctx: TenantCtx | null;
   },
-): Promise<{ patientDiagnosisId: string | null }> {
+): Promise<{ patientDiagnosisId: string | null; patientDiagnosisIds: string[] }> {
   // Same widening as the outbox: the tx callback arg and the client differ
   // only in what Prisma strips from transactions.
   const db = tx as typeof prismaT;
-  const code = args.diagnosisCode?.trim() || null;
-  const name = args.diagnosisName?.trim() || null;
+  const targets = targetsOf(args);
   const { patientId, visitNoteId } = args;
+  const isTarget = (row: DiagnosisRow) =>
+    targets.some((t) => sameDiagnosis(row, t.code, t.name));
 
   const owned: DiagnosisRow[] = args.signedBefore
     ? await db.patientDiagnosis.findMany({
@@ -86,24 +121,42 @@ export async function syncPatientDiagnosisWithNote(
       })
     : [];
 
-  // Does another signed note of this patient carry the diagnosis? Then the
-  // row stands on that visit too and must stay as it is.
+  // Does another signed note of this patient carry the diagnosis, as its
+  // main one or as one of the others? Then the row stands on that visit too
+  // and must stay as it is.
   const heldElsewhere = async (row: DiagnosisRow): Promise<boolean> =>
     (await db.visitNote.count({
       where: {
         patientId,
         status: "FINALIZED",
         id: { not: visitNoteId },
-        ...(row.icd10Code
-          ? { diagnosisCode: row.icd10Code }
-          : { diagnosisCode: null, diagnosisName: row.label }),
+        OR: row.icd10Code
+          ? [
+              { diagnosisCode: row.icd10Code },
+              {
+                additionalDiagnoses: {
+                  array_contains: [{ code: row.icd10Code }],
+                },
+              },
+            ]
+          : [
+              { diagnosisCode: null, diagnosisName: row.label },
+              {
+                additionalDiagnoses: {
+                  array_contains: [{ code: null, name: row.label }],
+                },
+              },
+            ],
       },
     })) > 0;
 
-  let currentId: string | null = null;
-  let action: "created" | "updated" | null = null;
+  // Rows now standing for one of the note's diagnoses, in the note's order.
+  const currentIds: string[] = [];
+  const claimed = new Set<string>();
+  let created = false;
+  let updated = false;
 
-  if (code || name) {
+  for (const { code, name } of targets) {
     // Match on the code when there is one; fall back to the label for
     // free-text diagnoses. Matching a null code would collapse every uncoded
     // diagnosis a patient ever had into one row.
@@ -121,59 +174,66 @@ export async function syncPatientDiagnosisWithNote(
         data: { status: "ACTIVE", ...(name ? { label: name } : {}) },
         select: { id: true },
       });
-      currentId = existing.id;
-      action = "updated";
+      currentIds.push(existing.id);
+      claimed.add(existing.id);
+      updated = true;
+      continue;
+    }
+    // A row this note created for a diagnosis it no longer carries: move it
+    // instead of leaving it behind («переносить»). Never one that stands for
+    // another of the note's diagnoses, and never one already moved here.
+    let movable: DiagnosisRow | null = null;
+    for (const row of owned) {
+      if (claimed.has(row.id) || isTarget(row)) continue;
+      if (!(await heldElsewhere(row))) {
+        movable = row;
+        break;
+      }
+    }
+    if (movable) {
+      await db.patientDiagnosis.update({
+        where: { id: movable.id },
+        data: {
+          icd10Code: code,
+          label: name || code || "",
+          status: "ACTIVE",
+          notes: withLine(
+            movable.notes,
+            `Исправлено в заключении: было ${movable.icd10Code ?? movable.label}.`,
+          ),
+        },
+        select: { id: true },
+      });
+      currentIds.push(movable.id);
+      claimed.add(movable.id);
+      updated = true;
     } else {
-      // The row this note created for the diagnosis it had before: move it
-      // instead of leaving it behind («переносить»).
-      let movable: DiagnosisRow | null = null;
-      for (const row of owned) {
-        if (sameDiagnosis(row, code, name)) continue;
-        if (!(await heldElsewhere(row))) {
-          movable = row;
-          break;
-        }
-      }
-      if (movable) {
-        await db.patientDiagnosis.update({
-          where: { id: movable.id },
-          data: {
-            icd10Code: code,
-            label: name || code || "",
-            status: "ACTIVE",
-            notes: withLine(
-              movable.notes,
-              `Исправлено в заключении: было ${movable.icd10Code ?? movable.label}.`,
-            ),
-          },
-          select: { id: true },
-        });
-        currentId = movable.id;
-        action = "updated";
-      } else {
-        const created = await db.patientDiagnosis.create({
-          data: {
-            clinicId: args.clinicId,
-            patientId,
-            icd10Code: code,
-            label: name || code || "",
-            diagnosedAt: args.now,
-            status: "ACTIVE",
-            sourceVisitNoteId: visitNoteId,
-          },
-          select: { id: true },
-        });
-        currentId = created.id;
-        action = "created";
-      }
+      const row = await db.patientDiagnosis.create({
+        data: {
+          clinicId: args.clinicId,
+          patientId,
+          icd10Code: code,
+          label: name || code || "",
+          diagnosedAt: args.now,
+          status: "ACTIVE",
+          sourceVisitNoteId: visitNoteId,
+        },
+        select: { id: true },
+      });
+      currentIds.push(row.id);
+      claimed.add(row.id);
+      created = true;
     }
   }
 
-  // The rest of what this note created and no longer says.
+  // The rest of what this note created and no longer says. With a single
+  // diagnosis the line names what replaced it, as it always did; among
+  // several there is no telling which one replaced it, so it says removed.
+  const single = targets.length === 1 ? targets[0]! : null;
   let resolvedAny = false;
   for (const row of owned) {
-    if (row.id === currentId || row.status !== "ACTIVE") continue;
-    if (sameDiagnosis(row, code, name)) continue;
+    if (claimed.has(row.id) || row.status !== "ACTIVE") continue;
+    if (isTarget(row)) continue;
     if (await heldElsewhere(row)) continue;
     await db.patientDiagnosis.update({
       where: { id: row.id },
@@ -181,8 +241,8 @@ export async function syncPatientDiagnosisWithNote(
         status: "RESOLVED",
         notes: withLine(
           row.notes,
-          code || name
-            ? `Снят: в заключении исправлен на ${code ?? name}.`
+          single
+            ? `Снят: в заключении исправлен на ${single.code ?? single.name}.`
             : "Снят: диагноз убран из заключения.",
         ),
       },
@@ -191,7 +251,8 @@ export async function syncPatientDiagnosisWithNote(
     resolvedAny = true;
   }
 
-  if (action || resolvedAny) {
+  const patientDiagnosisId = currentIds[0] ?? null;
+  if (created || updated || resolvedAny) {
     // The patient card and the doctor's drug check read these rows (G3-02).
     await publishMedicalRecordChanged(tx, {
       ctx: args.ctx,
@@ -199,11 +260,11 @@ export async function syncPatientDiagnosisWithNote(
       payload: {
         patientId,
         record: "diagnosis",
-        action: action ?? "updated",
-        ...(currentId ? { entityId: currentId } : {}),
+        action: created ? "created" : "updated",
+        ...(patientDiagnosisId ? { entityId: patientDiagnosisId } : {}),
       },
     });
   }
 
-  return { patientDiagnosisId: currentId };
+  return { patientDiagnosisId, patientDiagnosisIds: currentIds };
 }

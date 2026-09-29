@@ -74,6 +74,7 @@ function baseNote(id: string, rows: VisitPrescriptionDraft[]): VisitNoteRow {
     advice: [],
     diagnosisCode: null,
     diagnosisName: null,
+    additionalDiagnoses: [],
     bodyMarkdown: null,
     patientHandoutMarkdown: null,
     followUpDays: null,

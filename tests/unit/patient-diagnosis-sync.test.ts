@@ -13,6 +13,9 @@
  *   4. A diagnosis removed from the note is resolved with a line saying so,
  *      never deleted.
  *   5. The PATCH route syncs only a signed note whose diagnosis changed.
+ *   6. A visit with several diagnoses (29.09.2026): each one follows onto
+ *      the card the same way, and another note's additional diagnosis
+ *      counts as «carried elsewhere».
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,6 +38,7 @@ type SignedNote = {
   status: string;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  additionalDiagnoses?: Array<{ code: string | null; name: string }>;
 };
 
 const h = vi.hoisted(() => ({ published: [] as Array<Record<string, unknown>> }));
@@ -54,8 +58,20 @@ const db = {
 
 function matches(row: Record<string, unknown>, where: Record<string, unknown>): boolean {
   return Object.entries(where).every(([k, v]) => {
+    if (k === "OR") {
+      return (v as Record<string, unknown>[]).some((w) => matches(row, w));
+    }
     if (v && typeof v === "object" && "not" in (v as object)) {
       return row[k] !== (v as { not: unknown }).not;
+    }
+    // jsonb @>: every pattern entry is met by some stored entry.
+    if (v && typeof v === "object" && "array_contains" in (v as object)) {
+      const stored = (row[k] ?? []) as Record<string, unknown>[];
+      const wanted = (v as { array_contains: Record<string, unknown>[] })
+        .array_contains;
+      return wanted.every((p) =>
+        stored.some((e) => Object.entries(p).every(([pk, pv]) => e[pk] === pv)),
+      );
     }
     return row[k] === v;
   });
@@ -106,6 +122,7 @@ async function sign(
   name: string | null,
   signedBefore: boolean,
   noteId = "vn_1",
+  additionalDiagnoses: Array<{ code: string | null; name: string }> = [],
 ) {
   return syncPatientDiagnosisWithNote(tx as never, {
     clinicId: "c1",
@@ -113,6 +130,7 @@ async function sign(
     visitNoteId: noteId,
     diagnosisCode: code,
     diagnosisName: name,
+    additionalDiagnoses,
     now: NOW,
     signedBefore,
     ctx: { kind: "TENANT", clinicId: "c1", userId: "u_doc", role: "DOCTOR" },
@@ -222,6 +240,90 @@ describe("a diagnosis removed from the signed note", () => {
     await sign(null, "Последствия ЧМТ", false);
     await sign(null, "Посттравматическая головная боль", true);
     expect(active()).toEqual(["Посттравматическая головная боль"]);
+  });
+});
+
+// Clinic request 29.09.2026: a visit has a main diagnosis and up to three
+// more. Each is a diagnosis of the patient and follows onto the card the
+// same way.
+const TENSION = { code: "G44.2", name: "Головная боль напряжённого типа" };
+const CERVICALGIA = { code: "M54.2", name: "Цервикалгия" };
+
+describe("a visit with several diagnoses", () => {
+  it("puts every one of them on the card, main first", async () => {
+    const res = await sign("G43.0", "Мигрень без ауры", false, "vn_1", [
+      TENSION,
+      CERVICALGIA,
+    ]);
+    expect(active()).toEqual(["G43.0", "G44.2", "M54.2"]);
+    expect(db.rows.every((r) => r.sourceVisitNoteId === "vn_1")).toBe(true);
+    expect(res.patientDiagnosisIds).toHaveLength(3);
+    expect(res.patientDiagnosisId).toBe(
+      db.rows.find((r) => r.icd10Code === "G43.0")!.id,
+    );
+  });
+
+  it("an additional diagnosis removed in the window is resolved as removed", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [TENSION, CERVICALGIA]);
+    await sign("G43.0", "Мигрень без ауры", true, "vn_1", [TENSION]);
+    expect(active()).toEqual(["G43.0", "G44.2"]);
+    const gone = db.rows.find((r) => r.icd10Code === "M54.2")!;
+    expect(gone.status).toBe("RESOLVED");
+    expect(gone.notes).toContain("убран из заключения");
+  });
+
+  it("an additional diagnosis corrected in the window moves its row", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [TENSION]);
+    await sign("G43.0", "Мигрень без ауры", true, "vn_1", [CERVICALGIA]);
+    expect(active()).toEqual(["G43.0", "M54.2"]);
+    // Moved, not duplicated: two rows, the second with its trace.
+    expect(db.rows).toHaveLength(2);
+    expect(db.rows.find((r) => r.icd10Code === "M54.2")!.notes).toContain(
+      "было G44.2",
+    );
+  });
+
+  it("the main one and another swapping places changes nothing on the card", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [TENSION]);
+    await sign(TENSION.code, TENSION.name, true, "vn_1", [
+      { code: "G43.0", name: "Мигрень без ауры" },
+    ]);
+    expect(active()).toEqual(["G43.0", "G44.2"]);
+    expect(db.rows).toHaveLength(2);
+    expect(db.rows.every((r) => !r.notes)).toBe(true);
+  });
+
+  it("a row another signed note carries as an additional diagnosis stays", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [TENSION]);
+    db.notes.push({
+      id: "vn_other",
+      patientId: "p1",
+      status: "FINALIZED",
+      diagnosisCode: "M54.2",
+      diagnosisName: "Цервикалгия",
+      additionalDiagnoses: [TENSION],
+    });
+    await sign("G43.0", "Мигрень без ауры", true, "vn_1", []);
+    expect(active()).toEqual(["G43.0", "G44.2"]);
+  });
+
+  it("an uncoded additional diagnosis is matched by its words", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [
+      { code: null, name: "Последствия ЧМТ" },
+    ]);
+    expect(active()).toEqual(["G43.0", "Последствия ЧМТ"]);
+    // Signed again unchanged: nothing moves, nothing duplicates.
+    await sign("G43.0", "Мигрень без ауры", true, "vn_1", [
+      { code: null, name: "Последствия ЧМТ" },
+    ]);
+    expect(db.rows).toHaveLength(2);
+  });
+
+  it("a duplicate of the main one is one row", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [
+      { code: "G43.0", name: "Мигрень" },
+    ]);
+    expect(db.rows).toHaveLength(1);
   });
 });
 

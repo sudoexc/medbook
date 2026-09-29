@@ -59,6 +59,10 @@ import {
 import { findPreviousFinalizedVisit } from "@/server/visit-notes/previous-visit";
 import { resolveLineDrugIds } from "@/server/visit-notes/legacy-line-drugs";
 import { inlineStorageImage } from "@/server/storage/inline-image";
+import {
+  formatVisitDiagnosis,
+  parseAdditionalDiagnoses,
+} from "@/lib/visit-diagnoses";
 
 function idFromUrl(request: Request): string {
   // /api/crm/visit-notes/[id]/print — id is segment[-2].
@@ -271,6 +275,7 @@ export const GET = createApiListHandler(
             statusFinalized: "Yakunlangan",
             finalizedAt: "Yakunlangan vaqti",
             diagnosis: "Tashxis (ICD-10)",
+            additionalDiagnoses: "Yondosh tashxislar",
             complaints: "Shikoyatlar",
             anamnesis: "Anamnez",
             examination: "Koʻrik",
@@ -319,6 +324,7 @@ export const GET = createApiListHandler(
             statusFinalized: "Финализировано",
             finalizedAt: "Дата финализации",
             diagnosis: "Диагноз (МКБ-10)",
+            additionalDiagnoses: "Сопутствующие",
             complaints: "Жалобы",
             anamnesis: "Анамнез",
             examination: "Осмотр",
@@ -391,12 +397,27 @@ export const GET = createApiListHandler(
     // шейного отдела» instead of picking an ICD-10 entry was signed, numbered
     // and handed to the patient with a dash in the diagnosis field — a legally
     // void document that nobody noticed until printing.
+    //
+    // A visit has a main diagnosis and up to three more (29.09.2026): the
+    // main one keeps its line, the others follow on one line of their own
+    // after «Сопутствующие:». A note with one diagnosis prints as before.
     const diagnosisParts = [note.diagnosisCode, note.diagnosisName]
       .filter((v): v is string => Boolean(v && v.trim()))
       .map((v) => escapeHtml(v.trim()));
-    const diagnosisLine = diagnosisParts.length
-      ? diagnosisParts.join(" · ")
-      : `<span class="empty">—</span>`;
+    const additionalDiagnoses = parseAdditionalDiagnoses(
+      note.additionalDiagnoses,
+    );
+    const diagnosisLine = `${
+      diagnosisParts.length
+        ? diagnosisParts.join(" · ")
+        : `<span class="empty">—</span>`
+    }${
+      additionalDiagnoses.length > 0
+        ? `<div class="diagnosis-more"><span class="k">${escapeHtml(labels.additionalDiagnoses)}:</span> ${additionalDiagnoses
+            .map((d) => escapeHtml(formatVisitDiagnosis(d)))
+            .join("; ")}</div>`
+        : ""
+    }`;
 
     const generatedAt = new Date();
     const isFinalized = note.status === "FINALIZED";
@@ -1350,6 +1371,12 @@ export const GET = createApiListHandler(
     .empty {
       color: #8b909b;
       font-style: italic;
+    }
+    .diagnosis-more {
+      margin-top: 4px;
+    }
+    .diagnosis-more .k {
+      color: #525866;
     }
     .chips {
       list-style: none;

@@ -25,6 +25,10 @@
  */
 import type { Prisma } from "@/generated/prisma/client";
 import type { prisma } from "@/lib/prisma";
+import {
+  parseAdditionalDiagnoses,
+  type VisitDiagnosis,
+} from "@/lib/visit-diagnoses";
 
 export const REVISION_KINDS = ["SIGNED", "EDITED", "PRE_EDIT"] as const;
 export type RevisionKind = (typeof REVISION_KINDS)[number];
@@ -48,6 +52,13 @@ export type RevisionContent = {
   documentNumber: string | null;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /**
+   * The diagnoses after the main one, in order. Present only when there are
+   * any: a note with a single diagnosis snapshots exactly as it did before
+   * the field existed, so its earlier revisions still compare equal to it
+   * and a correction does not report a change nobody made.
+   */
+  additionalDiagnoses?: VisitDiagnosis[];
   complaints: string[];
   anamnesis: string[];
   examination: string[];
@@ -67,6 +78,8 @@ type NoteLike = {
   documentNumber?: string | null;
   diagnosisCode?: string | null;
   diagnosisName?: string | null;
+  /** The JSON column as stored. */
+  additionalDiagnoses?: unknown;
   complaints?: string[] | null;
   anamnesis?: string[] | null;
   examination?: string[] | null;
@@ -95,10 +108,12 @@ export function revisionContentOf(
   const ordered = [...rows].sort(
     (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
   );
+  const additionalDiagnoses = parseAdditionalDiagnoses(note.additionalDiagnoses);
   return {
     documentNumber: note.documentNumber ?? null,
     diagnosisCode: note.diagnosisCode ?? null,
     diagnosisName: note.diagnosisName ?? null,
+    ...(additionalDiagnoses.length > 0 ? { additionalDiagnoses } : {}),
     complaints: [...(note.complaints ?? [])],
     anamnesis: [...(note.anamnesis ?? [])],
     examination: [...(note.examination ?? [])],

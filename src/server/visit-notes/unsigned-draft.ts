@@ -33,6 +33,7 @@ export async function findUnsignedDraft(
       id: true,
       diagnosisCode: true,
       diagnosisName: true,
+      additionalDiagnoses: true,
       bodyMarkdown: true,
       prescriptions: true,
       complaints: true,

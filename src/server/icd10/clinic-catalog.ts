@@ -15,6 +15,7 @@
  * list would only add noise.
  */
 import { prisma } from "@/lib/prisma";
+import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 import { ICD10_ENTRIES, type Icd10Entry } from "./data";
 import { normalizeIcdTerm } from "./search";
 
@@ -145,20 +146,29 @@ export async function searchClinicCatalog(
   // An entry learned from a draft (never signed, usageCount 0) is offered
   // only while some visit still carries that wording. A typo the doctor
   // corrected a minute later leaves no trace in everyone's picker.
+  // As the main diagnosis or as one of the visit's others: those are learned
+  // the same way (stored trimmed, as the entry's own wording, so an exact
+  // match finds them).
   const unsigned = found.filter((r) => r.usageCount === 0);
   let live = new Set<string>();
   if (unsigned.length > 0) {
     const inUse = await prisma.visitNote.findMany({
       where: {
-        OR: unsigned.map((r) => ({
-          diagnosisName: { equals: r.nameRu, mode: "insensitive" as const },
-        })),
+        OR: unsigned.flatMap((r) => [
+          { diagnosisName: { equals: r.nameRu, mode: "insensitive" as const } },
+          { additionalDiagnoses: { array_contains: [{ name: r.nameRu }] } },
+        ]),
       },
-      select: { diagnosisName: true },
+      select: { diagnosisName: true, additionalDiagnoses: true },
       take: 200,
     });
     live = new Set(
-      inUse.map((n) => normalizeIcdTerm(n.diagnosisName ?? "")),
+      inUse.flatMap((n) => [
+        normalizeIcdTerm(n.diagnosisName ?? ""),
+        ...parseAdditionalDiagnoses(n.additionalDiagnoses).map((d) =>
+          normalizeIcdTerm(d.name),
+        ),
+      ]),
     );
   }
   const rows = found

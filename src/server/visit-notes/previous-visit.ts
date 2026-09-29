@@ -28,6 +28,9 @@ export async function findPreviousFinalizedVisit(note: {
       finalizedAt: true,
       diagnosisCode: true,
       diagnosisName: true,
+      // The visit's other diagnoses, after the main one (JSON, parse with
+      // parseAdditionalDiagnoses).
+      additionalDiagnoses: true,
       complaints: true,
       anamnesis: true,
       dynamics: true,

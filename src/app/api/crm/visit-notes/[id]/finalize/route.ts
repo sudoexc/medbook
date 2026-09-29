@@ -34,6 +34,7 @@ import {
   revisionContentOf,
 } from "@/server/visit-notes/revisions";
 import { storageKeyFromUrl } from "@/lib/storage-ref";
+import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 
 /**
  * Thrown inside the transaction when the visit left IN_PROGRESS between the
@@ -136,8 +137,12 @@ export const POST = createApiHandler(
     // corrected and signed again kept the handout of the first signature, so
     // the patient's PDF and Mini App listed a drug the doctor had removed.
     // Null when there is genuinely nothing to say: no blank sheet is issued.
+    const additionalDiagnoses = parseAdditionalDiagnoses(
+      note.additionalDiagnoses,
+    );
     const composedHandout = composeNoteHandout(note, {
       diagnosisName: note.diagnosisName,
+      additionalDiagnoses,
       complaints: note.complaints,
       prescriptions: note.prescriptions,
       advice: note.advice,
@@ -280,12 +285,14 @@ export const POST = createApiHandler(
       // (now allowed) records nothing. A re-signature after a revert also
       // moves or resolves what this note put on the card for a diagnosis it
       // no longer carries (audit VW-10), see patient-diagnosis-sync.ts.
+      // Every diagnosis of the visit gets its row, not only the main one.
       const patientDiagnosis = await syncPatientDiagnosisWithNote(tx, {
         clinicId: note.clinicId,
         patientId: note.patientId,
         visitNoteId: id,
         diagnosisCode: note.diagnosisCode,
         diagnosisName: note.diagnosisName,
+        additionalDiagnoses,
         now,
         signedBefore: note.firstFinalizedAt != null,
         ctx,
@@ -323,6 +330,7 @@ export const POST = createApiHandler(
         note: updatedNote,
         appointment: updatedAppt,
         patientDiagnosisId: patientDiagnosis.patientDiagnosisId,
+        patientDiagnosisIds: patientDiagnosis.patientDiagnosisIds,
         revision: signedRevision.revision,
       };
     }).catch((e: unknown) => {
@@ -358,11 +366,17 @@ export const POST = createApiHandler(
     // The clinic catalog learns from every SIGNED diagnosis — free text and
     // codes the static list lacks become suggestions for all doctors here.
     // Fire-and-forget: catalog trouble must never fail a signed conclusion.
-    void learnClinicDiagnosis({
-      code: note.diagnosisCode ?? null,
-      nameRu: note.diagnosisName ?? null,
-      createdById: actorUserId,
-    });
+    // The visit's other diagnoses are signed too and count the same way.
+    for (const d of [
+      { code: note.diagnosisCode, name: note.diagnosisName },
+      ...additionalDiagnoses,
+    ]) {
+      void learnClinicDiagnosis({
+        code: d.code ?? null,
+        nameRu: d.name ?? null,
+        createdById: actorUserId,
+      });
+    }
 
     await audit(request, {
       action: "visit_note.finalize",
@@ -373,6 +387,9 @@ export const POST = createApiHandler(
         correlationId,
         documentNumber: result.note.documentNumber,
         patientDiagnosisId: result.patientDiagnosisId,
+        ...(result.patientDiagnosisIds.length > 1
+          ? { patientDiagnosisIds: result.patientDiagnosisIds }
+          : {}),
         revision: result.revision,
       },
     });

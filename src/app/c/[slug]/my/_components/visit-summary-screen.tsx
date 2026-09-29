@@ -3,7 +3,7 @@
 /**
  * Wave 3c — «Что сказал врач» (Mini App).
  *
- * Renders the FINALIZED VisitNote in patient language: diagnosis, the
+ * Renders the FINALIZED VisitNote in patient language: diagnoses, the
  * doctor-composed handout (tiny markdown subset via `parseHandoutBlocks`),
  * follow-up CTA and the conclusion PDF link. While the note is still DRAFT
  * the server returns `summary: null` and we show a "готовится" placeholder —
@@ -167,6 +167,7 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
   }
 
   const blocks = parseHandoutBlocks(summary.handoutMarkdown);
+  const additionalDiagnoses = summary.additionalDiagnosisNames ?? [];
   const doctorName = lang === "UZ" ? summary.doctor.nameUz : summary.doctor.nameRu;
   const specialization =
     lang === "UZ"
@@ -207,6 +208,21 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
           <div className="mt-0.5 text-sm font-semibold">
             {summary.diagnosisName}
           </div>
+          {additionalDiagnoses.length > 0 ? (
+            <>
+              <div
+                className="mt-2 text-xs font-medium"
+                style={{ color: "var(--tg-hint)" }}
+              >
+                {t.visit.diagnosisAdditional}
+              </div>
+              {additionalDiagnoses.map((name) => (
+                <div key={name} className="mt-0.5 text-sm">
+                  {name}
+                </div>
+              ))}
+            </>
+          ) : null}
         </MCard>
       ) : null}
 

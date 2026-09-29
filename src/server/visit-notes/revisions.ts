@@ -29,6 +29,7 @@ import {
   parseAdditionalDiagnoses,
   type VisitDiagnosis,
 } from "@/lib/visit-diagnoses";
+import { followUpDateKey } from "@/lib/visit-follow-up";
 
 export const REVISION_KINDS = ["SIGNED", "EDITED", "PRE_EDIT"] as const;
 export type RevisionKind = (typeof REVISION_KINDS)[number];
@@ -66,6 +67,13 @@ export type RevisionContent = {
   visitPrescriptions: RevisionPrescription[];
   advice: string[];
   followUpDays: number | null;
+  /**
+   * The exact control-visit day (YYYY-MM-DD) when the doctor named one.
+   * Present only then, like `additionalDiagnoses`: a «через N дней» note
+   * snapshots exactly as before the field existed, so its earlier revisions
+   * still compare equal to it.
+   */
+  followUpDate?: string;
   followUpNote: string | null;
   dynamics: string | null;
   dynamicsNote: string | null;
@@ -86,6 +94,8 @@ type NoteLike = {
   prescriptions?: string[] | null;
   advice?: string[] | null;
   followUpDays?: number | null;
+  /** The DATE column as stored, or its JSON form. */
+  followUpDate?: Date | string | null;
   followUpNote?: string | null;
   dynamics?: string | null;
   dynamicsNote?: string | null;
@@ -109,6 +119,7 @@ export function revisionContentOf(
     (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
   );
   const additionalDiagnoses = parseAdditionalDiagnoses(note.additionalDiagnoses);
+  const followUpDate = followUpDateKey(note.followUpDate);
   return {
     documentNumber: note.documentNumber ?? null,
     diagnosisCode: note.diagnosisCode ?? null,
@@ -133,6 +144,7 @@ export function revisionContentOf(
     })),
     advice: [...(note.advice ?? [])],
     followUpDays: note.followUpDays ?? null,
+    ...(followUpDate ? { followUpDate } : {}),
     followUpNote: note.followUpNote ?? null,
     dynamics: note.dynamics ?? null,
     dynamicsNote: note.dynamicsNote ?? null,

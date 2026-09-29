@@ -208,6 +208,8 @@ export const ruDict = {
     diagnosis: "Диагноз",
     diagnosisAdditional: "Сопутствующие диагнозы",
     followUp: "Контрольный визит ~{date}",
+    // The doctor named this very day: no «~».
+    followUpOn: "Контрольный визит {date}",
     openPdf: "Открыть заключение (PDF)",
     bookFollowUp: "Записаться на контроль",
     docNumber: "Заключение № {number}",
@@ -242,6 +244,7 @@ export const ruDict = {
     unpaid: "Не оплачено",
     conclusion: "Заключение",
     followUpCta: "Записаться на контроль ~{date}",
+    followUpCtaOn: "Записаться на контроль {date}",
     bookAgain: "Записаться снова",
     addCalendar: "Добавить в календарь",
     route: "Маршрут",

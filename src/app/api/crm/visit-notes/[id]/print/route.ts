@@ -26,6 +26,7 @@ import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+import { followUpDue, formatFollowUpLine } from "@/lib/visit-follow-up";
 import { mintOrReuseInviteUrl } from "@/server/telegram/invite-token";
 import {
   birthYearOf,
@@ -483,21 +484,17 @@ export const GET = createApiListHandler(
     }`;
 
     // ── Ф6 — control-visit line (clinical + handout) ───────────────────
-    // Due date anchors on finalizedAt when present (matches the bridge
-    // worker), otherwise "now" as the draft-print estimate.
-    const followUpLine =
-      note.followUpDays != null && note.followUpDays > 0
-        ? (() => {
-            const due = new Date(
-              (note.finalizedAt ?? generatedAt).getTime() +
-                note.followUpDays * 86_400_000,
-            );
-            const dateStr = formatDate(due, locale, "short");
-            return locale === "uz"
-              ? `${note.followUpDays} kundan keyin · ≈ ${dateStr}`
-              : `через ${note.followUpDays} дн. · ≈ ${dateStr}`;
-          })()
-        : null;
+    // An exact day prints as that day; «через N дней» counts from
+    // finalizedAt when present (matches the bridge worker), otherwise from
+    // "now" as the draft-print estimate. Same rule as every other reader.
+    const followUpDueDay = followUpDue(
+      note,
+      note.finalizedAt ?? generatedAt,
+      generatedAt,
+    );
+    const followUpLine = followUpDueDay
+      ? formatFollowUpLine(followUpDueDay, locale)
+      : null;
 
     // ── Ф7 — динамика + детерминированный дифф лечения ────────────────
     const dynamicsValue =

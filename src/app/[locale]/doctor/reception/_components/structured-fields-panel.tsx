@@ -152,8 +152,12 @@ export function DiagnosisFollowUpPanel() {
         }
       }
       // Ф6 — prefill the control visit from the protocol unless the doctor
-      // already set one by hand.
-      if (protocol.followUpDays != null && live.followUpDays == null) {
+      // already set one by hand (a count of days or an exact day).
+      if (
+        protocol.followUpDays != null &&
+        live.followUpDays == null &&
+        live.followUpDate == null
+      ) {
         patch.followUpDays = protocol.followUpDays;
       }
       if (Object.keys(patch).length > 0) {
@@ -189,7 +193,9 @@ export function DiagnosisFollowUpPanel() {
             onRequestApplyProtocol={(p) => setProtocolToApply(p)}
             onOpenCatalog={() => setIcdCatalogOpen(true)}
           />
-          {(!isFinalized || note.followUpDays != null) && (
+          {(!isFinalized ||
+            note.followUpDays != null ||
+            note.followUpDate != null) && (
             <FollowUpCard
               note={note}
               disabled={isFinalized}

@@ -91,6 +91,7 @@ const FULL_ROW = {
   payments: [{ id: "pay1", amount: 90, status: "PAID", method: "CASH", externalRef: "x" }],
   visitNote: {
     followUpDays: 14,
+    followUpDate: null,
     finalizedAt: new Date("2026-10-01T06:00:00Z"),
     followUpNote: "внутреннее",
     conclusionDocument: { id: "doc1" },
@@ -233,6 +234,7 @@ describe("GET /api/miniapp/appointments", () => {
         "conclusionUrl",
         "doctor",
         "followUpAt",
+        "followUpExact",
         "payments",
         "primaryService",
         // The patient's own signed key to the live queue card (INF-10).
@@ -242,6 +244,10 @@ describe("GET /api/miniapp/appointments", () => {
     );
     expectNoInternals(appt!);
     expect(appt).not.toHaveProperty("visitNote");
+    // Signed 1 Oct (Tashkent) + 14 calendar days, noon of that day; an
+    // estimate, not a day the doctor named.
+    expect(appt!.followUpAt).toBe("2026-10-15T07:00:00.000Z");
+    expect(appt!.followUpExact).toBe(false);
     expect(appt!.services).toEqual([
       { service: { id: "s1", nameRu: "Консультация", nameUz: "Konsultatsiya", priceBase: 100 } },
     ]);

@@ -22,8 +22,12 @@ export type MiniAppAppointment = {
   /** Wave 3c — stamped once when the patient taps «Я на месте». */
   arrivedAt?: string | null;
   conclusionUrl?: string | null;
-  /** Ф6 — ISO date the doctor scheduled the control visit for (≈ estimate). */
+  /**
+   * Ф6 — ISO instant inside the day the control visit is due: an estimate
+   * for «через N дней», the very day when `followUpExact`.
+   */
   followUpAt?: string | null;
+  followUpExact?: boolean;
   doctor: {
     id: string;
     nameRu: string;

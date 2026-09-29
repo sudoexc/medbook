@@ -14,6 +14,7 @@
  * internal until someone adds it here on purpose.
  */
 import type { Prisma } from "@/generated/prisma/client";
+import { followUpDayInstant, followUpDue } from "@/lib/visit-follow-up";
 
 /** Scalar columns a patient may see about their own visit. */
 export const MINIAPP_APPOINTMENT_SCALARS = {
@@ -54,11 +55,13 @@ export const MINIAPP_APPOINTMENT_SELECT = {
   payments: { select: { id: true, amount: true, status: true, method: true } },
   // P1.1: a finalized visit note may carry an auto-generated CONCLUSION
   // document, linked straight from the past-visit detail. Ф6: followUpDays /
-  // finalizedAt feed the «book a control visit» CTA (date only; the doctor's
-  // followUpNote is reception-internal). Consumed by the route, never sent.
+  // followUpDate / finalizedAt feed the «book a control visit» CTA (date
+  // only; the doctor's followUpNote is reception-internal). Consumed by the
+  // route, never sent.
   visitNote: {
     select: {
       followUpDays: true,
+      followUpDate: true,
       finalizedAt: true,
       conclusionDocument: { select: { id: true } },
     },
@@ -89,5 +92,27 @@ export function toMiniAppAppointmentSummary(
     channel: row.channel,
     priceFinal: row.priceFinal,
     arrivedAt: row.arrivedAt,
+  };
+}
+
+/**
+ * The control visit as the patient's screens show it: `followUpAt` is an
+ * instant inside the due day, `followUpExact` says the doctor named that day
+ * (shown as is) rather than «через N дней» (shown as an estimate). One rule
+ * with the print and the reception task (src/lib/visit-follow-up.ts); the
+ * days count from the signature, else from the visit.
+ */
+export function miniAppFollowUp(
+  note: {
+    followUpDays: number | null;
+    followUpDate: Date | null;
+    finalizedAt: Date | null;
+  } | null,
+  visitDate: Date,
+): { followUpAt: string | null; followUpExact: boolean } {
+  const due = note ? followUpDue(note, note.finalizedAt ?? visitDate) : null;
+  return {
+    followUpAt: due ? followUpDayInstant(due.date).toISOString() : null,
+    followUpExact: due?.exact ?? false,
   };
 }

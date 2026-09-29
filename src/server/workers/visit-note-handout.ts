@@ -26,6 +26,8 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { formatDate } from "@/lib/format";
+import { addTashkentDays, tashkentDayWindow } from "@/lib/tashkent-time";
+import { followUpDue, formatFollowUpLine } from "@/lib/visit-follow-up";
 
 import { newVerifyToken } from "@/server/clinical-forms/numbering";
 import { getQueue } from "@/server/queue";
@@ -70,6 +72,7 @@ type SweepNote = {
   documentNumber: string | null;
   finalizedAt: Date | null;
   followUpDays: number | null;
+  followUpDate: Date | null;
   // Re-render anchor as swept — used for the conditional clear (see below).
   handoutStaleAt: Date | null;
   // The note's version as read: the PDF is linked to the latest revision
@@ -196,20 +199,12 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
   const verifyUrl = baseUrl ? `${baseUrl}/v/${verifyToken}` : null;
 
-  // Ф6 — control-visit line, anchored on finalizedAt (same as the bridge).
-  const followUpLine =
-    note.followUpDays != null && note.followUpDays > 0
-      ? (() => {
-          const due = new Date(
-            (note.finalizedAt ?? now).getTime() +
-              note.followUpDays * 24 * 60 * 60 * 1000,
-          );
-          const dateStr = formatDate(due, locale, "short");
-          return locale === "uz"
-            ? `${note.followUpDays} kundan keyin · ≈ ${dateStr}`
-            : `через ${note.followUpDays} дн. · ≈ ${dateStr}`;
-        })()
-      : null;
+  // Ф6 — control-visit line: the day the doctor named, or «через N дней»
+  // counted from finalizedAt (same rule as the bridge and the print).
+  const followUpDueDay = followUpDue(note, note.finalizedAt ?? now, now);
+  const followUpLine = followUpDueDay
+    ? formatFollowUpLine(followUpDueDay, locale)
+    : null;
 
   const pdf = await renderConclusionPdf({
     clinicName,
@@ -361,6 +356,7 @@ export async function runVisitNoteHandoutTick(
         documentNumber: true,
         finalizedAt: true,
         followUpDays: true,
+        followUpDate: true,
         handoutStaleAt: true,
         updatedAt: true,
         revisions: {
@@ -504,20 +500,6 @@ export function buildBridgeSchedule(
   };
 }
 
-/** Clinic-local YYYY-MM-DD for the follow-up due date. */
-function localDateKey(d: Date, timeZone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(d);
-  } catch {
-    return d.toISOString().slice(0, 10);
-  }
-}
-
 type BridgeNote = {
   id: string;
   clinicId: string;
@@ -525,6 +507,7 @@ type BridgeNote = {
   doctorId: string;
   finalizedAt: Date | null;
   followUpDays: number | null;
+  followUpDate: Date | null;
   followUpNote: string | null;
   patient: { fullName: string; preferredLang: string };
   doctor: { nameRu: string } | null;
@@ -547,7 +530,6 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
     select: {
       medicationRemindersEnabled: true,
       medicationSlotTimes: true,
-      timezone: true,
     },
   });
   const slotTimes = resolveSlotTimes(clinic?.medicationSlotTimes);
@@ -688,11 +670,12 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
   // lives outside the row transaction (a retry converges either way). A
   // re-bridge after a note edit does not reopen a task reception already
   // closed; only a moved due date does (upsertAction, audit AC-08).
-  if (note.followUpDays != null && note.followUpDays > 0) {
-    const due = new Date(
-      startsAt.getTime() + note.followUpDays * 24 * 60 * 60 * 1000,
-    );
-    const dueDate = localDateKey(due, clinic?.timezone || "Asia/Tashkent");
+  // The due day follows the one rule every reader shares: the day the
+  // doctor named, or «через N дней» counted in Tashkent calendar days from
+  // the signature.
+  const due = followUpDue(note, startsAt, now);
+  if (due) {
+    const dueDate = due.date;
     await upsertAction(
       prisma,
       note.clinicId,
@@ -705,15 +688,20 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
         doctorName: note.doctor?.nameRu ?? "—",
         dueDate,
         followUpNote: note.followUpNote?.trim() ?? "",
+        // Only when true: a «через N дней» payload stays byte-identical to
+        // the ones written before exact dates existed.
+        ...(due.exact ? { exactDate: true } : {}),
       },
       {
         deeplinkPath: `/crm/patients/${note.patientId}`,
-        // Keep the card around for a week past due, then auto-expire. The
-        // explicit expiry is also what shields the row from the engine's 48h
-        // sweep: nothing re-upserts it after this bridge (audit AC-03).
-        expiresAt: new Date(
-          due.getTime() + VISIT_FOLLOW_UP_GRACE_DAYS * 24 * 60 * 60 * 1000,
-        ),
+        // Keep the card around for a week past due, then auto-expire: to
+        // the end of the seventh clinic day after it, whole days being what
+        // reception plans in. The explicit expiry is also what shields the
+        // row from the engine's 48h sweep: nothing re-upserts it after this
+        // bridge (audit AC-03).
+        expiresAt: tashkentDayWindow(
+          addTashkentDays(dueDate, VISIT_FOLLOW_UP_GRACE_DAYS + 1),
+        ).from,
         // Reception needs the call a week ahead of the control visit, not on
         // the day of finalize: a 30-day follow-up would otherwise sit in the
         // list for a month and get tuned out. Short intervals show at once.
@@ -752,6 +740,7 @@ export async function runMedicationBridgeTick(
         doctorId: true,
         finalizedAt: true,
         followUpDays: true,
+        followUpDate: true,
         followUpNote: true,
         patient: { select: { fullName: true, preferredLang: true } },
         doctor: { select: { nameRu: true } },

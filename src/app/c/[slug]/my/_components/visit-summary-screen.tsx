@@ -247,10 +247,10 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
           <MButton variant="secondary" onClick={bookFollowUp}>
             <span className="inline-flex items-center gap-2">
               <CalendarPlus className="h-4 w-4" aria-hidden />
-              {t.visit.followUp.replace(
-                "{date}",
-                formatDateISO(summary.followUpAt, lang),
-              )}
+              {(summary.followUpExact
+                ? t.visit.followUpOn
+                : t.visit.followUp
+              ).replace("{date}", formatDateISO(summary.followUpAt, lang))}
             </span>
           </MButton>
         ) : null}

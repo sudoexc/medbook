@@ -48,6 +48,15 @@ import { cn } from "@/lib/utils";
 import { useRevealOnOpen } from "@/hooks/use-reveal-on-open";
 import { parseCodeNameQuery } from "@/lib/icd10-query";
 import { visitDiagnosesOf, visitDiagnosisKey } from "@/lib/visit-diagnoses";
+import {
+  followUpDateBounds,
+  followUpDateKey,
+  followUpDateProblem,
+  followUpDayInstant,
+  followUpDue,
+  parseFollowUpDays,
+  type FollowUpDateProblem,
+} from "@/lib/visit-follow-up";
 
 import { useIcd10Search } from "../reception/_hooks/use-icd10";
 import {
@@ -79,9 +88,12 @@ import {
 const FOLLOW_UP_PRESETS = [3, 7, 10, 14, 30];
 
 /**
- * Ф6 — «Контрольный визит». Days + note feed VisitNote.followUpDays /
- * followUpNote; after finalize the bridge worker turns them into a
- * VISIT_FOLLOW_UP_DUE action for the reception desk.
+ * Ф6 — «Контрольный визит». The plan is either «через N дней» (a preset or
+ * any typed number) or the exact day the doctor names; the server keeps
+ * exactly one (src/lib/visit-follow-up.ts). With the note it feeds
+ * VisitNote.followUpDays / followUpDate / followUpNote; after finalize the
+ * bridge worker turns them into a VISIT_FOLLOW_UP_DUE action for the
+ * reception desk.
  */
 export function FollowUpCard({
   note,
@@ -98,9 +110,22 @@ export function FollowUpCard({
   const t = useTranslations("doctor.reception");
   const fmt = useFormatter();
   const big = !!standalone;
-  const days = note.followUpDays;
-  const [noteDraft, setNoteDraft] = React.useState(note.followUpNote ?? "");
+  const dateKey = followUpDateKey(note.followUpDate);
+  // With an exact day the stored days are only its distance, for older
+  // readers: no preset or typed count is the doctor's choice then.
+  const days = dateKey ? null : note.followUpDays;
+  const presetActive = days != null && FOLLOW_UP_PRESETS.includes(days);
+  const customDays = days != null && !presetActive ? days : null;
+  const hasPlan = days != null || dateKey != null;
+  const due = followUpDue(
+    { followUpDays: note.followUpDays, followUpDate: note.followUpDate },
+    note.finalizedAt,
+  );
+  // Per render, not memoised: a visit screen left open past midnight must
+  // not keep offering today as «tomorrow».
+  const bounds = followUpDateBounds();
 
+  const [noteDraft, setNoteDraft] = React.useState(note.followUpNote ?? "");
   React.useEffect(() => {
     setNoteDraft(note.followUpNote ?? "");
   }, [note.followUpNote]);
@@ -111,10 +136,127 @@ export function FollowUpCard({
     onChange({ followUpNote: v || null });
   };
 
-  const due =
-    days != null && days > 0
-      ? new Date(Date.now() + days * 86_400_000)
-      : null;
+  // «через [N] дн.»: the digits stay local until Enter or leaving the box,
+  // so typing «21» never saves «2» on the way.
+  const [daysDraft, setDaysDraft] = React.useState(
+    customDays != null ? String(customDays) : "",
+  );
+  const [daysInvalid, setDaysInvalid] = React.useState(false);
+  React.useEffect(() => {
+    setDaysDraft(customDays != null ? String(customDays) : "");
+    setDaysInvalid(false);
+  }, [customDays]);
+
+  // The exact day: kept local too. Picked from the calendar it saves at
+  // once; typed on the keyboard it saves on Enter or on leaving the box,
+  // because the browser reports every keystroke as a whole date (the day
+  // «1» of «15» is 1 October, the year «2» is the year 0002).
+  const [dateDraft, setDateDraft] = React.useState(dateKey ?? "");
+  const [dateProblem, setDateProblem] =
+    React.useState<FollowUpDateProblem | null>(null);
+  const dateTyping = React.useRef(false);
+  React.useEffect(() => {
+    setDateDraft(dateKey ?? "");
+    setDateProblem(null);
+  }, [dateKey]);
+
+  // The blur that follows a save made on Enter or on a pick must not send
+  // the same value again. A later blur may: that is the retry after a
+  // failed save, whose value is still in the box. Anything else the doctor
+  // does in between (a keystroke, a preset, the saved plan changing) ends
+  // that pairing.
+  const justSent = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    justSent.current = null;
+  }, [days, dateKey]);
+  const send = (patch: VisitNotePatch, sig: string, onBlur: boolean) => {
+    if (onBlur && justSent.current === sig) {
+      justSent.current = null;
+      return;
+    }
+    justSent.current = onBlur ? null : sig;
+    onChange(patch);
+  };
+
+  const commitDays = (onBlur: boolean) => {
+    if (daysDraft.trim() === "") {
+      // An emptied box is not «no control visit»: that is the ×.
+      setDaysDraft(customDays != null ? String(customDays) : "");
+      setDaysInvalid(false);
+      return;
+    }
+    const n = parseFollowUpDays(daysDraft);
+    if (n == null) {
+      setDaysInvalid(true);
+      return;
+    }
+    setDaysInvalid(false);
+    setDateProblem(null);
+    if (n !== days) send({ followUpDays: n }, `d${n}`, onBlur);
+  };
+
+  /**
+   * `typing`: a keystroke, only the box changes. `pick`: chosen in the
+   * calendar, or Enter. `settled`: the doctor left the box.
+   */
+  const commitDate = (value: string, how: "typing" | "pick" | "settled") => {
+    setDateDraft(value);
+    if (how === "typing") {
+      justSent.current = null;
+      setDateProblem(null);
+      return;
+    }
+    if (value === "") {
+      // Same as the days box: clearing the plan is the ×, not this.
+      if (how === "settled") setDateDraft(dateKey ?? "");
+      setDateProblem(null);
+      return;
+    }
+    const problem = followUpDateProblem(value);
+    if (problem) {
+      setDateProblem(problem);
+      return;
+    }
+    setDateProblem(null);
+    setDaysInvalid(false);
+    if (value !== dateKey) {
+      send({ followUpDate: value }, `t${value}`, how === "settled");
+    }
+  };
+
+  const clearPlan = () => {
+    justSent.current = null;
+    setDaysInvalid(false);
+    setDateProblem(null);
+    onChange({ followUpDays: null, followUpDate: null, followUpNote: null });
+  };
+
+  const dayLabel = (key: string) =>
+    fmt.dateTime(followUpDayInstant(key), {
+      day: "numeric",
+      month: "long",
+      timeZone: "Asia/Tashkent",
+    });
+  const problemText =
+    dateProblem === "past"
+      ? t("followUp.datePast", { date: dayLabel(bounds.min) })
+      : dateProblem === "too_far"
+        ? t("followUp.dateTooFar", { date: dayLabel(bounds.max) })
+        : dateProblem === "invalid"
+          ? t("followUp.dateInvalid")
+          : daysInvalid
+            ? t("followUp.daysInvalid")
+            : null;
+
+  // Read-only (a signed note past its window): only the choice that holds.
+  const showDaysBox = !disabled || customDays != null;
+  const showDateBox = !disabled || dateKey != null;
+  const activeField = "border-primary/30 bg-primary/10 text-primary";
+  const idleField = "border-border bg-card text-foreground";
+  const fieldClass = cn(
+    "rounded-lg border font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60",
+    big ? "h-10 text-base" : "h-7 text-xs",
+  );
 
   return (
     <div
@@ -146,13 +288,23 @@ export function FollowUpCard({
         {due && (
           <span
             className={cn(
-              "font-medium tabular-nums text-muted-foreground",
+              "font-medium tabular-nums",
+              due.exact ? "text-primary" : "text-muted-foreground",
               big ? "text-sm" : "text-[11px]",
             )}
           >
-            {t("followUp.dueOn", {
-              date: fmt.dateTime(due, { day: "numeric", month: "long" }),
-            })}
+            {/* The weekday helps the doctor steer clear of a Sunday. An
+                exact day is the day itself; a count of days is an estimate
+                reception books around. */}
+            {(() => {
+              const label = fmt.dateTime(followUpDayInstant(due.date), {
+                weekday: "short",
+                day: "numeric",
+                month: "long",
+                timeZone: "Asia/Tashkent",
+              });
+              return due.exact ? label : t("followUp.dueOn", { date: label });
+            })()}
           </span>
         )}
       </div>
@@ -170,7 +322,13 @@ export function FollowUpCard({
               key={d}
               type="button"
               disabled={disabled}
-              onClick={() => onChange({ followUpDays: active ? null : d })}
+              aria-pressed={active}
+              onClick={() => {
+                justSent.current = null;
+                setDaysInvalid(false);
+                setDateProblem(null);
+                onChange({ followUpDays: active ? null : d });
+              }}
               className={cn(
                 "inline-flex items-center border font-medium transition-colors disabled:opacity-50",
                 big
@@ -185,23 +343,12 @@ export function FollowUpCard({
             </button>
           );
         })}
-        {days != null && !FOLLOW_UP_PRESETS.includes(days) && (
-          <span
-            className={cn(
-              "inline-flex items-center border border-primary/30 bg-primary/10 font-medium text-primary",
-              big
-                ? "h-9 rounded-lg px-3 text-sm"
-                : "h-6 rounded-md px-1.5 text-[11px]",
-            )}
-          >
-            {t("followUp.daysShort", { days })}
-          </span>
-        )}
-        {days != null && !disabled && (
+        {hasPlan && !disabled && (
           <button
             type="button"
             aria-label={t("followUp.clear")}
-            onClick={() => onChange({ followUpDays: null, followUpNote: null })}
+            title={t("followUp.clear")}
+            onClick={clearPlan}
             className={cn(
               "inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
               big ? "size-9" : "size-6",
@@ -212,7 +359,124 @@ export function FollowUpCard({
         )}
       </div>
 
-      {days != null && (
+      {(showDaysBox || showDateBox) && (
+        <div
+          className={cn(
+            "flex flex-wrap items-center text-muted-foreground",
+            big
+              ? "mt-2.5 gap-x-4 gap-y-2 text-sm"
+              : "mt-1.5 gap-x-3 gap-y-1.5 text-[11px]",
+          )}
+        >
+          {showDaysBox && (
+            <label className="inline-flex items-center gap-1.5">
+              {t.rich("followUp.customDays", {
+                n: () => (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={3}
+                    disabled={disabled}
+                    value={daysDraft}
+                    aria-label={t("followUp.customDaysLabel")}
+                    aria-invalid={daysInvalid || undefined}
+                    onChange={(e) => {
+                      justSent.current = null;
+                      setDaysDraft(e.target.value.replace(/\D/g, ""));
+                      setDaysInvalid(false);
+                    }}
+                    onBlur={() => commitDays(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitDays(false);
+                      } else if (e.key === "Escape") {
+                        setDaysDraft(
+                          customDays != null ? String(customDays) : "",
+                        );
+                        setDaysInvalid(false);
+                      }
+                    }}
+                    className={cn(
+                      fieldClass,
+                      "text-center",
+                      big ? "w-16 px-2" : "w-11 px-1",
+                      daysInvalid
+                        ? "border-destructive text-destructive"
+                        : customDays != null
+                          ? activeField
+                          : idleField,
+                    )}
+                  />
+                ),
+              })}
+            </label>
+          )}
+          {showDateBox && (
+            <label className="inline-flex items-center gap-1.5">
+              {showDaysBox && <span>{t("followUp.orDate")}</span>}
+              <input
+                type="date"
+                disabled={disabled}
+                min={bounds.min}
+                max={bounds.max}
+                value={dateDraft}
+                aria-label={t("followUp.dateLabel")}
+                aria-invalid={dateProblem != null || undefined}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    dateTyping.current = false;
+                    commitDate(e.currentTarget.value, "pick");
+                  } else if (
+                    e.key.length === 1 ||
+                    e.key === "Backspace" ||
+                    e.key === "Delete" ||
+                    e.key === "ArrowUp" ||
+                    e.key === "ArrowDown"
+                  ) {
+                    dateTyping.current = true;
+                  }
+                }}
+                onChange={(e) =>
+                  commitDate(
+                    e.target.value,
+                    dateTyping.current ? "typing" : "pick",
+                  )
+                }
+                onBlur={(e) => {
+                  dateTyping.current = false;
+                  commitDate(e.target.value, "settled");
+                }}
+                className={cn(
+                  fieldClass,
+                  big ? "px-2.5" : "px-1.5",
+                  dateProblem
+                    ? "border-destructive text-destructive"
+                    : dateKey != null
+                      ? activeField
+                      : idleField,
+                )}
+              />
+            </label>
+          )}
+        </div>
+      )}
+
+      {problemText && (
+        <p
+          role="alert"
+          className={cn(
+            "font-medium text-destructive",
+            big ? "mt-2 text-sm" : "mt-1.5 text-[11px]",
+          )}
+        >
+          {problemText}
+        </p>
+      )}
+
+      {hasPlan && (
         <input
           type="text"
           disabled={disabled}

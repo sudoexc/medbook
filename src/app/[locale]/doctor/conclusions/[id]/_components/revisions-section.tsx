@@ -15,6 +15,8 @@ import { useTranslations } from "next-intl";
 import { ChevronDownIcon, FileTextIcon, Loader2Icon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format";
+import { followUpDayInstant } from "@/lib/visit-follow-up";
 import {
   formatAdditionalDiagnoses,
   type VisitDiagnosis,
@@ -36,6 +38,8 @@ type RevisionContent = {
   visitPrescriptions: PrescriptionLikeRow[];
   advice: string[];
   followUpDays: number | null;
+  /** The exact control-visit day, YYYY-MM-DD; absent for «через N дней». */
+  followUpDate?: string;
   bodyMarkdown: string | null;
 };
 
@@ -84,6 +88,7 @@ const FIELD_GROUP: Record<string, string> = {
   examination: "examination",
   bodyMarkdown: "body",
   followUpDays: "followUp",
+  followUpDate: "followUp",
   followUpNote: "followUp",
   patientHandoutMarkdown: "handout",
   dynamics: "dynamics",
@@ -249,9 +254,15 @@ export function RevisionsSection({
                       )}
                     </Entry>
                     <Entry label={tr("fields.followUp")}>
-                      {c.followUpDays != null
-                        ? tr("followUpDays", { n: c.followUpDays })
-                        : tr("none")}
+                      {c.followUpDate
+                        ? formatDate(
+                            followUpDayInstant(c.followUpDate),
+                            rxLocale,
+                            "long",
+                          )
+                        : c.followUpDays != null
+                          ? tr("followUpDays", { n: c.followUpDays })
+                          : tr("none")}
                     </Entry>
                     <Entry label={tr("fields.body")}>
                       <span className="whitespace-pre-wrap">

@@ -41,8 +41,8 @@ export const ACTION_TYPES = [
   "PATIENT_NO_CHANNEL",
   // Ф6 (TZ-smart-constructor) — follow-up visit task. Emitted by the
   // medication-bridge sweep when a finalized VisitNote carries
-  // `followUpDays`. Dedupe keyed off visitNoteId — one task per visit no
-  // matter how many sweep retries happen.
+  // `followUpDays` or `followUpDate`. Dedupe keyed off visitNoteId — one
+  // task per visit no matter how many sweep retries happen.
   "VISIT_FOLLOW_UP_DUE",
   // Audit MA-04 / PH-01 — one Telegram account proved it is the patient of
   // a clinic card (invite link or its own shared contact), but the account
@@ -319,9 +319,10 @@ export type PatientNoChannelPayload = {
  * Ф6 (TZ-smart-constructor) — «позвать на контроль».
  *
  * The doctor sets `VisitNote.followUpDays` (prefilled from the diagnosis
- * guide / protocol); on finalize the bridge worker computes the due date and
- * emits this task so reception calls the patient and books the control
- * visit. `dueDate` is the clinic-local calendar day `YYYY-MM-DD`.
+ * guide / protocol) or names the day itself (`followUpDate`); on finalize
+ * the bridge worker computes the due date and emits this task so reception
+ * calls the patient and books the control visit. `dueDate` is the
+ * clinic-local calendar day `YYYY-MM-DD`.
  */
 export type VisitFollowUpDuePayload = {
   type: "VISIT_FOLLOW_UP_DUE";
@@ -334,6 +335,12 @@ export type VisitFollowUpDuePayload = {
   dueDate: string;
   /** Doctor's free-text follow-up note, empty string when none. */
   followUpNote: string;
+  /**
+   * The doctor named `dueDate` itself, so the card shows it as is; absent
+   * for «через N дней», whose day is an estimate («~»). Absent in every
+   * payload written before exact dates existed, which were all estimates.
+   */
+  exactDate?: boolean;
 };
 
 /**

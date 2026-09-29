@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { MAX_ADDITIONAL_DIAGNOSES } from "@/lib/visit-diagnoses";
+import {
+  FOLLOW_UP_MAX_DAYS,
+  FOLLOW_UP_MIN_DAYS,
+} from "@/lib/visit-follow-up";
 
 export const VisitNoteStatusEnum = z.enum(["DRAFT", "FINALIZED"]);
 
@@ -89,7 +93,22 @@ export const UpdateVisitNoteSchema = z.object({
     .optional(),
   bodyMarkdown: z.string().max(64_000).nullable().optional(),
   patientHandoutMarkdown: z.string().max(64_000).nullable().optional(),
-  followUpDays: z.number().int().min(1).max(365).nullable().optional(),
+  followUpDays: z
+    .number()
+    .int()
+    .min(FOLLOW_UP_MIN_DAYS)
+    .max(FOLLOW_UP_MAX_DAYS)
+    .nullable()
+    .optional(),
+  // An exact control-visit day, YYYY-MM-DD (Tashkent). Only the shape is
+  // checked here: whether it lies between tomorrow and a year ahead depends
+  // on today, so the route decides that and answers with a reason the card
+  // can put into words. Sent alone; the route derives followUpDays from it.
+  followUpDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
   followUpNote: z.string().max(500).nullable().optional(),
   dynamics: VisitDynamicsEnum.nullable().optional(),
   dynamicsNote: z.string().max(500).nullable().optional(),

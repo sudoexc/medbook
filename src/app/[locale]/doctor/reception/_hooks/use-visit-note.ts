@@ -88,6 +88,12 @@ export type VisitNoteRow = {
   bodyMarkdown: string | null;
   patientHandoutMarkdown: string | null;
   followUpDays: number | null;
+  /**
+   * The exact control-visit day when the doctor named one: the DATE column
+   * as JSON («2026-10-15T00:00:00.000Z»), read with `followUpDateKey`.
+   * Optional: a server on the previous build omits it.
+   */
+  followUpDate?: string | null;
   followUpNote: string | null;
   dynamics: "IMPROVED" | "STABLE" | "WORSE" | null;
   dynamicsNote: string | null;
@@ -163,6 +169,11 @@ export type VisitNotePatch = Partial<{
   bodyMarkdown: string | null;
   patientHandoutMarkdown: string | null;
   followUpDays: number | null;
+  /**
+   * An exact day, YYYY-MM-DD. Sent alone: the server keeps one mode, so a
+   * date sets the days to its distance and a count of days clears it.
+   */
+  followUpDate: string | null;
   followUpNote: string | null;
   dynamics: "IMPROVED" | "STABLE" | "WORSE" | null;
   dynamicsNote: string | null;
@@ -202,6 +213,19 @@ export function isEditWindowExpired(e: unknown): boolean {
     e instanceof VisitNotePatchError &&
     e.status === 403 &&
     e.reason === "edit_window_expired"
+  );
+}
+
+/**
+ * The server refused a control-visit date outside tomorrow .. a year ahead.
+ * The card checks the same bounds first, so this is a page left open past
+ * midnight, and it needs its own words, not «не удалось сохранить».
+ */
+export function isFollowUpDateRefused(e: unknown): boolean {
+  return (
+    e instanceof VisitNotePatchError &&
+    e.status === 400 &&
+    e.reason === "follow_up_date_out_of_range"
   );
 }
 

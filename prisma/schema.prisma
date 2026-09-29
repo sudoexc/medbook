@@ -2205,6 +2205,12 @@ model VisitNote {
   // guide / protocol, hand-editable. On finalize: printed in the conclusion,
   // surfaces a booking nudge in the Mini App, and spawns a reception Action.
   followUpDays         Int?
+  // The exact day the doctor named instead («вернуться 15 октября», clinic
+  // request 29.09.2026). A Tashkent calendar day, so DATE, not a timestamp.
+  // When set it wins over followUpDays, which then only keeps the distance
+  // from the day it was picked for readers that know nothing else. Null =
+  // the plan is «через N дней». See src/lib/visit-follow-up.ts.
+  followUpDate         DateTime? @db.Date
   followUpNote         String?
   // Ф6 — convergence anchor for the medication-bridge sweep: null = the
   // finalize worker hasn't mirrored remindPatient rows into Prescription yet.

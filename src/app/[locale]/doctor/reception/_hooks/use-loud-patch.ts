@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import {
   isEditWindowExpired,
+  isFollowUpDateRefused,
   isVersionConflict,
   usePatchVisitNote,
   useVisitNote,
@@ -86,7 +87,9 @@ export function useLoudVisitNotePatch(visitNoteId: string | null) {
           toast.error(
             isEditWindowExpired(e)
               ? t("structured.saveErrorLocked")
-              : t("structured.saveErrorGeneric"),
+              : isFollowUpDateRefused(e)
+                ? t("followUp.dateRefused")
+                : t("structured.saveErrorGeneric"),
           );
           void noteRefetch();
         },

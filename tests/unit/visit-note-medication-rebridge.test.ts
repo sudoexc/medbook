@@ -441,6 +441,7 @@ describe("medication bridge — reconciliation on re-run", () => {
       doctorId: "doc_1",
       finalizedAt: new Date("2026-08-20T06:00:00.000Z"),
       followUpDays: null,
+      followUpDate: null,
       followUpNote: null,
       patient: { fullName: "Тест Пациент", preferredLang: "RU" },
       doctor: { nameRu: "Иванов И.И." },
@@ -595,9 +596,12 @@ describe("medication bridge — reconciliation on re-run", () => {
     const [, , payload, options] = upsert.mock.calls[0]!;
     // Finalized 20 Aug 11:00 Tashkent + 30 days → due 19 Sep.
     expect(payload).toMatchObject({ type: "VISIT_FOLLOW_UP_DUE", dueDate: "2026-09-19" });
-    // Visible from 12 Sep 09:00 Tashkent, gone after due + 7 days.
+    // Visible from 12 Sep 09:00 Tashkent, gone after the seventh clinic day
+    // past due: midnight 27 Sep Tashkent.
     expect(options?.surfaceAt?.toISOString()).toBe("2026-09-12T04:00:00.000Z");
-    expect(options?.expiresAt?.toISOString()).toBe("2026-09-26T06:00:00.000Z");
+    expect(options?.expiresAt?.toISOString()).toBe("2026-09-26T19:00:00.000Z");
+    // A count of days is an estimate: the payload says nothing of exactness.
+    expect(payload).not.toHaveProperty("exactDate");
   });
 });
 

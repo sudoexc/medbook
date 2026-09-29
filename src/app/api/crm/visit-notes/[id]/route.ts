@@ -32,8 +32,12 @@ import {
   sameNoteDiagnoses,
   visitDiagnosisKey,
 } from "@/lib/visit-diagnoses";
+import { resolveFollowUpWrite } from "@/lib/visit-follow-up";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
+
+/** 400 reason of a control-visit date outside tomorrow .. a year ahead. */
+const FOLLOW_UP_DATE_REFUSED = "follow_up_date_out_of_range";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -203,7 +207,23 @@ export const PATCH = createApiHandler(
     if (body.patientHandoutMarkdown !== undefined) {
       data.patientHandoutMarkdown = body.patientHandoutMarkdown;
     }
-    if (body.followUpDays !== undefined) data.followUpDays = body.followUpDays;
+    // «Через N дней» or an exact day, never both: a date brings its distance
+    // in days along (for readers that know only the days), a count of days
+    // clears a date held before. A date that is not between tomorrow and a
+    // year ahead is refused whole, before anything is written, with a
+    // reason the card turns into words; a silently dropped date would leave
+    // the doctor believing reception will call for it.
+    const followUp = resolveFollowUpWrite(
+      { followUpDays: body.followUpDays, followUpDate: body.followUpDate },
+      before,
+    );
+    if (!followUp.ok) {
+      return err("Validation", 400, {
+        reason: FOLLOW_UP_DATE_REFUSED,
+        problem: followUp.problem,
+      });
+    }
+    Object.assign(data, followUp.data);
     if (body.followUpNote !== undefined) data.followUpNote = body.followUpNote;
     if (body.dynamics !== undefined) data.dynamics = body.dynamics;
     if (body.dynamicsNote !== undefined) data.dynamicsNote = body.dynamicsNote;

@@ -32,6 +32,7 @@ import {
 
 import {
   isEditWindowExpired,
+  isFollowUpDateRefused,
   isVersionConflict,
   prepareVisitNoteSignature,
   settleVisitNotePatches,
@@ -91,6 +92,8 @@ export function ConclusionDetail({
   locale: string;
 }) {
   const tr = useTranslations("doctor.conclusions");
+  // The control-visit card is the visit screen's; so is its refusal text.
+  const tFollowUp = useTranslations("doctor.reception.followUp");
   const noteQuery = useVisitNote(noteId);
   const patch = usePatchVisitNote(noteId);
   const note = noteQuery.data ?? null;
@@ -195,7 +198,9 @@ export function ConclusionDetail({
             ? tr("detail.saveErrorConflict")
             : isEditWindowExpired(e)
               ? tr("detail.saveErrorLocked")
-              : tr("detail.saveErrorGeneric"),
+              : isFollowUpDateRefused(e)
+                ? tFollowUp("dateRefused")
+                : tr("detail.saveErrorGeneric"),
         );
         void noteQuery.refetch();
       },
@@ -505,7 +510,9 @@ export function ConclusionDetail({
               disabled={!canEdit}
               onChange={applyStructuredPatch}
             />
-            {(canEdit || note.followUpDays != null) && (
+            {(canEdit ||
+              note.followUpDays != null ||
+              note.followUpDate != null) && (
               <FollowUpCard
                 note={note}
                 disabled={!canEdit}

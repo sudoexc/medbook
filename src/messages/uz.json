@@ -5430,7 +5430,7 @@
       },
       "VISIT_FOLLOW_UP_DUE": {
         "label": "Nazorat tashrifi",
-        "title": "{patientName}: nazorat ~{dueDate} ({doctorName})",
+        "title": "{patientName}: nazorat {exact, select, yes {{dueDate}} other {~{dueDate}}} ({doctorName})",
         "body": "{hasNote, select, yes {«{followUpNote}». Qo'ng'iroq qilib, nazoratga yozing.} other {Bemorga qo'ng'iroq qiling va nazorat qabuliga yozing.}}"
       },
       "TELEGRAM_LINK_CONFLICT": {
@@ -6361,7 +6361,16 @@
         "daysShort": "{days} kun",
         "clear": "Tozalash",
         "notePlaceholder": "Qabulxona uchun izoh…",
-        "dueOn": "≈ {date}"
+        "dueOn": "≈ {date}",
+        "customDays": "<n></n> kundan keyin",
+        "customDaysLabel": "Necha kundan keyin",
+        "orDate": "yoki sana",
+        "dateLabel": "Nazorat tashrifi sanasi",
+        "datePast": "Bu sana allaqachon kelgan. {date} yoki undan keyingi kunni tanlang.",
+        "dateTooFar": "Bir yildan uzoq emas, {date} gacha.",
+        "dateInvalid": "Bunday sana yo‘q.",
+        "daysInvalid": "1 dan 365 gacha kunlar sonini kiriting.",
+        "dateRefused": "Nazorat tashrifi sanasi saqlanmadi: ertadan boshlab bir yil ichidagi kunni tanlang."
       },
       "cds": {
         "checking": "Mosligi tekshirilmoqda…",

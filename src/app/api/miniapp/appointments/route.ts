@@ -29,7 +29,10 @@ import { createMiniAppHandler, createMiniAppListHandler } from "@/server/miniapp
 import { withIdempotency } from "@/server/miniapp/idempotency";
 import { bookAppointment } from "@/server/appointments/book";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
-import { MINIAPP_APPOINTMENT_SELECT } from "@/server/miniapp/appointment-view";
+import {
+  MINIAPP_APPOINTMENT_SELECT,
+  miniAppFollowUp,
+} from "@/server/miniapp/appointment-view";
 import { queueTicketToken } from "@/server/appointments/public-ticket";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
 import { getMetrics } from "@/server/observability/metrics";
@@ -103,13 +106,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
           documentId: visitNote.conclusionDocument.id,
         })
       : null,
-    followUpAt:
-      visitNote?.followUpDays != null && visitNote.followUpDays > 0
-        ? new Date(
-            (visitNote.finalizedAt ?? row.date).getTime() +
-              visitNote.followUpDays * 24 * 60 * 60 * 1000,
-          ).toISOString()
-        : null,
+    ...miniAppFollowUp(visitNote, row.date),
   }));
   return ok({ appointments });
 });

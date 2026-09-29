@@ -208,6 +208,8 @@ export const uzDict = {
     diagnosis: "Tashxis",
     diagnosisAdditional: "Yondosh tashxislar",
     followUp: "Nazorat qabuli ~{date}",
+    // The doctor named this very day: no «~».
+    followUpOn: "Nazorat qabuli {date}",
     openPdf: "Xulosani ochish (PDF)",
     bookFollowUp: "Nazorat qabuliga yozilish",
     docNumber: "Xulosa № {number}",
@@ -242,6 +244,7 @@ export const uzDict = {
     unpaid: "To‘lanmagan",
     conclusion: "Xulosa",
     followUpCta: "Nazorat qabuliga yozilish ~{date}",
+    followUpCtaOn: "Nazorat qabuliga yozilish {date}",
     bookAgain: "Qayta yozilish",
     addCalendar: "Kalendarga qo‘shish",
     route: "Yo‘nalish",

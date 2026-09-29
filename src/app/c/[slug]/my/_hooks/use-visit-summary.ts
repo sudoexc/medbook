@@ -24,6 +24,11 @@ export type VisitSummary = {
     specializationUz: string;
   };
   followUpAt: string | null;
+  /**
+   * The doctor named the day of `followUpAt` itself (shown without «~»).
+   * Optional: a server on the previous build omits it.
+   */
+  followUpExact?: boolean;
   conclusionUrl: string | null;
 };
 

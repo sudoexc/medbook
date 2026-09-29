@@ -176,6 +176,8 @@ function valuesFor(
         patientName: payload.patientName,
         doctorName: payload.doctorName,
         dueDate: formatDM(payload.dueDate, locale),
+        // An exact day reads as is; «через N дней» keeps its «~».
+        exact: payload.exactDate ? "yes" : "no",
         followUpNote: payload.followUpNote,
         hasNote: payload.followUpNote?.trim() ? "yes" : "no",
       };

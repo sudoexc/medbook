@@ -11,7 +11,7 @@
  *
  * `followUpNote` is intentionally NOT returned: it is reception-internal
  * (same rule as the appointments list route). The patient sees only the
- * computed follow-up date.
+ * computed follow-up date, and whether the doctor named that very day.
  */
 import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
@@ -19,6 +19,7 @@ import { createMiniAppListHandler } from "@/server/miniapp/handler";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
+import { miniAppFollowUp } from "@/server/miniapp/appointment-view";
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const url = new URL(request.url);
@@ -50,6 +51,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       additionalDiagnoses: true,
       patientHandoutMarkdown: true,
       followUpDays: true,
+      followUpDate: true,
       finalizedAt: true,
       documentNumber: true,
       conclusionDocument: { select: { id: true } },
@@ -67,7 +69,6 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   });
   if (!note) return ok({ summary: null });
 
-  const anchor = note.finalizedAt ?? note.appointment.date;
   return ok({
     summary: {
       appointmentId,
@@ -83,12 +84,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       ).map((d) => d.name),
       handoutMarkdown: note.patientHandoutMarkdown,
       doctor: note.doctor,
-      followUpAt:
-        note.followUpDays != null && note.followUpDays > 0
-          ? new Date(
-              anchor.getTime() + note.followUpDays * 24 * 60 * 60 * 1000,
-            ).toISOString()
-          : null,
+      ...miniAppFollowUp(note, note.appointment.date),
       // A link for this one conclusion, never initData (MA-07).
       conclusionUrl: note.conclusionDocument
         ? miniAppDocumentUrl({

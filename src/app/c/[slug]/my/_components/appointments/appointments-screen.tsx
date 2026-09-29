@@ -236,10 +236,10 @@ export function AppointmentsScreen() {
                     }}
                   >
                     <CalendarPlus className="h-4 w-4" />
-                    {t.appts.followUpCta.replace(
-                      "{date}",
-                      formatDateISO(appt.followUpAt!, lang),
-                    )}
+                    {(appt.followUpExact
+                      ? t.appts.followUpCtaOn
+                      : t.appts.followUpCta
+                    ).replace("{date}", formatDateISO(appt.followUpAt!, lang))}
                   </button>
                 ) : null}
                 {cancellable ? (

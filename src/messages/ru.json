@@ -5430,7 +5430,7 @@
       },
       "VISIT_FOLLOW_UP_DUE": {
         "label": "Контрольный визит",
-        "title": "{patientName}: контроль ~{dueDate} ({doctorName})",
+        "title": "{patientName}: контроль {exact, select, yes {{dueDate}} other {~{dueDate}}} ({doctorName})",
         "body": "{hasNote, select, yes {«{followUpNote}». Позвоните и запишите на контроль.} other {Позвоните пациенту и запишите на контрольный приём.}}"
       },
       "TELEGRAM_LINK_CONFLICT": {
@@ -6361,7 +6361,16 @@
         "daysShort": "{days} дн.",
         "clear": "Сбросить",
         "notePlaceholder": "Комментарий для регистратуры…",
-        "dueOn": "≈ {date}"
+        "dueOn": "≈ {date}",
+        "customDays": "через <n></n> дн.",
+        "customDaysLabel": "Через сколько дней",
+        "orDate": "или дата",
+        "dateLabel": "Дата контрольного визита",
+        "datePast": "Эта дата уже наступила. Выберите день не раньше {date}.",
+        "dateTooFar": "Не дальше чем на год вперёд, до {date}.",
+        "dateInvalid": "Такой даты нет.",
+        "daysInvalid": "Введите число дней от 1 до 365.",
+        "dateRefused": "Дата контрольного визита не сохранена: выберите день с завтрашнего и не дальше чем на год вперёд."
       },
       "cds": {
         "checking": "Проверка совместимости…",

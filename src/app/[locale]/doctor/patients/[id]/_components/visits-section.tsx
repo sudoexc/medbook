@@ -15,6 +15,7 @@ import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
+import { AdditionalDiagnosesLine } from "../../../_components/additional-diagnoses-line";
 import {
   flattenVisits,
   useDoctorPatientVisits,
@@ -240,6 +241,10 @@ function VisitEntry({
               </span>
             ) : null}
           </div>
+          <AdditionalDiagnosesLine
+            diagnoses={v.additionalDiagnoses}
+            className="mt-0.5 break-words"
+          />
 
           <div className="mt-0.5 truncate text-xs text-muted-foreground">
             {ruDate(v.date)} ·{" "}

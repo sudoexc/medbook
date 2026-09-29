@@ -23,7 +23,10 @@ import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-chang
 import { completionFields } from "@/server/appointments/completion";
 import { runCompletionEffects } from "@/server/appointments/completion-effects";
 import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
-import { syncPatientDiagnosisWithNote } from "@/server/visit-notes/patient-diagnosis-sync";
+import {
+  syncPatientDiagnosisWithNote,
+  type DiagnosisSet,
+} from "@/server/visit-notes/patient-diagnosis-sync";
 import { allocateDocumentNumber } from "@/server/services/document-number";
 import { composeNoteHandout } from "@/server/visit-notes/handout";
 import {
@@ -293,6 +296,12 @@ export const POST = createApiHandler(
         diagnosisCode: note.diagnosisCode,
         diagnosisName: note.diagnosisName,
         additionalDiagnoses,
+        // A re-signature: the latest revision is what was signed before the
+        // revert (edits of the reopened draft are not versioned), so a row
+        // it resolves can say what really replaced it.
+        previousDiagnoses: note.firstFinalizedAt
+          ? ((previous?.content ?? null) as DiagnosisSet | null)
+          : null,
         now,
         signedBefore: note.firstFinalizedAt != null,
         ctx,

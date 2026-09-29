@@ -25,11 +25,17 @@
  *
  * A note carries its main diagnosis and up to three more (29.09.2026); each
  * of them is followed onto the card the same way, and «another signed note
- * carries it» counts the other notes' additional diagnoses too.
+ * carries it» counts the other notes' additional diagnoses too. The line on
+ * a resolved row names what replaced it only when one diagnosis really was
+ * swapped for another; any other removal says the diagnosis was removed.
  */
 import type { prisma as prismaT } from "@/lib/prisma";
 import type { TenantContext } from "@/lib/tenant-context";
-import { visitDiagnosisKey, type VisitDiagnosis } from "@/lib/visit-diagnoses";
+import {
+  parseAdditionalDiagnoses,
+  visitDiagnosisKey,
+  type VisitDiagnosis,
+} from "@/lib/visit-diagnoses";
 import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
 import type { OutboxTx } from "@/server/realtime/outbox";
 
@@ -44,6 +50,16 @@ type DiagnosisRow = {
 };
 
 type Target = { code: string | null; name: string | null };
+
+/**
+ * A note's diagnoses: the main columns and the stored list of the others,
+ * as a note row or a revision's content holds them.
+ */
+export type DiagnosisSet = {
+  diagnosisCode?: unknown;
+  diagnosisName?: unknown;
+  additionalDiagnoses?: unknown;
+};
 
 /** Code when there is one; the label names an uncoded diagnosis. */
 function sameDiagnosis(
@@ -65,24 +81,44 @@ function withLine(notes: string | null, line: string): string {
  * 29.09.2026 a visit has up to three more after the main one, and each is a
  * diagnosis of the patient like the main one.
  */
-function targetsOf(args: {
-  diagnosisCode: string | null;
-  diagnosisName: string | null;
-  additionalDiagnoses?: readonly VisitDiagnosis[] | null;
-}): Target[] {
+function targetsOf(args: DiagnosisSet): Target[] {
   const out: Target[] = [];
   const seen = new Set<string>();
-  const push = (rawCode: string | null, rawName: string | null) => {
-    const code = rawCode?.trim() || null;
-    const name = rawName?.trim() || null;
+  const push = (rawCode: unknown, rawName: unknown) => {
+    // Read defensively: the earlier set may come from a revision's JSON.
+    const code = (typeof rawCode === "string" && rawCode.trim()) || null;
+    const name = (typeof rawName === "string" && rawName.trim()) || null;
     const key = visitDiagnosisKey({ code, name });
     if (!key || seen.has(key)) return;
     seen.add(key);
     out.push({ code, name });
   };
   push(args.diagnosisCode, args.diagnosisName);
-  for (const d of args.additionalDiagnoses ?? []) push(d.code, d.name);
+  for (const d of parseAdditionalDiagnoses(args.additionalDiagnoses)) {
+    push(d.code, d.name);
+  }
   return out;
+}
+
+/**
+ * The one diagnosis that replaced another, if that is what happened: one
+ * diagnosis signed before, one other diagnosis now. Then the row of the old
+ * one may say «исправлен на» the new one. When a note of two loses one, or
+ * the main one goes and another is promoted, nothing replaced anything: the
+ * one that stays was already signed, and naming it would put a false line
+ * in the history the desk and other doctors read. Unknown earlier set: no
+ * claim either.
+ */
+function replacementOf(
+  previous: DiagnosisSet | null,
+  targets: readonly Target[],
+): { was: Target; now: Target } | null {
+  if (!previous || targets.length !== 1) return null;
+  const before = targetsOf(previous);
+  if (before.length !== 1) return null;
+  const was = before[0]!;
+  const now = targets[0]!;
+  return visitDiagnosisKey(was) === visitDiagnosisKey(now) ? null : { was, now };
 }
 
 export async function syncPatientDiagnosisWithNote(
@@ -96,6 +132,13 @@ export async function syncPatientDiagnosisWithNote(
     diagnosisName: string | null;
     /** The note's other diagnoses as now signed, in order. */
     additionalDiagnoses?: readonly VisitDiagnosis[] | null;
+    /**
+     * The note's diagnoses as they stood signed before this change: what the
+     * PATCH found, or the latest revision at a re-signature. Null at a first
+     * signature or when it is not on record. It only words the line on a
+     * resolved row (see replacementOf).
+     */
+    previousDiagnoses: DiagnosisSet | null;
     now: Date;
     /**
      * Whether the note can own rows already: it was signed before (a
@@ -226,23 +269,28 @@ export async function syncPatientDiagnosisWithNote(
     }
   }
 
-  // The rest of what this note created and no longer says. With a single
-  // diagnosis the line names what replaced it, as it always did; among
-  // several there is no telling which one replaced it, so it says removed.
-  const single = targets.length === 1 ? targets[0]! : null;
+  // The rest of what this note created and no longer says. Only the row of
+  // the diagnosis that was swapped for another names its replacement; every
+  // other one says it was removed.
+  const replacement = replacementOf(args.previousDiagnoses, targets);
   let resolvedAny = false;
   for (const row of owned) {
     if (claimed.has(row.id) || row.status !== "ACTIVE") continue;
     if (isTarget(row)) continue;
     if (await heldElsewhere(row)) continue;
+    const replaced =
+      replacement &&
+      sameDiagnosis(row, replacement.was.code, replacement.was.name)
+        ? replacement.now
+        : null;
     await db.patientDiagnosis.update({
       where: { id: row.id },
       data: {
         status: "RESOLVED",
         notes: withLine(
           row.notes,
-          single
-            ? `Снят: в заключении исправлен на ${single.code ?? single.name}.`
+          replaced
+            ? `Снят: в заключении исправлен на ${replaced.code ?? replaced.name}.`
             : "Снят: диагноз убран из заключения.",
         ),
       },

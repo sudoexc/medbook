@@ -5,13 +5,15 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronRightIcon, StethoscopeIcon } from "lucide-react";
 
+import { AdditionalDiagnosesLine } from "../../_components/additional-diagnoses-line";
+
 import { useReceptionContext } from "../_hooks/reception-context";
 import { usePatientDiagnoses } from "../_hooks/use-patient-diagnoses";
 
 /**
  * «История диагнозов» — the patient's full ICD-10 diagnosis history across
- * all doctors, newest first. Each row opens that visit's conclusion. Sits in
- * the bottom card row where the today-queue used to be.
+ * all doctors, newest first: the main diagnosis of each visit, its others
+ * under it. Each row opens that visit's conclusion.
  */
 export function DiagnosisHistoryCard() {
   const t = useTranslations("doctor.reception");
@@ -76,6 +78,12 @@ export function DiagnosisHistoryCard() {
                       </span>
                     ) : null}
                   </div>
+                  {/* The visit's other diagnoses: the row must not read as
+                      if the main one was all the doctor signed. */}
+                  <AdditionalDiagnosesLine
+                    diagnoses={d.additionalDiagnoses}
+                    className="break-words"
+                  />
                   <div className="truncate text-xs text-muted-foreground tabular-nums">
                     {new Date(d.date).toLocaleDateString("ru-RU", {
                       day: "2-digit",

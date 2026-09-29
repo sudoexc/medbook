@@ -160,3 +160,15 @@ export function formatVisitDiagnosis(
     .filter((v): v is string => Boolean(v))
     .join(separator);
 }
+
+/**
+ * The diagnoses after the main one on one line, in the doctor's order:
+ * «M54.2 · Цервикалгия; G44.2 · Головная боль напряжённого типа». Empty
+ * when there are none. The history lists show it under the main diagnosis.
+ */
+export function formatAdditionalDiagnoses(value: unknown): string {
+  return parseAdditionalDiagnoses(value)
+    .map((d) => formatVisitDiagnosis(d))
+    .filter(Boolean)
+    .join("; ");
+}

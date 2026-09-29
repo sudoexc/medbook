@@ -5,6 +5,8 @@ import { StethoscopeIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/atoms/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+
+import { AdditionalDiagnosesLine } from "../../_components/additional-diagnoses-line";
 import {
   flattenVisits,
   useDoctorPatientVisits,
@@ -35,7 +37,8 @@ function longDate(iso: string): string {
  *
  * Surfaces `VisitNote.diagnosisCode/diagnosisName` from the latest COMPLETED
  * visit that actually carries a diagnosis (the most recent visit may have no
- * note yet). Same shared `useDoctorPatientVisits` source as the visits list.
+ * note yet), with that visit's other diagnoses under it. Same shared
+ * `useDoctorPatientVisits` source as the visits list.
  */
 export function LastDiagnosisCard({ patientId }: { patientId: string }) {
   const t = useTranslations("doctor.reception");
@@ -100,6 +103,10 @@ export function LastDiagnosisCard({ patientId }: { patientId: string }) {
         ) : null}{" "}
         {withDiagnosis.diagnosisName ?? ""}
       </div>
+      <AdditionalDiagnosesLine
+        diagnoses={withDiagnosis.additionalDiagnoses}
+        className="mt-1 break-words"
+      />
 
       <div className="mt-3 space-y-1.5 text-xs">
         <Row label={t("lastDiagnosis.establishedLabel")} value={longDate(withDiagnosis.date)} />

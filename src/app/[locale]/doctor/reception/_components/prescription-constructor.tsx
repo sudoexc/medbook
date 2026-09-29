@@ -373,7 +373,9 @@ export function PrescriptionConstructor({
           : "rounded-xl border border-border bg-background px-2.5 py-2",
       )}
     >
-      <div className="flex items-center justify-between gap-2">
+      {/* Wraps: when the card is narrow the buttons move to their own line
+          instead of pushing «Свой препарат» out past the card's edge. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
         <div className={cn("inline-flex items-center", standalone ? "gap-2" : "gap-1.5")}>
           <span
             className={cn(
@@ -406,7 +408,7 @@ export function PrescriptionConstructor({
             disabled={disabled}
             onClick={onOpenCatalog}
             className={cn(
-              "inline-flex items-center gap-1 rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50",
+              "inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50",
               standalone ? "h-7 px-2 text-xs" : "h-6 px-1.5 text-[11px]",
             )}
             title={t("structured.catalogTitle")}
@@ -419,7 +421,7 @@ export function PrescriptionConstructor({
             disabled={disabled || customOpen}
             onClick={() => setCustomOpen(true)}
             className={cn(
-              "inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50",
+              "inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/30 bg-primary/5 font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50",
               standalone ? "h-7 px-2 text-xs" : "h-6 px-1.5 text-[11px]",
             )}
           >

@@ -1,6 +1,8 @@
 import { CalendarIcon, ClockIcon, SparklesIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
+import { visitDiagnosesOf, type VisitDiagnosis } from "@/lib/visit-diagnoses";
+
 type Note = {
   id: string;
   status: "DRAFT" | "FINALIZED";
@@ -8,6 +10,8 @@ type Note = {
   finalizedAt: string | null;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The diagnoses after the main one, in the doctor's order. */
+  additionalDiagnoses: VisitDiagnosis[];
   complaints: string[];
   anamnesis: string[];
   examination: string[];
@@ -51,6 +55,9 @@ function hhmm(iso: string): string {
 export async function VisitNoteReadOnly({ note }: { note: Note }) {
   const t = await getTranslations("doctor.visits");
   const appt = note.appointment;
+  // Saving settles the set so the main one is always first; reading it by
+  // position keeps every diagnosis on screen even for a hand-made row.
+  const [main = null, ...others] = visitDiagnosesOf(note);
   return (
     <article className="flex flex-col gap-4">
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
@@ -82,20 +89,42 @@ export async function VisitNoteReadOnly({ note }: { note: Note }) {
         </div>
       </section>
 
-      {(note.diagnosisCode || note.diagnosisName) && (
+      {/* Every diagnosis of the visit: the main one as before, the others
+          (up to three since 29.09.2026) under a «Сопутствующие» label, so
+          the page reads the whole set the doctor signed. */}
+      {main && (
         <Block title={t("note.diagnosisIcd10")}>
           <div className="flex items-baseline gap-2">
-            {note.diagnosisCode && (
+            {main.code && (
               <span className="font-mono text-base font-bold text-primary">
-                {note.diagnosisCode}
+                {main.code}
               </span>
             )}
-            {note.diagnosisName && (
-              <span className="text-sm text-foreground">
-                {note.diagnosisName}
-              </span>
+            {main.name && main.name !== main.code && (
+              <span className="text-sm text-foreground">{main.name}</span>
             )}
           </div>
+          {others.length > 0 && (
+            <div className="mt-3">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("note.additionalDiagnoses")}
+              </div>
+              <ul className="flex flex-col gap-1">
+                {others.map((d, i) => (
+                  <li key={i} className="flex items-baseline gap-2">
+                    {d.code && (
+                      <span className="font-mono text-sm font-semibold text-foreground">
+                        {d.code}
+                      </span>
+                    )}
+                    {d.name && d.name !== d.code && (
+                      <span className="text-sm text-foreground">{d.name}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Block>
       )}
 

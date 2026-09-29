@@ -20,6 +20,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
+import type { VisitDiagnosis } from "@/lib/visit-diagnoses";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
+
+import { AdditionalDiagnosesLine } from "../../../_components/additional-diagnoses-line";
 
 const RU_MONTHS_FULL = [
   "янв.",
@@ -70,6 +73,8 @@ type VisitRow = {
   serviceName: string | null;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The visit's diagnoses after the main one, in order (up to three). */
+  additionalDiagnoses?: VisitDiagnosis[];
   prescriptions: string[];
   advice: string[];
   hasVisitNote: boolean;
@@ -364,6 +369,10 @@ function TableCard({
                         <div className="text-xs text-muted-foreground">
                           {v.diagnosisName ?? ""}
                         </div>
+                        <AdditionalDiagnosesLine
+                          diagnoses={v.additionalDiagnoses}
+                          className="mt-1 break-words"
+                        />
                       </>
                     ) : (
                       <div className="text-xs text-muted-foreground">

@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_ADDITIONAL_DIAGNOSES,
+  formatAdditionalDiagnoses,
   formatVisitDiagnosis,
   normalizeNoteDiagnoses,
   parseAdditionalDiagnoses,
@@ -171,6 +172,19 @@ describe("reading order", () => {
     expect(formatVisitDiagnosis(TENSION)).toBe("G44.2 · Головная боль напряжённого типа");
     expect(formatVisitDiagnosis(TBI)).toBe("Последствия ЧМТ");
     expect(formatVisitDiagnosis({ code: "M54.2", name: "M54.2" })).toBe("M54.2");
+  });
+
+  it("the others on one line for the history lists, in the doctor's order", () => {
+    expect(formatAdditionalDiagnoses(note.additionalDiagnoses)).toBe(
+      "G44.2 · Головная боль напряжённого типа; Последствия ЧМТ; M54.2 · Цервикалгия",
+    );
+    // A visit with one diagnosis, and an older note without the column.
+    expect(formatAdditionalDiagnoses([])).toBe("");
+    expect(formatAdditionalDiagnoses(undefined)).toBe("");
+    // The stored JSON is read defensively: a broken entry is skipped.
+    expect(formatAdditionalDiagnoses([{ code: 7 }, null, CERVICALGIA])).toBe(
+      "M54.2 · Цервикалгия",
+    );
   });
 });
 

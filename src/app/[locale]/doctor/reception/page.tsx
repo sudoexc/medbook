@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { ArrowLeftIcon } from "lucide-react";
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
+
 import { ActiveAIRail } from "./_components/active-ai-rail";
 import { ActivePatientCard } from "./_components/active-patient-card";
 import { SessionTabContent } from "./_components/session-tab-content";
@@ -48,9 +50,13 @@ export default async function ReceptionPage({
           <VisitActionBar />
         </div>
 
-        <div className="hidden xl:block">
-          <ActiveAIRail />
-        </div>
+        {/* The rail renders nothing while AI is paused, but its empty
+            wrapper still took a flex gap from the visit columns. */}
+        {AI_ENABLED && (
+          <div className="hidden xl:block">
+            <ActiveAIRail />
+          </div>
+        )}
       </div>
     </ReceptionProvider>
   );

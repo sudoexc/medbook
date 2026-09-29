@@ -13,6 +13,7 @@ import {
 
 import { cn } from "@/lib/utils";
 
+import { AdditionalDiagnosesLine } from "../../_components/additional-diagnoses-line";
 import {
   flattenList,
   useConclusionsList,
@@ -196,6 +197,12 @@ function ConclusionRowItem({ row, locale }: { row: ConclusionRow; locale: string
               tr("noDiagnosis")
             )}
           </div>
+          {/* A search by one of the other diagnoses finds the conclusion
+              too, so the row shows why it matched. */}
+          <AdditionalDiagnosesLine
+            diagnoses={row.additionalDiagnoses}
+            className="truncate"
+          />
         </div>
         <div className="hidden text-xs tabular-nums text-muted-foreground sm:inline">
           {formatted}

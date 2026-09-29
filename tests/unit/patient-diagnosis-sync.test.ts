@@ -16,6 +16,9 @@
  *   6. A visit with several diagnoses (29.09.2026): each one follows onto
  *      the card the same way, and another note's additional diagnosis
  *      counts as «carried elsewhere».
+ *   7. A resolved row says «исправлен на X» only when one diagnosis was
+ *      swapped for another. A note of two losing one, or its main one with
+ *      the other promoted, says «убран»: X was signed all along.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,6 +57,10 @@ const db = {
   rows: [] as Dx[],
   notes: [] as SignedNote[],
   seq: 0,
+  // What each note last signed, handed back as `previousDiagnoses` the way
+  // the PATCH (its state before the edit) and finalize (the latest
+  // revision) do.
+  signed: new Map<string, Record<string, unknown>>(),
 };
 
 function matches(row: Record<string, unknown>, where: Record<string, unknown>): boolean {
@@ -124,17 +131,24 @@ async function sign(
   noteId = "vn_1",
   additionalDiagnoses: Array<{ code: string | null; name: string }> = [],
 ) {
-  return syncPatientDiagnosisWithNote(tx as never, {
+  const res = await syncPatientDiagnosisWithNote(tx as never, {
     clinicId: "c1",
     patientId: "p1",
     visitNoteId: noteId,
     diagnosisCode: code,
     diagnosisName: name,
     additionalDiagnoses,
+    previousDiagnoses: signedBefore ? (db.signed.get(noteId) ?? null) : null,
     now: NOW,
     signedBefore,
     ctx: { kind: "TENANT", clinicId: "c1", userId: "u_doc", role: "DOCTOR" },
   });
+  db.signed.set(noteId, {
+    diagnosisCode: code,
+    diagnosisName: name,
+    additionalDiagnoses,
+  });
+  return res;
 }
 
 const active = () =>
@@ -144,6 +158,7 @@ beforeEach(() => {
   db.rows = [];
   db.notes = [];
   db.seq = 0;
+  db.signed.clear();
   h.published = [];
 });
 
@@ -319,6 +334,102 @@ describe("a visit with several diagnoses", () => {
     expect(db.rows).toHaveLength(2);
   });
 
+  it("an additional diagnosis removed from a note of two says removed, not «исправлен на» the main one", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [CERVICALGIA]);
+    await sign("G43.0", "Мигрень без ауры", true, "vn_1", []);
+    expect(active()).toEqual(["G43.0"]);
+    const gone = db.rows.find((r) => r.icd10Code === "M54.2")!;
+    expect(gone.status).toBe("RESOLVED");
+    expect(gone.notes).toContain("убран из заключения");
+    expect(gone.notes).not.toContain("исправлен на");
+  });
+
+  it("the main one removed and the other promoted: the old main one says removed", async () => {
+    await sign("G43.0", "Мигрень без ауры", false, "vn_1", [CERVICALGIA]);
+    await sign(CERVICALGIA.code, CERVICALGIA.name, true, "vn_1", []);
+    expect(active()).toEqual(["M54.2"]);
+    const gone = db.rows.find((r) => r.icd10Code === "G43.0")!;
+    expect(gone.status).toBe("RESOLVED");
+    expect(gone.notes).toContain("убран из заключения");
+    expect(gone.notes).not.toContain("исправлен на M54.2");
+  });
+
+  it("one diagnosis swapped for another still names what replaced it", async () => {
+    db.rows.push({
+      id: "dx_old",
+      clinicId: "c1",
+      patientId: "p1",
+      icd10Code: "M54.2",
+      label: "Цервикалгия",
+      status: "RESOLVED",
+      notes: null,
+      diagnosedAt: null,
+      sourceVisitNoteId: null,
+    });
+    await sign("G43.0", "Мигрень без ауры", false);
+    await sign(CERVICALGIA.code, CERVICALGIA.name, true);
+    expect(db.rows.find((r) => r.icd10Code === "G43.0")!.notes).toContain(
+      "исправлен на M54.2",
+    );
+  });
+
+  it("an earlier set that is not on record makes no claim", async () => {
+    db.rows.push({
+      id: "dx_old",
+      clinicId: "c1",
+      patientId: "p1",
+      icd10Code: "G44.2",
+      label: TENSION.name,
+      status: "RESOLVED",
+      notes: null,
+      diagnosedAt: null,
+      sourceVisitNoteId: null,
+    });
+    await sign("G43.0", "Мигрень без ауры", false);
+    db.signed.delete("vn_1");
+    await sign(TENSION.code, TENSION.name, true);
+    const gone = db.rows.find((r) => r.icd10Code === "G43.0")!;
+    expect(gone.status).toBe("RESOLVED");
+    expect(gone.notes).toContain("убран из заключения");
+  });
+
+  it("a row that was not the swapped diagnosis says removed", async () => {
+    // M54.2 stayed active on this note's row while another visit carried
+    // it; that visit no longer does, and this note swaps G43.0 for G44.2.
+    db.rows.push(
+      {
+        id: "dx_g44",
+        clinicId: "c1",
+        patientId: "p1",
+        icd10Code: "G44.2",
+        label: TENSION.name,
+        status: "RESOLVED",
+        notes: null,
+        diagnosedAt: null,
+        sourceVisitNoteId: null,
+      },
+      {
+        id: "dx_m54",
+        clinicId: "c1",
+        patientId: "p1",
+        icd10Code: "M54.2",
+        label: CERVICALGIA.name,
+        status: "ACTIVE",
+        notes: null,
+        diagnosedAt: null,
+        sourceVisitNoteId: "vn_1",
+      },
+    );
+    await sign("G43.0", "Мигрень без ауры", false);
+    await sign(TENSION.code, TENSION.name, true);
+    expect(db.rows.find((r) => r.id === "dx_m54")!.notes).toContain(
+      "убран из заключения",
+    );
+    expect(db.rows.find((r) => r.icd10Code === "G43.0")!.notes).toContain(
+      "исправлен на G44.2",
+    );
+  });
+
   it("a duplicate of the main one is one row", async () => {
     await sign("G43.0", "Мигрень без ауры", false, "vn_1", [
       { code: "G43.0", name: "Мигрень" },
@@ -349,5 +460,9 @@ describe("the PATCH route", () => {
       "utf8",
     );
     expect(fin).toContain("signedBefore: note.firstFinalizedAt != null");
+    // Both hand over the set signed before, so a resolved row is worded by
+    // what really happened.
+    expect(src).toContain("previousDiagnoses: beforeDiagnoses,");
+    expect(fin).toMatch(/previousDiagnoses: note\.firstFinalizedAt\s+\? \(\(previous\?\.content/);
   });
 });

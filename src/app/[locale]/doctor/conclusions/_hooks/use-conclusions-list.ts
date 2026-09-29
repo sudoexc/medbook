@@ -9,6 +9,8 @@ export type ConclusionRow = {
   finalizedAt: string | null;
   diagnosisCode: string | null;
   diagnosisName: string | null;
+  /** The diagnoses after the main one, as stored (read with parseAdditionalDiagnoses). */
+  additionalDiagnoses?: unknown;
   updatedAt: string;
   patient: { id: string; fullName: string };
   appointment: { id: string; date: string; status: string };

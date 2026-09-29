@@ -16,8 +16,7 @@ import { ChevronDownIcon, FileTextIcon, Loader2Icon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
-  formatVisitDiagnosis,
-  parseAdditionalDiagnoses,
+  formatAdditionalDiagnoses,
   type VisitDiagnosis,
 } from "@/lib/visit-diagnoses";
 import {
@@ -156,11 +155,9 @@ export function RevisionsSection({
               .filter((v) => Boolean(v && v.trim()))
               .join(" · ");
             // The others signed with it, after the main one.
-            const additionalDiagnoses = parseAdditionalDiagnoses(
+            const additionalDiagnoses = formatAdditionalDiagnoses(
               c.additionalDiagnoses,
-            )
-              .map((d) => formatVisitDiagnosis(d))
-              .join("; ");
+            );
             const rxLines = [
               ...(c.visitPrescriptions ?? []).map((row) =>
                 formatPrescriptionLine(row, rxLocale),

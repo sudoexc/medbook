@@ -375,6 +375,36 @@ describe("the visit screen layout", () => {
     expect(middle).toContain("diagnoses={visitDiagnosesOf(note)}");
   });
 
+  it("three columns only from 2xl, so «Назначения» is never narrower than the old left column", () => {
+    // Fixed side tracks fill before the middle one; with the 240px sidebar
+    // three columns at xl left the middle about 300px on a 1366 laptop.
+    const grid = session.match(/<div className="(grid grid-cols-1[^"]*)">/)![1]!;
+    const threeTracks = grid
+      .split(/\s+/)
+      .filter((c) => /grid-cols-\[[^\]]*_[^\]]*_[^\]]*\]/.test(c));
+    expect(threeTracks).toEqual([
+      "2xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)_minmax(0,300px)]",
+    ]);
+    expect(grid).toContain("xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]");
+    // The middle keeps spanning both rows until the third column exists.
+    expect(session).toMatch(/lg:row-span-2[^"]*2xl:row-span-1/);
+    expect(grid).toContain("2xl:grid-rows-none");
+    expect(grid).not.toMatch(/(^|\s)xl:grid-rows-none/);
+  });
+
+  it("the paused AI rail leaves no empty column behind", () => {
+    const page = read("reception/page.tsx");
+    expect(page).toMatch(/\{AI_ENABLED && \(\s*<div className="hidden xl:block">\s*<ActiveAIRail \/>/);
+  });
+
+  it("the «Назначения» header wraps instead of pushing its buttons out of the card", () => {
+    const rx = read("reception/_components/prescription-constructor.tsx");
+    expect(rx).toContain(
+      '<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">',
+    );
+    expect(rx.match(/inline-flex items-center gap-1 whitespace-nowrap rounded-md/g)).toHaveLength(2);
+  });
+
   it("the editor leaves room for «Назначения» on a 1080p screen", () => {
     const editor = read("reception/_components/notes-editor-panel.tsx");
     expect(editor).not.toContain("min-h-[640px]");
@@ -386,6 +416,28 @@ describe("the visit screen layout", () => {
     const lineSpan = rx.slice(rx.indexOf("Wrapped, never cut"));
     expect(lineSpan.slice(0, 400)).toContain("break-words");
     expect(rx).not.toMatch(/truncate text-xs font-medium text-foreground">\s*\{line\}/);
+  });
+
+  it("the history views show every diagnosis of a visit, not only the main one", () => {
+    const readers: Array<[string, string]> = [
+      ["reception/_components/diagnosis-history-card.tsx", "d.additionalDiagnoses"],
+      ["reception/_components/last-diagnosis-card.tsx", "withDiagnosis.additionalDiagnoses"],
+      ["patients/[id]/_components/visits-section.tsx", "v.additionalDiagnoses"],
+      ["visits/[patientId]/_components/visits-list.tsx", "v.additionalDiagnoses"],
+      ["conclusions/_components/conclusions-list.tsx", "row.additionalDiagnoses"],
+    ];
+    for (const [file, prop] of readers) {
+      expect(read(file), file).toMatch(
+        new RegExp(`<AdditionalDiagnosesLine\\s+diagnoses=\\{${prop.replace(".", "\\.")}\\}`),
+      );
+    }
+    // The read-only visit page loads the column and lists the others.
+    const page = read("visits/[patientId]/[visitId]/page.tsx");
+    expect(page).toContain("additionalDiagnoses: true,");
+    expect(page).toMatch(/additionalDiagnoses: parseAdditionalDiagnoses\(\s*data\.note\.additionalDiagnoses/);
+    const readonly = read("visits/[patientId]/[visitId]/_components/visit-note-readonly.tsx");
+    expect(readonly).toContain("visitDiagnosesOf(note)");
+    expect(readonly).toContain('t("note.additionalDiagnoses")');
   });
 
   it("the conclusion page uses the same card, without protocols", () => {

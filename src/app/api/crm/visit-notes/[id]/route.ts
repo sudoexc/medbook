@@ -410,6 +410,7 @@ export const PATCH = createApiHandler(
           diagnosisCode: row.diagnosisCode,
           diagnosisName: row.diagnosisName,
           additionalDiagnoses: parseAdditionalDiagnoses(row.additionalDiagnoses),
+          previousDiagnoses: beforeDiagnoses,
           now: new Date(),
           signedBefore: true,
           ctx,

@@ -11,6 +11,7 @@ import { auth } from "@/lib/auth";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 
 import { VisitNoteReadOnly } from "./_components/visit-note-readonly";
 import { PrintVisitButton } from "./_components/print-visit-button";
@@ -64,6 +65,7 @@ export default async function VisitDetailPage({
           finalizedAt: true,
           diagnosisCode: true,
           diagnosisName: true,
+          additionalDiagnoses: true,
           complaints: true,
           anamnesis: true,
           examination: true,
@@ -151,6 +153,9 @@ export default async function VisitDetailPage({
             : null,
           diagnosisCode: data.note.diagnosisCode,
           diagnosisName: data.note.diagnosisName,
+          additionalDiagnoses: parseAdditionalDiagnoses(
+            data.note.additionalDiagnoses,
+          ),
           complaints: data.note.complaints,
           anamnesis: data.note.anamnesis,
           examination: data.note.examination,

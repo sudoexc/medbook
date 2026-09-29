@@ -46,6 +46,7 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { useRevealOnOpen } from "@/hooks/use-reveal-on-open";
 import { matchedBrand } from "@/lib/catalogs/brand-match";
 import {
   normalizeForms,
@@ -207,6 +208,10 @@ export function PrescriptionConstructor({
   // The shortlist: what he prescribes, then the clinic's core list. Anything
   // already on this visit is left out — re-offering what is on screen is noise.
   const shortlistQuery = useDrugShortlist(!disabled && shortlist);
+  const shortOpen = focused && shortlist && query.trim().length < 2;
+  const hitsOpen = focused && query.trim().length >= 2;
+  const shortListRef = useRevealOnOpen<HTMLDivElement>(shortOpen);
+  const hitsListRef = useRevealOnOpen<HTMLUListElement>(hitsOpen);
   const { pinned: pinnedDrugs, toggle: togglePinnedDrug } =
     useDoctorFavorites("DRUG");
   const onScreen = React.useMemo(
@@ -460,8 +465,13 @@ export function PrescriptionConstructor({
               standalone ? "h-9 text-sm" : "h-8 text-xs",
             )}
           />
-          {focused && shortlist && query.trim().length < 2 && (
-            <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-96 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
+          {/* z-40 and scroll-mb: above the sticky «Завершить приём» bar (z-30)
+              and scrolled clear of it (useRevealOnOpen). */}
+          {shortOpen && (
+            <div
+              ref={shortListRef}
+              className="absolute left-0 right-0 top-full z-40 mt-1 max-h-96 scroll-mb-28 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md"
+            >
               {mine.length > 0 && (
                 <ShortSection title={t("rx.shortMine")}>
                   {mine.map((item) => (
@@ -588,8 +598,11 @@ export function PrescriptionConstructor({
                 )}
             </div>
           )}
-          {focused && query.trim().length >= 2 && (
-            <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
+          {hitsOpen && (
+            <ul
+              ref={hitsListRef}
+              className="absolute left-0 right-0 top-full z-40 mt-1 max-h-80 scroll-mb-28 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md"
+            >
               {hits.map((d) => (
                 <li key={d.id}>
                   <button

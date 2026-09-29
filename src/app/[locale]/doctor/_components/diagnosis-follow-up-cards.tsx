@@ -45,6 +45,7 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { useRevealOnOpen } from "@/hooks/use-reveal-on-open";
 import { parseCodeNameQuery } from "@/lib/icd10-query";
 import { visitDiagnosesOf, visitDiagnosisKey } from "@/lib/visit-diagnoses";
 
@@ -694,6 +695,10 @@ function DiagnosisSearch({
     const key = visitDiagnosisKey(r);
     return !key || !exclude.has(key);
   });
+  const shortOpen = focused && query.trim().length < 2 && shortRows.length > 0;
+  const hitsOpen = focused && query.trim().length >= 2;
+  const shortListRef = useRevealOnOpen<HTMLDivElement>(shortOpen);
+  const hitsListRef = useRevealOnOpen<HTMLUListElement>(hitsOpen);
   const rows = hits.data ?? [];
 
   const choose = (code: string | null, name: string | null) => {
@@ -747,8 +752,13 @@ function DiagnosisSearch({
             big ? "h-10 text-[15px]" : "h-9 text-sm",
           )}
         />
-        {focused && query.trim().length < 2 && shortRows.length > 0 && (
-          <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
+        {/* Same layering as the prescription picker: above the sticky
+            action bar and scrolled clear of it. */}
+        {shortOpen && (
+          <div
+            ref={shortListRef}
+            className="absolute left-0 right-0 top-full z-40 mt-1 max-h-80 scroll-mb-28 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md"
+          >
             <p className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {t("diagnosis.shortMine")}
             </p>
@@ -815,8 +825,11 @@ function DiagnosisSearch({
             </ul>
           </div>
         )}
-        {focused && query.trim().length >= 2 && (
-          <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
+        {hitsOpen && (
+          <ul
+            ref={hitsListRef}
+            className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 scroll-mb-28 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md"
+          >
             {rows.map((r) => (
               // A learned wording without a code has code "": several of
               // them would share a key (audit CT-05).

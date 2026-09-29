@@ -45,7 +45,8 @@ export function ActiveAIRail() {
 function ActiveAIRailInner() {
   const t = useTranslations("doctor.reception");
   const { activeAppointment, visitNoteId, bumpBodyInject } = useReceptionContext();
-  const note = useVisitNote(visitNoteId).data ?? null;
+  const noteQuery = useVisitNote(visitNoteId);
+  const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
   const patientId = activeAppointment?.patient.id ?? null;
 
@@ -92,7 +93,11 @@ function ActiveAIRailInner() {
         diagnosisName: s.nameRu,
       });
     } catch {
-      // toast handled by global error boundary in app shell
+      // toast handled by global error boundary in app shell. The main
+      // diagnosis is written into the cache before the request leaves (it
+      // travels with the list of the others), so a refused pick is put back
+      // to server truth instead of staying on screen unsaved.
+      void noteQuery.refetch();
     }
   };
 

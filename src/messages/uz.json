@@ -6324,7 +6324,18 @@
         "requiredMark": "majburiy",
         "searchPlaceholderTap": "Tez-tez qo‘yiladigan tashxislar yoki MKB-10 bo‘yicha qidiruv…",
         "shortMine": "Men tez-tez qo‘yadigan tashxislar",
-        "shortCount": "Bir yilda {n} marta qo‘yilgan"
+        "shortCount": "Bir yilda {n} marta qo‘yilgan",
+        "main": "Asosiy",
+        "additional": "Yondosh",
+        "add": "Tashxis",
+        "addTitle": "Yana bitta tashxis qo‘shish (jami {max} tagacha)",
+        "count": "{max} tadan {n} ta",
+        "addPlaceholder": "Yana tashxis: tez-tez qo‘yiladiganlar yoki MKB-10 bo‘yicha qidiruv…",
+        "cancelAdd": "Qidiruvni yopish",
+        "makeMain": "Asosiy qilish",
+        "remove": "Tashxisni olib tashlash",
+        "alreadyAdded": "Bu tashxis qabulda allaqachon bor",
+        "full": "Bir qabulda {max} tadan ortiq tashxis bo‘lmaydi"
       },
       "guide": {
         "title": "Bilimlar bazasi",

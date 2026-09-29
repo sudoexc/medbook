@@ -4,9 +4,8 @@
  * Phase G4 — CDS warnings panel.
  *
  * Renders the warnings returned by `useCdsDrugCheck`, grouped by severity
- * and colour-coded. Sits between the prescriptions chip field and the next
- * structured field so the doctor sees red bars the moment a risky combo
- * lands in the basket.
+ * and colour-coded. Sits inside the «Назначения» card, under the rows, so
+ * the doctor sees red bars the moment a risky combo lands in the basket.
  *
  * Phase G8 — each warning row gets a "Я учёл" affordance that opens a
  * reason picker and POSTs a CdsOverride row. Once an override is recorded

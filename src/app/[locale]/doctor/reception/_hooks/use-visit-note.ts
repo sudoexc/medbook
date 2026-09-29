@@ -226,9 +226,9 @@ const patchFailures = new Map<string, number>();
  * of on the render snapshot: «ввёл дозу, кликнул „Утро“» used to send the
  * second PATCH with the old dose, and the server applied it last.
  *
- * Deliberately not the text fields: the conclusion editor keys its
- * «unsaved» state off the cached text, and an optimistic write there would
- * make a failed first save look saved.
+ * Deliberately not the text the editors autosave: the conclusion editor
+ * keys its «unsaved» state off the cached text, and an optimistic write
+ * there would make a failed first save look saved.
  */
 export const OPTIMISTIC_FIELDS = [
   "visitPrescriptions",
@@ -237,6 +237,12 @@ export const OPTIMISTIC_FIELDS = [
   // Replace-all like the lists above: a second diagnosis added before the
   // first one's save answers must be added to the list that holds the first.
   "additionalDiagnoses",
+  // The main diagnosis travels with that list: the card sends the whole set
+  // on every action («сделать основным» swaps the main one into the list and
+  // back). Were the main one written only on the answer, a removal right
+  // after a promotion would compose on the old main one and bring it back.
+  "diagnosisCode",
+  "diagnosisName",
 ] as const;
 type OptimisticField = (typeof OPTIMISTIC_FIELDS)[number];
 
@@ -281,6 +287,8 @@ export function foldPatchIntoRow(
   if (patch.additionalDiagnoses !== undefined) {
     next.additionalDiagnoses = patch.additionalDiagnoses;
   }
+  if (patch.diagnosisCode !== undefined) next.diagnosisCode = patch.diagnosisCode;
+  if (patch.diagnosisName !== undefined) next.diagnosisName = patch.diagnosisName;
   if (patch.visitPrescriptions !== undefined) {
     const before = prev.visitPrescriptions ?? [];
     next.visitPrescriptions = patch.visitPrescriptions.map((draft, i) => ({

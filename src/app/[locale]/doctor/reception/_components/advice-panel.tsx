@@ -17,8 +17,9 @@ const MAX_LINES = 40;
 
 /**
  * «Рекомендации» — the third column of the visit screen, added on the
- * clinic's request: prescriptions and diagnosis live on the left, the
- * conclusion text in the middle, patient-facing advice on the right.
+ * clinic's request: diagnosis and control visit live on the left, the
+ * conclusion text with prescriptions under it in the middle, patient-facing
+ * advice on the right.
  *
  * Advice lines are already load-bearing downstream: the printed conclusion
  * renders them, and the auto-composed «Памятка пациенту» includes them when

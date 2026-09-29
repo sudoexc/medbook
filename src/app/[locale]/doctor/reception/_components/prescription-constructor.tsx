@@ -145,6 +145,11 @@ type Props = {
   standalone?: boolean;
   /** Shared save-in-flight flag for the header spinner (standalone hosts). */
   saving?: boolean;
+  /**
+   * Rendered inside the card under the rows: the visit screen puts the
+   * interaction check there, so a warning sits with the drugs it is about.
+   */
+  footer?: React.ReactNode;
 };
 
 export function PrescriptionConstructor({
@@ -160,6 +165,7 @@ export function PrescriptionConstructor({
   catalogPickRef,
   standalone,
   saving,
+  footer,
 }: Props) {
   const t = useTranslations("doctor.reception");
   const rawLocale = useLocale();
@@ -368,9 +374,14 @@ export function PrescriptionConstructor({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="inline-flex items-center gap-1.5">
-          <span className="inline-flex size-5 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            <PillIcon className="size-3" />
+        <div className={cn("inline-flex items-center", standalone ? "gap-2" : "gap-1.5")}>
+          <span
+            className={cn(
+              "inline-flex items-center justify-center bg-muted text-muted-foreground",
+              standalone ? "size-7 rounded-lg" : "size-5 rounded-md",
+            )}
+          >
+            <PillIcon className={standalone ? "size-4" : "size-3"} />
           </span>
           <span
             className={cn(
@@ -394,7 +405,10 @@ export function PrescriptionConstructor({
             type="button"
             disabled={disabled}
             onClick={onOpenCatalog}
-            className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50",
+              standalone ? "h-7 px-2 text-xs" : "h-6 px-1.5 text-[11px]",
+            )}
             title={t("structured.catalogTitle")}
           >
             <BookOpenIcon className="size-3" />
@@ -404,7 +418,10 @@ export function PrescriptionConstructor({
             type="button"
             disabled={disabled || customOpen}
             onClick={() => setCustomOpen(true)}
-            className="inline-flex h-6 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50",
+              standalone ? "h-7 px-2 text-xs" : "h-6 px-1.5 text-[11px]",
+            )}
           >
             <PlusIcon className="size-3" />
             {t("rx.custom")}
@@ -416,7 +433,7 @@ export function PrescriptionConstructor({
           Empty field + focus → the doctor's shortlist. Typing → the whole
           catalog, with «add to the clinic's base» as the last resort. */}
       {!disabled && (
-        <div className="relative mt-1.5">
+        <div className={cn("relative", standalone ? "mt-3" : "mt-1.5")}>
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
@@ -436,7 +453,10 @@ export function PrescriptionConstructor({
             placeholder={
               shortlist ? t("rx.searchPlaceholderTap") : t("rx.searchPlaceholder")
             }
-            className="h-8 w-full rounded-lg border border-border bg-card pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className={cn(
+              "w-full rounded-lg border border-border bg-card pl-8 pr-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
+              standalone ? "h-9 text-sm" : "h-8 text-xs",
+            )}
           />
           {focused && shortlist && query.trim().length < 2 && (
             <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-96 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
@@ -682,12 +702,13 @@ export function PrescriptionConstructor({
 
       {/* ── Structured rows ── */}
       {rows.length > 0 && (
-        <ul className="mt-1.5 flex flex-col gap-1">
+        <ul className={cn("flex flex-col", standalone ? "mt-2 gap-1.5" : "mt-1.5 gap-1")}>
           {rows.map((row, i) => (
             <PrescriptionRowItem
               key={`${i}-${row.displayName}`}
               row={row}
               locale={locale}
+              large={!!standalone}
               disabled={disabled}
               expanded={expanded === i}
               onToggle={() => setExpanded(expanded === i ? null : i)}
@@ -734,6 +755,9 @@ export function PrescriptionConstructor({
           </div>
         </div>
       )}
+
+      {/* Empty when the check has nothing to say: then no gap either. */}
+      {footer ? <div className="mt-3 empty:hidden">{footer}</div> : null}
     </div>
   );
 }
@@ -919,6 +943,7 @@ function ShortRow({
 function PrescriptionRowItem({
   row,
   locale,
+  large,
   disabled,
   expanded,
   onToggle,
@@ -927,6 +952,8 @@ function PrescriptionRowItem({
 }: {
   row: VisitPrescriptionRow;
   locale: PrescriptionLocale;
+  /** The visit screen's wide card: the line in body size. */
+  large: boolean;
   disabled: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -953,7 +980,7 @@ function PrescriptionRowItem({
         expanded ? "border-primary/40" : "border-border",
       )}
     >
-      <div className="flex items-center gap-1.5 px-2 py-1.5">
+      <div className={cn("flex items-center gap-1.5 px-2", large ? "py-2" : "py-1.5")}>
         <button
           type="button"
           onClick={onToggle}
@@ -975,7 +1002,14 @@ function PrescriptionRowItem({
               className="size-7 shrink-0 rounded-md border border-border bg-white object-contain"
             />
           ) : null}
-          <span className="truncate text-xs font-medium text-foreground">
+          {/* Wrapped, never cut: the clinic read «Грандаксин 50 мг — по…»
+              and had to open the row to see the schedule (29.09.2026). */}
+          <span
+            className={cn(
+              "min-w-0 break-words font-medium leading-snug text-foreground",
+              large ? "text-sm" : "text-xs",
+            )}
+          >
             {line}
           </span>
           {!row.drugId && (

@@ -64,8 +64,11 @@ export function NotesEditorPanel() {
   // is auto-composed at finalize from the structured fields (diagnosis,
   // prescriptions, advice) — see finalize/route.ts. The doctor writes ONE
   // text: the clinical conclusion.
+  //
+  // 460px, not the old 640: «Назначения» now sits under this card, and its
+  // top must show on a 1080p screen without scrolling (29.09.2026).
   return (
-    <section className="flex min-h-[640px] flex-col overflow-hidden rounded-2xl border border-border bg-card">
+    <section className="flex min-h-[460px] flex-col overflow-hidden rounded-2xl border border-border bg-card">
       <div className="flex flex-1 flex-col">
         <ConclusionEditor />
       </div>
@@ -405,7 +408,7 @@ function ConclusionEditor() {
 
   // Live-предпросмотр листа: тот же print-роут в iframe (?embed=1 — без
   // панели печати и без audit-шума). key по updatedAt — превью само
-  // перерисовывается после каждого автосейва, в т.ч. правок в левой панели.
+  // перерисовывается после каждого автосейва, в т.ч. правок диагноза и назначений.
   const [view, setView] = React.useState<"edit" | "preview">("edit");
 
   const showPreview = React.useCallback(async () => {

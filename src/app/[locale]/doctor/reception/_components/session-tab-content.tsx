@@ -8,13 +8,17 @@ import { useReceptionContext } from "../_hooks/reception-context";
 import { AdvicePanel } from "./advice-panel";
 import { DiagnosisHistoryCard } from "./diagnosis-history-card";
 import { NotesEditorPanel } from "./notes-editor-panel";
-import { StructuredFieldsPanel } from "./structured-fields-panel";
+import {
+  DiagnosisFollowUpPanel,
+  PrescriptionsPanel,
+} from "./structured-fields-panel";
 
 /**
  * Tab-driven body of the reception page.
  *
- * - `session` (default) — the live consultation editor: structured fields on
- *   the left, the bodyMarkdown editor on the right.
+ * - `session` (default) — the live consultation: diagnosis and control
+ *   visit on the left, the conclusion editor with «Назначения» under it in
+ *   the middle, advice on the right.
  * - `history` / `documents` / `prescriptions` — read-only views of the
  *   active patient's chart, reusing the same doctor-scoped infinite queries
  *   from `/doctor/patients/[id]` so we don't fork two implementations.
@@ -29,15 +33,23 @@ export function SessionTabContent({ locale }: { locale: string }) {
   const patientId = activeAppointment?.patient.id ?? null;
 
   if (activeTab === "session") {
-    // Clinic-requested three-column flow: prescriptions/diagnosis on the
-    // left (prescriptions first — that's the clinic's working order), the
-    // conclusion editor in the middle, advice on the right. Below xl the
-    // advice panel drops under the left column rather than squeezing three
-    // columns into a laptop half-screen.
+    // Clinic-requested three-column flow, reworked 29.09.2026 («хаммаси
+    // бирлашиб ковоти»): the left column holds only «Диагноз» (up to four)
+    // and «Контрольный визит», larger; «Назначения» left it for a card of
+    // its own under the conclusion in the middle, where a prescription line
+    // fits whole; advice stays on the right.
+    //
+    // Below xl there is no third column: the middle spans two rows so advice
+    // drops under the short left column instead of under the tall middle
+    // one. On one column the order is the working order: diagnosis,
+    // control visit, conclusion, prescriptions, advice.
     return (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,300px)] xl:gap-5">
-        <StructuredFieldsPanel />
-        <NotesEditorPanel />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)_minmax(0,300px)] xl:grid-rows-none xl:gap-5">
+        <DiagnosisFollowUpPanel />
+        <div className="flex min-w-0 flex-col gap-4 lg:row-span-2 xl:row-span-1 xl:gap-5">
+          <NotesEditorPanel />
+          <PrescriptionsPanel />
+        </div>
         <AdvicePanel />
       </div>
     );

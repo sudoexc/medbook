@@ -495,19 +495,15 @@ export function ConclusionDetail({
               }
               onOpenCatalog={() => {}}
             />
+            {/* One to four diagnoses, exactly as on the visit screen: the
+                card sends the whole set on every change. Applying a whole
+                protocol is a visit-time action (it rewrites prescriptions and
+                appends template text) — out of scope for a correction, so no
+                protocol handler is passed and the card offers none. */}
             <DiagnosisCard
               note={note}
               disabled={!canEdit}
-              onChange={(code, name) =>
-                applyStructuredPatch({
-                  diagnosisCode: code,
-                  diagnosisName: name,
-                })
-              }
-              // Applying a whole protocol is a visit-time action (it rewrites
-              // prescriptions and appends template text) — out of scope for a
-              // correction, so the affordance is simply not offered.
-              onRequestApplyProtocol={() => {}}
+              onChange={applyStructuredPatch}
             />
             {(canEdit || note.followUpDays != null) && (
               <FollowUpCard

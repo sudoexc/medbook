@@ -1,7 +1,22 @@
 "use client";
 
+/**
+ * The structured half of the visit screen, as two panels in two columns
+ * (clinic request 29.09.2026, «хаммаси бирлашиб ковоти»):
+ *
+ *   - DiagnosisFollowUpPanel: «Диагноз» and «Контрольный визит», alone in the
+ *     left column so up to four diagnoses have room;
+ *   - PrescriptionsPanel: «Назначения» with its interaction check, a card of
+ *     its own under the conclusion editor in the middle column, wide enough
+ *     for a whole prescription line.
+ *
+ * They used to be one left-column stack, where a drug row was cut to
+ * «Грандаксин 50 мг — по…». Both panels save through the same loud-patch
+ * hook, so the failure behaviour cannot drift between them.
+ */
 import * as React from "react";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
 import { visitDiagnosesOf } from "@/lib/visit-diagnoses";
@@ -24,6 +39,7 @@ import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
 import { useQueryClient } from "@tanstack/react-query";
 import { visitNoteKey, type VisitNoteRow } from "../_hooks/use-visit-note";
 import { toPrescriptionDrafts } from "../_hooks/prescription-rows";
+import { hasDiagnosis, withDiagnosisPicked } from "../_hooks/diagnosis-list";
 // Diagnosis + follow-up cards are shared with the conclusions screen (the
 // 24h in-window correction flow) — see ../../_components.
 import {
@@ -55,26 +71,179 @@ function isBareClinicDrug(id: string | null | undefined): boolean {
   return !!id && id.startsWith("clinic-");
 }
 
-export function StructuredFieldsPanel() {
+/**
+ * The note as the doctor last left it. Every replace-all payload built here
+ * starts from this, not from the render snapshot: the cache already holds
+ * edits whose PATCH is still in flight (usePatchVisitNote writes them in at
+ * once), the snapshot does not, and a payload built on it would erase them
+ * (audit VW-01).
+ */
+function useLiveNote(note: VisitNoteRow | null) {
+  const qc = useQueryClient();
+  return React.useCallback(
+    (): VisitNoteRow | null =>
+      note ? (qc.getQueryData<VisitNoteRow>(visitNoteKey(note.id)) ?? note) : null,
+    [note, qc],
+  );
+}
+
+/** Left column: «Диагноз» (one to four) and «Контрольный визит». */
+export function DiagnosisFollowUpPanel() {
   const t = useTranslations("doctor.reception");
-  const {
-    visitNoteId,
-    requestBodyAppend,
-    requestBodyRemove,
-    activeAppointment,
-  } = useReceptionContext();
-  // Every card in this panel saves through the shared loud-patch hook:
-  // diagnosis, prescription rows (replace-all!), follow-up. See
-  // use-loud-patch.ts for the conflict/rollback contract — the advice
-  // column uses the same hook, so behaviour cannot drift between columns.
+  const { visitNoteId, requestBodyAppend } = useReceptionContext();
+  // Every card saves through the shared loud-patch hook — see
+  // use-loud-patch.ts for the conflict/rollback contract.
   const { note, isFinalized, applyPatch, patch } =
     useLoudVisitNotePatch(visitNoteId);
-  const qc = useQueryClient();
-  const presetsQuery = useDoctorPresets();
-  const [catalogOpen, setCatalogOpen] = React.useState(false);
+  const liveNote = useLiveNote(note);
   const [icdCatalogOpen, setIcdCatalogOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
+
+  // A protocol comes from the main diagnosis but fills the other columns
+  // too (prescriptions, advice, control visit, conclusion template), so it
+  // is applied here, where it is asked for.
+  const handleApplyProtocol = React.useCallback(
+    (protocol: ClinicalProtocolRow) => {
+      const live = liveNote();
+      if (!live || isFinalized) return;
+      const mergeUnique = (existing: string[], incoming: string[]) => {
+        const seen = new Set(existing);
+        const out = [...existing];
+        for (const item of incoming) {
+          if (!seen.has(item)) {
+            seen.add(item);
+            out.push(item);
+          }
+        }
+        return out;
+      };
+      const patch: VisitNotePatch = {};
+      // Ф3 — structured items append to the prescription constructor
+      // (dedup by name+dose so a double-apply is a no-op); the legacy
+      // free-text lines are the fallback for protocols that predate it.
+      const items = (protocol.prescriptionItems ?? []).map(protocolItemToDraft);
+      if (items.length > 0) {
+        const existing = toPrescriptionDrafts(live.visitPrescriptions ?? []);
+        const seen = new Set(existing.map((r) => `${r.displayName}|${r.dose}`));
+        const fresh = items.filter(
+          (r) => !seen.has(`${r.displayName}|${r.dose}`),
+        );
+        if (fresh.length > 0) {
+          patch.visitPrescriptions = [...existing, ...fresh];
+        }
+      } else {
+        patch.prescriptions = mergeUnique(
+          live.prescriptions ?? [],
+          protocol.prescriptionsTemplate,
+        );
+      }
+      // The apply-dialog previews the protocol's advice lines and the
+      // «Рекомендации» column sits on the same screen — leaving them
+      // unapplied read as a bug (review finding). Same merge semantics as
+      // prescriptions: dedup, never clobber what the doctor already wrote.
+      if ((protocol.adviceTemplate?.length ?? 0) > 0) {
+        const mergedAdvice = mergeUnique(
+          live.advice ?? [],
+          protocol.adviceTemplate,
+        );
+        if (mergedAdvice.length !== (live.advice ?? []).length) {
+          patch.advice = mergedAdvice;
+        }
+      }
+      // Ф6 — prefill the control visit from the protocol unless the doctor
+      // already set one by hand.
+      if (protocol.followUpDays != null && live.followUpDays == null) {
+        patch.followUpDays = protocol.followUpDays;
+      }
+      if (Object.keys(patch).length > 0) {
+        applyPatch(patch);
+      }
+      if (protocol.conclusionTemplateMd && protocol.conclusionTemplateMd.trim()) {
+        requestBodyAppend(protocol.conclusionTemplateMd);
+      }
+      setProtocolToApply(null);
+    },
+    [liveNote, isFinalized, applyPatch, requestBodyAppend],
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      {!note ? (
+        <section className="rounded-2xl border border-border bg-card p-4">
+          <h2 className="text-base font-semibold text-foreground">
+            {t("structured.title")}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {t("structured.empty")}
+          </p>
+        </section>
+      ) : (
+        <>
+          <DiagnosisCard
+            note={note}
+            disabled={isFinalized}
+            standalone
+            saving={patch.isPending}
+            onChange={applyPatch}
+            onRequestApplyProtocol={(p) => setProtocolToApply(p)}
+            onOpenCatalog={() => setIcdCatalogOpen(true)}
+          />
+          {(!isFinalized || note.followUpDays != null) && (
+            <FollowUpCard
+              note={note}
+              disabled={isFinalized}
+              standalone
+              onChange={applyPatch}
+            />
+          )}
+        </>
+      )}
+
+      <IcdCatalogDrawer
+        open={icdCatalogOpen}
+        onOpenChange={setIcdCatalogOpen}
+        onPick={(code, name) => {
+          // Same rule as a pick in the card's search: the main diagnosis
+          // while the visit has none, one more after that.
+          const live = liveNote();
+          const next = live ? withDiagnosisPicked(live, { code, name }) : null;
+          if (next) applyPatch(next);
+          else if (live && hasDiagnosis(live, { code, name })) {
+            toast.info(t("diagnosis.alreadyAdded"));
+          }
+          setIcdCatalogOpen(false);
+        }}
+      />
+
+      <ApplyProtocolDialog
+        open={!!protocolToApply}
+        onOpenChange={(next) => {
+          if (!next) setProtocolToApply(null);
+        }}
+        protocol={protocolToApply}
+        onApply={handleApplyProtocol}
+      />
+    </div>
+  );
+}
+
+/**
+ * Middle column, under the conclusion: «Назначения» as its own card, with
+ * the interaction check and «Записать аллергию» inside it, and the lines
+ * recognised in the conclusion text offered right below.
+ */
+export function PrescriptionsPanel() {
+  const { visitNoteId, requestBodyAppend, requestBodyRemove, activeAppointment } =
+    useReceptionContext();
+  // Prescription rows are replace-all: see use-loud-patch.ts for the
+  // conflict/rollback contract every column shares.
+  const { note, isFinalized, applyPatch, patch } =
+    useLoudVisitNotePatch(visitNoteId);
+  const qc = useQueryClient();
+  const liveNote = useLiveNote(note);
+  const presetsQuery = useDoctorPresets();
+  const [catalogOpen, setCatalogOpen] = React.useState(false);
 
   const presetsByField = React.useMemo(() => {
     const map: Partial<Record<PresetField, DoctorPresetRow[]>> = {};
@@ -118,19 +287,6 @@ export function StructuredFieldsPanel() {
       applyPatch({ visitPrescriptions: rows });
     },
     [applyPatch],
-  );
-
-  /**
-   * The note as the doctor last left it. Every replace-all payload built
-   * here starts from this, not from the render snapshot: the cache already
-   * holds edits whose PATCH is still in flight (usePatchVisitNote writes
-   * them in at once), the snapshot does not, and a payload built on it would
-   * erase them (audit VW-01).
-   */
-  const liveNote = React.useCallback(
-    (): VisitNoteRow | null =>
-      note ? (qc.getQueryData<VisitNoteRow>(visitNoteKey(note.id)) ?? note) : null,
-    [note, qc],
   );
 
   // A drawer pick goes through the constructor, like a search pick: a drug
@@ -184,70 +340,6 @@ export function StructuredFieldsPanel() {
     [mutateChips, requestBodyAppend],
   );
 
-  const handleApplyProtocol = React.useCallback(
-    (protocol: ClinicalProtocolRow) => {
-      const live = liveNote();
-      if (!live || isFinalized) return;
-      const mergeUnique = (existing: string[], incoming: string[]) => {
-        const seen = new Set(existing);
-        const out = [...existing];
-        for (const item of incoming) {
-          if (!seen.has(item)) {
-            seen.add(item);
-            out.push(item);
-          }
-        }
-        return out;
-      };
-      const patch: VisitNotePatch = {};
-      // Ф3 — structured items append to the prescription constructor
-      // (dedup by name+dose so a double-apply is a no-op); the legacy
-      // free-text lines are the fallback for protocols that predate it.
-      const items = (protocol.prescriptionItems ?? []).map(protocolItemToDraft);
-      if (items.length > 0) {
-        const existing = toPrescriptionDrafts(live.visitPrescriptions ?? []);
-        const seen = new Set(existing.map((r) => `${r.displayName}|${r.dose}`));
-        const fresh = items.filter(
-          (r) => !seen.has(`${r.displayName}|${r.dose}`),
-        );
-        if (fresh.length > 0) {
-          patch.visitPrescriptions = [...existing, ...fresh];
-        }
-      } else {
-        patch.prescriptions = mergeUnique(
-          live.prescriptions ?? [],
-          protocol.prescriptionsTemplate,
-        );
-      }
-      // The apply-dialog previews the protocol's advice lines and the
-      // «Рекомендации» column now sits right next to it — leaving them
-      // unapplied read as a bug (review finding). Same merge semantics as
-      // prescriptions: dedup, never clobber what the doctor already wrote.
-      if ((protocol.adviceTemplate?.length ?? 0) > 0) {
-        const mergedAdvice = mergeUnique(
-          live.advice ?? [],
-          protocol.adviceTemplate,
-        );
-        if (mergedAdvice.length !== (live.advice ?? []).length) {
-          patch.advice = mergedAdvice;
-        }
-      }
-      // Ф6 — prefill the control visit from the protocol unless the doctor
-      // already set one by hand.
-      if (protocol.followUpDays != null && live.followUpDays == null) {
-        patch.followUpDays = protocol.followUpDays;
-      }
-      if (Object.keys(patch).length > 0) {
-        applyPatch(patch);
-      }
-      if (protocol.conclusionTemplateMd && protocol.conclusionTemplateMd.trim()) {
-        requestBodyAppend(protocol.conclusionTemplateMd);
-      }
-      setProtocolToApply(null);
-    },
-    [liveNote, isFinalized, applyPatch, requestBodyAppend],
-  );
-
   const handleRemoveChip = React.useCallback(
     (def: FieldDef, chip: string) => {
       if (!mutateChips(def.key, (cur) => cur.filter((c) => c !== chip))) return;
@@ -265,67 +357,31 @@ export function StructuredFieldsPanel() {
     [mutateChips, presetsByField, requestBodyRemove],
   );
 
+  // No visit yet: the editor above already says so, a second empty card
+  // would only repeat it.
+  if (!note) return null;
+
   return (
     <div className="flex flex-col gap-4">
-      {!note ? (
-        <section className="rounded-2xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-foreground">
-            {t("structured.title")}
-          </h2>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("structured.empty")}
-          </p>
-        </section>
-      ) : (
-        <>
-          {/* Clinic's working order: diagnosis first as its own card, then
-              prescriptions as its own card — the conclusion sits in the
-              middle column, advice on the right. */}
-          <DiagnosisCard
-            note={note}
-            disabled={isFinalized}
-            standalone
-            saving={patch.isPending}
-            onChange={(code, name) =>
-              applyPatch({ diagnosisCode: code, diagnosisName: name })
-            }
-            onRequestApplyProtocol={(p) => setProtocolToApply(p)}
-            onOpenCatalog={() => setIcdCatalogOpen(true)}
-          />
-          <PrescriptionConstructor
-            note={note}
-            disabled={isFinalized}
-            standalone
-            saving={patch.isPending}
-            presets={presetsByField[RX_FIELD.presetField] ?? []}
-            onSaveRows={saveRxRows}
-            onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}
-            onAddLegacyLine={(line) => {
-              mutateChips(RX_FIELD.key, (cur) =>
-                cur.includes(line) ? cur : [...cur, line],
-              );
-            }}
-            onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
-            onOpenCatalog={() => setCatalogOpen(true)}
-            catalogPickRef={catalogPickRef}
-          />
-          <ParsedFromTextCard
-            key={note.id}
-            note={note}
-            disabled={isFinalized}
-            onAdopt={(drafts) => {
-              // Same lost-update guard as every other replace-all save:
-              // compose on the live cache row (the patch hook folds the
-              // result back in at once), so two quick «+» clicks both land.
-              const live = liveNote() ?? note;
-              applyPatch({
-                visitPrescriptions: [
-                  ...toPrescriptionDrafts(live.visitPrescriptions ?? []),
-                  ...drafts,
-                ],
-              });
-            }}
-          />
+      <PrescriptionConstructor
+        note={note}
+        disabled={isFinalized}
+        standalone
+        saving={patch.isPending}
+        presets={presetsByField[RX_FIELD.presetField] ?? []}
+        onSaveRows={saveRxRows}
+        onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}
+        onAddLegacyLine={(line) => {
+          mutateChips(RX_FIELD.key, (cur) =>
+            cur.includes(line) ? cur : [...cur, line],
+          );
+        }}
+        onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
+        onOpenCatalog={() => setCatalogOpen(true)}
+        catalogPickRef={catalogPickRef}
+        footer={
+          // The check reads every diagnosis of the visit, not only the main
+          // one: a comorbidity is where a contraindication usually hides.
           <CdsWarningsCard
             patientId={activeAppointment?.patient.id ?? null}
             prescriptions={cdsTextLines}
@@ -335,39 +391,30 @@ export function StructuredFieldsPanel() {
             appointmentId={activeAppointment?.id ?? null}
             visitNoteId={visitNoteId}
           />
-          {(!isFinalized || note.followUpDays != null) && (
-            <FollowUpCard
-              note={note}
-              disabled={isFinalized}
-              standalone
-              onChange={applyPatch}
-            />
-          )}
-        </>
-      )}
+        }
+      />
+      <ParsedFromTextCard
+        key={note.id}
+        note={note}
+        disabled={isFinalized}
+        onAdopt={(drafts) => {
+          // Same lost-update guard as every other replace-all save:
+          // compose on the live cache row (the patch hook folds the
+          // result back in at once), so two quick «+» clicks both land.
+          const live = liveNote() ?? note;
+          applyPatch({
+            visitPrescriptions: [
+              ...toPrescriptionDrafts(live.visitPrescriptions ?? []),
+              ...drafts,
+            ],
+          });
+        }}
+      />
 
       <CatalogDrawer
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
         onPick={handleCatalogPick}
-      />
-
-      <IcdCatalogDrawer
-        open={icdCatalogOpen}
-        onOpenChange={setIcdCatalogOpen}
-        onPick={(code, name) => {
-          applyPatch({ diagnosisCode: code, diagnosisName: name });
-          setIcdCatalogOpen(false);
-        }}
-      />
-
-      <ApplyProtocolDialog
-        open={!!protocolToApply}
-        onOpenChange={(next) => {
-          if (!next) setProtocolToApply(null);
-        }}
-        protocol={protocolToApply}
-        onApply={handleApplyProtocol}
       />
     </div>
   );

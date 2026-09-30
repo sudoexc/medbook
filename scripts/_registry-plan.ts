@@ -110,6 +110,75 @@ export const SAME_SUBSTANCE_HOMES: Readonly<Record<string, string>> = {
   "uzr-diklofenak-natriya": "diclofenac",
 };
 
+/**
+ * Brands the normalised payload filed under one of their substances alone.
+ * The register registers АСПИРИН® С (Bayer) with two active substances,
+ * acetylsalicylic acid and ascorbic acid; the payload grouped it under
+ * «аскорбиновая кислота», so the import gave it the vitamin C row: an aspirin
+ * allergy and the NSAID rules never saw it, and a plain vitamin C carried an
+ * aspirin brand. Each brand here moves to the entity of its registered
+ * composition, and the substances of that composition are what the CDS
+ * engine resolves (see substance-profile.ts). Only compositions the register
+ * states: a composition that cannot be read from it is not guessed.
+ */
+export const REGISTER_COMPOSITION_FIXES: readonly {
+  brand: string;
+  /** The entity the payload filed the brand under. */
+  from: string;
+  /** The entity of the registered composition, created when missing. */
+  to: Omit<RegistryEntity, "brands">;
+}[] = [
+  {
+    brand: "АСПИРИН® С",
+    from: "uzr-askorbinovaya-kislota",
+    to: {
+      id: "uzr-atsetilsalitsilovaya-kislota-askorbinovaya-kislota",
+      inn: "uzr:atsetilsalitsilovaya-kislota-askorbinovaya-kislota",
+      nameRu: "ацетилсалициловая кислота + аскорбиновая кислота",
+      // WHO ATC: acetylsalicylic acid, combinations excl. psycholeptics.
+      atcCode: "N02BA51",
+      // As the register's own acetylsalicylic acid entity: an analgesic,
+      // sold without a prescription.
+      category: "ANALGESIC",
+      rxOnly: false,
+      isTradeEntity: false,
+      // Effervescent tablets; the payload merges strengths per entity, so
+      // none can be attributed to this brand.
+      forms: [{ form: "TAB", strengths: [] }],
+    },
+  },
+];
+
+/**
+ * The payload with `REGISTER_COMPOSITION_FIXES` applied. A fix whose brand
+ * is no longer where it names (a newer payload files it right) does nothing.
+ */
+export function correctRegisterEntities(
+  entities: readonly RegistryEntity[],
+): RegistryEntity[] {
+  let out = [...entities];
+  for (const fix of REGISTER_COMPOSITION_FIXES) {
+    const key = normName(fix.brand);
+    const brand = out
+      .find((e) => e.id === fix.from)
+      ?.brands.find((b) => normName(b.name) === key);
+    if (!brand) continue;
+    out = out.map((e) =>
+      e.id === fix.from
+        ? { ...e, brands: e.brands.filter((b) => normName(b.name) !== key) }
+        : e,
+    );
+    if (out.some((e) => e.id === fix.to.id)) {
+      out = out.map((e) =>
+        e.id === fix.to.id ? { ...e, brands: [...e.brands, brand] } : e,
+      );
+    } else {
+      out.push({ ...fix.to, forms: fix.to.forms.map((f) => ({ ...f })), brands: [brand] });
+    }
+  }
+  return out;
+}
+
 /** The seed's own brand lists by drug id: what the curated rows vouch for. */
 export function curatedBrandMap(): Map<string, string[]> {
   return new Map(
@@ -196,6 +265,7 @@ export function planRegistryImport(input: {
   /** Curated seed brands by drug id (prisma/_drug-catalog*.ts). */
   curatedBrands: ReadonlyMap<string, readonly string[]>;
 }): RegistryPlan {
+  const entities = correctRegisterEntities(input.entities);
   const global = input.drugs.filter((d) => d.clinicId === null);
   const globalIds = new Set(global.map((d) => d.id));
   const drugById = new Map(global.map((d) => [d.id, d]));
@@ -232,7 +302,7 @@ export function planRegistryImport(input: {
 
   // Which register entities list each brand.
   const owners = new Map<string, Set<string>>();
-  for (const e of input.entities) {
+  for (const e of entities) {
     for (const b of e.brands) {
       const bn = normName(b.name);
       (owners.get(bn) ?? owners.set(bn, new Set()).get(bn)!).add(e.id);
@@ -259,7 +329,7 @@ export function planRegistryImport(input: {
     return [...candidates].sort((a, b) => overlap(b) - overlap(a) || byRank(a, b))[0]!;
   };
 
-  const byEntity = new Map(input.entities.map((e) => [e.id, e]));
+  const byEntity = new Map(entities.map((e) => [e.id, e]));
   const homes: RegistryPlan["homes"] = new Map();
   const newDrugs: RegistryEntity[] = [];
   const known = new Set(globalIds);
@@ -290,10 +360,10 @@ export function planRegistryImport(input: {
 
   // Entities with a composition first: a trade-name entity may fold into
   // the home of the one that lists its name as a brand.
-  for (const e of input.entities) {
+  for (const e of entities) {
     if (!e.isTradeEntity) settle(e, direct(e));
   }
-  for (const e of input.entities) {
+  for (const e of entities) {
     if (!e.isTradeEntity) continue;
     let home = direct(e);
     const bn = normName(e.nameRu);
@@ -323,7 +393,7 @@ export function planRegistryImport(input: {
   }
 
   const brandRows: RegistryPlan["brandRows"] = [];
-  for (const e of input.entities) {
+  for (const e of entities) {
     const drugId = homes.get(e.id)!.drugId;
     const have = existing.get(drugId) ?? existing.set(drugId, new Set()).get(drugId)!;
     for (const b of e.brands) {
@@ -368,6 +438,7 @@ export function planBrandRevision(input: {
   curatedBrands: ReadonlyMap<string, readonly string[]>;
 }): RegistryPlan & { misplaced: (CatalogBrand & { reason: string })[] } {
   const plan = planRegistryImport(input);
+  const entities = correctRegisterEntities(input.entities);
   const globalIds = new Set(
     input.drugs.filter((d) => d.clinicId === null).map((d) => d.id),
   );
@@ -378,7 +449,7 @@ export function planBrandRevision(input: {
   const add = (drugId: string, name: string) =>
     (legit.get(drugId) ?? legit.set(drugId, new Set()).get(drugId)!).add(normName(name));
   const owners = new Map<string, string[]>();
-  for (const e of input.entities) {
+  for (const e of entities) {
     const home = plan.homes.get(e.id)!.drugId;
     add(home, e.nameRu);
     for (const b of e.brands) {
@@ -401,4 +472,25 @@ export function planBrandRevision(input: {
     misplaced.push({ ...b, reason: `register lists it under ${ownedBy.join(" | ")}` });
   }
   return { ...plan, misplaced };
+}
+
+/**
+ * The part of the brand revision that `REGISTER_COMPOSITION_FIXES` are
+ * about (fix-p4-register-compositions.ts): the rows of the registered
+ * compositions, and their brands' moves. Anything else the revision would
+ * find is left to the CT-03 fix.
+ */
+export function planCompositionFixes(
+  input: Parameters<typeof planBrandRevision>[0],
+): Pick<ReturnType<typeof planBrandRevision>, "newDrugs" | "misplaced" | "brandRows"> {
+  const plan = planBrandRevision(input);
+  const brands = new Set(REGISTER_COMPOSITION_FIXES.map((f) => normName(f.brand)));
+  const rows = new Set(REGISTER_COMPOSITION_FIXES.map((f) => f.to.id));
+  return {
+    newDrugs: plan.newDrugs.filter((e) => rows.has(e.id)),
+    misplaced: plan.misplaced.filter((m) => brands.has(normName(m.name))),
+    brandRows: plan.brandRows.filter(
+      (b) => brands.has(normName(b.name)) && rows.has(b.drugId),
+    ),
+  };
 }

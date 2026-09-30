@@ -229,6 +229,9 @@ export function DiagnosisFollowUpPanel() {
         }}
         protocol={protocolToApply}
         onApply={handleApplyProtocol}
+        followUpSet={
+          note != null && (note.followUpDays != null || note.followUpDate != null)
+        }
       />
     </div>
   );

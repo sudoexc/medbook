@@ -12,8 +12,16 @@
  * and on every in-window correction of a signed note.
  *
  * One composer for both paths, so the text cannot drift between them.
+ *
+ * In the patient's language (audit VW-07). It was always Russian: a patient
+ * who reads Uzbek got a PDF titled «Bemor uchun eslatma», an Uzbek intake
+ * grid and a Russian text in between. The PDF worker and the print already
+ * followed `Patient.preferredLang`; now the text they carry does too.
  */
-import { composePatientHandout } from "@/lib/catalogs/handout-composer";
+import {
+  composePatientHandout,
+  type HandoutLocale,
+} from "@/lib/catalogs/handout-composer";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 import {
   formatPrescriptionLines,
@@ -43,11 +51,25 @@ export function touchesHandout(changedFields: Iterable<string>): boolean {
 
 /** Who and when: the letterhead of the handout. */
 export type HandoutContext = {
-  patient?: { fullName: string | null } | null;
-  doctor?: { nameRu: string | null; specializationRu: string | null } | null;
-  clinic?: { nameRu: string | null } | null;
+  patient?: {
+    fullName: string | null;
+    /** RU | UZ; the handout is written in it. */
+    preferredLang?: string | null;
+  } | null;
+  doctor?: {
+    nameRu: string | null;
+    specializationRu: string | null;
+    nameUz?: string | null;
+    specializationUz?: string | null;
+  } | null;
+  clinic?: { nameRu: string | null; nameUz?: string | null } | null;
   appointment?: { date: Date } | null;
 };
+
+/** The language the patient reads, as the PDF worker picks it. */
+export function handoutLocaleOf(context: HandoutContext): HandoutLocale {
+  return context.patient?.preferredLang === "UZ" ? "uz" : "ru";
+}
 
 /** What the handout says. */
 export type HandoutFields = {
@@ -66,20 +88,29 @@ export type HandoutFields = {
 
 /**
  * The handout for this note, or null when there is genuinely nothing to tell
- * the patient (then no blank sheet is issued).
+ * the patient (then no blank sheet is issued). In the patient's language
+ * unless the caller names one (the print's RU/UZ switch).
  */
 export function composeNoteHandout(
   context: HandoutContext,
   fields: HandoutFields,
   now: Date = new Date(),
+  locale: HandoutLocale = handoutLocaleOf(context),
 ): string | null {
+  const uz = locale === "uz";
+  // The Uzbek names where the clinic filled them in, else the Russian ones.
+  const pick = (u: string | null | undefined, r: string | null | undefined) =>
+    (uz ? u?.trim() : null) || r || null;
   return (
     composePatientHandout({
-      locale: "ru",
+      locale,
       patientName: context.patient?.fullName ?? null,
-      doctorName: context.doctor?.nameRu ?? null,
-      doctorSpecialty: context.doctor?.specializationRu ?? null,
-      clinicName: context.clinic?.nameRu ?? null,
+      doctorName: pick(context.doctor?.nameUz, context.doctor?.nameRu),
+      doctorSpecialty: pick(
+        context.doctor?.specializationUz,
+        context.doctor?.specializationRu,
+      ),
+      clinicName: pick(context.clinic?.nameUz, context.clinic?.nameRu),
       visitDate: context.appointment?.date ?? now,
       diagnosisName: fields.diagnosisName,
       // Names only: the patient's copy never carries ICD codes.
@@ -88,7 +119,7 @@ export function composeNoteHandout(
       ).map((d) => d.name),
       complaints: fields.complaints ?? [],
       prescriptions: [
-        ...formatPrescriptionLines(fields.visitPrescriptions ?? [], "ru", {
+        ...formatPrescriptionLines(fields.visitPrescriptions ?? [], locale, {
           withInstruction: true,
         }),
         ...(fields.prescriptions ?? []),

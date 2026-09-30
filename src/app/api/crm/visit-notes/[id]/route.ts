@@ -100,11 +100,19 @@ export const PATCH = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.visitNote.findUnique({
       where: { id },
-      // The handout's letterhead, for recomposing it after a correction.
+      // The handout's letterhead, for recomposing it after a correction, in
+      // the patient's language (VW-07).
       include: {
-        patient: { select: { fullName: true } },
-        doctor: { select: { nameRu: true, specializationRu: true } },
-        clinic: { select: { nameRu: true } },
+        patient: { select: { fullName: true, preferredLang: true } },
+        doctor: {
+          select: {
+            nameRu: true,
+            nameUz: true,
+            specializationRu: true,
+            specializationUz: true,
+          },
+        },
+        clinic: { select: { nameRu: true, nameUz: true } },
         appointment: { select: { date: true } },
       },
     });

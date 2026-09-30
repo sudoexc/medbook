@@ -80,12 +80,17 @@ export const POST = createApiHandler(
           },
         },
         // Everything the handout composer needs, in case we have to build the
-        // patient copy ourselves below.
-        patient: { select: { fullName: true } },
+        // patient copy ourselves below, in the patient's language (VW-07).
+        patient: { select: { fullName: true, preferredLang: true } },
         doctor: {
-          select: { nameRu: true, specializationRu: true },
+          select: {
+            nameRu: true,
+            nameUz: true,
+            specializationRu: true,
+            specializationUz: true,
+          },
         },
-        clinic: { select: { nameRu: true } },
+        clinic: { select: { nameRu: true, nameUz: true } },
         // In order: the handout lists them and the revision snapshots them
         // exactly as the doctor arranged them.
         visitPrescriptions: { orderBy: { sortOrder: "asc" } },

@@ -4,14 +4,11 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
   ChevronDownIcon,
-  ClipboardListIcon,
   Loader2Icon,
   PencilIcon,
   PillIcon,
   PlusIcon,
   SaveIcon,
-  ScrollTextIcon,
-  StethoscopeIcon,
   Trash2Icon,
   WandSparklesIcon,
   XIcon,
@@ -36,10 +33,13 @@ type FieldDef = {
   Icon: LucideIcon;
 };
 
+/**
+ * The fields whose chips the visit screen shows: «Назначения» and
+ * «Рекомендации». Complaints, anamnesis and examination left the screen, so
+ * their templates had nowhere to appear and editing them here was a dead
+ * end (audit VW-12). The rows stay in the database, untouched.
+ */
 const FIELDS: FieldDef[] = [
-  { key: "COMPLAINTS", Icon: ClipboardListIcon },
-  { key: "ANAMNESIS", Icon: ScrollTextIcon },
-  { key: "EXAMINATION", Icon: StethoscopeIcon },
   { key: "PRESCRIPTIONS", Icon: PillIcon },
   { key: "ADVICE", Icon: WandSparklesIcon },
 ];

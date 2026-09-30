@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { isDoctorThread } from "@/lib/doctor-tg-alert";
 import {
   installNotificationSoundUnlock,
   playNotificationSound,
@@ -27,12 +28,19 @@ import {
  * `useTgInboxAlerts` keeps handling toasts there (it knows which thread is
  * focused and suppresses alerts for it — knowledge the shell doesn't have).
  * Two toasters for one event would double every alert instead.
+ *
+ * In the doctor's cabinet it rings only for the doctor's own threads (audit
+ * DC-04, see `isDoctorThread`): reception works the whole clinic's inbox,
+ * a doctor sees his caseload.
  */
 export function GlobalTgAlerts({
   inboxPath,
+  scope = "clinic",
 }: {
   /** Where this surface reads Telegram: /crm/telegram or /doctor/messages. */
   inboxPath: string;
+  /** Whose messages ring here: the whole clinic's, or the doctor's own. */
+  scope?: "clinic" | "doctor";
 }) {
   const t = useTranslations("tgInbox");
   const router = useRouter();
@@ -46,10 +54,12 @@ export function GlobalTgAlerts({
 
   const onInboxPageRef = React.useRef(false);
   const inboxPathRef = React.useRef(inboxPath);
+  const scopeRef = React.useRef(scope);
   React.useEffect(() => {
     onInboxPageRef.current = pathname.includes(inboxPath);
     inboxPathRef.current = inboxPath;
-  }, [pathname, inboxPath]);
+    scopeRef.current = scope;
+  }, [pathname, inboxPath, scope]);
 
   const handler = React.useCallback(
     (event: { type: string; payload?: unknown }) => {
@@ -67,25 +77,37 @@ export function GlobalTgAlerts({
       // message the operator just typed is noise.
       if (p.direction === "OUT") return;
 
-      playNotificationSound();
-      toast.info(
-        p.contactName
-          ? t("globalToast.titleFrom", { name: p.contactName })
-          : t("globalToast.title"),
-        {
-          description: p.preview || t("globalToast.noText"),
-          action: {
-            label: t("globalToast.open"),
-            onClick: () => {
-              router.push(
-                p.conversationId
-                  ? `${inboxPathRef.current}?conv=${encodeURIComponent(p.conversationId)}`
-                  : inboxPathRef.current,
-              );
+      const ring = () => {
+        playNotificationSound();
+        toast.info(
+          p.contactName
+            ? t("globalToast.titleFrom", { name: p.contactName })
+            : t("globalToast.title"),
+          {
+            description: p.preview || t("globalToast.noText"),
+            action: {
+              label: t("globalToast.open"),
+              onClick: () => {
+                router.push(
+                  p.conversationId
+                    ? `${inboxPathRef.current}?conv=${encodeURIComponent(p.conversationId)}`
+                    : inboxPathRef.current,
+                );
+              },
             },
           },
-        },
-      );
+        );
+      };
+
+      if (scopeRef.current === "doctor") {
+        // Asked before a sound or a preview leaves the screen. The answer
+        // may land after the doctor opened his inbox, which alerts itself.
+        void isDoctorThread(p.conversationId).then((mine) => {
+          if (mine && !onInboxPageRef.current) ring();
+        });
+        return;
+      }
+      ring();
     },
     [router, t],
   );

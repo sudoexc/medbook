@@ -19,7 +19,10 @@
  *     register gives to entities of different composition.
  *
  * Brands an earlier run put on the wrong row are moved by
- * `fix-ct03-registry-brand-homes.ts`; this import only adds.
+ * `fix-ct03-registry-brand-homes.ts`; this import only adds. A brand the
+ * payload filed under one of its substances alone (АСПИРИН® С under
+ * ascorbic acid) goes to its registered composition, see
+ * `REGISTER_COMPOSITION_FIXES` and `fix-p4-register-compositions.ts`.
  *
  * Run (prod):
  *   docker compose run --rm -e APPLY=1 worker npx tsx scripts/import-uzpharm-registry.ts
@@ -33,6 +36,7 @@ import { PrismaClient, type DrugCategory } from "../src/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import {
+  correctRegisterEntities,
   curatedBrandMap,
   planRegistryImport,
   type RegistryEntity,
@@ -49,6 +53,7 @@ async function main() {
   const payload = JSON.parse(
     readFileSync(join(process.cwd(), "prisma", "uzpharm-registry.json"), "utf8"),
   ) as { source: string; entities: RegistryEntity[] };
+  const entities = correctRegisterEntities(payload.entities);
 
   const [drugs, brands] = await Promise.all([
     prisma.drug.findMany({
@@ -58,7 +63,7 @@ async function main() {
   ]);
 
   const plan = planRegistryImport({
-    entities: payload.entities,
+    entities,
     drugs,
     brands,
     curatedBrands: curatedBrandMap(),
@@ -68,9 +73,9 @@ async function main() {
   for (const h of plan.homes.values()) byVia.set(h.via, (byVia.get(h.via) ?? 0) + 1);
 
   console.log(`[uzpharm] source: ${payload.source}`);
-  console.log(`[uzpharm] entities: ${payload.entities.length}`);
+  console.log(`[uzpharm] entities: ${entities.length}`);
   console.log(
-    `[uzpharm] matched existing drugs (brand-enriched only): ${payload.entities.length - newDrugs.length}`,
+    `[uzpharm] matched existing drugs (brand-enriched only): ${entities.length - newDrugs.length}`,
   );
   console.log(
     `[uzpharm] how entities found their row: ${[...byVia]

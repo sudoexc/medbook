@@ -906,12 +906,15 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
         : allergy.reaction
           ? `Реакция в анамнезе: ${allergy.reaction}. Не назначать.`
           : "Зафиксирована аллергия. Не назначать.";
+      // The title names the drug (audit G4-05): one allergy reaching two
+      // drugs gave two identical lines «Аллергия: мед», and the doctor could
+      // not tell which one to take off.
       warnings.push({
         kind: "ALLERGY",
         severity,
         title: allergy.patientReported
-          ? `Аллергия со слов пациента: ${allergy.substance}`
-          : `Аллергия: ${allergy.substance}`,
+          ? `Аллергия на «${allergy.substance}» со слов пациента: ${drug.nameRu}`
+          : `Аллергия на «${allergy.substance}»: ${drug.nameRu}`,
         detail: `${why}${history}`,
         drugA: ref(drug),
       });
@@ -1051,10 +1054,14 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     if (flaggedPairs.has(key) || substancePairs.has(key)) continue;
     const shared = sharedClass(p.x, p.y);
     if (!shared) continue;
+    // «Два препарата класса «НПВС»: Ибупрофен и Диклофенак» (audit G4-05):
+    // the class alone («Один класс ATC: N03AX») named neither drug, and
+    // three drugs of one class gave three identical lines.
+    const other = p.ctx ? contextTitle(p.ctx) : p.y.drug.nameRu;
     warnings.push({
       kind: "DUPLICATE_CLASS",
       severity: "MODERATE",
-      title: p.ctx ? `${shared.title}, ${pairTitle(p, true)}` : shared.title,
+      title: `${shared.title}: ${p.x.drug.nameRu} и ${other}`,
       detail: pairDetail(
         p,
         "Препараты относятся к одному классу. Проверьте необходимость дублирования.",

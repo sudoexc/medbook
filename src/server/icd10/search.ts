@@ -137,6 +137,9 @@ export const SPOKEN_FORMS: Readonly<Record<string, SpokenForm>> = {
 
   // Peripheral nerves.
   полинейропатия: { codes: ["G62.9", "G63.2*"] },
+  // Coded twice (audit CT-02): the diabetes with its neurological
+  // complication, and the polyneuropathy that G63.2* names.
+  "диабетическая полинейропатия": { codes: ["G63.2*", "E11.4", "E10.4"] },
   карпальный: { codes: ["G56.0"] },
   "карпальный синдром": { codes: ["G56.0"] },
   "туннельный синдром": { codes: ["G56.0"] },

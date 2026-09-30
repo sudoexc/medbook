@@ -18,17 +18,21 @@ import { DRUGS } from "../../prisma/_drug-catalog";
 import { DRUGS_EXTRA } from "../../prisma/_drug-catalog-extra";
 import { DRUG_ENRICHMENT } from "../../prisma/_drug-data";
 import {
+  REGISTER_COMPOSITION_FIXES,
   SAME_SUBSTANCE_HOMES,
   compositionKey,
+  correctRegisterEntities,
   curatedBrandMap,
   curatedKeys,
   normName,
   planBrandRevision,
+  planCompositionFixes,
   planRegistryImport,
   type CatalogBrand,
   type CatalogDrug,
   type RegistryEntity,
 } from "../../scripts/_registry-plan";
+import { componentNames } from "@/server/cds/substance-profile";
 import { prescriptionLabel } from "@/lib/catalogs/brand-match";
 import { repinDrugUses } from "@/server/catalog/shortlist";
 import { matchAllergy } from "@/server/cds/allergy-match";
@@ -317,3 +321,114 @@ describe("fix for the catalog the first import left (CT-03)", () => {
     ).toEqual({ kind: "SUBSTANCE" });
   });
 });
+
+/**
+ * АСПИРИН® С is registered as acetylsalicylic acid + ascorbic acid; the
+ * payload filed it under «аскорбиновая кислота», so it landed on the vitamin
+ * C row and an aspirin allergy never saw it (REGISTER_COMPOSITION_FIXES).
+ */
+describe("a brand filed under one of its substances (АСПИРИН® С)", () => {
+  const ASPIRIN_C = "uzr-atsetilsalitsilovaya-kislota-askorbinovaya-kislota";
+  const VITAMIN_C = "uzr-askorbinovaya-kislota";
+
+  it("the payload still has it under vitamin C, the correction moves it", () => {
+    const raw = byEntityId.get(VITAMIN_C)!;
+    expect(raw.brands.map((b) => normName(b.name))).toContain("аспирин с");
+    const fixed = correctRegisterEntities(entities);
+    const vitaminC = fixed.find((e) => e.id === VITAMIN_C)!;
+    expect(vitaminC.brands.map((b) => normName(b.name))).not.toContain("аспирин с");
+    const combo = fixed.find((e) => e.id === ASPIRIN_C)!;
+    expect(combo.nameRu).toBe("ацетилсалициловая кислота + аскорбиновая кислота");
+    expect(combo.atcCode).toBe("N02BA51");
+    expect(combo.brands.map((b) => b.name)).toEqual(["АСПИРИН® С"]);
+    // The payload itself is left as it is.
+    expect(raw.brands.map((b) => normName(b.name))).toContain("аспирин с");
+  });
+
+  it("on a clean catalog the brand goes to the combination only", () => {
+    const plan = planRegistryImport({
+      entities,
+      drugs: curatedDrugs,
+      brands: curatedBrandRows,
+      curatedBrands,
+    });
+    expect(plan.homes.get(ASPIRIN_C)).toEqual({ drugId: ASPIRIN_C, via: "new" });
+    const holders = plan.brandRows
+      .filter((b) => normName(b.name) === "аспирин с")
+      .map((b) => b.drugId);
+    expect(holders).toEqual([ASPIRIN_C]);
+  });
+
+  it("the fix moves it off the row the import gave it, once", () => {
+    const legacy = legacyImport(curatedDrugs, curatedBrandRows);
+    // The first import put vitamin C's brands on «Железа сульфат»; the CT-03
+    // fix moved them to vitamin C. Neither row is aspirin.
+    const home = legacy.brands.find((b) => normName(b.name) === "аспирин с")!.drugId;
+    expect(home).not.toBe(ASPIRIN_C);
+
+    const plan = planCompositionFixes({ ...legacy, entities, curatedBrands });
+    expect(plan.newDrugs.map((e) => e.id)).toEqual([ASPIRIN_C]);
+    expect(plan.misplaced.map((m) => `${m.drugId}:${normName(m.name)}`)).toEqual([
+      `${home}:аспирин с`,
+    ]);
+    expect(plan.brandRows.map((b) => `${b.drugId}:${b.name}`)).toEqual([
+      `${ASPIRIN_C}:АСПИРИН® С`,
+    ]);
+    // Only what the correction is about, never the CT-03 fix's work.
+    const fixBrands = REGISTER_COMPOSITION_FIXES.map((f) => normName(f.brand));
+    for (const m of plan.misplaced) expect(fixBrands).toContain(normName(m.name));
+
+    // The full revision carries the correction too.
+    const fixed = apply(
+      legacy.drugs,
+      legacy.brands,
+      planBrandRevision({ ...legacy, entities, curatedBrands }),
+    );
+    const again = planCompositionFixes({ ...fixed, entities, curatedBrands });
+    expect([again.newDrugs.length, again.misplaced.length, again.brandRows.length]).toEqual([
+      0, 0, 0,
+    ]);
+  });
+
+  it("production after the CT-03 fix: moves it off the vitamin C row", () => {
+    const legacy = legacyImport(curatedDrugs, curatedBrandRows);
+    const fixed = apply(
+      legacy.drugs,
+      legacy.brands,
+      planBrandRevision({ ...legacy, entities, curatedBrands }),
+    );
+    // The CT-03 fix ran without the correction: the brand sits on vitamin C.
+    const prod = {
+      drugs: fixed.drugs.filter((d) => d.id !== ASPIRIN_C),
+      brands: fixed.brands.map((b) =>
+        normName(b.name) === "аспирин с" ? { ...b, drugId: VITAMIN_C } : b,
+      ),
+    };
+    const plan = planCompositionFixes({ ...prod, entities, curatedBrands });
+    expect(plan.newDrugs.map((e) => e.id)).toEqual([ASPIRIN_C]);
+    expect(plan.misplaced.map((m) => `${m.drugId}:${normName(m.name)}`)).toEqual([
+      `${VITAMIN_C}:аспирин с`,
+    ]);
+    expect(plan.brandRows.map((b) => b.drugId)).toEqual([ASPIRIN_C]);
+  });
+
+  it("a prescription of «Аспирин С» resolves to aspirin and vitamin C", () => {
+    const legacy = legacyImport(curatedDrugs, curatedBrandRows);
+    const fixed = apply(
+      legacy.drugs,
+      legacy.brands,
+      planBrandRevision({ ...legacy, entities, curatedBrands }),
+    );
+    const drugs = fixed.drugs.map((d) => ({
+      ...d,
+      brands: fixed.brands.filter((b) => b.drugId === d.id).map((b) => ({ name: b.name })),
+    }));
+    const index = buildDrugTextIndex(drugs);
+    const hit = matchDrugLine(index, "Аспирин С 1 таб растворить в воде");
+    expect(hit?.drug.id).toBe(ASPIRIN_C);
+    const combo = { nameRu: hit!.drug.nameRu, atcCode: hit!.drug.atcCode ?? null };
+    const parts = componentNames(combo).map((n) => matchDrugLine(index, n)?.drug.id);
+    expect(parts).toContain("aspirin");
+  });
+});
+

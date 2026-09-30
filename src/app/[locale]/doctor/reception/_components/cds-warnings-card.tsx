@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { cdsWarningKey } from "@/lib/cds-warning-key";
 import { cn } from "@/lib/utils";
 
 import {
@@ -100,12 +101,9 @@ type Props = {
 };
 
 function warningKey(w: CdsWarning): string {
-  // Stable identity for collapsing duplicate renders + dedupe storage.
-  // One allergy now reaches every drug of its class («пенициллин» →
-  // Амоксиклав and ампициллин), all under the same title, so an allergy
-  // warning is keyed per drug: each one is acknowledged on its own.
-  const base = `${w.kind}:${w.severity}:${w.title}`;
-  return w.kind === "ALLERGY" ? `${base}:${w.drugA.id}` : base;
+  // Per warning AND per drug (audit G4-05): each one is acknowledged on its
+  // own. See cds-warning-key.ts.
+  return cdsWarningKey(w);
 }
 
 export function CdsWarningsCard({
@@ -240,11 +238,13 @@ export function CdsWarningsCard({
         </span>
       </div>
       <ul className="flex flex-col gap-1.5">
-        {result.warnings.map((w) => {
+        {result.warnings.map((w, i) => {
           const key = warningKey(w);
           return (
             <WarningRow
-              key={key}
+              // The same allergy recorded twice gives two equal warnings:
+              // one acknowledgement covers both, but React needs two keys.
+              key={`${key}#${i}`}
               warning={w}
               warningKey={key}
               patientId={patientId}

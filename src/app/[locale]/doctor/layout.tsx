@@ -74,7 +74,7 @@ export default async function DoctorLayout({
   return (
     <QueryProvider>
       <div className="flex h-screen min-h-0 w-full bg-background">
-        <GlobalTgAlerts inboxPath="/doctor/messages" />
+        <GlobalTgAlerts inboxPath="/doctor/messages" scope="doctor" />
         <SessionExpiryWatch />
         <DoctorSidebar />
         <div className="flex min-w-0 flex-1 flex-col">

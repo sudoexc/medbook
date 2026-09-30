@@ -6546,10 +6546,9 @@
         "remove": "Sevimlilardan olib tashlash"
       },
       "applyProtocol": {
-        "fallbackSummary": "Shablon barcha tuzilmaviy maydonlarga qo‘llanadi.",
+        "fallbackSummary": "Qabulga protokoldagi tayinlovlar, tavsiyalar, nazorat tashrifi va xulosa matni qo‘shiladi.",
         "conclusionAddendum": "Xulosaga qo‘shimcha",
         "footerHint": "Maydonlardagi mavjud ma’lumotlar saqlanadi, takrorlar qo‘shilmaydi.",
-        "labsHint": "G3’da laboratoriya moduliga bog‘lanadi",
         "sections": {
           "complaints": "Shikoyatlar",
           "anamnesis": "Anamnez",
@@ -7649,6 +7648,7 @@
         "loading": "Xulosa yuklanmoqda…",
         "loadError": "Xulosani yuklab bo‘lmadi.",
         "finalizedAt": "Yakunlangan · {date}",
+        "moreDiagnoses": "+{count}",
         "statusDraft": "Qoralama",
         "remainingExpired": "muddati tugadi",
         "remainingHoursMinutes": "{h} soat {m} daqiqa",
@@ -7943,7 +7943,9 @@
         "foundCount": "Topildi: {count}",
         "clickToCopy": "Bosing — buferga nusxalash",
         "emptyQuery": "«{query}» so‘rovi bo‘yicha hech narsa topilmadi.",
-        "unmapped": "Boblar bo‘yicha tasniflanmagan: {count, plural, other {# kod}}.",
+        "chapterLoading": "Bob yuklanmoqda…",
+        "chapterError": "Bobni yuklab bo‘lmadi.",
+        "loadMore": "Yana ko‘rsatish ({shown} / {total})",
         "copied": "Nusxalandi",
         "copyFailed": "Nusxalab bo‘lmadi",
         "chapters": {
@@ -7962,9 +7964,13 @@
           "M00-M99": "Suyak-mushak tizimi",
           "N00-N99": "Siydik-tanosil tizimi",
           "O00-O99": "Homiladorlik, tug‘ish va tug‘ruqdan keyingi davr",
+          "P00-P96": "Perinatal davrning ayrim holatlari",
+          "Q00-Q99": "Tug‘ma anomaliyalar va xromosoma buzilishlari",
           "R00-R99": "Alomatlar va belgilar",
           "S00-T98": "Jarohatlar va zaharlanishlar",
-          "Z00-Z99": "Sog‘liq omillari va shifokorga murojaat"
+          "V01-Y98": "Kasallanish va o‘limning tashqi sabablari",
+          "Z00-Z99": "Sog‘liq omillari va shifokorga murojaat",
+          "U00-U85": "Maxsus maqsadlar uchun kodlar"
         }
       },
       "tabs": {

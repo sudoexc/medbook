@@ -5,13 +5,13 @@
  *
  * The doctor asked for the same flow prescriptions have: browse a real
  * catalog, not just type-ahead, and star the diagnoses they use daily.
- * Left rail = the 21 standard ICD-10 chapters (reference data, not ours);
+ * Left rail = the ICD-10 chapters (the shared list, see icd10-chapters.ts);
  * right pane = the chapter's codes or ranked search results; the star pins
  * a code to DoctorFavorite (entityType ICD10), and favourites float first.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { CheckIcon, SearchIcon, StarIcon, XIcon } from "lucide-react";
 
 import {
@@ -22,36 +22,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_ICD10_CHAPTER,
+  ICD10_CHAPTERS,
+} from "@/lib/icd10-chapters";
 
 import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
 
-/** The 21 ICD-10 chapters — standard reference ranges. */
-export const ICD_CHAPTERS: { range: string; ru: string }[] = [
-  { range: "A00-B99", ru: "Инфекционные и паразитарные болезни" },
-  { range: "C00-D48", ru: "Новообразования" },
-  { range: "D50-D89", ru: "Болезни крови и иммунные нарушения" },
-  { range: "E00-E90", ru: "Эндокринные болезни, обмен веществ" },
-  { range: "F00-F99", ru: "Психические расстройства" },
-  { range: "G00-G99", ru: "Болезни нервной системы" },
-  { range: "H00-H59", ru: "Болезни глаза" },
-  { range: "H60-H95", ru: "Болезни уха" },
-  { range: "I00-I99", ru: "Болезни системы кровообращения" },
-  { range: "J00-J99", ru: "Болезни органов дыхания" },
-  { range: "K00-K93", ru: "Болезни органов пищеварения" },
-  { range: "L00-L99", ru: "Болезни кожи" },
-  { range: "M00-M99", ru: "Костно-мышечная система" },
-  { range: "N00-N99", ru: "Мочеполовая система" },
-  { range: "O00-O99", ru: "Беременность и роды" },
-  { range: "P00-P96", ru: "Перинатальный период" },
-  { range: "Q00-Q99", ru: "Врождённые аномалии" },
-  { range: "R00-R99", ru: "Симптомы и отклонения" },
-  { range: "S00-T98", ru: "Травмы и отравления" },
-  { range: "V01-Y98", ru: "Внешние причины" },
-  { range: "Z00-Z99", ru: "Факторы здоровья" },
-];
-
 type IcdRow = { code: string; nameRu: string; custom?: boolean };
 
+/**
+ * Codes per «Ещё» (audit CT-04). The drawer used to ask for PAGE × clicks
+ * in one request, and the route caps a page at 200: the third click sent
+ * limit=300, got a 400, and chapter G stopped at G57.2. Now each click
+ * fetches the next page by offset and the pages are joined.
+ */
 const PAGE = 100;
 
 async function fetchIcd(params: string): Promise<{ rows: IcdRow[]; total?: number }> {
@@ -70,25 +55,35 @@ type Props = {
 
 export function IcdCatalogDrawer({ open, onOpenChange, onPick }: Props) {
   const t = useTranslations("doctor.receptionDialogs");
+  const tChapter = useTranslations("doctor.references.icd10.chapters");
   const [query, setQuery] = React.useState("");
-  const [chapter, setChapter] = React.useState<string>("G00-G99");
-  const [pages, setPages] = React.useState(1);
+  const [chapter, setChapter] = React.useState<string>(DEFAULT_ICD10_CHAPTER);
   const [favoritesOnly, setFavoritesOnly] = React.useState(false);
 
   const { pinned, toggle } = useDoctorFavorites("ICD10");
 
   const searching = query.trim().length >= 2;
 
-  const listQuery = useQuery({
-    queryKey: ["icd-catalog", searching ? `q:${query}` : `r:${chapter}`, pages],
-    queryFn: () =>
-      searching
-        ? fetchIcd(`q=${encodeURIComponent(query)}&limit=50`)
-        : fetchIcd(`range=${chapter}&limit=${PAGE * pages}`),
-    enabled: open,
+  const searchQuery = useQuery({
+    queryKey: ["icd-catalog", "q", query],
+    queryFn: () => fetchIcd(`q=${encodeURIComponent(query)}&limit=50`),
+    enabled: open && searching,
     staleTime: 5 * 60_000,
     placeholderData: (prev) => prev,
   });
+  const chapterQuery = useInfiniteQuery({
+    queryKey: ["icd-catalog", "range", chapter],
+    queryFn: ({ pageParam }) =>
+      fetchIcd(`range=${chapter}&offset=${pageParam}&limit=${PAGE}`),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => {
+      const shown = all.reduce((n, p) => n + p.rows.length, 0);
+      return last.rows.length > 0 && shown < (last.total ?? 0) ? shown : undefined;
+    },
+    enabled: open && !searching,
+    staleTime: 5 * 60_000,
+  });
+  const listQuery = searching ? searchQuery : chapterQuery;
 
   // Favourites resolve — chips/rows need wording for stored codes.
   const favCodes = React.useMemo(() => [...pinned].sort(), [pinned]);
@@ -102,18 +97,19 @@ export function IcdCatalogDrawer({ open, onOpenChange, onPick }: Props) {
   React.useEffect(() => {
     if (!open) {
       setQuery("");
-      setPages(1);
       setFavoritesOnly(false);
     }
   }, [open]);
 
-  React.useEffect(() => {
-    setPages(1);
-  }, [chapter, query]);
-
+  const chapterRows = React.useMemo(
+    () => chapterQuery.data?.pages.flatMap((p) => p.rows) ?? [],
+    [chapterQuery.data],
+  );
   const baseRows = favoritesOnly
     ? favQuery.data?.rows ?? []
-    : listQuery.data?.rows ?? [];
+    : searching
+      ? searchQuery.data?.rows ?? []
+      : chapterRows;
   // Favourites float to the top of chapter/search lists.
   const rows = React.useMemo(() => {
     if (favoritesOnly || pinned.size === 0) return baseRows;
@@ -123,9 +119,8 @@ export function IcdCatalogDrawer({ open, onOpenChange, onPick }: Props) {
     return [...pin, ...rest];
   }, [baseRows, pinned, favoritesOnly]);
 
-  const total = listQuery.data?.total ?? null;
-  const canLoadMore =
-    !searching && !favoritesOnly && total != null && rows.length < total;
+  const total = chapterQuery.data?.pages.at(-1)?.total ?? null;
+  const canLoadMore = !searching && !favoritesOnly && chapterQuery.hasNextPage;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -186,21 +181,21 @@ export function IcdCatalogDrawer({ open, onOpenChange, onPick }: Props) {
             {/* Chapters rail — hidden while a search narrows globally. */}
             {!searching && !favoritesOnly && (
               <div className="w-[240px] shrink-0 overflow-y-auto border-r p-1">
-                {ICD_CHAPTERS.map((c) => (
+                {ICD10_CHAPTERS.map((c) => (
                   <button
-                    key={c.range}
+                    key={c.id}
                     type="button"
-                    onClick={() => setChapter(c.range)}
+                    onClick={() => setChapter(c.id)}
                     className={cn(
                       "w-full rounded-md px-2 py-1.5 text-left transition-colors",
-                      chapter === c.range ? "bg-primary/10" : "hover:bg-muted",
+                      chapter === c.id ? "bg-primary/10" : "hover:bg-muted",
                     )}
                   >
                     <span className="block font-mono text-[11px] font-semibold text-primary">
-                      {c.range}
+                      {c.id}
                     </span>
                     <span className="block text-xs leading-snug text-foreground/80">
-                      {c.ru}
+                      {tChapter(c.id)}
                     </span>
                   </button>
                 ))}
@@ -278,8 +273,9 @@ export function IcdCatalogDrawer({ open, onOpenChange, onPick }: Props) {
                     <li>
                       <button
                         type="button"
-                        onClick={() => setPages((p) => p + 1)}
-                        className="w-full rounded-md px-2 py-2 text-center text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+                        onClick={() => chapterQuery.fetchNextPage()}
+                        disabled={chapterQuery.isFetchingNextPage}
+                        className="w-full rounded-md px-2 py-2 text-center text-xs font-medium text-primary transition-colors hover:bg-primary/5 disabled:opacity-60"
                       >
                         {t("icdCatalog.loadMore", {
                           shown: rows.length,

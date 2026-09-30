@@ -11,6 +11,7 @@
  */
 import {
   catalogSearchWords,
+  catalogWordIdVariants,
   catalogWordVariants,
 } from "@/lib/catalogs/search-fold";
 import { prisma } from "@/lib/prisma";
@@ -29,16 +30,19 @@ export async function resolveLineDrugIds(
   // The line's first word as typed, in each spelling the catalog may use
   // («Аспирин C» → «аспир»; «Магне В6» → «магне»): the matcher's own key
   // folds Latin lookalikes into Cyrillic, which a database prefix on
-  // «Paracetamol» would no longer find.
-  const heads = [
+  // «Paracetamol» would no longer find. The INN, a Latin name, only in the
+  // spellings it can hold, as in the catalog search.
+  const words = [
     ...new Set(
       lines
         .map((l) => catalogSearchWords(l)[0] ?? "")
         .filter((w) => w.length >= 3)
-        .flatMap((w) => catalogWordVariants(w.slice(0, HEAD_LETTERS))),
+        .map((w) => w.slice(0, HEAD_LETTERS)),
     ),
   ];
-  if (heads.length === 0) return lines.map(() => null);
+  if (words.length === 0) return lines.map(() => null);
+  const heads = [...new Set(words.flatMap((w) => catalogWordVariants(w)))];
+  const innHeads = [...new Set(words.flatMap((w) => catalogWordIdVariants(w)))];
 
   const rows = await prisma.drug.findMany({
     where: {
@@ -46,11 +50,15 @@ export async function resolveLineDrugIds(
       // Bare clinic quick-adds would shadow the real substance, as in the
       // drug check.
       NOT: { inn: { startsWith: "clinic:" } },
-      OR: heads.flatMap((h) => [
-        { nameRu: { startsWith: h, mode: "insensitive" as const } },
-        { inn: { startsWith: h, mode: "insensitive" as const } },
-        { brands: { some: { name: { startsWith: h, mode: "insensitive" as const } } } },
-      ]),
+      OR: [
+        ...heads.flatMap((h) => [
+          { nameRu: { startsWith: h, mode: "insensitive" as const } },
+          { brands: { some: { name: { startsWith: h, mode: "insensitive" as const } } } },
+        ]),
+        ...innHeads.map((h) => ({
+          inn: { startsWith: h, mode: "insensitive" as const },
+        })),
+      ],
     },
     select: {
       id: true,

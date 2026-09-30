@@ -19,6 +19,13 @@
  *     words and `catalogWordVariants` spells each word the few ways the
  *     catalog may hold it: as typed, in Cyrillic, in Latin.
  *
+ * Lookalikes are a matter of print, not of spelling. A whole word of them is
+ * an ordinary word of its own alphabet: Latin p, c, h, b and y are п, ц, г,
+ * б and ю in a slug or an INN, so «нор» is not «hop» nor «тор» «top».
+ * Only a lone letter or a letter with digits (the C of «АСПИРИН® С», the B6
+ * of «МАГНЕ® B6») is re-spelled for the database, and the Latin id and INN
+ * are compared letter for letter (`foldCatalogPlain`).
+ *
  * Client-safe (no server imports): the prescription label is built in the
  * browser.
  */
@@ -73,21 +80,30 @@ export function toLatinTwins(s: string): string {
 }
 
 /**
- * The comparison key of a query or a catalog name: lowercase, ё→е, ®/™/©,
+ * `foldCatalogText` without the lookalike fold: lowercase, ё→е, ®/™/©,
  * quotes and every other non-letter folded to single spaces, apostrophes
- * dropped, Latin lookalikes in Cyrillic. «АСПИРИН® С», «Аспирин C» and
- * «аспирин с» all give «аспирин с»; «МАГНЕ® B6» and «Магне В6» give
- * «магне в6». Both sides of a comparison go through this one function.
+ * dropped, every letter in the alphabet it was written in. The key for the
+ * Latin id and INN («hopantenic-acid» → «hopantenic acid»), where folding
+ * Latin into Cyrillic made «hopantenic» start with «нор».
+ */
+export function foldCatalogPlain(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(APOSTROPHES, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/**
+ * The comparison key of a query or a catalog name: `foldCatalogPlain`, then
+ * Latin lookalikes in Cyrillic. «АСПИРИН® С», «Аспирин C» and «аспирин с»
+ * all give «аспирин с»; «МАГНЕ® B6» and «Магне В6» give «магне в6». Both
+ * sides of a comparison go through this one function. For display names
+ * and typed lines only: see `foldCatalogPlain` for ids and INNs.
  */
 export function foldCatalogText(raw: string): string {
-  return toCyrillicTwins(
-    raw
-      .toLowerCase()
-      .replace(/ё/g, "е")
-      .replace(APOSTROPHES, "")
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim(),
-  );
+  return toCyrillicTwins(foldCatalogPlain(raw));
 }
 
 /**
@@ -106,22 +122,55 @@ export function catalogSearchWords(raw: string): string[] {
   return [...new Set(words)].slice(0, MAX_WORDS);
 }
 
+const HAS_LATIN = /\p{Script=Latin}/u;
+const HAS_CYRILLIC = /\p{Script=Cyrillic}/u;
+
 /**
- * The spellings a database search tries for one word: as typed, then its
- * all-Cyrillic form (ё→е too) and its all-Latin form. A form is offered only
- * when the fold reaches a single alphabet: «в6» also looks for «b6»,
- * «c» for «с», but «аспирин» is not also searched as «acpиpин», which
- * nothing is spelled like.
+ * Whether a typed word may be printed in the other alphabet in the catalog:
+ * a lone letter («с» against «АСПИРИН® С» with a Latin C), a letter with
+ * digits («в6» against «МАГНЕ® B6», «в12»), or a word that already mixes
+ * both, which was a slip. A longer word of one alphabet is that alphabet's
+ * word: searching «нор» also as «hop» put «Гопантеновая кислота»
+ * (hopantenic-acid) first, «тор» as «top» put «Топирамат» above
+ * «Торасемид».
+ */
+function mayBePrintedInOtherAlphabet(word: string): boolean {
+  if ([...word].length === 1 || /\p{N}/u.test(word)) return true;
+  return HAS_LATIN.test(word) && HAS_CYRILLIC.test(word);
+}
+
+/**
+ * The spellings a database search tries for one word in display text
+ * (names, brands): as typed (and ё→е), then, for a word that may be printed
+ * in the other alphabet (`mayBePrintedInOtherAlphabet`), its all-Cyrillic
+ * and its all-Latin form. A form is offered only when the fold reaches a
+ * single alphabet: «в6» also looks for «b6», «c» for «с», but «аспирин»
+ * is not also searched as «acpиpин», which nothing is spelled like.
  */
 export function catalogWordVariants(word: string): string[] {
   const typed = word.toLowerCase();
   const plain = typed.replace(/ё/g, "е");
-  const out = [typed];
-  const cyrillic = toCyrillicTwins(plain);
-  if (!/\p{Script=Latin}/u.test(cyrillic)) out.push(cyrillic);
-  const latin = toLatinTwins(plain);
-  if (!/\p{Script=Cyrillic}/u.test(latin)) out.push(latin);
+  const out = [typed, plain];
+  if (mayBePrintedInOtherAlphabet(plain)) {
+    const cyrillic = toCyrillicTwins(plain);
+    if (!HAS_LATIN.test(cyrillic)) out.push(cyrillic);
+    const latin = toLatinTwins(plain);
+    if (!HAS_CYRILLIC.test(latin)) out.push(latin);
+  }
   return [...new Set(out)];
+}
+
+/**
+ * The spellings tried against a Latin identifier (a drug's id slug and its
+ * INN): `catalogWordVariants` without the Latin re-spelling of a Cyrillic
+ * word. In «hopantenic», «cetirizine» the c, p, h are ц, п, г, so a typed
+ * «с» or «р» there is no lookalike and must not pull those rows in. A Latin
+ * word typed with one Cyrillic slip still reaches its INN.
+ */
+export function catalogWordIdVariants(word: string): string[] {
+  const variants = catalogWordVariants(word);
+  if (HAS_LATIN.test(word)) return variants;
+  return variants.filter((v) => !HAS_LATIN.test(v));
 }
 
 /**

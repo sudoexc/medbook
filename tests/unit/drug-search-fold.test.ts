@@ -14,13 +14,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import registry from "../../prisma/uzpharm-registry.json";
+import { DRUGS as DRUGS_CORE } from "../../prisma/_drug-catalog";
+import { DRUGS_EXTRA } from "../../prisma/_drug-catalog-extra";
 import {
   correctRegisterEntities,
   type RegistryEntity,
 } from "../../scripts/_registry-plan";
 import {
   catalogSearchWords,
+  catalogWordIdVariants,
   catalogWordVariants,
+  foldCatalogPlain,
   foldCatalogText,
   foldMixedWords,
 } from "@/lib/catalogs/search-fold";
@@ -95,6 +99,18 @@ const CURATED: Row[] = [
   drug({ id: "magnesium_b6", inn: "Magnesium/Pyridoxine", nameRu: "Магний B6", atcCode: "A12CC30", brandNames: ["Магне B6"] }),
   drug({ id: "paracetamol", inn: "Paracetamol", nameRu: "Парацетамол", atcCode: "N02BE01" }),
 ];
+
+// The whole curated seed, as prisma/seed-drugs.ts writes it: Latin slug ids
+// and INNs («hopantenic-acid», «Topiramate»), where a lookalike fold misleads.
+const CURATED_SEED: Row[] = [...DRUGS_CORE, ...DRUGS_EXTRA].map((d) =>
+  drug({
+    id: d.id,
+    inn: d.intl ?? d.id,
+    nameRu: d.nameRu,
+    nameUz: d.nameUz ?? null,
+    brandNames: d.brands ?? [],
+  }),
+);
 
 const ASPIRIN_C = "uzr-atsetilsalitsilovaya-kislota-askorbinovaya-kislota";
 const TOKKATA_RAPID = "uzr-lidokain-tolperizon";
@@ -242,6 +258,31 @@ describe("search-fold", () => {
     expect(catalogWordVariants("ёд")).toEqual(["ёд", "ед"]);
   });
 
+  it("re-spells only a letter or a letter with digits, never a whole word", () => {
+    // «нор» is not «hop», «тор» not «top», «вер» not «bep»: in Latin those
+    // letters are other sounds.
+    for (const w of ["нор", "тор", "вер", "ра", "ас", "ре"]) {
+      expect(catalogWordVariants(w)).toEqual([w]);
+    }
+    expect(catalogWordVariants("top")).toEqual(["top"]);
+    expect(catalogWordVariants("в12").sort()).toEqual(["b12", "в12"]);
+    // A word that mixes alphabets was a slip: both single-alphabet forms.
+    expect(catalogWordVariants("тoр")).toEqual(expect.arrayContaining(["тор", "top"]));
+  });
+
+  it("never spells a Cyrillic word in Latin for an id or an INN", () => {
+    expect(catalogWordIdVariants("с")).toEqual(["с"]);
+    expect(catalogWordIdVariants("в6")).toEqual(["в6"]);
+    expect(catalogWordIdVariants("b6").sort()).toEqual(["b6", "в6"]);
+    expect(catalogWordIdVariants("pаracetamol")).toContain("paracetamol");
+  });
+
+  it("keeps the alphabet in the plain key used for ids and INNs", () => {
+    expect(foldCatalogPlain("hopantenic-acid")).toBe("hopantenic acid");
+    expect(foldCatalogPlain("МАГНЕ® B6")).toBe("магне b6");
+    expect(foldCatalogText("hopantenic-acid").startsWith("нор")).toBe(true);
+  });
+
   it("folds only words that mix alphabets", () => {
     expect(foldMixedWords("мигрeнь с аурой")).toBe("мигрень с аурой");
     expect(foldMixedWords("гепатит b cholerae")).toBe("гепатит b cholerae");
@@ -321,6 +362,76 @@ describe("drug catalog search, word by word (production 30.09.2026)", () => {
     expect(await searchFormulary("магне в12", 20)).toEqual([]);
     // Found through the clinic's name, it leads the search.
     expect((await search("магне в6")).rows[0]?.id).toBe("magnesium_b6");
+  });
+});
+
+// ── Short Cyrillic prefixes against Latin slugs and INNs (review) ────────
+
+describe("a Cyrillic prefix is not read as a Latin slug", () => {
+  beforeEach(() => {
+    db.rows = [...REGISTRY, ...CURATED_SEED];
+  });
+
+  const folded = (r: Row) => [r.nameRu, ...r.brands.map((b) => b.name)].map(foldCatalogText);
+
+  it.each([
+    ["нор", "hopantenic-acid"],
+    ["тор", "topiramate"],
+    ["вер", "bepanten"],
+    ["ас", "actovegin"],
+  ])("«%s» does not find %s at all", async (q, id) => {
+    const body = await search(q, 100);
+    expect(body.rows.map((r) => r.id)).not.toContain(id);
+    // The first row is named with the prefix, as typed.
+    expect(folded(body.rows[0]!).some((v) => v.startsWith(q))).toBe(true);
+  });
+
+  it("«тор» puts Торасемид first among the curated rows, «вер» Верапамил", async () => {
+    const tor = (await search("тор", 100)).rows.map((r) => r.id);
+    expect(tor).toContain("torasemide");
+    const ver = (await search("вер", 100)).rows.map((r) => r.id);
+    expect(ver).toContain("verapamil");
+  });
+
+  it("«ра» leads with names that start with «ра», not Парацетамол (paracetamol)", async () => {
+    const body = await search("ра", 12);
+    for (const r of body.rows) {
+      expect(folded(r).some((v) => v.startsWith("ра"))).toBe(true);
+    }
+    expect(body.rows.map((r) => r.id)).not.toContain("paracetamol");
+  });
+
+  it("«тор» finds only rows whose names hold «тор»", async () => {
+    // Before, it also matched every row whose id or INN holds a Latin
+    // «top» («topiramate», «uzr-ketoprofen», «uzr-metoprolol»), which reads
+    // «топ».
+    const body = await search("тор", 100);
+    for (const r of body.rows) {
+      const text = [r.nameRu, r.nameUz ?? "", ...r.brands.map((b) => b.name)]
+        .join(" ")
+        .toLowerCase();
+      expect(text).toContain("тор");
+    }
+  });
+
+  it("the production cases still hold on the whole curated seed", async () => {
+    expect((await search("аспирин с")).rows[0]?.id).toBe(ASPIRIN_C);
+    expect((await search("токката рапид")).rows[0]?.id).toBe(TOKKATA_RAPID);
+    const magne = (await search("магне в6")).rows.map((r) => r.id);
+    expect(magne).toContain("uzr-magne-b6");
+    expect(magne).toContain("magnesium_b6");
+  });
+});
+
+describe("rank compares ids and INNs letter for letter", () => {
+  it("scores a Latin slug as nothing for a Cyrillic prefix", () => {
+    const hop = { id: "hopantenic-acid", inn: "Hopantenic acid", nameRu: "Гопантеновая кислота", brands: [{ name: "Пантогам" }] };
+    expect(rankDrugMatch(hop, "нор")).toBe(0);
+    expect(rankDrugMatch({ id: "topiramate", inn: "Topiramate", nameRu: "Топирамат", brands: [] }, "тор")).toBe(0);
+    expect(rankDrugMatch({ id: "torasemide", inn: "Torasemide", nameRu: "Торасемид", brands: [] }, "тор")).toBe(50);
+    // Typed in Latin, the INN still ranks.
+    expect(rankDrugMatch(hop, "hopantenic")).toBe(50);
+    expect(rankDrugMatch(hop, "hopantenic acid")).toBe(100);
   });
 });
 

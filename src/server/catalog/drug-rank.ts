@@ -20,7 +20,9 @@
  */
 import {
   catalogSearchWords,
+  catalogWordIdVariants,
   catalogWordVariants,
+  foldCatalogPlain,
   foldCatalogText,
 } from "@/lib/catalogs/search-fold";
 
@@ -40,6 +42,8 @@ type Where = Record<string, unknown>;
  * string at once found nothing for «аспирин с» against «АСПИРИН® С», or
  * for «магне в6» (Cyrillic В) against «МАГНЕ® B6». Words may sit in
  * different fields: «аспирин с» is a brand word and a letter of the name.
+ * The id and the INN are Latin slugs and INNs, so they get only the
+ * spellings a Latin identifier can hold (`catalogWordIdVariants`).
  * Null when the query has no word at all (only «+» or «®»).
  */
 export function drugSearchWhere(term: string): Where | null {
@@ -51,9 +55,8 @@ export function drugSearchWhere(term: string): Where | null {
       const has = (v: string) => ({ contains: v, mode: "insensitive" });
       return {
         OR: [
-          ...variants.flatMap((v) => [
-            { nameRu: has(v) },
-            { nameUz: has(v) },
+          ...variants.flatMap((v) => [{ nameRu: has(v) }, { nameUz: has(v) }]),
+          ...catalogWordIdVariants(word).flatMap((v) => [
             { inn: has(v) },
             { id: has(v) },
           ]),
@@ -66,9 +69,10 @@ export function drugSearchWhere(term: string): Where | null {
 
 /**
  * The database side of the strong tier: the id, INN, name or a brand starts
- * with the query's first word, in any of its spellings (a brand's ® comes
- * after its first word, so «аспирин с» still reaches «АСПИРИН® С» here);
- * the full query is then weighed in memory by `rankDrugMatch`. Only
+ * with the query's first word, in the spellings each field can hold (a
+ * brand's ® comes after its first word, so «аспирин с» still reaches
+ * «АСПИРИН® С» here); the full query is then weighed in memory by
+ * `rankDrugMatch`, which compares the same way. Only
  * non-null columns take part (so not nameUz), because the rest tier is its
  * negation, and `NOT (col ILIKE …)` on a NULL column is NULL in SQL: the
  * row would silently drop out of both tiers.
@@ -79,14 +83,12 @@ export function strongMatchWhere(
 ): Where {
   const first = catalogSearchWords(term)[0];
   const heads = first ? catalogWordVariants(first) : [];
+  const idHeads = first ? catalogWordIdVariants(first) : [];
   const starts = (v: string) => ({ startsWith: v, mode: "insensitive" });
   return {
     OR: [
-      ...heads.flatMap((h) => [
-        { id: starts(h) },
-        { inn: starts(h) },
-        { nameRu: starts(h) },
-      ]),
+      ...idHeads.flatMap((h) => [{ id: starts(h) }, { inn: starts(h) }]),
+      ...heads.map((h) => ({ nameRu: starts(h) })),
       ...(heads.length > 0
         ? [{ brands: { some: { OR: heads.map((h) => ({ name: starts(h) })) } } }]
         : []),
@@ -103,11 +105,18 @@ export function rankDrugMatch(d: DrugRankKeys, rawNeedle: string): number {
   // Folded like the search matched it: «аспирин c» is exactly «АСПИРИН® С».
   const needle = foldCatalogText(rawNeedle);
   if (!needle) return 0;
-  const own = [d.id, d.inn, d.nameRu].map(foldCatalogText);
+  // The Latin id and INN letter for letter, as `catalogWordIdVariants`
+  // searched them: folded into Cyrillic, «hopantenic» started with «нор»
+  // and «topiramate» with «тор», and led those searches.
+  const plainNeedle = foldCatalogPlain(rawNeedle);
+  const ids = [d.id, d.inn].map(foldCatalogPlain);
+  const name = foldCatalogText(d.nameRu);
   const brands = d.brands.map((b) => foldCatalogText(b.name));
-  if (own.includes(needle)) return 100;
+  if (name === needle || ids.includes(plainNeedle)) return 100;
   if (brands.includes(needle)) return 90;
-  if (own.some((v) => v.startsWith(needle))) return 50;
+  if (name.startsWith(needle) || ids.some((v) => v.startsWith(plainNeedle))) {
+    return 50;
+  }
   if (brands.some((b) => b.startsWith(needle))) return 40;
   return 0;
 }

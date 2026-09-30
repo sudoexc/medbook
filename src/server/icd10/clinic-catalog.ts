@@ -17,7 +17,7 @@
 import { prisma } from "@/lib/prisma";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 import { ICD10_ENTRIES, type Icd10Entry } from "./data";
-import { normalizeIcdTerm } from "./search";
+import { icdQueryTerms, normalizeIcdTerm } from "./search";
 
 /** Static codes, for the "don't relearn what we ship" check. */
 let staticCodes: Set<string> | null = null;
@@ -130,12 +130,20 @@ export async function searchClinicCatalog(
 ): Promise<ClinicCatalogHit[]> {
   const term = normalizeIcdTerm(rawQuery);
   if (!term) return [];
+  // «М54» with a Cyrillic М, «мигрeнь» with a Latin e: searched as the
+  // classifier is (`icdQueryTerms`), and as typed, since the clinic's own
+  // wordings were stored the way a doctor once typed them.
+  const folded = icdQueryTerms(term);
+  const texts = [...new Set([term, folded.text])];
+  const codes = [...new Set([term, folded.code])];
 
   const found = await prisma.clinicDiagnosis.findMany({
     where: {
       OR: [
-        { normalized: { contains: term } },
-        { code: { startsWith: term, mode: "insensitive" } },
+        ...texts.map((t) => ({ normalized: { contains: t } })),
+        ...codes.map((c) => ({
+          code: { startsWith: c, mode: "insensitive" as const },
+        })),
       ],
     },
     select: { code: true, nameRu: true, usageCount: true },

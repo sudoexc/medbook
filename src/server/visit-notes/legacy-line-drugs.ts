@@ -9,8 +9,12 @@
  * begins like one of the lines, not the whole catalog: the print preview
  * re-renders on every autosave.
  */
+import {
+  catalogSearchWords,
+  catalogWordVariants,
+} from "@/lib/catalogs/search-fold";
 import { prisma } from "@/lib/prisma";
-import { buildDrugTextIndex, drugNameKey, matchDrugLine } from "@/server/cds/drug-text-match";
+import { buildDrugTextIndex, matchDrugLine } from "@/server/cds/drug-text-match";
 
 /**
  * The first letters of a line's first word. Short enough to reach the
@@ -22,12 +26,16 @@ export async function resolveLineDrugIds(
   lines: readonly string[],
 ): Promise<(string | null)[]> {
   if (lines.length === 0) return [];
+  // The line's first word as typed, in each spelling the catalog may use
+  // («Аспирин C» → «аспир»; «Магне В6» → «магне»): the matcher's own key
+  // folds Latin lookalikes into Cyrillic, which a database prefix on
+  // «Paracetamol» would no longer find.
   const heads = [
     ...new Set(
       lines
-        .map((l) => drugNameKey(l).split(" ")[0] ?? "")
+        .map((l) => catalogSearchWords(l)[0] ?? "")
         .filter((w) => w.length >= 3)
-        .map((w) => w.slice(0, HEAD_LETTERS)),
+        .flatMap((w) => catalogWordVariants(w.slice(0, HEAD_LETTERS))),
     ),
   ];
   if (heads.length === 0) return lines.map(() => null);

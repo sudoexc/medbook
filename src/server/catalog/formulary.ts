@@ -11,6 +11,10 @@
  * The model carries `clinicId`, so the tenant extension scopes every query
  * here to the caller's clinic.
  */
+import {
+  catalogSearchWords,
+  catalogWordVariants,
+} from "@/lib/catalogs/search-fold";
 import { prisma } from "@/lib/prisma";
 
 /** Lowercase, ё→е, collapsed whitespace — the formulary search key. */
@@ -70,17 +74,25 @@ export async function loadFormulary(): Promise<FormularyEntry[]> {
 }
 
 /**
- * Formulary entries whose label or alias contains the term. Used by the
- * catalog search to surface «Кеппра» → Летирам first.
+ * Formulary entries whose labels and aliases hold every word of the term,
+ * each word in its Cyrillic or Latin spelling (see the catalog route: the
+ * clinic writes «Магне B6», the doctor types «магне в6»). Used by the
+ * catalog search to surface «Кеппра» → Летирам first. `searchText` is
+ * stored lowercased with ё→е (`formularySearchText`), and every variant is
+ * lowercase, so a plain `contains` does.
  */
 export async function searchFormulary(
   rawTerm: string,
   limit: number,
 ): Promise<FormularyEntry[]> {
-  const term = normalizeCatalogTerm(rawTerm);
-  if (term.length < 2) return [];
+  const words = catalogSearchWords(rawTerm);
+  if (words.join(" ").length < 2) return [];
   return prisma.clinicFormularyDrug.findMany({
-    where: { searchText: { contains: term } },
+    where: {
+      AND: words.map((w) => ({
+        OR: catalogWordVariants(w).map((v) => ({ searchText: { contains: v } })),
+      })),
+    },
     orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
     take: limit,
     select: {

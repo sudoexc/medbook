@@ -16,6 +16,7 @@
  * a list built from signed notes alone would be empty for the busiest doctor.
  */
 import { prescriptionLabel } from "@/lib/catalogs/brand-match";
+import { foldCatalogText } from "@/lib/catalogs/search-fold";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 import { normalizeCatalogTerm } from "@/server/catalog/formulary";
 import {
@@ -241,10 +242,13 @@ export function buildDrugShortlist(args: {
     });
   };
 
+  // Free-typed drugs group by the search's fold: «Магне B6» and «Магне®
+  // В6» (Cyrillic В) are one drug he writes, not two half-counted ones.
+  const textKey = (label: string) => `text:${foldCatalogText(label)}`;
   for (const s of args.structured) {
     const label = s.displayName.trim();
     if (label.length < 2) continue;
-    const key = s.drugId ?? `text:${normalizeCatalogTerm(label)}`;
+    const key = s.drugId ?? textKey(label);
     bump(
       key,
       s.drugId,
@@ -258,7 +262,7 @@ export function buildDrugShortlist(args: {
   for (const f of args.freeText) {
     const label = f.line.trim();
     if (label.length < 2) continue;
-    bump(`text:${normalizeCatalogTerm(label)}`, null, label, null, f.at);
+    bump(textKey(label), null, label, null, f.at);
   }
 
   const pinned: DrugShortItem[] = [];

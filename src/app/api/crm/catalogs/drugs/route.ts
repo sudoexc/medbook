@@ -9,10 +9,13 @@
  * hidden globals in the response and flags them `hiddenByClinic: true`
  * instead of filtering, so the admin can un-hide them.
  *
- * Search ranks: the clinic's own names → exact id/INN/name → brand exact →
- * prefix → contains, and the order is decided BEFORE paging (see
- * `@/server/catalog/drug-rank`): ranking only the alphabetical first page
- * lost «Парацетамол» behind a dozen combinations that contain it.
+ * Search matches word by word, each word in its Cyrillic and Latin
+ * spelling («аспирин c» finds «АСПИРИН® С», «магне в6» finds «МАГНЕ® B6»,
+ * see `@/lib/catalogs/search-fold`), and ranks: the clinic's own names →
+ * exact id/INN/name → brand exact → prefix → contains. The order is decided
+ * BEFORE paging (see `@/server/catalog/drug-rank`): ranking only the
+ * alphabetical first page lost «Парацетамол» behind a dozen combinations
+ * that contain it.
  * The drawer UI (⌘K) hits this with `?q=` on every keystroke (debounced).
  *
  * The clinic's core list (ClinicFormularyDrug) takes part too: its label and
@@ -27,6 +30,7 @@ import {
   loadClinicOverlays,
 } from "@/server/catalog/clinic-overlay";
 import {
+  drugSearchWhere,
   orderStrongTier,
   splitPageWindow,
   strongMatchWhere,
@@ -121,13 +125,16 @@ export const GET = createApiListHandler(
     // name, and a whole-string `contains` then finds nothing at all.
     const rawTerm = q.q?.trim() ?? "";
     const term = stripDoseFromName(rawTerm) || rawTerm;
+    // Null when nothing searchable was typed (only «+» or «®»): the plain
+    // alphabetical listing, as for an empty field.
+    const search = term ? drugSearchWhere(term) : null;
     const tenant = ctx.kind === "TENANT";
     // The clinic's own names («Летирам», «Мускамед») match as part of the
     // search itself, so every filter, the total and paging treat them like
     // any other match.
     const [overlays, formularyHits, formulary] = await Promise.all([
       loadClinicOverlays(clinicId, "DRUG"),
-      tenant && term
+      tenant && search
         ? searchFormulary(term, 20)
         : Promise.resolve([] as FormularyEntry[]),
       tenant ? loadFormulary() : Promise.resolve([] as FormularyEntry[]),
@@ -146,14 +153,10 @@ export const GET = createApiListHandler(
     if (!includeHidden && overlays.hidden.size > 0) {
       and.push({ id: { notIn: [...overlays.hidden] } });
     }
-    if (term) {
+    if (search) {
       and.push({
         OR: [
-          { nameRu: { contains: term, mode: "insensitive" } },
-          { nameUz: { contains: term, mode: "insensitive" } },
-          { inn: { contains: term, mode: "insensitive" } },
-          { id: { contains: term, mode: "insensitive" } },
-          { brands: { some: { name: { contains: term, mode: "insensitive" } } } },
+          search,
           ...(formularyIds.length > 0 ? [{ id: { in: formularyIds } }] : []),
         ],
       });
@@ -161,7 +164,7 @@ export const GET = createApiListHandler(
     where.AND = and;
 
     const [pageRows, matchedTotal] = await Promise.all([
-      term
+      search
         ? loadRankedPage(where, and, term, formularyIds, q.offset, q.limit)
         : (prisma.drug.findMany({
             where,
@@ -213,9 +216,9 @@ export const GET = createApiListHandler(
 
 /**
  * One page of a search, ranked before it is cut (audit CT-09). The strong
- * tier (id / INN / name / brand starts with the term, or the clinic's core
- * list names it) is ranked in memory from its keys alone; the rest only
- * contain the term and page alphabetically in the database. Both tiers carry
+ * tier (id / INN / name / brand starts with the first word, or the clinic's
+ * core list names it) is ranked in memory from its keys alone; the rest only
+ * contain the words and page alphabetically in the database. Both tiers carry
  * the full `where`, so every filter and visibility rule applies to each.
  */
 async function loadRankedPage(

@@ -14,12 +14,16 @@
  * alongside for correctness.
  */
 
+import { foldCatalogText } from "./search-fold";
+
 export type BrandLike = { name: string };
 export type DrugLike = { nameRu: string; inn?: string; brands: BrandLike[] };
 
-function fold(s: string): string {
-  return s.toLowerCase().replace(/[®™]/g, "").replace(/\s+/g, " ").trim();
-}
+/**
+ * The search's own fold: the brand picked for «аспирин c» (Latin c) must be
+ * the «АСПИРИН® С» the search found it by, not the bare substance.
+ */
+const fold = foldCatalogText;
 
 /**
  * The brand that best answers `term`, or null when the query is about the

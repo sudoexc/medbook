@@ -48,6 +48,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useRevealOnOpen } from "@/hooks/use-reveal-on-open";
 import { matchedBrand } from "@/lib/catalogs/brand-match";
+import { foldCatalogText } from "@/lib/catalogs/search-fold";
 import {
   normalizeForms,
   withForm,
@@ -214,19 +215,22 @@ export function PrescriptionConstructor({
   const hitsListRef = useRevealOnOpen<HTMLUListElement>(hitsOpen);
   const { pinned: pinnedDrugs, toggle: togglePinnedDrug } =
     useDoctorFavorites("DRUG");
+  // Compared by the catalog search's fold: «Магне® B6» on screen is the
+  // «Магне В6» (Cyrillic В) of his shortlist.
   const onScreen = React.useMemo(
     () =>
       new Set(
-        [...rows.map((r) => r.displayName), ...legacy].map((s) =>
-          s.trim().toLowerCase(),
-        ),
+        [...rows.map((r) => r.displayName), ...legacy]
+          .map(foldCatalogText)
+          // A line of dashes folds to nothing: it names no drug to hide.
+          .filter(Boolean),
       ),
     [rows, legacy],
   );
   const notOnScreen = (i: DrugShortItem) =>
     !(i.drugId && addedDrugIds.has(i.drugId)) &&
-    !onScreen.has(i.label.trim().toLowerCase()) &&
-    !onScreen.has(splitFreeLine(i.label).name.toLowerCase());
+    !onScreen.has(foldCatalogText(i.label)) &&
+    !onScreen.has(foldCatalogText(splitFreeLine(i.label).name));
   const mine = (shortlistQuery.data?.mine ?? []).filter(notOnScreen);
   const clinicList = (shortlistQuery.data?.clinic ?? []).filter(notOnScreen);
   const [presetsOpen, setPresetsOpen] = React.useState(false);

@@ -21,43 +21,27 @@
  * endings keeps «Карбамазепина 200 мг» resolving as before, without letting
  * a short name swallow a longer, different word.
  */
-import { normalizeCatalogTerm } from "@/server/catalog/formulary";
+import { foldCatalogText } from "@/lib/catalogs/search-fold";
 
 /**
- * Vitamin tokens are typed both ways: «D3» / «Д3», «B12» / «В12» (the
- * Cyrillic В looks the same). Fold the Latin letter so both spell one key.
+ * Vitamin tokens are typed both ways: «D3» / «Д3», «B12» / «В12». The B
+ * (like every Latin letter with a Cyrillic twin) is already folded by
+ * `foldCatalogText`; D has no twin and is spelled out here, for vitamin
+ * tokens only.
  */
-const VITAMIN_LETTER: Record<string, string> = {
-  a: "а",
-  b: "в",
-  c: "с",
-  d: "д",
-  e: "е",
-  k: "к",
-  p: "р",
-};
-
 function foldVitaminToken(tok: string): string {
-  const m = /^([a-z])(\d{1,2})$/.exec(tok);
-  if (!m) return tok;
-  const cyr = VITAMIN_LETTER[m[1]!];
-  return cyr ? `${cyr}${m[2]}` : tok;
+  return /^d\d{1,2}$/.test(tok) ? `д${tok.slice(1)}` : tok;
 }
 
 /**
- * The matching key of a drug name or a prescription line: the catalog's own
- * search normalisation (case, ё→е) with ®, ™, quotes, brackets, «+», «-»
- * and every other non-letter folded to single spaces. Both sides of every
- * comparison go through this one function.
+ * The matching key of a drug name or a prescription line: the catalog
+ * search's own fold (case, ё→е, ®, ™, quotes, brackets, «+», «-» and every
+ * other non-letter to single spaces, Latin lookalikes in Cyrillic, so
+ * «Аспирин C» is the register's «АСПИРИН® С»), then vitamin D. Both sides of
+ * every comparison go through this one function.
  */
 export function drugNameKey(raw: string): string {
-  return normalizeCatalogTerm(raw)
-    .replace(/['’‘ʻʼ`]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .split(" ")
-    .map(foldVitaminToken)
-    .join(" ");
+  return foldCatalogText(raw).split(" ").map(foldVitaminToken).join(" ");
 }
 
 export type TextMatchDrug = {

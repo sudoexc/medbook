@@ -29,11 +29,8 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { rateLimit } from "@/lib/rate-limit";
 import { err, forbidden, ok } from "@/server/http";
 import { loadClinicOverlays } from "@/server/catalog/clinic-overlay";
-import {
-  loadFormulary,
-  normalizeCatalogTerm,
-  stripDoseFromName,
-} from "@/server/catalog/formulary";
+import { foldCatalogText } from "@/lib/catalogs/search-fold";
+import { loadFormulary, stripDoseFromName } from "@/server/catalog/formulary";
 import { loadDrugHits } from "@/server/catalog/drug-hits";
 
 const BodySchema = z.object({
@@ -50,7 +47,9 @@ export const POST = createApiHandler(
     // «Конкор 5» is Конкор: match on the name without the dose too.
     const bare = stripDoseFromName(name);
     const names = [...new Set([name, bare].filter((n) => n.length >= 2))];
-    const keys = names.map(normalizeCatalogTerm);
+    // The clinic's names compare like the search compares them: «Магне В6»
+    // typed with a Cyrillic В is the core list's «Магне B6», not a new drug.
+    const keys = names.map(foldCatalogText);
 
     const [formulary, overlays] = await Promise.all([
       loadFormulary(),
@@ -90,8 +89,8 @@ export const POST = createApiHandler(
       ? null
       : formulary.find(
           (f) =>
-            keys.includes(normalizeCatalogTerm(f.label)) ||
-            f.aliases.some((a) => keys.includes(normalizeCatalogTerm(a))),
+            keys.includes(foldCatalogText(f.label)) ||
+            f.aliases.some((a) => keys.includes(foldCatalogText(a))),
         );
     const existingId = usable?.id ?? byAlias?.drugId ?? null;
     if (existingId) {

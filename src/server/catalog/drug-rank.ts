@@ -8,16 +8,21 @@
  * there was nothing to rank to the top (audit CT-09).
  *
  * Matches split into two tiers, and paging walks them in order:
- *   - strong: the id, INN, name or a brand equals or starts with the term, or
- *     the clinic's core list names it. Small even for a two-letter term, so
- *     it is fetched whole (keys only) and ranked here.
- *   - rest: the term is only somewhere inside a name. Every row there ranks
- *     the same, so the database pages it alphabetically as before.
+ *   - strong: the id, INN, name or a brand starts with the query's first
+ *     word, or the clinic's core list names it. Small even for a two-letter
+ *     term, so it is fetched whole (keys only) and ranked here on the whole
+ *     query: exact, then brand, then prefix, then the rest of the tier.
+ *   - rest: the words are only somewhere inside the names. Every row there
+ *     ranks the same, so the database pages it alphabetically as before.
  * Page N is then exactly the N-th slice of one fixed order: the reference
  * browser, which scrolls through a search 100 rows at a time, neither skips
  * nor repeats a drug between pages.
  */
-import { normalizeCatalogTerm } from "./formulary";
+import {
+  catalogSearchWords,
+  catalogWordVariants,
+  foldCatalogText,
+} from "@/lib/catalogs/search-fold";
 
 export type DrugRankKeys = {
   id: string;
@@ -26,23 +31,65 @@ export type DrugRankKeys = {
   brands: { name: string }[];
 };
 
+type Where = Record<string, unknown>;
+
 /**
- * The database side of the strong tier: the same fields `rankDrugMatch`
- * reads, as a Prisma `where` fragment. Only non-null columns take part (so
- * not nameUz), because the rest tier is its negation, and `NOT (col ILIKE
- * …)` on a NULL column is NULL in SQL: the row would silently drop out of
- * both tiers.
+ * The search itself, as a Prisma `where` fragment: every word of the query
+ * (see `catalogSearchWords`) is somewhere in the drug's names, each word in
+ * any of its spellings (`catalogWordVariants`). Matching the whole typed
+ * string at once found nothing for «аспирин с» against «АСПИРИН® С», or
+ * for «магне в6» (Cyrillic В) against «МАГНЕ® B6». Words may sit in
+ * different fields: «аспирин с» is a brand word and a letter of the name.
+ * Null when the query has no word at all (only «+» or «®»).
+ */
+export function drugSearchWhere(term: string): Where | null {
+  const words = catalogSearchWords(term);
+  if (words.length === 0) return null;
+  return {
+    AND: words.map((word) => {
+      const variants = catalogWordVariants(word);
+      const has = (v: string) => ({ contains: v, mode: "insensitive" });
+      return {
+        OR: [
+          ...variants.flatMap((v) => [
+            { nameRu: has(v) },
+            { nameUz: has(v) },
+            { inn: has(v) },
+            { id: has(v) },
+          ]),
+          { brands: { some: { OR: variants.map((v) => ({ name: has(v) })) } } },
+        ],
+      };
+    }),
+  };
+}
+
+/**
+ * The database side of the strong tier: the id, INN, name or a brand starts
+ * with the query's first word, in any of its spellings (a brand's ® comes
+ * after its first word, so «аспирин с» still reaches «АСПИРИН® С» here);
+ * the full query is then weighed in memory by `rankDrugMatch`. Only
+ * non-null columns take part (so not nameUz), because the rest tier is its
+ * negation, and `NOT (col ILIKE …)` on a NULL column is NULL in SQL: the
+ * row would silently drop out of both tiers.
  */
 export function strongMatchWhere(
   term: string,
   formularyIds: string[],
-): Record<string, unknown> {
+): Where {
+  const first = catalogSearchWords(term)[0];
+  const heads = first ? catalogWordVariants(first) : [];
+  const starts = (v: string) => ({ startsWith: v, mode: "insensitive" });
   return {
     OR: [
-      { id: { startsWith: term, mode: "insensitive" } },
-      { inn: { startsWith: term, mode: "insensitive" } },
-      { nameRu: { startsWith: term, mode: "insensitive" } },
-      { brands: { some: { name: { startsWith: term, mode: "insensitive" } } } },
+      ...heads.flatMap((h) => [
+        { id: starts(h) },
+        { inn: starts(h) },
+        { nameRu: starts(h) },
+      ]),
+      ...(heads.length > 0
+        ? [{ brands: { some: { OR: heads.map((h) => ({ name: starts(h) })) } } }]
+        : []),
       ...(formularyIds.length > 0 ? [{ id: { in: formularyIds } }] : []),
     ],
   };
@@ -53,10 +100,11 @@ export function strongMatchWhere(
  * a name («аскорбиновая кислота + парацетамол» for «парацетамол»).
  */
 export function rankDrugMatch(d: DrugRankKeys, rawNeedle: string): number {
-  const needle = normalizeCatalogTerm(rawNeedle);
+  // Folded like the search matched it: «аспирин c» is exactly «АСПИРИН® С».
+  const needle = foldCatalogText(rawNeedle);
   if (!needle) return 0;
-  const own = [d.id, d.inn, d.nameRu].map(normalizeCatalogTerm);
-  const brands = d.brands.map((b) => normalizeCatalogTerm(b.name));
+  const own = [d.id, d.inn, d.nameRu].map(foldCatalogText);
+  const brands = d.brands.map((b) => foldCatalogText(b.name));
   if (own.includes(needle)) return 100;
   if (brands.includes(needle)) return 90;
   if (own.some((v) => v.startsWith(needle))) return 50;

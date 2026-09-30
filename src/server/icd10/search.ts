@@ -32,6 +32,8 @@
  * Normalisation folds ё→е and case. Cyrillic ё is typed inconsistently and
  * costing a doctor a result over a diacritic is not acceptable mid-visit.
  */
+import { foldMixedWords, toLatinTwins } from "@/lib/catalogs/search-fold";
+
 import { ICD10_ENTRIES, type Icd10Entry } from "./data";
 
 type SpokenForm = {
@@ -253,6 +255,25 @@ const WITH = new Set(["с", "со"]);
 
 export function normalizeIcdTerm(s: string): string {
   return s.trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
+}
+
+/**
+ * A normalised query as the classifier is searched for it: the drug search's
+ * lookalike fix, limited to what can only be a typing slip, so every query
+ * that already worked ranks exactly as before.
+ *   - A code typed with a Cyrillic letter («М54.5», «Е11»: the letters look
+ *     the same) reads as the Latin code. Only a letter followed by a digit:
+ *     a lone «м» stays a word, not the whole of chapter M.
+ *   - A word mixing alphabets («мигрeнь» with a Latin e) goes Cyrillic.
+ *     Words in one alphabet stay: «с» is a polarity marker here and the
+ *     classifier writes «гепатит B» and «cholerae» in Latin.
+ */
+export function icdQueryTerms(term: string): { text: string; code: string } {
+  const text = foldMixedWords(term);
+  const code = /^\p{Script=Cyrillic}\d/u.test(text)
+    ? toLatinTwins(text.charAt(0)) + text.slice(1)
+    : text;
+  return { text, code };
 }
 
 /**
@@ -773,7 +794,7 @@ function literalScore(row: Indexed, words: QueryWord[]): Literal {
 }
 
 export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
-  const term = normalizeIcdTerm(rawQuery);
+  const { text: term, code: codeTerm } = icdQueryTerms(normalizeIcdTerm(rawQuery));
   const rows = getIndex();
 
   if (!term) {
@@ -805,8 +826,8 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
     let regionOnly = false;
     let loose = false;
     let demoted = false;
-    if (row.code === term) score = BAND.exactCode;
-    else if (row.code.startsWith(term)) score = BAND.codePrefix;
+    if (row.code === codeTerm) score = BAND.exactCode;
+    else if (row.code.startsWith(codeTerm)) score = BAND.codePrefix;
     else if (words.length > 0) {
       ({ score, plain, full, regionOnly, loose } = literalScore(row, words));
       // A tumour site reached by part of a query that names no tumour was

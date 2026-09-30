@@ -9,6 +9,7 @@ import { promises as fs } from "node:fs";
 import { createApiListHandler } from "@/lib/api-handler";
 import { notFound } from "@/server/http";
 import { getExport } from "@/server/workers/exports";
+import { EXPORT_ROLES } from "@/lib/export-roles";
 
 function idFromUrl(req: Request): string | null {
   const parts = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -18,7 +19,7 @@ function idFromUrl(req: Request): string | null {
 }
 
 export const GET = createApiListHandler(
-  { roles: ["ADMIN"] },
+  { roles: [...EXPORT_ROLES] },
   async ({ request, ctx }) => {
     const id = idFromUrl(request);
     if (!id) return notFound();

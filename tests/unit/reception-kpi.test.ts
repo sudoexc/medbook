@@ -84,9 +84,20 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     doctorSchedule: {
-      // One doctor, 09:00–17:00: 480 available minutes.
-      findMany: vi.fn(async () => [{ startTime: "09:00", endTime: "17:00" }]),
+      // One doctor, 09:00–17:00 every weekday: 480 available minutes today.
+      findMany: vi.fn(async () =>
+        [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+          doctorId: "d1",
+          weekday,
+          startTime: "09:00",
+          endTime: "17:00",
+          validFrom: null,
+          validTo: null,
+        })),
+      ),
     },
+    // Nobody is away (audit AN-22 takes time off out of the load).
+    doctorTimeOff: { findMany: vi.fn(async () => []) },
     call: { count: vi.fn(async () => 0) },
     conversation: { count: vi.fn(async () => 0) },
     notificationSend: { count: vi.fn(async () => 0) },

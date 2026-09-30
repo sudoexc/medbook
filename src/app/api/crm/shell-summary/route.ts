@@ -9,11 +9,11 @@
  * counts, not heavy aggregates.
  *
  * `loadPercent` is `bookedMinutesToday / availableMinutesToday * 100`,
- * clamped to 0..100. Available minutes come from active doctors'
- * `DoctorSchedule` rows for today's weekday; booked minutes sum
- * `durationMin` across non-cancelled appointments. If there are no active
- * schedules (clinic isn't operating today / no doctors configured) we
- * return `0` rather than NaN.
+ * clamped to 0..100. Available minutes are active doctors' working time
+ * today (`workingMinutesOn`: rows valid today, time off cut out, audit
+ * AN-22); booked minutes sum `durationMin` across non-cancelled
+ * appointments. If there are no active schedules (clinic isn't operating
+ * today / no doctors configured) we return `0` rather than NaN.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +23,7 @@ import {
 } from "@/lib/booking-validation";
 import { ok } from "@/server/http";
 import { TODAY_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
+import { workingMinutesOn } from "@/lib/doctor-working-windows";
 import type { TenantContext } from "@/lib/tenant-context";
 import { ONLINE_REQUEST_ROLES } from "@/server/schemas/online-request";
 
@@ -33,13 +34,6 @@ function canWorkLeads(ctx: TenantContext): boolean {
     ctx.role === "SUPER_ADMIN" ||
     (ONLINE_REQUEST_ROLES as readonly string[]).includes(ctx.role)
   );
-}
-
-/** Convert "HH:MM" → minutes since midnight. Defensive against bad input. */
-function hhmmToMinutes(s: string): number {
-  const [h, m] = s.split(":").map((n) => parseInt(n, 10));
-  if (Number.isNaN(h) || Number.isNaN(m)) return 0;
-  return h * 60 + m;
 }
 
 export const GET = createApiListHandler(
@@ -56,12 +50,13 @@ export const GET = createApiListHandler(
     // Clinic day (Asia/Tashkent), not server-local — prod runs UTC.
     const now = new Date();
     const { dayStart: todayStart, dayEnd: todayEnd } = tashkentDayBounds(now);
-    const weekday = tashkentComponents(now).dow; // 0=Sun … 6=Sat
+    const { dow: weekday, date: todayDate } = tashkentComponents(now); // 0=Sun … 6=Sat
 
     const [
       appointmentsToday,
       bookedMinutesAgg,
       schedulesToday,
+      timeOffsToday,
       missedCallsToday,
       tgUnread,
       failedNotificationsToday,
@@ -83,14 +78,27 @@ export const GET = createApiListHandler(
         },
         _sum: { durationMin: true },
       }),
-      // Active doctors' schedules for today's weekday — the denominator.
+      // Active doctors' schedules for today's weekday — the denominator,
+      // with their validity range and today's time off (audit AN-22): a
+      // doctor on leave or a schedule that has ended has no minutes to fill.
       prisma.doctorSchedule.findMany({
         where: {
           weekday,
           isActive: true,
           doctor: { isActive: true },
         },
-        select: { startTime: true, endTime: true },
+        select: {
+          doctorId: true,
+          weekday: true,
+          startTime: true,
+          endTime: true,
+          validFrom: true,
+          validTo: true,
+        },
+      }),
+      prisma.doctorTimeOff.findMany({
+        where: { startAt: { lt: todayEnd }, endAt: { gt: todayStart } },
+        select: { doctorId: true, startAt: true, endAt: true },
       }),
       prisma.call.count({
         where: {
@@ -121,10 +129,20 @@ export const GET = createApiListHandler(
         : Promise.resolve(0),
     ]);
 
-    const availableMinutes = schedulesToday.reduce(
-      (sum, s) => sum + Math.max(0, hhmmToMinutes(s.endTime) - hhmmToMinutes(s.startTime)),
-      0,
-    );
+    const rowsByDoctor = new Map<string, typeof schedulesToday>();
+    for (const r of schedulesToday) {
+      const arr = rowsByDoctor.get(r.doctorId) ?? [];
+      arr.push(r);
+      rowsByDoctor.set(r.doctorId, arr);
+    }
+    let availableMinutes = 0;
+    for (const [doctorId, rows] of rowsByDoctor) {
+      availableMinutes += workingMinutesOn(
+        rows,
+        todayDate,
+        timeOffsToday.filter((t) => t.doctorId === doctorId),
+      );
+    }
     const bookedMinutes = bookedMinutesAgg._sum.durationMin ?? 0;
     const loadPercent =
       availableMinutes > 0

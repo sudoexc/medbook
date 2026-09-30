@@ -30,12 +30,15 @@
  *   4. `Patient.lastContactedAt` advances only when somebody actually spoke
  *      to the patient.
  *
+ * «Перенести» is not recorded here (audit AC-10): it is written by the move
+ * itself (`recordRescheduleOutcome`), so the endpoint refuses it.
+ *
  * Caller MUST be inside a TENANT context (the route wrapper provides it).
  */
 import {
   IN_CLINIC_APPOINTMENT_STATUSES,
   RISK_TODAY_APPOINTMENT_STATUSES,
-  dedupeKeyFor,
+  riskDedupeKeysOf,
   type NoContactCallPayload,
 } from "@/lib/actions/types";
 import { prisma } from "@/lib/prisma";
@@ -47,6 +50,7 @@ import {
   callbackOutlivesVisit,
   normalizeOutcomeInput,
   outcomeReachedPatient,
+  outcomeRecordedByTheMove,
   outcomeStamp,
   returnDayIsLater,
   scheduleCallbackTask,
@@ -55,25 +59,8 @@ import {
 } from "./outcome";
 import { upsertAction } from "./repository";
 
-/**
- * Dedupe keys of every risk Action (`RISK_ACTION_TYPES`) that can exist for
- * one appointment. Built through `dedupeKeyFor` with stub payloads (only
- * `appointmentId` feeds these keys) so a key-format change can never desync
- * this lookup.
- */
-export function riskDedupeKeys(appointmentId: string): string[] {
-  const base = { appointmentId, patientId: "", patientName: "", appointmentAt: "" };
-  return [
-    dedupeKeyFor({ type: "NO_SHOW_RISK_HIGH", ...base, risk: 0 }),
-    dedupeKeyFor({ type: "UNCONFIRMED_24H", ...base, doctorName: "" }),
-    dedupeKeyFor({
-      type: "NO_CONTACT_CALL",
-      ...base,
-      doctorName: "",
-      daysSinceContact: null,
-    }),
-  ];
-}
+/** Dedupe keys of every risk Action of one appointment (`riskDedupeKeysOf`). */
+export const riskDedupeKeys = riskDedupeKeysOf;
 
 export type StampedAction = {
   id: string;
@@ -97,6 +84,9 @@ export type RiskOutcomeResult =
   /** The appointment refused the side effect (already cancelled, completed…):
    *  nothing was recorded, the row is stale. */
   | { ok: false; reason: "not_applied"; detail: string }
+  /** «Перенести» sent as a call outcome: only the move records it (audit
+   *  AC-10). Nothing was recorded. */
+  | { ok: false; reason: "reschedule_in_drawer" }
   | {
       ok: true;
       appointmentId: string;
@@ -122,6 +112,9 @@ export async function recordRiskOutcome(params: {
   const { clinicId, actorId } = params;
   const input = normalizeOutcomeInput(params.input);
   const now = params.now ?? new Date();
+  if (outcomeRecordedByTheMove(input.outcome)) {
+    return { ok: false, reason: "reschedule_in_drawer" };
+  }
 
   const appt = await prisma.appointment.findUnique({
     where: { id: params.appointmentId },
@@ -254,4 +247,65 @@ export async function recordRiskOutcome(params: {
     contactBumped,
     domain,
   };
+}
+
+/**
+ * Stamp «Перенести» on the risk rows of a visit whose start really moved
+ * (audit AC-10). Called by the appointment PATCH and the bulk shift after
+ * the new time is committed.
+ *
+ * The risk-today «Перенести» used to record outcome RESCHEDULED first and
+ * only then open the appointment drawer. Reception interrupted there closed
+ * the drawer: the visit stayed at 15:00, while its risk rows were closed,
+ * locked until the visit time and listed in «Обработано сегодня» as moved.
+ * Now the button only opens the drawer, and the outcome is written here,
+ * once the move is saved, with the person who moved it. A move made
+ * anywhere (drawer, calendar drag) answers the same question, so every
+ * staff move records it. Rows of another occurrence are untouched: only
+ * OPEN / SNOOZED rows of this visit. Best effort: never throws, the move is
+ * already committed. Caller MUST be inside a TENANT context.
+ */
+export async function recordRescheduleOutcome(params: {
+  clinicId: string;
+  appointmentId: string;
+  actorId: string;
+  now?: Date;
+}): Promise<StampedAction[]> {
+  const now = params.now ?? new Date();
+  try {
+    const live = await prisma.action.findMany({
+      where: {
+        clinicId: params.clinicId,
+        dedupeKey: { in: riskDedupeKeysOf(params.appointmentId) },
+        status: { in: ["OPEN", "SNOOZED"] },
+      },
+    });
+    const input: OutcomeInput = {
+      outcome: "RESCHEDULED",
+      note: null,
+      callbackAt: null,
+    };
+    const stamped: StampedAction[] = [];
+    for (const before of live) {
+      const after = await prisma.action.update({
+        where: { id: before.id },
+        data: outcomeStamp(before, input, params.actorId, now),
+      });
+      stamped.push({
+        id: before.id,
+        type: before.type,
+        oldStatus: before.status,
+        newStatus: after.status,
+        callAttempts: after.callAttempts,
+      });
+    }
+    return stamped;
+  } catch (e) {
+    console.warn(
+      `[actions.recordRescheduleOutcome] ${params.appointmentId} skipped: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+    return [];
+  }
 }

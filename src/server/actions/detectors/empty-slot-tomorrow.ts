@@ -20,13 +20,19 @@
  * Schedule slot semantics: a `DoctorSchedule` row is `(weekday, startTime,
  * endTime)` in `HH:mm` format, scoped to the clinic timezone. We use the
  * clinic's tz to compute "tomorrow 00:00 → 24:00 local" and slice the
- * schedule rows whose `weekday` matches into blocks of empty time.
+ * doctor's working time into blocks of empty time. Working time is the one
+ * rule of `workingIntervalsOn`: rows valid tomorrow (`validFrom` / `validTo`)
+ * with every `DoctorTimeOff` cut out (audit AC-11). The weekday's rows alone
+ * turned a doctor on leave into a full free day: «Свободный слот завтра в
+ * 09:00, возможные потери 2 700 000 сум», and reception rang patients to
+ * book them with a doctor who would not be there.
  */
 import { defaultSeverity, type EmptySlotTomorrowPayload } from "@/lib/actions/types";
 import {
   tashkentComponents,
   toTashkentDate,
 } from "@/lib/booking-validation";
+import { workingIntervalsOn } from "@/lib/doctor-working-windows";
 
 import type { DetectorConfig } from "../config";
 import type { PrismaLike } from "./_shared";
@@ -37,6 +43,13 @@ type ScheduleRow = {
   weekday: number;
   startTime: string;
   endTime: string;
+  validFrom?: Date | null;
+  validTo?: Date | null;
+};
+type TimeOffRow = {
+  doctorId: string;
+  startAt: Date;
+  endAt: Date;
 };
 type DoctorRow = {
   id: string;
@@ -50,16 +63,6 @@ type ApptRow = {
   date: Date;
   endDate: Date;
 };
-
-function parseHHmm(value: string): { h: number; m: number } | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(value);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
-  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
-  return { h, m: min };
-}
 
 /**
  * UTC instant for `tomorrow at HH:mm` **Tashkent wall clock** — schedule
@@ -81,6 +84,7 @@ export async function detectEmptySlotTomorrow(
 
   const tomorrowStart = startOfClinicDay(addDays(now, 1));
   const tomorrowEnd = addDays(tomorrowStart, 1);
+  const tomorrowDate = tashkentComponents(tomorrowStart).date;
   // Sun=0..Sat=6 in the *clinic's* civil day — same convention as the schema.
   const weekday = tashkentComponents(tomorrowStart).dow;
 
@@ -109,9 +113,21 @@ export async function detectEmptySlotTomorrow(
       weekday: true,
       startTime: true,
       endTime: true,
+      validFrom: true,
+      validTo: true,
     },
   })) as ScheduleRow[];
   if (schedules.length === 0) return [];
+
+  // Leave, sick days, a conference: any time off that touches tomorrow.
+  const timeOffs = (await prisma.doctorTimeOff.findMany({
+    where: {
+      doctorId: { in: doctorIds },
+      startAt: { lt: tomorrowEnd },
+      endAt: { gt: tomorrowStart },
+    },
+    select: { doctorId: true, startAt: true, endAt: true },
+  })) as TimeOffRow[];
 
   // Pull tomorrow's appointments (any non-cancelled status counts as
   // "occupies the slot").
@@ -156,6 +172,13 @@ export async function detectEmptySlotTomorrow(
     schedByDoctor.set(s.doctorId, arr);
   }
 
+  const offsByDoctor = new Map<string, TimeOffRow[]>();
+  for (const t of timeOffs) {
+    const arr = offsByDoctor.get(t.doctorId) ?? [];
+    arr.push(t);
+    offsByDoctor.set(t.doctorId, arr);
+  }
+
   const apptsByDoctor = new Map<string, ApptRow[]>();
   for (const a of appts) {
     const arr = apptsByDoctor.get(a.doctorId) ?? [];
@@ -167,30 +190,15 @@ export async function detectEmptySlotTomorrow(
     const rows = schedByDoctor.get(doctor.id);
     if (!rows || rows.length === 0) continue;
 
-    // Translate each schedule row into a [start, end] timestamp pair.
+    // Tomorrow's working time: valid rows, merged, time off cut out. None
+    // (a day off, a schedule not valid tomorrow, leave) → nothing is free.
     type Block = { start: Date; end: Date };
-    const blocks: Block[] = [];
-    for (const r of rows) {
-      const s = parseHHmm(r.startTime);
-      const e = parseHHmm(r.endTime);
-      if (!s || !e) continue;
-      const start = atTomorrow(now, s.h, s.m);
-      const end = atTomorrow(now, e.h, e.m);
-      if (end.getTime() <= start.getTime()) continue;
-      blocks.push({ start, end });
-    }
-    if (blocks.length === 0) continue;
-    // Merge contiguous / overlapping blocks.
-    blocks.sort((a, b) => a.start.getTime() - b.start.getTime());
-    const merged: Block[] = [];
-    for (const b of blocks) {
-      const last = merged[merged.length - 1];
-      if (last && b.start.getTime() <= last.end.getTime()) {
-        if (b.end.getTime() > last.end.getTime()) last.end = b.end;
-      } else {
-        merged.push({ start: new Date(b.start), end: new Date(b.end) });
-      }
-    }
+    const merged: Block[] = workingIntervalsOn(
+      rows,
+      tomorrowDate,
+      offsByDoctor.get(doctor.id) ?? [],
+    );
+    if (merged.length === 0) continue;
 
     // Subtract appointments to derive empty sub-blocks.
     const dApps = (apptsByDoctor.get(doctor.id) ?? [])

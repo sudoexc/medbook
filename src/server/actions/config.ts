@@ -43,8 +43,19 @@ export type DetectorConfig = {
   doctorOverloadQueueLength: number;
   /** Idle minutes after which a free cabinet is flagged. */
   idleRoomMinutes: number;
-  /** PAYMENT_OVERDUE fires for unpaid completed appointments older than this many days. */
+  /**
+   * PAYMENT_OVERDUE fires for unpaid completed appointments older than this
+   * many days. Not 0: a visit paid at the till minutes after it closed was a
+   * «задолженность» until the next pass (audit AC-17).
+   */
   paymentOverdueMinDays: number;
+  /**
+   * PAYMENT_OVERDUE looks at visits completed within this many days only
+   * (audit AC-06): every 15 minutes the detector read the clinic's whole
+   * visit history, and a year of imported visits became hundreds of «долг»
+   * cards that buried today's.
+   */
+  paymentOverdueWindowDays: number;
   /** LOW_DOCTOR_SCHEDULE fires when a doctor has fewer than this many slots in 7d. */
   lowScheduleSlotsThreshold: number;
 };
@@ -63,7 +74,8 @@ export const DEFAULT_CONFIG: DetectorConfig = {
   followUpStaleDays: 7,
   doctorOverloadQueueLength: 8,
   idleRoomMinutes: 20,
-  paymentOverdueMinDays: 0,
+  paymentOverdueMinDays: 1,
+  paymentOverdueWindowDays: 90,
   lowScheduleSlotsThreshold: 5,
 };
 
@@ -105,11 +117,11 @@ export const PATIENT_NO_CHANNEL_TTL_HOURS = 48;
 export const CLOSED_SIGNAL_LAPSE_HOURS = 12;
 
 /**
- * How long a «Перенести» may stay unsaved before it counts as abandoned. The
- * risk-today «Перенести» records outcome RESCHEDULED first and only then
- * opens the appointment drawer where the date is moved (audit AC-10). A row
+ * How long a legacy «Перенести» may stay unsaved before it counts as
+ * abandoned. The risk-today «Перенести» used to record outcome RESCHEDULED
+ * first and only then open the appointment drawer where the date is moved;
+ * since audit AC-10 the move itself records it. A row written the old way
  * whose visit is still at the same time this long after the outcome goes back
- * into the lists (`rescheduleNeverHappened` in repository.ts). Long enough to
- * pick a new date without the row flickering back mid-edit.
+ * into the lists (`rescheduleNeverHappened` in repository.ts).
  */
 export const ABANDONED_RESCHEDULE_GRACE_MIN = 30;

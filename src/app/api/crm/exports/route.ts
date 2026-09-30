@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok } from "@/server/http";
 import { enqueueExport } from "@/server/workers/exports";
+import { EXPORT_ROLES } from "@/lib/export-roles";
 
 const Schema = z.object({
   kind: z.enum(["patients", "appointments", "payments"]),
@@ -31,7 +32,7 @@ const Schema = z.object({
 });
 
 export const POST = createApiHandler(
-  { roles: ["ADMIN"], bodySchema: Schema },
+  { roles: [...EXPORT_ROLES], bodySchema: Schema },
   async ({ request, body, ctx }) => {
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     const requestedBy =

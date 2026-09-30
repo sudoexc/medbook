@@ -5,8 +5,8 @@
  * predictably and the client never silently vanishes:
  *
  *   CONFIRMED     → confirmAppointment(via INBOUND_CALL) + Action DONE(outcome)
- *   RESCHEDULED   → Action DONE(outcome)  (the reschedule itself happens in the
- *                   dialog; this just records + closes the row)
+ *   RESCHEDULED   → 409 `reschedule_in_drawer` (audit AC-10): the move itself
+ *                   records it once the new time is saved
  *   CALLBACK      → Action SNOOZED until callbackAt (+ note), or, when that is
  *                   at or after the visit, a PATIENT_CALLBACK task
  *   RETURN_LATER  → cancelAppointment + a PATIENT_CALLBACK task on the
@@ -32,6 +32,7 @@ import {
   applyOutcomeToAppointment,
   callbackOutlivesVisit,
   normalizeOutcomeInput,
+  outcomeRecordedByTheMove,
   outcomeStamp,
   returnDayIsLater,
   scheduleCallbackTask,
@@ -44,6 +45,9 @@ export const POST = createApiHandler(
   },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+    if (outcomeRecordedByTheMove(body.outcome)) {
+      return conflict("reschedule_in_drawer");
+    }
     const id = actionIdFromUrl(request);
 
     const before = await prisma.action.findUnique({ where: { id } });

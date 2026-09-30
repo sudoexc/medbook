@@ -15,6 +15,9 @@ export type PatientsFilterState = PatientsListFilters & {
   ageMax?: number;
 };
 
+/** `PatientSegment` values the list API accepts (`QueryPatientSchema`). */
+const PATIENT_SEGMENTS = ["NEW", "ACTIVE", "DORMANT", "VIP", "CHURN"] as const;
+
 const KNOWN_KEYS: (keyof PatientsFilterState)[] = [
   "q",
   "segment",
@@ -30,7 +33,8 @@ const KNOWN_KEYS: (keyof PatientsFilterState)[] = [
   "ageMax",
 ];
 
-function parse(sp: URLSearchParams): PatientsFilterState {
+/** URL → filter state. Exported for tests. */
+export function parse(sp: URLSearchParams): PatientsFilterState {
   const out: PatientsFilterState = {};
   for (const key of KNOWN_KEYS) {
     const v = sp.get(key);
@@ -38,6 +42,15 @@ function parse(sp: URLSearchParams): PatientsFilterState {
     if (key === "ageMin" || key === "ageMax") {
       const n = Number(v);
       if (Number.isFinite(n)) (out[key] as number) = n;
+    } else if (key === "segment") {
+      // The API takes the enum only; a link with `segment=dormant` (the
+      // Action Center's old «Запустить реактивацию») made the whole list
+      // fail with a 400 (audit UX-09). Match case-insensitively, drop the
+      // rest.
+      const upper = v.toUpperCase();
+      if ((PATIENT_SEGMENTS as readonly string[]).includes(upper)) {
+        out.segment = upper;
+      }
     } else if (key === "balance") {
       if (v === "debt" || v === "zero" || v === "credit") out.balance = v;
     } else if (key === "sort") {

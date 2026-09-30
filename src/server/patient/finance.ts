@@ -22,28 +22,9 @@ import {
   type BalanceBucket,
   type PatientFinance,
 } from "@/lib/patients/finance";
-import { computeLtv } from "@/server/services/ltv-compute";
+import { paidNetTiyin as paidTiyinOf } from "@/server/services/ltv-compute";
 
 type Db = typeof prisma;
-
-type PaidRow = {
-  amount: number;
-  refundedAmount: number;
-  currency: string;
-  fxRate: unknown;
-};
-
-/** PAID payments net of refunds, in тийин, on the LTV conversion. */
-function paidTiyinOf(rows: PaidRow[], latestRate: unknown): number {
-  return computeLtv(
-    rows.map((p) => ({
-      amount: Math.max(0, p.amount - (p.refundedAmount ?? 0)),
-      currency: p.currency,
-      fxRate: p.fxRate,
-    })),
-    latestRate,
-  );
-}
 
 /**
  * When the clinic started recording payments in the CRM, or null when it

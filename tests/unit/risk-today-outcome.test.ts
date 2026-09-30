@@ -661,3 +661,88 @@ describe("risk action bookkeeping", () => {
     expect(src).not.toContain("mark-contacted");
   });
 });
+
+// Audit AC-10: «Перенести» used to close the visit's risk rows before any
+// date was moved; a drawer closed without saving left a visit «перенесён»
+// that was still at 15:00 and out of every list.
+describe("«Перенести» is recorded by the move itself", () => {
+  function seedUnconfirmedRow(over: Record<string, unknown> = {}) {
+    db.actions.set("act_r", {
+      id: "act_r",
+      clinicId: "c1",
+      type: "UNCONFIRMED_24H",
+      dedupeKey: "UNCONFIRMED_24H:appointmentId=ap_1",
+      status: "OPEN",
+      severity: "medium",
+      payload: {
+        type: "UNCONFIRMED_24H",
+        appointmentId: "ap_1",
+        patientId: "p_1",
+        patientName: "Каримова Нодира",
+        appointmentAt: APPT_AT.toISOString(),
+        doctorName: "Алиев А.А.",
+      },
+      snoozeUntil: null,
+      doneAt: null,
+      outcome: null,
+      outcomeNote: null,
+      callbackAt: null,
+      resolvedById: null,
+      callAttempts: 0,
+      expiresAt: null,
+      updatedAt: NOW,
+      ...over,
+    });
+  }
+
+  it("the outcome endpoint refuses it and the row stays in the list", async () => {
+    seedUnconfirmedRow();
+    const { post, get } = await routes();
+    const res = await post(postOutcome({ outcome: "RESCHEDULED" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).reason).toBe("reschedule_in_drawer");
+
+    expect(db.actions.get("act_r")).toMatchObject({ status: "OPEN", outcome: null });
+    const data = await riskToday(get);
+    expect(data.appointments.map((a) => a.appointmentId)).toEqual(["ap_1"]);
+    expect(data.handled).toEqual([]);
+  });
+
+  it("a saved move stamps the visit's open risk rows with who moved it", async () => {
+    seedUnconfirmedRow();
+    const { get } = await routes();
+    const { recordRescheduleOutcome } = await import("@/server/actions/risk-outcome");
+    const stamped = await recordRescheduleOutcome({
+      clinicId: "c1",
+      appointmentId: "ap_1",
+      actorId: "u_recept",
+      now: NOW,
+    });
+    expect(stamped).toEqual([
+      expect.objectContaining({ id: "act_r", oldStatus: "OPEN", newStatus: "DONE" }),
+    ]);
+    expect(db.actions.get("act_r")).toMatchObject({
+      status: "DONE",
+      outcome: "RESCHEDULED",
+      resolvedById: "u_recept",
+      doneAt: NOW,
+    });
+    const data = await riskToday(get);
+    expect(data.handled).toEqual([
+      expect.objectContaining({ appointmentId: "ap_1", outcome: "RESCHEDULED" }),
+    ]);
+  });
+
+  it("leaves a row somebody already closed alone", async () => {
+    seedUnconfirmedRow({ status: "DONE", outcome: "CONFIRMED", doneAt: NOW });
+    const { recordRescheduleOutcome } = await import("@/server/actions/risk-outcome");
+    const stamped = await recordRescheduleOutcome({
+      clinicId: "c1",
+      appointmentId: "ap_1",
+      actorId: "u_recept",
+      now: NOW,
+    });
+    expect(stamped).toEqual([]);
+    expect(db.actions.get("act_r")).toMatchObject({ status: "DONE", outcome: "CONFIRMED" });
+  });
+});

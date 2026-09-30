@@ -20,7 +20,9 @@
  *   - the referral reward is unique per (referrer, referred) pair and only
  *     minted for the patient's first completed visit;
  *   - `lastContactedAt` only ever moves forward;
- *   - the visit stats are recounted from the appointments, not incremented.
+ *   - the visit stats are recounted from the appointments, not incremented;
+ *   - the visit's pre-arrival risk tasks close (audit AC-17), which a second
+ *     run finds already closed.
  *
  * `thankPatient` is false when the signature lands on a visit someone else
  * already closed: the data effects still run (they heal a visit closed before
@@ -33,6 +35,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { retireVisitRiskActions } from "@/server/actions/in-clinic";
 import { mintReferralRewardOnCompletion } from "@/server/patient-experience/referral-mint";
 import {
   bumpPatientLastContact,
@@ -75,4 +78,7 @@ export async function runCompletionEffects(
   // Both helpers log and swallow their own failures.
   await bumpPatientLastContact(patientId, input.completedAt);
   await refreshPatientVisitStats(patientId);
+  // A seen patient is no longer a no-show or confirmation risk; logs and
+  // swallows its own failures too.
+  await retireVisitRiskActions(prisma, clinicId, appointmentId, "COMPLETED");
 }

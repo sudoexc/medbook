@@ -31,6 +31,7 @@ import type {
 } from "@/server/realtime/envelope";
 import { recomputeCaseAppointments } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { retireVisitRiskActions } from "@/server/actions/in-clinic";
 
 export type CancelInput = {
   appointmentId: string;
@@ -205,6 +206,12 @@ export async function cancelAppointment(
 
     return { after };
   });
+
+  // A cancelled visit is no longer «не подтверждена» or «риск пропуска»
+  // (audit AC-17): its risk tasks close now, not on the next engine pass,
+  // so nobody calls a patient who cancelled in Telegram a minute ago.
+  // Never throws.
+  await retireVisitRiskActions(prisma, input.clinicId, after.id, "CANCELLED");
 
   // TZ-notifications-cancel-sync §8.3 — surface-aware variant selection.
   // Mini-app self-cancel gets the softer "we're around" text; everything

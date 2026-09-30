@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import {
   dedupeKeyFor,
+  actionDeeplinkPath,
   defaultDeeplinkPath,
   defaultSeverity,
   type LowNpsReceivedPayload,
@@ -226,8 +227,11 @@ describe("LOW_NPS_RECEIVED action payload", () => {
     expect(defaultSeverity("LOW_NPS_RECEIVED")).toBe("high");
   });
 
-  it("default deeplink points at the action-center", () => {
-    expect(defaultDeeplinkPath("LOW_NPS_RECEIVED")).toBe("/crm/action-center");
+  // Audit AC-14: «Перезвонить» on a low rating reloaded the Action Center
+  // itself. It opens the patient who rated the visit.
+  it("deeplink opens the patient card", () => {
+    expect(actionDeeplinkPath(samplePayload)).toBe("/crm/patients/p_42");
+    expect(defaultDeeplinkPath("LOW_NPS_RECEIVED")).toBe("/crm/patients");
   });
 
   it("tolerates a null doctorId in the payload type", () => {

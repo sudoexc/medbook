@@ -17,7 +17,9 @@
  *   - inline CTAs: call, outcome menu («Обработано»), snooze
  *
  * `Обработано` opens a six-outcome menu (TZ-risk-outcomes §1/§5): each
- * outcome is POSTed once for the appointment; the server stamps every risk
+ * outcome but «Перенести» is POSTed once for the appointment. «Перенести»
+ * only opens the visit's drawer: the move itself records the outcome once
+ * the new time is saved (audit AC-10). The server stamps every risk
  * Action attached to it (creating a call task when the row surfaced only as
  * «не на связи») and drives the right durable domain action, so the row
  * stops resurrecting on the engine recompute. «Хочет прийти позже» cancels
@@ -390,9 +392,13 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
     ? row.patientPhone.replace(/[^\d+]/g, "")
     : null;
 
-  const handlePath = `/${locale}/crm/call-center?from=risk-today&patientId=${row.patientId}&phone=${encodeURIComponent(row.patientPhone ?? "")}`;
+  // Real pages only (audit AC-14): there is no `/crm/appointments/<id>`, the
+  // visit opens as the drawer of the appointments page; and the Call Center
+  // ignored the patient and phone it was sent, so «Звонок» opens the patient
+  // card, which has the number and the history to call with.
   const patientHref = `/${locale}/crm/patients/${row.patientId}`;
-  const apptHref = `/${locale}/crm/appointments/${row.appointmentId}`;
+  const apptHref = `/${locale}/crm/appointments?ap=${row.appointmentId}&from=risk-today`;
+  const handlePath = patientHref;
 
   // Records the call outcome for this appointment (TZ-risk-outcomes §1).
   // One request whatever the row carries: the server resolves the attached
@@ -405,19 +411,19 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
     callbackAt?: string;
   }) => {
     if (busy) return;
+    // «Перенести» records nothing here (audit AC-10): it opens the visit's
+    // drawer, and saving the new time there closes this row with the outcome.
+    // A drawer closed without saving leaves the row in the list, as it should.
+    if (input.outcome === "RESCHEDULED") {
+      router.push(apptHref);
+      return;
+    }
     setBusy(true);
     try {
       await recordOutcome.mutateAsync({
         appointmentId: row.appointmentId,
         ...input,
       });
-      // «Перенести» = record the outcome + jump into the appointment drawer.
-      // The actual date move happens there; reminders reschedule on save.
-      if (input.outcome === "RESCHEDULED") {
-        router.push(
-          `/${locale}/crm/appointments?ap=${row.appointmentId}&from=risk-today`,
-        );
-      }
       toast.success(
         t("outcomeMenu.success", { outcome: t(`outcome.${input.outcome}`) }),
       );

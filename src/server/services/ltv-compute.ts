@@ -31,3 +31,21 @@ export function computeLtv(payments: LtvPayment[], latestRate: unknown): number 
   }
   return ltv;
 }
+
+export type PaidPaymentRow = LtvPayment & { refundedAmount?: number | null };
+
+/**
+ * PAID payments net of refunds, in тийин, on the LTV conversion. Shared by
+ * the patient balance (`server/patient/finance.ts`) and the PAYMENT_OVERDUE
+ * detector, so a visit's debt and the patient's balance read one formula.
+ */
+export function paidNetTiyin(rows: PaidPaymentRow[], latestRate: unknown): number {
+  return computeLtv(
+    rows.map((p) => ({
+      amount: Math.max(0, p.amount - (p.refundedAmount ?? 0)),
+      currency: p.currency,
+      fxRate: p.fxRate,
+    })),
+    latestRate,
+  );
+}

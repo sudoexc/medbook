@@ -30,6 +30,8 @@ import { tashkentComponents } from "@/lib/booking-validation";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 
 export const POST = createApiHandler(
   {
@@ -232,6 +234,33 @@ export const POST = createApiHandler(
     // failure must never fail an already-committed reschedule.
     for (const p of planned) {
       fireTrigger({ kind: "appointment.rescheduled", appointmentId: p.id });
+    }
+
+    // The move records «Перенести» on each visit's open risk rows, as the
+    // single PATCH does (audit AC-10).
+    if (ctx.kind === "TENANT" && body.deltaMinutes !== 0) {
+      for (const p of planned) {
+        const stamped = await recordRescheduleOutcome({
+          clinicId: ctx.clinicId,
+          appointmentId: p.id,
+          actorId: ctx.userId,
+        });
+        for (const a of stamped) {
+          await audit(request, {
+            action: AUDIT_ACTION.ACTION_OUTCOME,
+            entityType: "Action",
+            entityId: a.id,
+            meta: {
+              type: a.type,
+              appointmentId: p.id,
+              outcome: "RESCHEDULED",
+              oldStatus: a.oldStatus,
+              newStatus: a.newStatus,
+              via: "appointment.bulk-reschedule",
+            },
+          });
+        }
+      }
     }
 
     await audit(request, {

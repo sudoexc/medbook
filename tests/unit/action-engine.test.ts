@@ -34,6 +34,7 @@ const detectorMocks = {
 const upsertMock = vi.fn();
 const expireMock = vi.fn();
 const retireMock = vi.fn();
+const vanishedMock = vi.fn();
 const publishMock = vi.fn();
 
 vi.mock("@/server/actions/detectors/empty-slot-tomorrow", () => ({
@@ -53,6 +54,7 @@ vi.mock("@/server/actions/detectors/no-show-risk-high", () => ({
 }));
 vi.mock("@/server/actions/detectors/case-repeat-due", () => ({
   detectCaseRepeatDue: (...args: unknown[]) => detectorMocks.caseRepeat(...args),
+  severityForCaseRepeatDue: () => "medium" as const,
 }));
 vi.mock("@/server/actions/detectors/overdue-follow-up", () => ({
   detectOverdueFollowUp: (...args: unknown[]) => detectorMocks.followUp(...args),
@@ -74,6 +76,7 @@ vi.mock("@/server/actions/detectors/low-doctor-schedule", () => ({
 vi.mock("@/server/actions/repository", () => ({
   upsertAction: (...args: unknown[]) => upsertMock(...args),
   expireStaleActions: (...args: unknown[]) => expireMock(...args),
+  retireVanishedSignals: (...args: unknown[]) => vanishedMock(...args),
 }));
 
 vi.mock("@/server/actions/in-clinic", () => ({
@@ -109,6 +112,7 @@ beforeEach(() => {
   });
   expireMock.mockResolvedValue(0);
   retireMock.mockResolvedValue(0);
+  vanishedMock.mockResolvedValue(0);
   publishMock.mockResolvedValue(undefined);
 });
 
@@ -351,5 +355,73 @@ describe("runActionEngine", () => {
     expect(res.errors.some((e) => e.error.includes("db down"))).toBe(true);
     // Other detectors still ran.
     expect(detectorMocks.lowSched).toHaveBeenCalledTimes(1);
+  });
+  // Audit AC-17: a row the pass did not emit is a signal that went away.
+  it("closes vanished signals with the keys each detector that ran emitted", async () => {
+    const debt: ActionPayload = {
+      type: "PAYMENT_OVERDUE",
+      appointmentId: "ap_1",
+      patientId: "p1",
+      patientName: "x",
+      amountUzs: 100,
+      daysOverdue: 2,
+    };
+    detectorMocks.payment.mockResolvedValueOnce([debt]);
+    detectorMocks.empty.mockRejectedValueOnce(new Error("boom"));
+    // A failed write leaves the signal as it was: it must still count as emitted.
+    upsertMock.mockRejectedValueOnce(new Error("db down"));
+    vanishedMock.mockResolvedValueOnce(4);
+    const res = await runActionEngine(fakePrisma, clinicId, now);
+
+    expect(vanishedMock).toHaveBeenCalledTimes(1);
+    const emitted = vanishedMock.mock.calls[0]![2] as Map<string, Set<string>>;
+    expect([...emitted.get("PAYMENT_OVERDUE")!]).toEqual([
+      "PAYMENT_OVERDUE:appointmentId=ap_1",
+    ]);
+    // A detector that ran and found nothing: every row of its type is gone.
+    expect(emitted.get("DORMANT_BATCH")?.size).toBe(0);
+    // A detector that crashed is left out, so its rows are not wiped.
+    expect(emitted.has("EMPTY_SLOT_TOMORROW")).toBe(false);
+    expect(res.expired).toBe(4);
+  });
+
+  it("gives a free slot an expiry at its start (AC-17)", async () => {
+    const slotStart = "2026-05-07T04:00:00.000Z";
+    detectorMocks.empty.mockResolvedValueOnce([
+      {
+        type: "EMPTY_SLOT_TOMORROW",
+        doctorId: "d1",
+        doctorName: "x",
+        slotStart,
+        slotEnd: "2026-05-07T06:00:00.000Z",
+        specialty: "neuro",
+        estimatedRevenueLossUzs: 10,
+      } satisfies ActionPayload,
+    ]);
+    await runActionEngine(fakePrisma, clinicId, now);
+    const opts = upsertMock.mock.calls[0]?.[3] as { expiresAt?: Date | null };
+    expect(opts.expiresAt?.toISOString()).toBe(slotStart);
+  });
+
+  it("writes CASE_REPEAT_DUE as medium, as its detector says (AC-05)", async () => {
+    detectorMocks.caseRepeat.mockResolvedValueOnce([
+      {
+        type: "CASE_REPEAT_DUE",
+        caseId: "case1",
+        patientId: "p1",
+        patientName: "x",
+        dueDate: "2026-05-10",
+        lastVisitAt: "2026-04-26T05:00:00.000Z",
+      } satisfies ActionPayload,
+    ]);
+    await runActionEngine(fakePrisma, clinicId, now);
+    const opts = upsertMock.mock.calls[0]?.[3] as {
+      severity?: string;
+      deeplinkPath?: string;
+    };
+    expect(opts.severity).toBe("medium");
+    // The link comes from the payload (the repository default), never a
+    // per-spec override.
+    expect(opts.deeplinkPath).toBeUndefined();
   });
 });

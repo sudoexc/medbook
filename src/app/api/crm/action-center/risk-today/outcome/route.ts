@@ -12,9 +12,10 @@
  * show (another day, or a visit that is already over); 409
  * `patient_in_clinic` when the patient has arrived meanwhile (audit AC-07);
  * 409 `return_day_not_later` for «Хочет прийти позже» on the visit's own day
- * (audit AC-09); 409 when the appointment refused the side effect (e.g.
- * «Подтвердил» on a visit someone cancelled a moment ago). Nothing is
- * recorded on any 409.
+ * (audit AC-09); 409 `reschedule_in_drawer` for «Перенести», which only the
+ * saved move records (audit AC-10); 409 when the appointment refused the side
+ * effect (e.g. «Подтвердил» on a visit someone cancelled a moment ago).
+ * Nothing is recorded on any 409.
  *
  * RBAC: ADMIN, RECEPTIONIST, the roles of the canonical cancel
  * (DELETE /api/crm/appointments/[id]). «Отказался» cancels the visit, and the

@@ -147,7 +147,9 @@ async function exportPatients(
   filters: ExportFilters,
   writer: (chunk: string) => void,
 ): Promise<number> {
-  const where: Record<string, unknown> = {};
+  // Deleted and DSAR-anonymised cards stay out of the file (audit AN-27):
+  // the patient asked to be erased, a spreadsheet copy must not keep them.
+  const where: Record<string, unknown> = { deletedAt: null };
   if (filters.segment) where.segment = filters.segment;
   if (filters.gender) where.gender = filters.gender;
   if (filters.source) where.source = filters.source;

@@ -58,6 +58,7 @@ import {
   revisionContentOf,
 } from "@/server/visit-notes/revisions";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
+import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -1004,6 +1005,33 @@ export const PATCH = createApiHandler(
           newCabinetId: after.cabinetId,
         },
       });
+    }
+    // «Перенести» is recorded by the move itself (audit AC-10): once the new
+    // start is saved, the visit's open risk rows close with the outcome and
+    // the person who moved it, and «Обработано сегодня» lists it. The
+    // risk-today button only opens this drawer; a drawer closed without
+    // saving never reaches here and the row stays in the list.
+    if (ctx.kind === "TENANT" && before.date.getTime() !== after.date.getTime()) {
+      const stamped = await recordRescheduleOutcome({
+        clinicId: after.clinicId,
+        appointmentId: id,
+        actorId: ctx.userId,
+      });
+      for (const a of stamped) {
+        await audit(request, {
+          action: AUDIT_ACTION.ACTION_OUTCOME,
+          entityType: "Action",
+          entityId: a.id,
+          meta: {
+            type: a.type,
+            appointmentId: id,
+            outcome: "RESCHEDULED",
+            oldStatus: a.oldStatus,
+            newStatus: a.newStatus,
+            via: "appointment.reschedule",
+          },
+        });
+      }
     }
     if (txOut.recomputed?.reason === "free_repeat") {
       await audit(request, {

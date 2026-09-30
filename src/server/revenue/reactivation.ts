@@ -31,6 +31,7 @@ import type {
 } from "@/generated/prisma/client";
 import type { TenantScopedPrisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 import { isAllowedToReceive } from "@/server/notifications/consent-gate";
 import { render } from "@/server/notifications/template";
 import type { TriggerKey } from "@/server/notifications/triggers";
@@ -117,9 +118,11 @@ type PatientRow = {
  * Pure helper: which appointment statuses count as "still on the books"
  * for the purposes of skipping reactivation. The reactivation engine
  * excludes any patient with a future appointment in one of these states.
+ * CONFIRMED included (audit AN-22): a patient who confirmed next week's
+ * visit was sent «мы скучаем, запишитесь».
  */
 function activeApptStatuses(): AppointmentStatus[] {
-  return ["BOOKED", "WAITING", "IN_PROGRESS"];
+  return [...ACTIVE_VISIT_STATUSES];
 }
 
 export async function findReactivationCandidates(

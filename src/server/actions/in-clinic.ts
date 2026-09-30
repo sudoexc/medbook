@@ -30,11 +30,12 @@
 import {
   RISK_ACTION_TYPES,
   RISK_TODAY_APPOINTMENT_STATUSES,
+  riskDedupeKeysOf,
   type ActionPayload,
 } from "@/lib/actions/types";
 import type { TenantScopedPrisma } from "@/lib/prisma";
 
-import { retireActions } from "./repository";
+import { holdsPromisedCall, retireActions } from "./repository";
 
 type PrismaLike = TenantScopedPrisma;
 
@@ -48,6 +49,52 @@ const EXPECTED: ReadonlySet<string> = new Set(RISK_TODAY_APPOINTMENT_STATUSES);
 /** The visit is over and the patient did not come to it. */
 const NOT_ATTENDED: ReadonlySet<string> = new Set(["CANCELLED", "NO_SHOW"]);
 
+type LiveRiskRow = {
+  id: string;
+  type: string;
+  severity: string;
+  status: string;
+  outcome: string | null;
+  payload: ActionPayload | null;
+};
+
+const LIVE_RISK_SELECT = {
+  id: true,
+  type: true,
+  severity: true,
+  status: true,
+  outcome: true,
+  payload: true,
+} as const;
+
+function apptIdOf(p: ActionPayload | null): string | null {
+  return p && "appointmentId" in p && typeof p.appointmentId === "string"
+    ? p.appointmentId
+    : null;
+}
+
+/**
+ * The rows among `live` whose visit is no longer ahead, each with its reason.
+ * A visit `statusOf` does not know is left to the rows' own expiry: a missing
+ * read must never close a clinic's whole risk list.
+ */
+function mootRows(
+  live: LiveRiskRow[],
+  statusOf: ReadonlyMap<string, string>,
+): Array<LiveRiskRow & { reason: string }> {
+  const moot = [];
+  for (const row of live) {
+    const apptId = apptIdOf(row.payload);
+    const status = apptId ? statusOf.get(apptId) : undefined;
+    if (status === undefined || EXPECTED.has(status)) continue;
+    // Only a snoozed row still holds its promise; an OPEN row's outcome is a
+    // leftover of an earlier occurrence.
+    if (holdsPromisedCall(row) && NOT_ATTENDED.has(status)) continue;
+    moot.push({ ...row, reason: `visit_${status.toLowerCase()}` });
+  }
+  return moot;
+}
+
 export async function retireMootRiskActions(
   prisma: PrismaLike,
   clinicId: string,
@@ -58,28 +105,10 @@ export async function retireMootRiskActions(
       type: { in: [...RISK_ACTION_TYPES] },
       status: { in: ["OPEN", "SNOOZED"] },
     },
-    select: {
-      id: true,
-      type: true,
-      severity: true,
-      status: true,
-      outcome: true,
-      payload: true,
-    },
-  })) as Array<{
-    id: string;
-    type: string;
-    severity: string;
-    status: string;
-    outcome: string | null;
-    payload: ActionPayload | null;
-  }>;
+    select: LIVE_RISK_SELECT,
+  })) as LiveRiskRow[];
   if (live.length === 0) return 0;
 
-  const apptIdOf = (p: ActionPayload | null): string | null =>
-    p && "appointmentId" in p && typeof p.appointmentId === "string"
-      ? p.appointmentId
-      : null;
   const apptIds = [...new Set(live.map((a) => apptIdOf(a.payload)).filter(Boolean))] as string[];
   if (apptIds.length === 0) return 0;
 
@@ -89,18 +118,46 @@ export async function retireMootRiskActions(
   })) as Array<{ id: string; status: string }>;
   const statusOf = new Map(appts.map((a) => [a.id, a.status]));
 
-  const moot = [];
-  for (const row of live) {
-    const apptId = apptIdOf(row.payload);
-    // A visit the lookup did not return is left to the rows' own expiry: a
-    // missing read must never close a clinic's whole risk list.
-    const status = apptId ? statusOf.get(apptId) : undefined;
-    if (status === undefined || EXPECTED.has(status)) continue;
-    // Only a snoozed row still holds its promise; an OPEN row's outcome is a
-    // leftover of an earlier occurrence.
-    const promisedCall = row.status === "SNOOZED" && row.outcome === "CALLBACK";
-    if (promisedCall && NOT_ATTENDED.has(status)) continue;
-    moot.push({ ...row, reason: `visit_${status.toLowerCase()}` });
+  return retireActions(prisma, clinicId, mootRows(live, statusOf), "visit_not_ahead");
+}
+
+/**
+ * The same rule for one visit, right when it leaves BOOKED / CONFIRMED
+ * (audit AC-17): the cancel and the completion paths call it, so a visit
+ * cancelled in Telegram stops being «не подтверждена» / «риск пропуска» at
+ * once rather than on the next 15-minute pass. `status` is the visit's new
+ * status. Best effort: never throws, the visit change is already committed.
+ */
+export async function retireVisitRiskActions(
+  prisma: PrismaLike,
+  clinicId: string,
+  appointmentId: string,
+  status: string,
+): Promise<number> {
+  try {
+    if (EXPECTED.has(status)) return 0;
+    const live = (await prisma.action.findMany({
+      where: {
+        clinicId,
+        dedupeKey: { in: riskDedupeKeysOf(appointmentId) },
+        status: { in: ["OPEN", "SNOOZED"] },
+      },
+      select: LIVE_RISK_SELECT,
+    })) as LiveRiskRow[];
+    if (live.length === 0) return 0;
+    const statusOf = new Map([[appointmentId, status]]);
+    return await retireActions(
+      prisma,
+      clinicId,
+      mootRows(live, statusOf),
+      "visit_not_ahead",
+    );
+  } catch (e) {
+    console.warn(
+      `[actions.retireVisitRiskActions] ${appointmentId} skipped: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+    return 0;
   }
-  return retireActions(prisma, clinicId, moot, "visit_not_ahead");
 }

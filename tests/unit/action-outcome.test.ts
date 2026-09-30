@@ -175,14 +175,17 @@ describe("POST /api/crm/actions/[id]/outcome", () => {
     expect(state.row!.outcome).toBe("REFUSED");
   });
 
-  it("RESCHEDULED → DONE, no confirm/cancel", async () => {
+  // Audit AC-10: only the saved move records «Перенести».
+  it("RESCHEDULED → 409 reschedule_in_drawer, nothing recorded", async () => {
     const POST = await loadPOST();
+    const before = { ...state.row! };
     const res = await POST(postReq({ outcome: "RESCHEDULED" }));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain("reschedule_in_drawer");
     expect(state.confirmCalls).toHaveLength(0);
     expect(state.cancelCalls).toHaveLength(0);
-    expect(state.row!.status).toBe("DONE");
-    expect(state.row!.outcome).toBe("RESCHEDULED");
+    expect(state.row!.status).toBe(before.status);
+    expect(state.row!.outcome ?? null).toBe(before.outcome ?? null);
   });
 
   it("CALLBACK before the visit → SNOOZED until callbackAt with note", async () => {

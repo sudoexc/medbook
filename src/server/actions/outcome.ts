@@ -11,8 +11,9 @@
  * same appointment side effect, so the rules live here once.
  *
  *   CONFIRMED     → confirmAppointment(via INBOUND_CALL) + Action DONE(outcome)
- *   RESCHEDULED   → Action DONE(outcome)  (the reschedule itself happens in the
- *                   dialog; this just records + closes the row)
+ *   RESCHEDULED   → refused by both endpoints (audit AC-10): written with the
+ *                   same DONE stamp by the move itself, once the new time is
+ *                   saved (`recordRescheduleOutcome` in `risk-outcome.ts`)
  *   CALLBACK      → before the visit: Action SNOOZED until callbackAt (+ note),
  *                   the row resurfaces then. At or after the visit time: the
  *                   call is handed to a PATIENT_CALLBACK task (see below)
@@ -65,6 +66,17 @@ export function normalizeOutcomeInput(input: OutcomeInput): OutcomeInput {
     return { ...input, callbackAt: clinicMorningOf(input.callbackAt) };
   }
   return input;
+}
+
+/**
+ * True for the outcome only a saved move may write: «Перенести» (audit AC-10).
+ * Recorded as a call outcome it closed the visit's risk rows before any date
+ * was moved, and a drawer closed without saving left a visit «перенесён»
+ * that was still at 15:00 and out of every list. The endpoints refuse it; the
+ * appointment PATCH and the bulk shift write it after the move.
+ */
+export function outcomeRecordedByTheMove(outcome: ActionOutcome): boolean {
+  return outcome === "RESCHEDULED";
 }
 
 /**

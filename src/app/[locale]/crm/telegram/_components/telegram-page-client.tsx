@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 
@@ -55,6 +56,25 @@ export function TelegramPageClient({
     body: string;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
+
+  // `?compose=broadcast` opens the broadcast dialog (audit UX-09): the Action
+  // Center's «Рассылка Telegram» lands here. The flag is consumed so a reload
+  // or «назад» does not reopen it.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const composeParam = searchParams?.get("compose") ?? null;
+  React.useEffect(() => {
+    if (composeParam !== "broadcast") return;
+    if (canBroadcast && botConfigured) {
+      setComposePrefill(null);
+      setComposeOpen(true);
+    }
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    sp.delete("compose");
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [composeParam, canBroadcast, botConfigured, searchParams, pathname, router]);
 
   const onRepeatBroadcast = React.useCallback((item: BroadcastHistoryItem) => {
     setComposePrefill({ segment: item.segment, body: item.body ?? "" });

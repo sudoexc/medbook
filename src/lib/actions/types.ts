@@ -13,6 +13,7 @@
  * Wave 1 ships only types + REST endpoints. Wave 2 adds detectors that
  * produce these payloads. Wave 3 adds the UI that renders them.
  */
+import { tashkentDateOf } from "@/lib/tashkent-time";
 
 export const ACTION_TYPES = [
   "EMPTY_SLOT_TOMORROW",
@@ -496,6 +497,27 @@ export function dedupeKeyFor(payload: ActionPayload): string {
 }
 
 /**
+ * Dedupe keys of every risk Action (`RISK_ACTION_TYPES`) that can exist for
+ * one appointment. Built through `dedupeKeyFor` with stub payloads (only
+ * `appointmentId` feeds these keys) so a key-format change can never desync
+ * a lookup by appointment: the risk-today outcome, the reschedule stamp and
+ * the prompt close on cancel all find the visit's rows through it.
+ */
+export function riskDedupeKeysOf(appointmentId: string): string[] {
+  const base = { appointmentId, patientId: "", patientName: "", appointmentAt: "" };
+  return [
+    dedupeKeyFor({ type: "NO_SHOW_RISK_HIGH", ...base, risk: 0 }),
+    dedupeKeyFor({ type: "UNCONFIRMED_24H", ...base, doctorName: "" }),
+    dedupeKeyFor({
+      type: "NO_CONTACT_CALL",
+      ...base,
+      doctorName: "",
+      daysSinceContact: null,
+    }),
+  ];
+}
+
+/**
  * The part of a payload, beyond its dedupe key, that says WHAT a person has
  * to do (audit AC-08). A task somebody closed («Готово» / «Отклонить») stays
  * closed while this stays the same, however often a detector or an event
@@ -591,52 +613,34 @@ export function defaultSeverity(type: ActionType): ActionSeverity {
 }
 
 /**
- * Default deeplink path per action type. Detectors are free to override
- * with a query-string-augmented variant (e.g. include the entity id), but
- * this fallback gives every action a sensible navigation target.
+ * Type-level fallback deeplink, for a row whose payload cannot name its
+ * entity (a legacy or malformed payload). Every path is a page that exists:
+ * `/crm/payments`, `/crm/cases` and `/crm/call-center` without the
+ * clinic's plan were 404s (audit AC-14). Prefer `actionDeeplinkPath`, which
+ * opens the entity itself.
  */
 export function defaultDeeplinkPath(type: ActionType): string {
   switch (type) {
     case "EMPTY_SLOT_TOMORROW":
-      return "/crm/calendar";
-    case "DORMANT_BATCH":
-      return "/crm/notifications/campaigns/new?segment=dormant";
-    case "UNCONFIRMED_24H":
-      return "/crm/appointments?status=BOOKED";
-    case "NO_SHOW_RISK_HIGH":
-      return "/crm/appointments";
-    case "CASE_REPEAT_DUE":
-      return "/crm/cases";
-    case "OVERDUE_FOLLOW_UP":
-      return "/crm/appointments";
     case "DOCTOR_OVERLOAD":
-      return "/crm/calendar";
     case "IDLE_ROOM":
       return "/crm/calendar";
+    case "DORMANT_BATCH":
+      return "/crm/notifications/campaigns/new";
+    case "UNCONFIRMED_24H":
+    case "NO_SHOW_RISK_HIGH":
     case "PAYMENT_OVERDUE":
-      return "/crm/payments";
+      return "/crm/appointments";
     case "LOW_DOCTOR_SCHEDULE":
       return "/crm/doctors";
+    case "CASE_REPEAT_DUE":
+    case "OVERDUE_FOLLOW_UP":
     case "LOW_NPS_RECEIVED":
-      // Deep-link to the action-center first; the row's payload carries
-      // patientId so the front end can offer a "Open patient" jump.
-      return "/crm/action-center";
     case "PATIENT_NO_CHANNEL":
-      // Operator's first step is "call the patient". The Call Center has
-      // the queue + dialler — call sites override with /crm/patients/<id>
-      // when they want to land directly on the patient card.
-      return "/crm/call-center";
     case "VISIT_FOLLOW_UP_DUE":
-      // The bridge worker overrides with /crm/patients/<id>.
-      return "/crm/patients";
     case "TELEGRAM_LINK_CONFLICT":
-      // Emitters override with the clinic card: /crm/patients/<id>.
-      return "/crm/patients";
     case "NO_CONTACT_CALL":
-      // The outcome endpoint overrides with /crm/patients/<id>.
-      return "/crm/action-center";
     case "PATIENT_CALLBACK":
-      // The outcome endpoints override with /crm/patients/<id>.
       return "/crm/patients";
     default: {
       const _exhaustive: never = type;
@@ -645,6 +649,102 @@ export function defaultDeeplinkPath(type: ActionType): string {
       );
     }
   }
+}
+
+/** `base/<id>` when the payload carries the id, else the type's fallback. */
+function entityPath(type: ActionType, base: string, id: unknown): string {
+  return typeof id === "string" && id.length > 0
+    ? `${base}/${encodeURIComponent(id)}`
+    : defaultDeeplinkPath(type);
+}
+
+/** The appointment drawer (`?ap=`) of the appointments page. */
+function appointmentPath(type: ActionType, id: unknown): string {
+  return typeof id === "string" && id.length > 0
+    ? `/crm/appointments?ap=${encodeURIComponent(id)}`
+    : defaultDeeplinkPath(type);
+}
+
+/**
+ * Where a task's button takes the person (audit AC-14): the entity the task
+ * is about, on a page that exists. The Action Center used to send
+ * «Перезвонить» on a debt to `/crm/payments` and a case repeat to
+ * `/crm/cases` (both 404), a low rating back to the Action Center itself,
+ * and a visit-bound call to the whole appointments list, where the patient
+ * had to be found again by hand.
+ *
+ * Derived from the payload alone, so the UI uses it for every row, rows
+ * written before this rule included, and `upsertAction` stores it as the
+ * default. Pure, client-safe.
+ */
+export function actionDeeplinkPath(payload: ActionPayload): string {
+  switch (payload.type) {
+    case "EMPTY_SLOT_TOMORROW": {
+      // The calendar opens on the slot's clinic day, scoped to the doctor.
+      const sp = new URLSearchParams();
+      const at = new Date(payload.slotStart);
+      if (Number.isFinite(at.getTime())) sp.set("date", tashkentDateOf(at));
+      if (payload.doctorId) sp.set("doctors", payload.doctorId);
+      const qs = sp.toString();
+      return qs ? `/crm/calendar?${qs}` : "/crm/calendar";
+    }
+    case "DOCTOR_OVERLOAD":
+      return payload.doctorId
+        ? `/crm/calendar?doctors=${encodeURIComponent(payload.doctorId)}`
+        : "/crm/calendar";
+    case "IDLE_ROOM":
+      return payload.cabinetId
+        ? `/crm/calendar?cabinets=${encodeURIComponent(payload.cabinetId)}`
+        : "/crm/calendar";
+    case "DORMANT_BATCH":
+      // Carry the bucket so the wizard opens pre-scoped.
+      return payload.segment
+        ? `/crm/notifications/campaigns/new?segment=${encodeURIComponent(payload.segment)}`
+        : defaultDeeplinkPath(payload.type);
+    case "UNCONFIRMED_24H":
+    case "NO_SHOW_RISK_HIGH":
+    case "PAYMENT_OVERDUE":
+      // The visit's drawer: confirm, move, or take the payment right there.
+      return appointmentPath(payload.type, payload.appointmentId);
+    case "CASE_REPEAT_DUE":
+      return entityPath(payload.type, "/crm/cases", payload.caseId);
+    case "LOW_DOCTOR_SCHEDULE":
+      return entityPath(payload.type, "/crm/doctors", payload.doctorId);
+    case "TELEGRAM_LINK_CONFLICT":
+      return entityPath(payload.type, "/crm/patients", payload.clinicCardId);
+    case "OVERDUE_FOLLOW_UP":
+    case "LOW_NPS_RECEIVED":
+    case "PATIENT_NO_CHANNEL":
+    case "VISIT_FOLLOW_UP_DUE":
+    case "NO_CONTACT_CALL":
+    case "PATIENT_CALLBACK":
+      // A call to make: the patient card has the number and the history.
+      return entityPath(payload.type, "/crm/patients", payload.patientId);
+    default: {
+      const _exhaustive: never = payload;
+      throw new Error(
+        `actionDeeplinkPath: unhandled payload type ${(_exhaustive as { type: string }).type}`,
+      );
+    }
+  }
+}
+
+/**
+ * The deeplink of a stored row: from its payload when that names a known
+ * type, else whatever was stored, else the type's fallback. A stored path is
+ * trusted last because rows written before audit AC-14 carry dead ones.
+ */
+export function actionRowDeeplinkPath(row: {
+  type: ActionType;
+  payload: unknown;
+  deeplinkPath?: string | null;
+}): string {
+  const p = row.payload as ActionPayload | null;
+  if (p && typeof p === "object" && isActionType(String(p.type))) {
+    return actionDeeplinkPath(p);
+  }
+  if (row.deeplinkPath && row.deeplinkPath.length > 0) return row.deeplinkPath;
+  return defaultDeeplinkPath(row.type);
 }
 
 /**

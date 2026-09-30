@@ -15,7 +15,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { formatDate, type Locale } from "@/lib/format";
-import { defaultDeeplinkPath } from "@/lib/actions/types";
+import { actionRowDeeplinkPath } from "@/lib/actions/types";
 import {
   ACTION_ICONS,
   SEVERITY_BADGE_VARIANT,
@@ -70,10 +70,8 @@ export function ActionCard({
   const title = formatActionTitle(t, row.payload, locale);
   const body = formatActionBody(t, row.payload, locale);
 
-  const deeplink =
-    row.deeplinkPath && row.deeplinkPath.length > 0
-      ? row.deeplinkPath
-      : defaultDeeplinkPath(row.type);
+  // The entity the task is about, from its payload (audit AC-14).
+  const deeplink = actionRowDeeplinkPath(row);
   const href = localePath ? localePath(deeplink) : deeplink;
 
   const fireDone = async () => {

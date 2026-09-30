@@ -6,8 +6,10 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/sonner";
-import { useAsyncExport } from "@/hooks/use-async-export";
+import { useAsyncExport, useAsyncExportToasts } from "@/hooks/use-async-export";
+import { canExport } from "@/lib/export-roles";
+
+import { useCurrentRole } from "../[id]/_hooks/use-current-role";
 
 /**
  * Patient CSV export button.
@@ -19,9 +21,11 @@ import { useAsyncExport } from "@/hooks/use-async-export";
  */
 export function ExportButton() {
   const t = useTranslations("patients");
-  const tx = useTranslations("exportsUi");
   const searchParams = useSearchParams();
-  const { start, status } = useAsyncExport();
+  const role = useCurrentRole();
+  const { start, status, error } = useAsyncExport();
+  // The API's answer, not the click, decides what the button says (AN-27).
+  useAsyncExportToasts(status, error);
 
   const onClick = () => {
     const filters: Record<string, unknown> = {};
@@ -38,10 +42,11 @@ export function ExportButton() {
       if (tag) filters.tag = tag;
     }
     void start({ kind: "patients", filters });
-    toast.message(tx("enqueued"));
   };
 
   const running = status === "enqueued" || status === "running";
+  // Only the roles the export API lets in see the button (audit AN-27).
+  if (!canExport(role)) return null;
 
   return (
     <Button

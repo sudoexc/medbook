@@ -22,10 +22,12 @@ import {
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 import type { ActionPayload, ActionSeverity, ActionStatus, ActionType } from "@/lib/actions/types";
-// Type-only: the wire shape of GET /api/crm/actions/summary.
+// Type-only: the wire shapes of GET /api/crm/actions/summary and
+// /api/crm/action-center/doctors-load.
 import type { ActionsSummary } from "@/server/actions/summary";
+import type { DoctorLoadRow } from "@/server/actions/doctors-load";
 
-export type { ActionsSummary };
+export type { ActionsSummary, DoctorLoadRow };
 
 export type ActionRow = {
   id: string;
@@ -362,30 +364,24 @@ export function useRecomputeActions() {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// SLA — response-time aggregates for the right-rail tile.
+// «Загрузка врачей на сегодня» (audit AC-15). The «Среднее время ответа»
+// tile and its `/api/crm/actions/sla` endpoint are gone: they averaged the
+// notification scheduler's delay (`sentAt − scheduledFor`), not how fast
+// the clinic answers a patient, and no source of that exists yet.
 // ────────────────────────────────────────────────────────────────────────
 
-type SlaBucket = { avgSeconds: number | null; samples: number };
-export type SlaResponse = {
-  windowDays: number;
-  overall: SlaBucket;
-  telegram: SlaBucket;
-  feedback: SlaBucket;
-  calls: SlaBucket;
-};
-
-export function useActionsSla() {
-  return useQuery<SlaResponse>({
-    queryKey: ["actions", "sla"],
+export function useDoctorsLoad() {
+  return useQuery<DoctorLoadRow[]>({
+    queryKey: ["actions", "doctors-load"],
     queryFn: async ({ signal }) => {
-      const res = await fetch(`/api/crm/actions/sla`, {
+      const res = await fetch(`/api/crm/action-center/doctors-load`, {
         credentials: "include",
         signal,
       });
-      if (!res.ok) throw new Error(`sla.http.${res.status}`);
-      return (await res.json()) as SlaResponse;
+      if (!res.ok) throw new Error(`doctors-load.http.${res.status}`);
+      return ((await res.json()) as { rows: DoctorLoadRow[] }).rows;
     },
     staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
+    refetchInterval: ACTIONS_LIST_POLL_MS,
   });
 }

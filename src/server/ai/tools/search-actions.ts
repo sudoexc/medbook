@@ -3,7 +3,9 @@
  *
  * READ-ONLY. Surfaces rows from the Phase 13 Action Center, filtered by
  * severity / type / status. Defaults to OPEN actions (the receptionist's
- * inbox). Up to 10 rows, each with a `/crm/action-center?focus={id}` deeplink.
+ * inbox). Up to 10 rows, each with the deeplink of the entity it is about
+ * (`actionRowDeeplinkPath`, audit AC-14): the old
+ * `/crm/action-center?focus={id}` was never read by the page.
  *
  * The chip label uses the action type as a short label — i18n for action
  * type labels lives under `actions.types.<TYPE>.label` in the messages, but
@@ -16,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import {
   ACTION_TYPES,
   ACTION_SEVERITIES,
+  actionRowDeeplinkPath,
   type ActionSeverity,
   type ActionType,
 } from "@/lib/actions/types";
@@ -127,7 +130,11 @@ export const searchActionsTool: Tool<SearchActionsInput> = {
         type: r.type,
         severity: r.severity,
         title,
-        deeplink: `/crm/action-center?focus=${r.id}`,
+        deeplink: actionRowDeeplinkPath({
+          type: t,
+          payload: r.payload,
+          deeplinkPath: r.deeplinkPath,
+        }),
       };
     });
 

@@ -16,6 +16,11 @@
  *     `severityForUnconfirmed24h`) — see each detector file.
  *   - `expiresAt` is set explicitly for volatile signals so `expireStaleActions`
  *     can sweep them without needing the 48h `updatedAt` fallback.
+ *   - A detector row not emitted by a pass whose detector ran is closed at the
+ *     end of that pass (`retireVanishedSignals`, audit AC-17): the 48h sweep
+ *     is only the fallback for a detector that keeps failing.
+ *   - Deeplinks come from the payload (`actionDeeplinkPath`, audit AC-14), the
+ *     repository default.
  */
 import type {
   ActionPayload,
@@ -23,14 +28,21 @@ import type {
   ActionType,
   DetectorActionType,
 } from "@/lib/actions/types";
-import { defaultSeverity } from "@/lib/actions/types";
+import { dedupeKeyFor, defaultSeverity } from "@/lib/actions/types";
 import type { TenantScopedPrisma } from "@/lib/prisma";
 import { publishEvent } from "@/server/realtime/publish";
 
 import { DEFAULT_CONFIG, type DetectorConfig } from "./config";
 import { retireMootRiskActions } from "./in-clinic";
-import { expireStaleActions, upsertAction } from "./repository";
-import { detectCaseRepeatDue } from "./detectors/case-repeat-due";
+import {
+  expireStaleActions,
+  retireVanishedSignals,
+  upsertAction,
+} from "./repository";
+import {
+  detectCaseRepeatDue,
+  severityForCaseRepeatDue,
+} from "./detectors/case-repeat-due";
 import { detectDoctorOverload } from "./detectors/doctor-overload";
 import { detectDormantBatch } from "./detectors/dormant-batch";
 import {
@@ -104,7 +116,6 @@ export async function runActionEngine(
     run: () => Promise<ActionPayload[]>;
     severityFor?: (payload: ActionPayload, now: Date) => ActionSeverity;
     expiresAtFor?: (payload: ActionPayload, now: Date) => Date | null | undefined;
-    deeplinkPathFor?: (payload: ActionPayload) => string;
   };
 
   const specs: Spec[] = [
@@ -113,15 +124,16 @@ export async function runActionEngine(
       run: () => detectEmptySlotTomorrow(prisma, clinicId, now, config),
       severityFor: (p) =>
         severityForEmptySlot(p as Extract<ActionPayload, { type: "EMPTY_SLOT_TOMORROW" }>),
+      // A free slot is moot once it starts (audit AC-17): after midnight
+      // «завтра» is today and the slot can no longer be offered as tomorrow's.
+      expiresAtFor: (p) =>
+        new Date(
+          (p as Extract<ActionPayload, { type: "EMPTY_SLOT_TOMORROW" }>).slotStart,
+        ),
     },
     {
       type: "DORMANT_BATCH",
       run: () => detectDormantBatch(prisma, clinicId, now, config),
-      // Carry the bucket through the deeplink so the wizard opens pre-scoped.
-      deeplinkPathFor: (p) =>
-        `/crm/notifications/campaigns/new?segment=${
-          (p as Extract<ActionPayload, { type: "DORMANT_BATCH" }>).segment
-        }`,
     },
     {
       type: "UNCONFIRMED_24H",
@@ -149,6 +161,7 @@ export async function runActionEngine(
     {
       type: "CASE_REPEAT_DUE",
       run: () => detectCaseRepeatDue(prisma, clinicId, now, config),
+      severityFor: () => severityForCaseRepeatDue(),
     },
     {
       type: "OVERDUE_FOLLOW_UP",
@@ -186,6 +199,11 @@ export async function runActionEngine(
     }),
   );
 
+  // Dedupe keys each detector that ran emitted this pass. A key missing here
+  // is a signal that went away (audit AC-17); a failed detector has no entry,
+  // so its rows are left alone.
+  const emitted = new Map<string, Set<string>>();
+
   // Persist outcomes sequentially so we have a deterministic emission order
   // for tests + audit trail. The detector calls themselves were parallel.
   for (let i = 0; i < runs.length; i++) {
@@ -197,6 +215,9 @@ export async function runActionEngine(
       continue;
     }
     const { payloads } = r.value;
+    // Collected before the writes: a failed upsert leaves the signal as it
+    // was, it must not read as gone.
+    emitted.set(spec.type, new Set(payloads.map((p) => dedupeKeyFor(p))));
     for (const payload of payloads) {
       try {
         const severity = spec.severityFor
@@ -204,13 +225,9 @@ export async function runActionEngine(
           : defaultSeverity(payload.type);
         const expiresAt =
           spec.expiresAtFor === undefined ? undefined : spec.expiresAtFor(payload, now);
-        const deeplinkPath = spec.deeplinkPathFor
-          ? spec.deeplinkPathFor(payload)
-          : undefined;
         const upsertResult = await upsertAction(prisma, clinicId, payload, {
           severity,
           ...(expiresAt !== undefined ? { expiresAt: expiresAt ?? null } : {}),
-          ...(deeplinkPath !== undefined ? { deeplinkPath } : {}),
         });
         if (upsertResult.created) {
           result.created += 1;
@@ -239,6 +256,15 @@ export async function runActionEngine(
         result.errors.push({ type: spec.type, error: message });
       }
     }
+  }
+
+  // Close the rows whose signal went away this pass (audit AC-17): the debt
+  // paid, the slot booked, the visit confirmed, the case repeat booked.
+  try {
+    result.expired += await retireVanishedSignals(prisma, clinicId, emitted);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    result.errors.push({ type: "EMPTY_SLOT_TOMORROW", error: `retireVanished: ${message}` });
   }
 
   // A visit the patient has come to, or that is over, is no longer a no-show

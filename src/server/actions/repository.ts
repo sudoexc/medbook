@@ -17,9 +17,9 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   DETECTOR_ACTION_TYPES,
   RISK_ACTION_TYPES,
+  actionDeeplinkPath,
   actionSubjectOf,
   defaultAssigneeRole,
-  defaultDeeplinkPath,
   defaultSeverity,
   dedupeKeyFor,
   type ActionPayload,
@@ -45,7 +45,7 @@ export type UpsertActionOptions = {
   severity?: ActionSeverity;
   /** Optional explicit branch scope. Null = clinic-wide. */
   branchId?: string | null;
-  /** Override the default deeplink path. */
+  /** Override the default deeplink path (`actionDeeplinkPath`). */
   deeplinkPath?: string;
   /** Override the default assignee role. Pass `null` for "any role". */
   assigneeRole?: "ADMIN" | "RECEPTIONIST" | null;
@@ -106,12 +106,15 @@ const CLEARED_OUTCOME = {
 
 /**
  * Whether a closed row carries a «Перенести» that was never carried out
- * (review of audit AC-08; the root fix is AC-10).
+ * (review of audit AC-08).
  *
- * The risk-today «Перенести» records outcome RESCHEDULED, closing the visit's
- * risk rows, and only then opens the appointment drawer where the date is
- * moved. Reception interrupted there closes the drawer: the visit stays at
- * 15:00, still unconfirmed, while its rows say it was moved. The old
+ * Since audit AC-10 RESCHEDULED is written only by the move itself
+ * (`recordRescheduleOutcome`), so a new row can no longer carry a false one.
+ * This guard stays for rows written before that: the risk-today «Перенести»
+ * used to record outcome RESCHEDULED, closing the visit's risk rows, and
+ * only then open the appointment drawer where the date is moved. Reception
+ * interrupted there closed the drawer: the visit stayed at 15:00, still
+ * unconfirmed, while its rows said it was moved. The old
  * unconditional reopen brought such a row back on the next pass. The AC-08
  * rule cannot (the subject did not change and the detector never lapsed),
  * and neither can the outcome lock on NO_SHOW_RISK_HIGH, so the visit was
@@ -246,7 +249,7 @@ export async function upsertAction(
 ): Promise<UpsertResult> {
   const dedupeKey = dedupeKeyFor(payload);
   const severity = options.severity ?? defaultSeverity(payload.type);
-  const deeplinkPath = options.deeplinkPath ?? defaultDeeplinkPath(payload.type);
+  const deeplinkPath = options.deeplinkPath ?? actionDeeplinkPath(payload);
   const assigneeRole =
     options.assigneeRole === undefined
       ? defaultAssigneeRole(payload.type)
@@ -497,6 +500,71 @@ export async function retireActions(
     });
   }
   return rows.length;
+}
+
+/**
+ * A callback promised to the patient on the phone («Перезвонить в 13:00»):
+ * the row is snoozed until then on purpose. The promise stands whatever the
+ * detector now reads, so no automatic close takes it; it surfaces at its
+ * time and leaves through its own expiry or a person.
+ */
+export function holdsPromisedCall(row: { status: string; outcome?: string | null }): boolean {
+  return row.status === "SNOOZED" && row.outcome === "CALLBACK";
+}
+
+/**
+ * Close the detector rows whose signal is gone (audit AC-17).
+ *
+ * The engine re-runs every detector in full every 15 minutes, so a detector
+ * row it did not emit this pass describes something that is no longer true:
+ * the debt was paid, the tomorrow slot was booked, the visit was confirmed or
+ * cancelled, the case repeat was booked. Nothing used to close such a row:
+ * it stayed OPEN until the 48h `updatedAt` sweep, and reception called a
+ * patient about a debt paid at the till or a visit cancelled in Telegram,
+ * while the KPIs and «Потери сегодня» kept counting it.
+ *
+ * `emitted` maps each detector type that RAN successfully this pass to the
+ * dedupe keys it emitted; a type that failed is absent, so a crashed detector
+ * never wipes its rows. Rows go through `retireActions` (a row with a call
+ * outcome of its own is closed DONE with the outcome kept), except a promised
+ * callback (`holdsPromisedCall`). A closed row whose signal comes back is
+ * reopened by the next upsert like any EXPIRED row. Caller MUST be inside
+ * `runWithTenant(...)`.
+ */
+export async function retireVanishedSignals(
+  prisma: PrismaLike,
+  clinicId: string,
+  emitted: ReadonlyMap<string, ReadonlySet<string>>,
+): Promise<number> {
+  const types = [...emitted.keys()];
+  if (types.length === 0) return 0;
+  const live = (await prisma.action.findMany({
+    where: {
+      clinicId,
+      type: { in: types },
+      status: { in: ["OPEN", "SNOOZED"] },
+    },
+    select: {
+      id: true,
+      type: true,
+      severity: true,
+      status: true,
+      outcome: true,
+      dedupeKey: true,
+    },
+  })) as Array<{
+    id: string;
+    type: string;
+    severity: string;
+    status: string;
+    outcome: string | null;
+    dedupeKey: string;
+  }>;
+  const gone = live.filter(
+    (row) =>
+      !emitted.get(row.type)?.has(row.dedupeKey) && !holdsPromisedCall(row),
+  );
+  return retireActions(prisma, clinicId, gone, "signal_gone");
 }
 
 /**

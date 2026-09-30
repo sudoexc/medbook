@@ -92,3 +92,92 @@ export function isLeadDayOpen(
   if (schedule && schedule.length > 0) return isWorkingDay(schedule, dateStr);
   return new Date(`${dateStr}T00:00:00Z`).getUTCDay() !== 0;
 }
+
+export type TimeOffLike = {
+  startAt: Date | string;
+  endAt: Date | string;
+};
+
+/** A stretch of working time as instants: `[start, end)`. */
+export type WorkingInterval = { start: Date; end: Date };
+
+function hhmmToMinutes(v: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 24 || min < 0 || min > 59 || (h === 24 && min > 0)) return null;
+  return h * 60 + min;
+}
+
+/**
+ * The doctor's real working time on one Tashkent day, as instants: the day's
+ * windows (`workingWindowsFor`: weekday and `validFrom` / `validTo`), merged,
+ * with every time off (`DoctorTimeOff`) cut out.
+ *
+ * For measuring capacity: free slots, the booked load. Those used to read
+ * the weekday's rows alone, so a doctor on leave, or a schedule that ended
+ * last month, still counted as a full working day: «свободный слот завтра»
+ * for a doctor on holiday, a load that could never fill (audit AC-11,
+ * AN-22). Unlike slot generation, a doctor without any schedule gets no
+ * time here: the 09:00-19:00 fallback is a booking convenience, not a
+ * capacity anyone has.
+ *
+ * @param rows every ACTIVE schedule row of the doctor (see `workingWindowsFor`).
+ * @param dateStr the Tashkent calendar day, "YYYY-MM-DD".
+ * @param timeOffs the doctor's time off; only the overlap with the day counts.
+ */
+export function workingIntervalsOn(
+  rows: ReadonlyArray<ScheduleRowLike>,
+  dateStr: string,
+  timeOffs: ReadonlyArray<TimeOffLike> = [],
+): WorkingInterval[] {
+  if (rows.length === 0) return [];
+  const { dayStart } = tashkentDayBoundsForDateString(dateStr);
+  const base = dayStart.getTime();
+
+  const spans: Array<[number, number]> = [];
+  for (const w of workingWindowsFor(rows, dateStr)) {
+    const s = hhmmToMinutes(w.start);
+    const e = hhmmToMinutes(w.end);
+    if (s === null || e === null || e <= s) continue;
+    spans.push([base + s * 60_000, base + e * 60_000]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const [s, e] of spans) {
+    const last = merged[merged.length - 1];
+    if (last && s <= last[1]) last[1] = Math.max(last[1], e);
+    else merged.push([s, e]);
+  }
+
+  let out = merged;
+  for (const off of timeOffs) {
+    const os = toMs(off.startAt);
+    const oe = toMs(off.endAt);
+    if (os === null || oe === null || oe <= os) continue;
+    const next: Array<[number, number]> = [];
+    for (const [s, e] of out) {
+      if (oe <= s || os >= e) {
+        next.push([s, e]);
+        continue;
+      }
+      if (os > s) next.push([s, os]);
+      if (oe < e) next.push([oe, e]);
+    }
+    out = next;
+  }
+  return out.map(([s, e]) => ({ start: new Date(s), end: new Date(e) }));
+}
+
+/** Total minutes of `workingIntervalsOn`. */
+export function workingMinutesOn(
+  rows: ReadonlyArray<ScheduleRowLike>,
+  dateStr: string,
+  timeOffs: ReadonlyArray<TimeOffLike> = [],
+): number {
+  return workingIntervalsOn(rows, dateStr, timeOffs).reduce(
+    (sum, i) => sum + (i.end.getTime() - i.start.getTime()) / 60_000,
+    0,
+  );
+}

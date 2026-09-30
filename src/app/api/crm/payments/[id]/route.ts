@@ -14,6 +14,7 @@ import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { tiyinToUsdCents } from "@/lib/fx";
+import { retireSettledDebt } from "@/server/actions/settled-debt";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -91,6 +92,11 @@ export const PATCH = createApiHandler(
       });
       const tenant = getTenant();
       const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+      // A paid visit is no longer a «задолженность» (audit AC-17). Never
+      // throws.
+      if (clinicId && after.appointmentId) {
+        await retireSettledDebt(prisma, clinicId, after.appointmentId);
+      }
       if (clinicId) {
         publishEventSafe(clinicId, {
           type: "payment.paid",

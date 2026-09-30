@@ -5,8 +5,9 @@
  * pipeline plus historical signal:
  *
  *   baseline[d] = sum(Appointment.priceFinal | priceBase | clinicAvg) for
- *                  appointments scheduled on day d, status BOOKED|WAITING|
- *                  IN_PROGRESS (the still-open pipeline)
+ *                  appointments scheduled on day d, status BOOKED|CONFIRMED|
+ *                  WAITING|IN_PROGRESS (the still-open pipeline,
+ *                  `ACTIVE_VISIT_STATUSES`)
  *   low[d]      = baseline × (1 − historicalNoShowRate)
  *   high[d]     = baseline × (1 + emptySlotFillUplift)
  *
@@ -18,6 +19,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
+import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 import type { ForecastPoint } from "@/lib/revenue/forecast";
 import { toDateKey } from "@/lib/revenue/loss-aggregation";
 
@@ -45,11 +47,14 @@ export async function loadForecast(
   const horizon = new Date(todayMidnight.getTime() + FORECAST_DAYS * DAY_MS);
 
   // 1. Current booked pipeline — scheduled in `[today, today+30d)`.
+  // CONFIRMED is the surest part of it (audit AN-22): phone bookings are
+  // created CONFIRMED and a patient's «Подтверждаю» moves a booking there,
+  // so the forecast used to drop exactly when the call center did its job.
   const upcoming = await prisma.appointment.findMany({
     where: {
       clinicId,
       date: { gte: todayMidnight, lt: horizon },
-      status: { in: ["BOOKED", "WAITING", "IN_PROGRESS"] },
+      status: { in: [...ACTIVE_VISIT_STATUSES] },
     },
     select: {
       date: true,

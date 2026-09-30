@@ -35,6 +35,7 @@ import {
   tashkentDayBoundsForDateString,
 } from "@/lib/booking-validation";
 import { runWithTenant } from "@/lib/tenant-context";
+import { TODAY_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 
 export type EmptySlotInput = {
   doctorId: string;
@@ -172,12 +173,11 @@ type ServiceRow = {
  * means the slot was booked at the time we're snapshotting). The roadmap
  * spec language ("non-cancelled appointments") is reflected in the
  * detector's `notIn: ["CANCELLED"]`; we keep the same convention.
+ * CONFIRMED comes with `TODAY_VISIT_STATUSES` (audit AN-22): an hour held by
+ * a confirmed booking was snapshotted as empty and priced as a loss.
  */
-const SLOT_OCCUPYING_STATUSES = [
-  "BOOKED",
-  "WAITING",
-  "IN_PROGRESS",
-  "COMPLETED",
+export const SLOT_OCCUPYING_STATUSES = [
+  ...TODAY_VISIT_STATUSES,
   "SKIPPED",
   "NO_SHOW",
 ] as const;

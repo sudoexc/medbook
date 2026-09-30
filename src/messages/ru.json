@@ -5255,6 +5255,10 @@
     "running": "Готовим CSV…",
     "done": "Готово — файл скачивается",
     "failed": "Ошибка экспорта",
+    "failedReason": "Ошибка экспорта: {reason}",
+    "forbidden": "Экспорт доступен только администратору",
+    "lost": "Экспорт прервался, запустите его ещё раз",
+    "timeout": "Экспорт не успел подготовиться, запустите его ещё раз",
     "tryAgain": "Повторить"
   },
   "smsInbox": {
@@ -5457,10 +5461,11 @@
         "potentialRevenue": "потенциальная выручка",
         "unconfirmed": "Неподтверждённые",
         "unconfirmedUnit": "записей",
-        "freeSlots": "Свободные слоты",
+        "freeSlots": "Свободные слоты завтра",
         "freeSlotsUnit": "слотов",
         "noShowRisk": "Риск пропуска",
-        "noShowRiskUnit": "пациентов"
+        "noShowRiskUnit": "пациентов",
+        "noData": "нет данных"
       },
       "riskToday": {
         "title": "Сегодня в зоне риска",
@@ -5477,7 +5482,7 @@
         "progressTitle": "Обработано {handled} из {total}",
         "openShort": "осталось",
         "ctaCall": "Звонок",
-        "ctaCallTitle": "Открыть звонок с пациентом",
+        "ctaCallTitle": "Открыть карточку пациента: номер и история для звонка",
         "ctaSms": "SMS",
         "ctaSmsTitle": "Отправить SMS-подтверждение",
         "ctaHandled": "Обработано",
@@ -5558,14 +5563,6 @@
         "progressOpenHandled": "Показать закрытые ({count})",
         "todayLabel": "сегодня"
       },
-      "responseTime": {
-        "title": "Среднее время ответа",
-        "min": "мин",
-        "sec": "сек",
-        "telegram": "Telegram",
-        "feedback": "Отзывы",
-        "calls": "Звонки"
-      },
       "actionsList": {
         "title": "Что делать прямо сейчас",
         "subtitle": "Приоритетные действия, которые принесут максимальный результат",
@@ -5614,13 +5611,13 @@
       "aiRecs": {
         "title": "Рекомендации AI",
         "rec1Title": "Сфокусируйтесь на неподтвержденных записях.",
-        "rec1Body": "Подтверждение {count} записей принесёт +{revenue}.",
-        "rec2Title": "Заполните свободные слоты у {doctorName}.",
+        "rec1Body": "Ждут подтверждения: {count}.",
+        "rec2Title": "Заполните свободные слоты на завтра.",
         "rec2Body": "Потенциальная выручка +{revenue}.",
         "rec3Title": "Ответьте на Telegram-заявки в течение 15 минут.",
-        "rec3Body": "Быстрый ответ увеличивает конверсию на 35%.",
+        "rec3Body": "Проверьте входящие сообщения в Telegram.",
         "rec4Title": "Запустите реактивацию неактивных пациентов.",
-        "rec4Body": "Есть {count} пациентов без записи более 60 дней."
+        "rec4Body": "Есть {count} пациентов без визита более 90 дней."
       },
       "quickActions": {
         "title": "Быстрые действия",
@@ -5631,11 +5628,10 @@
       },
       "todayLosses": {
         "title": "Потери сегодня",
-        "emptySlots": "Пустые слоты",
         "noShowRisk": "No-show риск",
+        "noShowRiskHint": "ожидаемая потеря по риску неявки",
         "missedRequests": "Пропущенные заявки",
-        "missedCalls": "Пропущенные звонки",
-        "totalLabel": "Всего потенциальных потерь"
+        "missedCalls": "Пропущенные звонки"
       },
       "doctorsLoad": {
         "title": "Загрузка врачей на сегодня",
@@ -5644,7 +5640,10 @@
         "statusHigh": "Высокая",
         "statusNormal": "Норма",
         "statusFree": "Свободно",
-        "ratio": "{booked} / {capacity}"
+        "statusNoSchedule": "Не по графику",
+        "visits": "{count, plural, one {# запись} few {# записи} many {# записей} other {# записи}}",
+        "workingHours": "{hours} ч по графику",
+        "empty": "Сегодня никто не работает по графику и записей нет"
       },
       "todayCount": {
         "label": "записей сегодня"

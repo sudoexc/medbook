@@ -14,9 +14,14 @@ import { tashkentDayBounds } from "@/lib/booking-validation";
 import { DIMENSION_KEYS, type DimensionKey } from "./dimensions";
 import { MEASURE_KEYS, type MeasureKey } from "./measures";
 
-/** AppointmentStatus enum values, mirrored from prisma/schema.prisma. */
+/**
+ * AppointmentStatus enum values, mirrored from prisma/schema.prisma.
+ * CONFIRMED was missing (audit AN-22): a report on confirmed visits could
+ * not be built, zod refused the filter.
+ */
 export const APPOINTMENT_STATUS_VALUES = [
   "BOOKED",
+  "CONFIRMED",
   "WAITING",
   "IN_PROGRESS",
   "COMPLETED",

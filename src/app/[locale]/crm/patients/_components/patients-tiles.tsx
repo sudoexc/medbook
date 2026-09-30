@@ -16,11 +16,9 @@ import { cn } from "@/lib/utils";
 import { AnimatedMoney } from "@/components/motion/animated-money";
 import { CountUp } from "@/components/atoms/count-up";
 
-import type { PatientRow } from "../_hooks/use-patients-list";
+import { usePatientsTiles } from "../_hooks/use-patients-stats";
 
 export interface PatientsTilesProps {
-  rows: PatientRow[];
-  total: number | null;
   className?: string;
   activeKey?: string | null;
 }
@@ -49,68 +47,46 @@ type Tile = {
   href: string;
 };
 
-export function PatientsTiles({
-  rows,
-  total,
-  className,
-  activeKey,
-}: PatientsTilesProps) {
+/** One decimal, as the tiles always showed it. */
+function pctOf(part: number, total: number): number {
+  return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
+/**
+ * KPI tiles of /crm/patients (audit PT-13). Every number comes from
+ * /api/crm/patients/tiles, counted over the clinic's whole base: they used
+ * to be counted from the rows the list had loaded so far and changed on
+ * scroll. «Активные» and «Остывают» are the segments, so each tile matches
+ * the tab and the page it opens.
+ */
+export function PatientsTiles({ className, activeKey }: PatientsTilesProps) {
   const t = useTranslations("patients.tiles");
   const locale = useLocale();
-  const [now] = React.useState(() => Date.now());
-  const stats = React.useMemo(() => {
-    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    let newWeek = 0;
-    let active = 0;
-    let dormantGt30 = 0;
-    let ltvSum = 0;
-    let ltvCount = 0;
-    for (const p of rows) {
-      const created = new Date(p.createdAt).getTime();
-      if (Number.isFinite(created) && now - created < sevenDaysMs) newWeek += 1;
-      if (p.segment === "ACTIVE" || p.segment === "VIP") active += 1;
-      const lastVisit = p.lastVisitAt
-        ? new Date(p.lastVisitAt).getTime()
-        : null;
-      if (lastVisit !== null && now - lastVisit > thirtyDaysMs) dormantGt30 += 1;
-      if (p.ltv > 0) {
-        ltvSum += p.ltv;
-        ltvCount += 1;
-      }
-    }
-    const totalAll = total ?? rows.length;
-    const activePct = totalAll > 0 ? Math.round((active / totalAll) * 1000) / 10 : 0;
-    const dormantPct =
-      totalAll > 0 ? Math.round((dormantGt30 / totalAll) * 1000) / 10 : 0;
-    const avgCheck = ltvCount > 0 ? Math.round(ltvSum / ltvCount) : 0;
-    return {
-      totalAll,
-      newWeek,
-      active,
-      activePct,
-      dormantGt30,
-      dormantPct,
-      avgCheck,
-    };
-  }, [rows, total, now]);
+  const query = usePatientsTiles();
+  const data = query.data;
+  // Loading or failed: a dash, never a zero that reads as a real count.
+  const count = (n: number | undefined) =>
+    n === undefined ? "—" : <CountUp to={n} />;
 
-  // Pre-computed last-7-day floor for the "new" tile drill-down.
-  const newWeekFrom = React.useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }, []);
+  const avgCheck = data?.avgCheck;
+  const avgCheckValue: React.ReactNode = !data
+    ? "—"
+    : avgCheck?.paymentsTracked && avgCheck.value !== null ? (
+        <AnimatedMoney amount={avgCheck.value} currency="UZS" />
+      ) : (
+        <span className="text-base font-semibold text-muted-foreground">
+          {t("noData")}
+        </span>
+      );
 
   const tiles: Tile[] = [
     {
       key: "all",
       label: t("totalPatients"),
-      value: <CountUp to={stats.totalAll} />,
+      value: count(data?.total),
       delta:
-        stats.newWeek > 0
-          ? t("deltaTotalPatients", { count: stats.newWeek })
+        data && data.newThisWeek > 0
+          ? t("deltaTotalPatients", { count: data.newThisWeek })
           : "",
       deltaTone: "success",
       icon: UsersIcon,
@@ -120,7 +96,7 @@ export function PatientsTiles({
     {
       key: "new-week",
       label: t("newWeek"),
-      value: <CountUp to={stats.newWeek} />,
+      value: count(data?.newThisWeek),
       delta: "",
       deltaTone: "muted",
       icon: SparklesIcon,
@@ -130,8 +106,10 @@ export function PatientsTiles({
     {
       key: "active",
       label: t("active"),
-      value: <CountUp to={stats.active} />,
-      delta: t("deltaActivePct", { pct: stats.activePct }),
+      value: count(data?.active),
+      delta: data
+        ? t("deltaActivePct", { pct: pctOf(data.active, data.total) })
+        : "",
       deltaTone: "success",
       icon: ActivityIcon,
       tone: "success",
@@ -139,37 +117,42 @@ export function PatientsTiles({
     },
     {
       key: "dormant",
-      label: t("dormantGt30"),
-      value: <CountUp to={stats.dormantGt30} />,
-      delta: t("deltaDormantPct", { pct: stats.dormantPct }),
+      label: t("dormant"),
+      value: count(data?.dormant),
+      delta: data
+        ? t("deltaDormantPct", { pct: pctOf(data.dormant, data.total) })
+        : "",
       deltaTone: "muted",
       icon: ClockIcon,
       tone: "danger",
       href: `/${locale}/crm/patients/segments/dormant`,
     },
-    {
-      key: "avg-check",
-      label: t("avgCheck"),
-      value:
-        stats.avgCheck > 0 ? (
-          <AnimatedMoney amount={stats.avgCheck} currency="UZS" />
-        ) : (
-          "—"
-        ),
-      delta: "",
-      deltaTone: "muted",
-      icon: WalletIcon,
-      tone: "info",
-      href: `/${locale}/crm/analytics?period=month`,
-    },
+    // Money only for the roles the analytics shows it to (ADMIN, DOCTOR).
+    ...(data && !avgCheck?.visible
+      ? []
+      : [
+          {
+            key: "avg-check",
+            label: t("avgCheck"),
+            value: avgCheckValue,
+            delta:
+              data && avgCheck && !avgCheck.paymentsTracked
+                ? t("paymentsNotTracked")
+                : "",
+            deltaTone: "muted" as const,
+            icon: WalletIcon,
+            tone: "info" as const,
+            href: `/${locale}/crm/analytics?period=month`,
+          },
+        ]),
   ];
-  void newWeekFrom;
 
   return (
     <div
       className={cn(
         "motion-stagger grid gap-2",
-        "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5",
+        "grid-cols-2 sm:grid-cols-3",
+        tiles.length === 5 ? "xl:grid-cols-5" : "xl:grid-cols-4",
         className,
       )}
     >

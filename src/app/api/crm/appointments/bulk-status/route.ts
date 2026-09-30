@@ -15,7 +15,6 @@ import {
   canRoleAdvanceTo,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
-import { fireTrigger } from "@/server/notifications/triggers";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { applyWaitingIntake, type PrismaTx } from "@/server/appointments/intake";
@@ -23,6 +22,11 @@ import { allocateQueueOrder } from "@/server/appointments/queue-order";
 import { runQueueTx } from "@/server/appointments/queue-order";
 import { completionFields } from "@/server/appointments/completion";
 import { runCompletionEffects } from "@/server/appointments/completion-effects";
+import {
+  repriceCasesAfterNoShow,
+  runNoShowEffects,
+} from "@/server/appointments/no-show";
+import { cancelAppointment } from "@/server/appointments/cancel";
 
 export const POST = createApiHandler(
   {
@@ -67,6 +71,8 @@ export const POST = createApiHandler(
         clinicId: true,
         queueOrder: true,
         queuedAt: true,
+        // A no-show reprices its case (AP-04).
+        medicalCaseId: true,
       },
     });
     // `canTransitionAt` also refuses arrival and the call on any day but the
@@ -91,20 +97,48 @@ export const POST = createApiHandler(
       });
     }
 
+    // AP-04 — a bulk cancel is the same cancellation as the drawer's: the
+    // kernel reprices the case, drops the queued reminders, tells the patient
+    // and closes the visit's risk tasks. The bulk path used to write the
+    // status alone, so none of that happened. One kernel call per row; the
+    // pre-flight above already refused the batch if any row cannot cancel.
+    if (target === "CANCELLED") {
+      if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
+      let count = 0;
+      for (const row of existing) {
+        const res = await cancelAppointment({
+          appointmentId: row.id,
+          clinicId: ctx.clinicId,
+          actorId: ctx.userId || null,
+          reason: body.cancelReason ?? null,
+          surface: "CRM",
+        });
+        if (res.ok) count += 1;
+      }
+      await audit(request, {
+        action: "appointment.bulk-status",
+        entityType: "Appointment",
+        meta: { ids: body.ids, status: target, count },
+      });
+      return ok({ count });
+    }
+
     const data: Record<string, unknown> = { status: target };
     // Mirror status→queueStatus so the reception board's «Кабинеты и врачи»
     // lane tracks the flip. The single-appointment PATCH already does this;
     // this bulk path historically wrote only `status`, leaving the queue stale.
     data.queueStatus = target;
-    if (target === "CANCELLED") {
-      data.cancelledAt = now;
-      if (body.cancelReason) data.cancelReason = body.cancelReason;
-    }
     // Rows this batch actually closes. One already COMPLETED keeps its own
     // `completedAt` and has had its completion effects.
     const completing =
       target === "COMPLETED"
         ? existing.filter((a) => a.status !== "COMPLETED")
+        : [];
+    // Rows this batch actually marks as no-shows (AP-04); one already
+    // NO_SHOW has had its effects.
+    const noShowing =
+      target === "NO_SHOW"
+        ? existing.filter((a) => a.status !== "NO_SHOW")
         : [];
 
     const correlationId = newCorrelationId();
@@ -173,15 +207,23 @@ export const POST = createApiHandler(
           data,
         });
         count = updated.count;
+        // AP-04 — the no-shows can no longer anchor their cases' free
+        // repeats: reprice those cases in the same transaction.
+        if (target === "NO_SHOW") {
+          await repriceCasesAfterNoShow(
+            tx,
+            noShowing.map((r) => r.medicalCaseId),
+          );
+        }
       }
       // Realtime fan-out per row so reception, doctor my-day, and the public TV
-      // board see the flip without polling. Same routing as the single PATCH:
-      // CANCELLED → appointment.cancelled, any other flip →
-      // appointment.statusChanged, plus a queue.updated follow-up (the queue
-      // lane always shifts on a status change). The appointment write and the
+      // board see the flip without polling: appointment.statusChanged plus a
+      // queue.updated follow-up (the queue lane always shifts on a status
+      // change). Cancellations left above through the cancel kernel, which
+      // emits its own appointment.cancelled. The appointment write and the
       // outbox rows commit together inside this transaction.
       if (ctx.kind === "TENANT") {
-        const kind = target === "CANCELLED" ? "cancelled" : "statusChanged";
+        const kind = "statusChanged" as const;
         const actorRole = ctx.role === "ADMIN" ? "ADMIN" : "RECEPTIONIST";
         const actorUserId = ctx.userId || null;
         for (const before of existing) {
@@ -226,16 +268,13 @@ export const POST = createApiHandler(
       });
     }
 
-    // TZ-notifications-cancel-sync §8.4 — manual NO_SHOW bulk action mirrors
-    // the auto-sweep path. Each just-flipped row gets a "sorry it didn't
-    // work out, want to reschedule?" text. Dedup with the auto-sweep is
-    // automatic via the NotificationSend unique key on (appointment,
-    // template). Fire-and-forget — text delivery cost shouldn't block the
-    // operator's bulk action response.
-    if (target === "NO_SHOW") {
-      for (const id of body.ids) {
-        fireTrigger({ kind: "appointment.no-show", appointmentId: id });
-      }
+    // TZ-notifications-cancel-sync §8.4 / AP-04 — a bulk no-show has the
+    // same effects as every other no-show path: each just-flipped row gets
+    // the "sorry it didn't work out, want to reschedule?" text (deduped
+    // with the sweep by the NotificationSend unique key) and its risk tasks
+    // close.
+    for (const row of noShowing) {
+      await runNoShowEffects({ clinicId: row.clinicId, appointmentId: row.id });
     }
 
     return ok({ count: result.count });

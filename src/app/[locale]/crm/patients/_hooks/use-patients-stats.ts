@@ -71,3 +71,37 @@ export function usePatientsDashboard() {
     staleTime: 60_000,
   });
 }
+
+/** Mirrors `PatientTiles` (src/server/patient/list-tiles.ts). */
+export type PatientsTilesData = {
+  total: number;
+  newThisWeek: number;
+  active: number;
+  dormant: number;
+  avgCheck: {
+    visible: boolean;
+    paymentsTracked: boolean;
+    value: number | null;
+  };
+};
+
+export const patientsTilesKey = ["patients", "tiles"] as const;
+
+/**
+ * The KPI tiles, counted on the server over the whole base (audit PT-13):
+ * the numbers no longer depend on how far the list was scrolled.
+ */
+export function usePatientsTiles() {
+  return useQuery<PatientsTilesData, Error>({
+    queryKey: patientsTilesKey,
+    queryFn: async ({ signal }) => {
+      const res = await fetch("/api/crm/patients/tiles", {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`Failed to load tiles: ${res.status}`);
+      return (await res.json()) as PatientsTilesData;
+    },
+    staleTime: 60_000,
+  });
+}

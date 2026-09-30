@@ -107,6 +107,8 @@ export function useDoctorsListRealtime(): void {
   useLiveEvents(
     () => {
       void qc.invalidateQueries({ queryKey: ["doctors", "list"] });
+      // Live status, load and the next free slot move with the queue (DR-08).
+      void qc.invalidateQueries({ queryKey: ["doctors", "today"] });
     },
     { filter: ["queue.updated"] },
   );

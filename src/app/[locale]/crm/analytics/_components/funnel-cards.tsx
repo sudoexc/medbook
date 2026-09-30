@@ -2,11 +2,20 @@
 
 /**
  * Row 4 — bottom strip of 5 cards:
- *   1. Telegram → запись (KPI value, delta chip, sparkline)
+ *   1. Telegram → запись (KPI value, sparkline)
  *   2. Звонок → запись (same shape, different accent)
- *   3. Топ-10 причин No-show (3-col table: reason / count / share)
+ *   3. Неявки по врачам (3-col table: doctor / no-shows / share)
  *   4. Среднее время ожидания (horizontal bars per doctor)
  *   5. Динамика загрузки клиники (KPI value, delta chip, line chart)
+ *
+ * Nothing here is made up any more (audit UX-03): the no-show «reasons»
+ * table spread the period's no-shows over ten fixed weights («пациент
+ * забыл 22 %», «погода 3 %») though no reason is recorded anywhere, the
+ * load line was each day's visits over the busiest day × 90 %, and the
+ * funnel chips compared the two halves of the sparkline. The reasons table
+ * is now the real no-shows per doctor, the load comes from the schedule
+ * (server/analytics/clinic-load.ts) and the only chip left is the server's
+ * comparison with the previous period.
  *
  * Same dynamic boundary as analytics-charts so recharts cost is paid once.
  */
@@ -25,6 +34,7 @@ import { AnimatedPercent } from "@/components/motion/animated-percent";
 
 import type {
   AnalyticsResponse,
+  DoctorNoShowRow,
   FunnelSummary,
   FunnelsResponse,
   WaitTimeRow,
@@ -39,6 +49,10 @@ export interface AnalyticsBottomRowProps {
     callTitle: string;
     noShowTitle: string;
     waitTimeTitle: string;
+    /** «нет данных»: shown where a number cannot be computed. */
+    noData: string;
+    /** The no-show table with no settled visit in the period. */
+    noShowEmpty: string;
     clinicLoadTitle: string;
     deltaPp: (value: string) => string;
     waitColumnDoctor: string;
@@ -47,17 +61,11 @@ export interface AnalyticsBottomRowProps {
     seconds: string;
     minutes: string;
     waitTimeEmpty: string;
-    noShowReasonHeader: string;
+    noShowDoctorHeader: string;
     noShowCountHeader: string;
     noShowShareHeader: string;
-    reasonLabels: string[];
     pickName: (row: { name: string; nameUz: string | null }) => string;
   };
-}
-
-function pctSigned(rate: number): string {
-  const sign = rate >= 0 ? "+" : "";
-  return `${sign}${(rate * 100).toFixed(1).replace(".", ",")}%`;
 }
 
 function formatWait(
@@ -93,23 +101,16 @@ function FunnelKpiCard({
   title,
   summary,
   accent,
+  noData,
 }: {
   title: string;
   summary: FunnelSummary;
   accent: string;
+  noData: string;
 }) {
-  // Period-over-period delta synthesized from sparkline halves.
-  const delta = React.useMemo(() => {
-    const daily = summary.daily;
-    if (daily.length < 2) return 0;
-    const half = Math.floor(daily.length / 2);
-    const avg = (slice: typeof daily) =>
-      slice.length === 0
-        ? 0
-        : slice.reduce((a, p) => a + p.rate, 0) / slice.length;
-    return avg(daily.slice(half)) - avg(daily.slice(0, half));
-  }, [summary.daily]);
-
+  // No chip: the one this card had compared the two halves of its own
+  // sparkline (UX-03). A period without a single conversation has no rate
+  // either, so it says «нет данных» instead of 0 %.
   return (
     <section
       className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,.04)]"
@@ -119,10 +120,15 @@ function FunnelKpiCard({
         <h3 className="min-w-0 truncate text-[13px] font-semibold text-foreground">
           {title}
         </h3>
-        <DeltaChip label={pctSigned(delta)} positive={delta >= 0} />
       </div>
       <div className="mt-1 text-[20px] font-bold leading-tight text-foreground tabular-nums">
-        <AnimatedPercent value={summary.rate} decimals={1} />
+        {summary.total > 0 ? (
+          <AnimatedPercent value={summary.rate} decimals={1} />
+        ) : (
+          <span className="text-base font-semibold text-muted-foreground">
+            {noData}
+          </span>
+        )}
       </div>
       <div className="mt-3 h-24 w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -150,43 +156,26 @@ function FunnelKpiCard({
   );
 }
 
-// Synthesize the 10-row distribution. Weights sum to 1 so the share column
-// adds up exactly; counts derive from totalNoShow.
-const NO_SHOW_WEIGHTS = [0.22, 0.16, 0.13, 0.11, 0.09, 0.08, 0.07, 0.06, 0.05, 0.03];
-
-function NoShowReasonsTable({
+/**
+ * Real no-shows per doctor over the period: missed visits and their share
+ * of the visits that were due (completed + missed), highest share first
+ * (`computeNoShowRanks`). Replaces a «reasons» table that invented its
+ * distribution (UX-03): no reason is recorded when a visit is missed.
+ */
+function NoShowByDoctorTable({
   title,
-  totalNoShow,
-  reasonLabels,
+  rows,
   columns,
+  noData,
+  pickName,
 }: {
   title: string;
-  totalNoShow: number;
-  reasonLabels: string[];
-  columns: { reason: string; count: string; share: string };
+  rows: DoctorNoShowRow[];
+  columns: { doctor: string; count: string; share: string };
+  noData: string;
+  pickName: (row: { name: string; nameUz: string | null }) => string;
 }) {
-  const rows = React.useMemo(() => {
-    if (reasonLabels.length === 0 || totalNoShow === 0)
-      return [] as Array<{ reason: string; count: number; share: number }>;
-    const len = Math.min(reasonLabels.length, NO_SHOW_WEIGHTS.length);
-    const out: Array<{ reason: string; count: number; share: number }> = [];
-    let used = 0;
-    for (let i = 0; i < len; i += 1) {
-      const w = NO_SHOW_WEIGHTS[i]!;
-      const cnt =
-        i === len - 1
-          ? Math.max(0, totalNoShow - used)
-          : Math.round(totalNoShow * w);
-      used += cnt;
-      out.push({
-        reason: reasonLabels[i]!,
-        count: cnt,
-        share: w,
-      });
-    }
-    return out;
-  }, [reasonLabels, totalNoShow]);
-
+  const shown = rows.filter((r) => r.total > 0).slice(0, 10);
   return (
     <section
       className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,.04)]"
@@ -197,30 +186,30 @@ function NoShowReasonsTable({
         <table className="w-full text-[12px]">
           <thead className="text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="pb-2 text-left font-medium">{columns.reason}</th>
+              <th className="pb-2 text-left font-medium">{columns.doctor}</th>
               <th className="pb-2 text-right font-medium">{columns.count}</th>
               <th className="pb-2 text-right font-medium">{columns.share}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {shown.length === 0 ? (
               <tr>
                 <td
                   colSpan={3}
                   className="py-3 text-center text-[12px] text-muted-foreground"
                 >
-                  —
+                  {noData}
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
-                <tr key={r.reason} className="border-t border-border/60">
-                  <td className="py-1.5 text-foreground">{r.reason}</td>
+              shown.map((r) => (
+                <tr key={r.doctorId} className="border-t border-border/60">
+                  <td className="py-1.5 text-foreground">{pickName(r)}</td>
                   <td className="py-1.5 text-right tabular-nums font-medium text-foreground">
-                    {r.count}
+                    {r.noShow}
                   </td>
                   <td className="py-1.5 text-right tabular-nums text-muted-foreground">
-                    {(r.share * 100).toFixed(1).replace(".", ",")}%
+                    {(r.rate * 100).toFixed(1).replace(".", ",")}%
                   </td>
                 </tr>
               ))
@@ -292,25 +281,24 @@ function WaitTimeBars({
 
 function ClinicLoadCard({
   title,
-  series,
+  load,
+  deltaPp,
   accent,
+  noData,
+  deltaLabel,
 }: {
   title: string;
-  series: Array<{ date: string; load: number }>;
+  load: AnalyticsResponse["clinicLoad"] | undefined;
+  /** Change against the previous period, percentage points; null: no chip. */
+  deltaPp: number | null;
   accent: string;
+  noData: string;
+  deltaLabel: (value: string) => string;
 }) {
-  const avg = React.useMemo(() => {
-    if (series.length === 0) return 0;
-    return series.reduce((a, p) => a + p.load, 0) / series.length;
-  }, [series]);
-
-  const delta = React.useMemo(() => {
-    if (series.length < 2) return 0;
-    const half = Math.floor(series.length / 2);
-    const avgFor = (s: typeof series) =>
-      s.length === 0 ? 0 : s.reduce((a, p) => a + p.load, 0) / s.length;
-    return avgFor(series.slice(half)) - avgFor(series.slice(0, half));
-  }, [series]);
+  // Booked minutes against the schedule's working minutes (UX-03). A day
+  // nobody works is a gap in the line, not 0 %.
+  const series = load?.daily ?? [];
+  const avg = load?.loadPct ?? null;
 
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,.04)]">
@@ -318,35 +306,46 @@ function ClinicLoadCard({
         <h3 className="min-w-0 truncate text-[13px] font-semibold text-foreground">
           {title}
         </h3>
-        <DeltaChip
-          label={`${delta >= 0 ? "+" : ""}${delta.toFixed(0)}%`}
-          positive={delta >= 0}
-        />
+        {deltaPp !== null ? (
+          <DeltaChip
+            label={deltaLabel(`${deltaPp >= 0 ? "+" : ""}${deltaPp.toFixed(1).replace(".", ",")}`)}
+            positive={deltaPp >= 0}
+          />
+        ) : null}
       </div>
       <div className="mt-1 text-[20px] font-bold leading-tight text-foreground tabular-nums">
-        <AnimatedPercent value={avg} decimals={0} fromHundred />
+        {avg !== null ? (
+          <AnimatedPercent value={avg} decimals={0} fromHundred />
+        ) : (
+          <span className="text-base font-semibold text-muted-foreground">
+            {noData}
+          </span>
+        )}
       </div>
       <div className="mt-3 h-24 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={series}
-            margin={{ top: 6, right: 4, bottom: 0, left: 0 }}
-          >
-            <Tooltip
-              contentStyle={{ fontSize: 11 }}
-              formatter={(v) => `${Number(v).toFixed(0)}%`}
-              cursor={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="load"
-              stroke={accent}
-              strokeWidth={2}
-              dot={false}
-              animationDuration={800}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        {avg !== null ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={series}
+              margin={{ top: 6, right: 4, bottom: 0, left: 0 }}
+            >
+              <Tooltip
+                contentStyle={{ fontSize: 11 }}
+                formatter={(v) => `${Number(v).toFixed(0)}%`}
+                cursor={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="load"
+                stroke={accent}
+                strokeWidth={2}
+                dot={false}
+                connectNulls={false}
+                animationDuration={800}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : null}
       </div>
     </section>
   );
@@ -359,39 +358,27 @@ export function AnalyticsBottomRow({
 }: AnalyticsBottomRowProps) {
   const c = useChartColors();
 
-  const totalNoShow = React.useMemo(
-    () => analytics.noShowDaily.reduce((a, p) => a + p.noShow, 0),
-    [analytics.noShowDaily],
-  );
-
-  // Clinic-load series synthesized from daily appointments — capacity baseline
-  // is the period max so the line lives in the 60–90% range like the target.
-  const loadSeries = React.useMemo(() => {
-    const max = Math.max(1, ...analytics.noShowDaily.map((d) => d.total));
-    return analytics.noShowDaily.map((d) => ({
-      date: d.date,
-      load: Math.min(100, Math.round((d.total / max) * 90)),
-    }));
-  }, [analytics.noShowDaily]);
-
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
       <FunnelKpiCard
         title={labels.tgTitle}
         summary={funnels.tg}
         accent={c.chart2}
+        noData={labels.noData}
       />
       <FunnelKpiCard
         title={labels.callTitle}
         summary={funnels.call}
         accent={c.chart1}
+        noData={labels.noData}
       />
-      <NoShowReasonsTable
+      <NoShowByDoctorTable
         title={labels.noShowTitle}
-        totalNoShow={totalNoShow}
-        reasonLabels={labels.reasonLabels}
+        rows={funnels.noShowByDoctor}
+        noData={labels.noShowEmpty}
+        pickName={labels.pickName}
         columns={{
-          reason: labels.noShowReasonHeader,
+          doctor: labels.noShowDoctorHeader,
           count: labels.noShowCountHeader,
           share: labels.noShowShareHeader,
         }}
@@ -403,8 +390,11 @@ export function AnalyticsBottomRow({
       />
       <ClinicLoadCard
         title={labels.clinicLoadTitle}
-        series={loadSeries}
+        load={analytics.clinicLoad}
+        deltaPp={analytics.deltas?.loadPp ?? null}
         accent={c.chart1}
+        noData={labels.noData}
+        deltaLabel={labels.deltaPp}
       />
     </div>
   );

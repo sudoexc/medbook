@@ -30,11 +30,16 @@ type Row = {
   completedAt: Date | null;
   queueOrder: number | null;
   queuedAt: Date | null;
+  medicalCaseId?: string | null;
 };
 
 const h = vi.hoisted(() => ({
   fireTrigger: vi.fn(),
   publishes: [] as Array<{ type: string; payload: Record<string, unknown> }>,
+  recomputeCase: vi.fn(async (_tx: unknown, _caseId: string) => [] as unknown[]),
+  retireRisk: vi.fn(async () => 0),
+  /** Whether the case reprice ran inside the transaction. */
+  inTx: false,
 }));
 
 const state = { rows: [] as Row[] };
@@ -84,8 +89,17 @@ vi.mock("@/server/realtime/publish", () => ({
 vi.mock("@/server/patient/last-contacted", () => ({
   refreshPatientVisitStats: vi.fn(async () => undefined),
 }));
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/server/pricing/recompute-appointment-price", () => ({
+  recomputeCaseAppointments: vi.fn(async (tx: unknown, caseId: string) => {
+    h.inTx = (tx as { __tx?: boolean }).__tx === true;
+    return h.recomputeCase(tx, caseId);
+  }),
+}));
+vi.mock("@/server/actions/in-clinic", () => ({
+  retireVisitRiskActions: h.retireRisk,
+}));
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     appointment: {
       findMany: vi.fn(async ({ where }: { where: Filter }) =>
         state.rows.filter((r) => matches(r, where)),
@@ -105,8 +119,12 @@ vi.mock("@/lib/prisma", () => ({
     },
     visitNote: { findFirst: vi.fn(async () => null) },
     auditLog: { create: vi.fn(async () => ({ id: "al" })) },
-  },
-}));
+    $transaction: vi.fn(async <T,>(fn: (tx: unknown) => Promise<T>) =>
+      fn({ ...prisma, __tx: true }),
+    ),
+  };
+  return { prisma };
+});
 
 import {
   _tickForTests as tick,
@@ -139,6 +157,9 @@ function row(over: Partial<Row>): Row {
 beforeEach(() => {
   state.rows = [];
   h.fireTrigger.mockClear();
+  h.recomputeCase.mockClear();
+  h.retireRisk.mockClear();
+  h.inTx = false;
   h.publishes = [];
 });
 
@@ -308,5 +329,78 @@ describe("Q-14: the auto no-show moves both status columns", () => {
       new Date(),
     );
     expect(picked.map((r) => r.id)).toEqual(["b"]);
+  });
+});
+
+describe("AP-04: the auto no-show has the effects of every no-show", () => {
+  it("reprices the case in the flip's transaction and closes the risk tasks", async () => {
+    state.rows = [row({ id: "first", medicalCaseId: "case_1" })];
+
+    await tick();
+
+    expect(state.rows[0]).toMatchObject({ status: "NO_SHOW", queueStatus: "NO_SHOW" });
+    // The free repeat that hung on this visit goes back to full price.
+    expect(h.recomputeCase).toHaveBeenCalledTimes(1);
+    expect(h.recomputeCase).toHaveBeenCalledWith(expect.anything(), "case_1");
+    expect(h.inTx).toBe(true);
+    expect(h.retireRisk).toHaveBeenCalledWith(
+      expect.anything(),
+      "c1",
+      "first",
+      "NO_SHOW",
+    );
+    expect(h.fireTrigger).toHaveBeenCalledWith({
+      kind: "appointment.no-show",
+      appointmentId: "first",
+    });
+  });
+
+  it("a visit outside any case has nothing to reprice", async () => {
+    state.rows = [row({ id: "plain", medicalCaseId: null })];
+
+    await tick();
+
+    expect(state.rows[0].status).toBe("NO_SHOW");
+    expect(h.recomputeCase).not.toHaveBeenCalled();
+  });
+
+  it("a row reception moved on in between: no reprice, no effects", async () => {
+    state.rows = [row({ id: "moved", medicalCaseId: "case_1" })];
+    const { prisma } = await import("@/lib/prisma");
+    const findMany = vi.mocked(prisma.appointment.findMany) as unknown as {
+      mockImplementationOnce: (fn: () => Promise<unknown>) => void;
+    };
+    findMany.mockImplementationOnce(async () => []); // stale-visit scan
+    findMany.mockImplementationOnce(async () => {
+      const scanned = state.rows.map((r) => ({ ...r }));
+      state.rows[0].status = "WAITING";
+      state.rows[0].queueStatus = "WAITING";
+      return scanned;
+    });
+
+    await tick();
+
+    expect(h.recomputeCase).not.toHaveBeenCalled();
+    expect(h.retireRisk).not.toHaveBeenCalled();
+  });
+
+  it("walk-ins stay out (P2 rule kept): no reprice either", async () => {
+    const registered = new Date(Date.now() - 2 * HOUR);
+    state.rows = [
+      row({
+        id: "walkin",
+        channel: "WALKIN",
+        status: "CONFIRMED",
+        queueStatus: "CONFIRMED",
+        date: registered,
+        endDate: new Date(registered.getTime() + 30 * 60_000),
+        medicalCaseId: "case_1",
+      }),
+    ];
+
+    await tick();
+
+    expect(state.rows[0].status).toBe("CONFIRMED");
+    expect(h.recomputeCase).not.toHaveBeenCalled();
   });
 });

@@ -6,18 +6,14 @@ import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
-import type { DoctorAggregateAppointment } from "../_hooks/use-doctors-stats";
+import type { DoctorToday } from "../_hooks/use-doctors-stats";
 
 export interface DoctorsHeatmapProps {
   doctors: DoctorRow[];
-  /** Today's appointments across ALL doctors (we filter internally) */
-  appointments: DoctorAggregateAppointment[];
-  /** Estimated appointments per hour per doctor at 100% load */
-  perHourCapacity?: number;
+  /** Today per doctor, with its hour-by-hour minutes (DR-08). */
+  today: DoctorToday[];
   className?: string;
 }
-
-const HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 
 function shortName(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -52,32 +48,38 @@ function cellColor(pct: number): { bg: string; fg: string } {
 
 /**
  * Hour-by-doctor heatmap ("Загрузка врачей по времени") — docs/6 - Врачи.png.
- * Rows: 09:00–18:00 · Columns: doctors · Cell: load % with legend-coded tint.
+ * Rows: the hours anyone works or is booked today · Columns: the active
+ * doctors who work or are booked today · Cell: booked minutes / working
+ * minutes of that hour, from the schedule and the real visit lengths
+ * (audit DR-08). It used to assume two visits an hour, 09:00 to 18:00, for
+ * the first five doctors by name, deactivated ones included. An hour
+ * outside the doctor's schedule reads «—».
  */
-export function DoctorsHeatmap({
-  doctors,
-  appointments,
-  perHourCapacity = 2,
-  className,
-}: DoctorsHeatmapProps) {
+export function DoctorsHeatmap({ doctors, today, className }: DoctorsHeatmapProps) {
   const locale = useLocale();
   const t = useTranslations("crmDoctors.heatmap");
 
-  const grid = React.useMemo(() => {
-    // counts[doctorId][hour] = number of appointments
-    const counts: Record<string, Record<number, number>> = {};
-    for (const a of appointments) {
-      const d = new Date(a.date);
-      const hour = d.getHours();
-      if (hour < HOURS[0] || hour > HOURS[HOURS.length - 1]) continue;
-      const id = a.doctor.id;
-      counts[id] = counts[id] ?? {};
-      counts[id][hour] = (counts[id][hour] ?? 0) + 1;
+  const { visible, hours, byDoctor } = React.useMemo(() => {
+    const byDoctor = new Map<string, Map<number, { workingMin: number; bookedMin: number }>>();
+    for (const r of today) {
+      if (r.hours.length === 0) continue;
+      byDoctor.set(r.doctorId, new Map(r.hours.map((h) => [h.hour, h])));
     }
-    return counts;
-  }, [appointments]);
+    const visible = doctors.filter((d) => d.isActive && byDoctor.has(d.id));
+    const hourSet = new Set<number>();
+    for (const d of visible) for (const h of byDoctor.get(d.id)!.keys()) hourSet.add(h);
+    const sorted = [...hourSet].sort((a, b) => a - b);
+    const hours =
+      sorted.length > 0
+        ? Array.from(
+            { length: sorted[sorted.length - 1]! - sorted[0]! + 1 },
+            (_, i) => sorted[0]! + i,
+          )
+        : [];
+    return { visible, hours, byDoctor };
+  }, [doctors, today]);
 
-  if (doctors.length === 0) {
+  if (visible.length === 0) {
     return (
       <div
         className={cn(
@@ -89,14 +91,11 @@ export function DoctorsHeatmap({
           {t("title")}
         </h3>
         <p className="mt-2 text-[12px] text-muted-foreground">
-          {t("empty")}
+          {t("noWorkToday")}
         </p>
       </div>
     );
   }
-
-  // Limit to the first 5 doctors to keep the grid readable
-  const visible = doctors.slice(0, 5);
 
   return (
     <div
@@ -131,18 +130,28 @@ export function DoctorsHeatmap({
               </div>
             );
           })}
-          {HOURS.map((hour) => (
+          {hours.map((hour) => (
             <React.Fragment key={hour}>
               <div className="flex items-center px-1 py-0.5 text-[11px] font-medium text-muted-foreground">
                 {String(hour).padStart(2, "0")}:00
               </div>
               {visible.map((d) => {
-                const count = grid[d.id]?.[hour] ?? 0;
-                const pct =
-                  perHourCapacity > 0
-                    ? Math.min(100, Math.round((count / perHourCapacity) * 100))
-                    : 0;
-                const tone = cellColor(pct);
+                const cell = byDoctor.get(d.id)?.get(hour);
+                const working = cell?.workingMin ?? 0;
+                const booked = cell?.bookedMin ?? 0;
+                if (working === 0) {
+                  return (
+                    <div
+                      key={`${d.id}-${hour}`}
+                      className="flex items-center justify-center rounded-md bg-muted/30 py-1 text-[11px] text-muted-foreground"
+                      title={t("offHours")}
+                    >
+                      —
+                    </div>
+                  );
+                }
+                const pct = Math.round((booked / working) * 100);
+                const tone = cellColor(Math.min(100, pct));
                 return (
                   <div
                     key={`${d.id}-${hour}`}
@@ -151,7 +160,7 @@ export function DoctorsHeatmap({
                       tone.bg,
                       tone.fg,
                     )}
-                    title={t("cellTitle", { count, pct })}
+                    title={t("cellTitleMinutes", { booked, working })}
                   >
                     {pct}%
                   </div>

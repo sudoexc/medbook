@@ -73,6 +73,23 @@ export function parse(sp: URLSearchParams): PatientsFilterState {
   return out;
 }
 
+/**
+ * Apply several filter changes at once. An undefined, null or empty value
+ * drops its key. Exported for tests (audit PT-17).
+ */
+export function mergeFilters(
+  state: PatientsFilterState,
+  patch: Partial<PatientsFilterState>,
+): PatientsFilterState {
+  const next = { ...state, ...patch } as PatientsFilterState;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined || value === "" || value === null) {
+      delete (next as Record<string, unknown>)[key];
+    }
+  }
+  return next;
+}
+
 function serialize(state: PatientsFilterState): URLSearchParams {
   const sp = new URLSearchParams();
   for (const key of KNOWN_KEYS) {
@@ -107,11 +124,22 @@ export function usePatientsFilters() {
       key: K,
       value: PatientsFilterState[K] | undefined,
     ) => {
-      const next = { ...state, [key]: value } as PatientsFilterState;
-      if (value === undefined || value === "" || value === null) {
-        delete (next as Record<string, unknown>)[key as string];
-      }
-      updateUrl(next);
+      updateUrl(
+        mergeFilters(state, { [key]: value } as Partial<PatientsFilterState>),
+      );
+    },
+    [state, updateUrl],
+  );
+
+  /**
+   * Several keys in one URL write (audit PT-17). Two `setFilter` calls in a
+   * row both start from the same closed-over `state`, so the second write
+   * drops the first: a click on «Последний визит» sent `sort` and `dir`
+   * separately and the list kept sorting by registration date.
+   */
+  const setFilters = React.useCallback(
+    (patch: Partial<PatientsFilterState>) => {
+      updateUrl(mergeFilters(state, patch));
     },
     [state, updateUrl],
   );
@@ -132,6 +160,7 @@ export function usePatientsFilters() {
     state,
     apiFilters,
     setFilter,
+    setFilters,
     clearAll,
   };
 }

@@ -35,6 +35,29 @@ export interface AnalyticsResponse {
   }>;
   sources: Array<{ source: string; count: number }>;
   ltvBuckets: Array<{ bucket: string; count: number }>;
+  /** Booked against scheduled minutes (src/server/analytics/clinic-load.ts). */
+  clinicLoad: {
+    daily: Array<{
+      date: string;
+      bookedMin: number;
+      workingMin: number;
+      /** Percent; null when nobody works that day. */
+      load: number | null;
+    }>;
+    bookedMin: number;
+    workingMin: number;
+    loadPct: number | null;
+    previous: { bookedMin: number; workingMin: number; loadPct: number | null };
+  };
+  /**
+   * Against the previous window of equal length, computed on the server
+   * (src/server/analytics/period-compare.ts); null: no chip.
+   */
+  deltas: {
+    revenuePct: number | null;
+    noShowPp: number | null;
+    loadPp: number | null;
+  };
 }
 
 // ── Phase 8a — conversion funnel KPIs ────────────────────────────────────────

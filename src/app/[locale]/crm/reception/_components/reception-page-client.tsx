@@ -24,6 +24,7 @@ import {
   useReceptionCabinets,
   useReceptionDashboard,
   useReceptionRealtime,
+  useTelephonyStatus,
   useTodayAppointments,
   useUnreadConversations,
 } from "../_hooks/use-reception-live";
@@ -93,7 +94,10 @@ export function ReceptionPageClient() {
   const panel = useTodayAppointments(panelDay);
   const doctors = useActiveDoctors();
   const cabinets = useReceptionCabinets();
-  const calls = useIncomingCalls();
+  // UX-08 — the calls widget only once the PBX has really delivered calls.
+  const telephony = useTelephonyStatus();
+  const telephonyConnected = telephony.data?.connected === true;
+  const calls = useIncomingCalls(telephonyConnected);
   const conversations = useUnreadConversations();
 
   const todayRows = React.useMemo<AppointmentRow[]>(
@@ -361,13 +365,15 @@ export function ReceptionPageClient() {
             "flex min-h-0 flex-col gap-3",
           )}
         >
-          <CallsWidget
-            rows={calls.data ?? []}
-            isLoading={calls.isLoading}
-            onQuickAppointment={({ patientId }) =>
-              openCreate({ patientId })
-            }
-          />
+          {telephonyConnected ? (
+            <CallsWidget
+              rows={calls.data ?? []}
+              isLoading={calls.isLoading}
+              onQuickAppointment={({ patientId }) =>
+                openCreate({ patientId })
+              }
+            />
+          ) : null}
           <TgPreviewWidget
             rows={conversations.data ?? []}
             isLoading={conversations.isLoading}

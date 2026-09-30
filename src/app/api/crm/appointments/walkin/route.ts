@@ -80,6 +80,10 @@ export const POST = createApiHandler(
       switch (result.reason) {
         case "doctor_not_found":
           return err("doctor_not_found", 404);
+        case "doctor_off_duty":
+          // Not asked for here (the front desk may register a doctor who
+          // came in outside his schedule); kept for the exhaustive switch.
+          return conflict("doctor_off_duty");
         case "patient_not_found":
           return err("patient_not_found", 404);
         case "bad_phone":

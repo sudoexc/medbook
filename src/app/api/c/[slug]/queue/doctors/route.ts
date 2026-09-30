@@ -9,20 +9,15 @@ import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
 import { createPublicClinicHandler } from "@/server/clinic-public/resolve";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
-import { tashkentComponents } from "@/lib/booking-validation";
+import { loadOnDutyDoctorIds } from "@/server/doctors/on-duty";
 
 export const dynamic = "force-dynamic";
 
 export const GET = createPublicClinicHandler(async ({ ctx }) => {
-  // Tashkent wall-clock weekday — the server runs UTC, so a naive day pick would
-  // choose the wrong schedule weekday near midnight (same fix as the TV board).
-  const weekday = tashkentComponents(new Date()).dow;
-
-  const doctors = await prisma.doctor.findMany({
+  const activeDoctors = await prisma.doctor.findMany({
     where: {
       clinicId: ctx.clinicId,
       isActive: true,
-      schedules: { some: { weekday, isActive: true } },
     },
     select: {
       id: true,
@@ -37,6 +32,14 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
     },
     orderBy: { nameRu: "asc" },
   });
+  // Q-08 — the kiosk offers only doctors who work now: the schedule valid
+  // today without time off, or a live queue reception already runs for
+  // him. The walk-in itself checks the same rule (`registerWalkin`).
+  const onDuty = await loadOnDutyDoctorIds(prisma, {
+    clinicId: ctx.clinicId,
+    doctorIds: activeDoctors.map((d) => d.id),
+  });
+  const doctors = activeDoctors.filter((d) => onDuty.has(d.id));
 
   if (doctors.length === 0) {
     return ok({ doctors: [] });

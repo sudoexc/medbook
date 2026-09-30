@@ -32,6 +32,7 @@ fix-g4-12-phenazepam-atc.ts
 fix-ld10-local-phones.ts
 fix-patient-telegram-identity.ts
 fix-pt10-closed-case-prescriptions.ts
+fix-pt15-patient-segments.ts
 fix-q12-ticket-prefixes.ts
 fix-q14-no-show-queue-status.ts
 fix-sec09-audit-pii.ts

@@ -217,6 +217,35 @@ export function useReceptionCabinets() {
   });
 }
 
+/** Mirrors `TelephonyStatus` (src/server/telephony/status.ts). */
+export type TelephonyStatusData = {
+  connected: boolean;
+  configured: boolean;
+  webhookReady: boolean;
+  lastEventAt: string | null;
+};
+
+/**
+ * Whether calls really reach the CRM (audit UX-08). Until the clinic's
+ * PBX has delivered an event the calls widget stays off the desk: it used
+ * to sit there forever reading «Нет активных звонков». A failed check
+ * counts as not connected.
+ */
+export function useTelephonyStatus() {
+  return useQuery<TelephonyStatusData, Error>({
+    queryKey: ["telephony", "status"],
+    queryFn: async ({ signal }) => {
+      const res = await fetch("/api/crm/telephony/status", {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as TelephonyStatusData;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
 /**
  * Incoming calls in the last hour. The TZ asks for a SIP webhook "live" feed,
  * but Phase 2b only exposes `/api/crm/calls`. We fetch the last page of `IN`
@@ -225,9 +254,11 @@ export function useReceptionCabinets() {
  * TODO(api-builder): a dedicated `/api/crm/calls/active` endpoint that only
  * returns the live SIP stream would remove the client-side filter below.
  */
-export function useIncomingCalls() {
+export function useIncomingCalls(enabled = true) {
   return useQuery<CallRow[], Error>({
     queryKey: ["reception", "calls"],
+    // No polling for calls that cannot arrive (UX-08).
+    enabled,
     queryFn: async ({ signal }) => {
       const sp = new URLSearchParams();
       sp.set("direction", "IN");

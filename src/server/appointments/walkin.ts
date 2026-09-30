@@ -43,6 +43,7 @@ import {
   releaseUnverifiedPhone,
   verifyPhoneInPerson,
 } from "@/server/patient/phone-identity";
+import { loadOnDutyDoctorIds } from "@/server/doctors/on-duty";
 import {
   decidePhoneOwner,
   type PhoneOwnerAnswer,
@@ -74,6 +75,14 @@ export type RegisterWalkinInput = {
   createdById?: string | null;
   /** Visit length in minutes; defaults to 30. */
   durationMin?: number;
+  /**
+   * Refuse a doctor who does not work now (`doctor_off_duty`, audit Q-08).
+   * The anonymous kiosk sets it: a patient must not take a ticket for a
+   * doctor on leave. The front desk does not: reception registering a
+   * walk-in for a doctor who came in outside his schedule is what puts him
+   * on duty.
+   */
+  requireOnDuty?: boolean;
 };
 
 export type RegisterWalkinResult =
@@ -98,7 +107,14 @@ export type RegisterWalkinResult =
       };
       cabinet: string | null;
     }
-  | { ok: false; reason: "doctor_not_found" | "bad_phone" | "patient_not_found" }
+  | {
+      ok: false;
+      reason:
+        | "doctor_not_found"
+        | "doctor_off_duty"
+        | "bad_phone"
+        | "patient_not_found";
+    }
   | {
       ok: false;
       /**
@@ -224,6 +240,13 @@ export async function registerWalkin(
     },
   });
   if (!doctor) return { ok: false, reason: "doctor_not_found" };
+  if (input.requireOnDuty) {
+    const onDuty = await loadOnDutyDoctorIds(prisma, {
+      clinicId: input.clinicId,
+      doctorIds: [doctor.id],
+    });
+    if (!onDuty.has(doctor.id)) return { ok: false, reason: "doctor_off_duty" };
+  }
 
   // Resolve the patient: an explicit id (CRM picked an existing record) or a
   // find-or-create by phone (kiosk, or CRM "new patient" form).

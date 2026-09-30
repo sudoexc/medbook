@@ -142,6 +142,18 @@ export function IntegrationsClient() {
     ? !tgStatusQuery.data.notConfigured
     : false;
 
+  // UX-08 — the telephony card is green only once calls really arrived
+  // (src/server/telephony/status.ts); saved credentials alone connect
+  // nothing, no PBX adapter exists yet.
+  const telephonyQuery = useQuery({
+    queryKey: ["telephony", "status"],
+    queryFn: () =>
+      settingsFetch<{ connected: boolean; configured: boolean }>(
+        "/api/crm/telephony/status",
+      ),
+  });
+  const telephonyConnected = telephonyQuery.data?.connected === true;
+
   const connsByKind = React.useMemo(() => {
     const byKind: Partial<Record<ProviderKind, ProviderConn>> = {};
     for (const r of connsQuery.data?.rows ?? []) {
@@ -210,6 +222,12 @@ export function IntegrationsClient() {
           title={t("integrations.cards.telephony.title")}
           description={t("integrations.cards.telephony.description")}
           conn={connsByKind.OTHER ?? null}
+          stateOverride={telephonyConnected ? "ok" : "notConnected"}
+          hint={
+            telephonyConnected
+              ? undefined
+              : t("integrations.telephonyNotConnectedHint")
+          }
           onSetup={() => setEditKind("OTHER")}
         />
       </div>
@@ -246,6 +264,8 @@ function IntegrationCard({
   description,
   conn,
   configured,
+  stateOverride,
+  hint,
   onSetup,
   ctaKey,
   extra,
@@ -257,18 +277,27 @@ function IntegrationCard({
   conn: ProviderConn | null;
   /** Optional override: if true, the card shows "ok" state regardless of `conn`. */
   configured?: boolean;
+  /**
+   * A verdict from the server that beats the saved row: telephony is
+   * «Подключено» only once calls arrived, whatever was saved (UX-08).
+   */
+  stateOverride?: "ok" | "notConnected";
+  /** A line under the description explaining the state. */
+  hint?: string;
   onSetup: () => void;
   ctaKey?: "setup" | "tgConnect";
   extra?: React.ReactNode;
 }) {
   const t = useTranslations("settings");
-  const state = configured
-    ? "ok"
-    : !conn
-      ? "missing"
-      : conn.active && conn.hasSecret
-        ? "ok"
-        : "warning";
+  const state: "ok" | "warning" | "missing" | "notConnected" =
+    stateOverride ??
+    (configured
+      ? "ok"
+      : !conn
+        ? "missing"
+        : conn.active && conn.hasSecret
+          ? "ok"
+          : "warning");
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -279,6 +308,9 @@ function IntegrationCard({
           <div>
             <h3 className="text-sm font-semibold">{title}</h3>
             <p className="text-xs text-muted-foreground">{description}</p>
+            {hint ? (
+              <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+            ) : null}
           </div>
         </div>
         {state === "ok" ? (
@@ -294,7 +326,9 @@ function IntegrationCard({
         ) : (
           <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             <PlugZapIcon className="size-3" />
-            {t("integrations.state.missing")}
+            {state === "notConnected"
+              ? t("integrations.state.notConnected")
+              : t("integrations.state.missing")}
           </span>
         )}
       </div>

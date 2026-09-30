@@ -79,3 +79,50 @@ export function useDoctorsDayAppointments(range: { from: string; to: string }) {
     staleTime: 60_000,
   });
 }
+
+/** Mirrors `DoctorTodayRow` (server/doctors/today.ts). */
+export type DoctorToday = {
+  doctorId: string;
+  workingMinutes: number;
+  booked: number;
+  bookedMinutes: number;
+  loadPct: number | null;
+  status: "busy" | "free" | "off";
+  nextFree: string | null;
+  revenueToday: number;
+  hours: Array<{ hour: number; workingMin: number; bookedMin: number }>;
+};
+
+/** Mirrors `DoctorsToday` (server/doctors/today.ts). */
+export type DoctorsTodayData = {
+  date: string | null;
+  doctors: DoctorToday[];
+  clinic: {
+    booked: number;
+    bookedMinutes: number;
+    workingMinutes: number;
+    loadPct: number | null;
+  };
+};
+
+/**
+ * Today on the doctors page, computed on the server from the schedule and
+ * the real visits (audit DR-08). Refreshed every minute so the live status
+ * and the next free slot follow the clock (the page used to freeze «now»
+ * at mount).
+ */
+export function useDoctorsToday() {
+  return useQuery<DoctorsTodayData, Error>({
+    queryKey: ["doctors", "today"],
+    queryFn: async ({ signal }) => {
+      const res = await fetch("/api/crm/doctors/today", {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as DoctorsTodayData;
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}

@@ -12,23 +12,21 @@ import { buttonVariants } from "@/components/ui/button";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
-import type { DoctorAgg } from "../_hooks/use-doctors-stats";
+import type { DoctorToday } from "../_hooks/use-doctors-stats";
 
-export type DoctorStatus = "busy" | "idle" | "free";
+/** Live status from the server: on the table, in shift and free, off shift. */
+export type DoctorStatus = DoctorToday["status"];
 
 export interface DoctorCardProps {
   doctor: DoctorRow;
-  agg: DoctorAgg | null;
-  /** Daily capacity baseline for the load bar (appointments / day) */
-  dayCapacity: number;
-  /** Derived status for the badge above the name */
-  status: DoctorStatus;
-  /** Human-readable idle interval ("2ч 10м") if status === "idle" */
-  idleFor?: string | null;
+  /**
+   * Today from the schedule and the real visits (DR-08); null for a
+   * deactivated doctor or while loading.
+   */
+  today: DoctorToday | null;
+  todayLoading?: boolean;
   /** Cabinet number (e.g. "101") assigned to this doctor */
   cabinet: string;
-  /** Upcoming free slots today (HH:MM) */
-  freeSlots: string[];
   className?: string;
 }
 
@@ -78,16 +76,18 @@ function shortName(name: string): string {
 /**
  * Doctor card for /crm/doctors — Image #17 layout.
  * Header: colored avatar + (name / spec / cabinet) · status pill row.
- * Body: load% bar · revenue / visits / avg time / nearest slot.
+ * Body: load% bar · revenue / visits / nearest slot, all of today.
  * Footer: Расписание (outline) + Записать (primary) buttons.
+ *
+ * Every number is today's, from the schedule and the real visits (audit
+ * DR-08): no fixed 10-visit capacity, no «Обед» made up from a gap, no
+ * month's revenue under «Выручка сегодня».
  */
 export function DoctorCard({
   doctor,
-  agg,
-  dayCapacity,
-  status,
+  today,
+  todayLoading = false,
   cabinet,
-  freeSlots,
   className,
 }: DoctorCardProps) {
   const locale = useLocale();
@@ -96,10 +96,8 @@ export function DoctorCard({
   const spec = locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
   const [bookOpen, setBookOpen] = React.useState(false);
 
-  const today = agg?.todayCount ?? 0;
-  const revenue = agg?.revenue ?? 0;
-  const loadPct =
-    dayCapacity > 0 ? Math.min(100, Math.round((today / dayCapacity) * 100)) : 0;
+  const status: DoctorStatus = today?.status ?? "off";
+  const loadPct = today?.loadPct ?? null;
 
   const initials = deriveInitials(name);
   const palette = pickPalette(doctor.id);
@@ -121,22 +119,24 @@ export function DoctorCard({
         fg: "text-success",
         dot: "bg-success",
       };
-    if (status === "idle")
+    if (status === "free")
       return {
-        label: t("statusLunch"),
-        bg: "bg-warning/15",
-        fg: "text-[color:var(--warning-foreground)]",
-        dot: "bg-warning",
+        label: t("statusFree"),
+        bg: "bg-info/10",
+        fg: "text-info",
+        dot: "bg-info",
       };
     return {
-      label: t("statusFree"),
+      label: t("statusOff"),
       bg: "bg-muted",
       fg: "text-muted-foreground",
       dot: "bg-muted-foreground/60",
     };
   })();
 
-  const nearestSlot = freeSlots[0] ?? null;
+  // Without today's data (loading, failed, deactivated) the rows show a
+  // dash, never a zero that reads as a real count.
+  const dash = <span className="text-muted-foreground">—</span>;
 
   return (
     <div
@@ -192,31 +192,48 @@ export function DoctorCard({
 
       <div className="mt-3 flex items-center justify-between text-[11px]">
         <span className="text-muted-foreground">{t("loadTodayLabel")}</span>
-        <span className="tabular-nums font-bold text-foreground">{loadPct}%</span>
+        {loadPct !== null ? (
+          <span className="tabular-nums font-bold text-foreground">{loadPct}%</span>
+        ) : today && !todayLoading ? (
+          // No working time today by the schedule: no percentage is honest.
+          <span className="font-medium text-muted-foreground">
+            {today.workingMinutes === 0 ? t("notWorkingToday") : t("noData")}
+          </span>
+        ) : (
+          dash
+        )}
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("h-full rounded-full transition-all", loadBarColor(loadPct))}
-          style={{ width: `${loadPct}%` }}
-        />
+        {loadPct !== null ? (
+          <div
+            className={cn("h-full rounded-full transition-all", loadBarColor(loadPct))}
+            style={{ width: `${Math.min(100, loadPct)}%` }}
+          />
+        ) : null}
       </div>
 
       <dl className="mt-3 space-y-1.5 text-[12px]">
         <Row label={t("revenueToday")}>
-          <MoneyText
-            amount={revenue}
-            currency="UZS"
-            className="text-[12px] font-semibold"
-          />
+          {today ? (
+            <MoneyText
+              amount={today.revenueToday}
+              currency="UZS"
+              className="text-[12px] font-semibold"
+            />
+          ) : (
+            dash
+          )}
         </Row>
         <Row label={t("appointmentsCount")}>
-          <span className="tabular-nums">{today}</span>
+          {today ? <span className="tabular-nums">{today.booked}</span> : dash}
         </Row>
         <Row label={t("nearSlot")}>
-          {nearestSlot ? (
-            <span className="tabular-nums text-foreground">{nearestSlot}</span>
+          {today?.nextFree ? (
+            <span className="tabular-nums text-foreground">{today.nextFree}</span>
+          ) : today ? (
+            <span className="text-muted-foreground">{t("noSlots")}</span>
           ) : (
-            <span className="text-muted-foreground">—</span>
+            dash
           )}
         </Row>
       </dl>

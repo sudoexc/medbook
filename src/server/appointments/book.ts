@@ -72,6 +72,38 @@ import {
   type CaseAttachOutcome,
 } from "@/server/cases/attach";
 
+/**
+ * The final price a new booking is stored with (audit AP-08).
+ *
+ * Precedence:
+ *   1. an explicit price from the caller;
+ *   2. the services' base price minus the discounts;
+ *   3. null when the visit has no service to price it by.
+ *
+ * Null counts as "not set", like undefined. The CRM booking route used to
+ * turn a missing price into an explicit null, and the old `!== undefined`
+ * test took it for a price: every phone booking was stored with
+ * `priceFinal = null` although its base price was known. Only a later
+ * attach to a medical case repriced it, so when reception closed the case
+ * picker (two open cases, a case with another doctor) the visit card read
+ * «Итого 0 сум» and a paid visit showed as «Частично».
+ */
+export function bookingPriceFinal(args: {
+  explicit: number | null | undefined;
+  priceBase: number | null;
+  discountPct: number;
+  discountAmount: number;
+}): number | null {
+  if (args.explicit !== undefined && args.explicit !== null) return args.explicit;
+  if (args.priceBase === null) return null;
+  return Math.max(
+    0,
+    args.priceBase -
+      args.discountAmount -
+      Math.round((args.discountPct * args.priceBase) / 100),
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Input + result types
 
@@ -104,7 +136,10 @@ export type BookInput = {
   // Pricing overrides
   discountPct?: number;
   discountAmount?: number;
-  /** When set and pricing isn't recomputed via case, this lands on the row. */
+  /**
+   * An explicit final price. Absent or null means "not set": the server
+   * prices the visit from its services (`bookingPriceFinal`).
+   */
   priceFinal?: number | null;
 
   // Case attach (at-create — CRM passes the id; mini-app picks via post-tx auto-attach helper)
@@ -294,21 +329,12 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
   const discountAmount =
     input.discountAmount ?? referralReward?.discountAmount ?? 0;
 
-  // priceFinal precedence:
-  //   1. caller explicit (CRM with priceFinal override)
-  //   2. base - discount (when we have a base)
-  //   3. null (free-form / cash-only)
-  const priceFinal =
-    input.priceFinal !== undefined
-      ? input.priceFinal
-      : priceBase !== null
-        ? Math.max(
-            0,
-            priceBase -
-              discountAmount -
-              Math.round((discountPct * priceBase) / 100),
-          )
-        : null;
+  const priceFinal = bookingPriceFinal({
+    explicit: input.priceFinal,
+    priceBase,
+    discountPct,
+    discountAmount,
+  });
 
   // The display column must be Tashkent wall-clock, never server-local. Prod
   // runs UTC and `startAt.getHours()` skews −5h there (08:00 visit was being

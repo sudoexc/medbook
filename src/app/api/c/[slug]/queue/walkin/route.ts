@@ -70,10 +70,15 @@ export async function POST(request: Request) {
         lang: parsed.lang,
         phoneOwner: parsed.phoneOwner,
       },
+      // Q-08 — no ticket for a doctor on leave or outside his schedule.
+      requireOnDuty: true,
     });
 
     if (!result.ok) {
       if (result.reason === "doctor_not_found") return err("doctor_not_found", 404);
+      if (result.reason === "doctor_off_duty") {
+        return err("conflict", 409, { reason: "doctor_off_duty" });
+      }
       if (result.reason === "phone_owner_mismatch") {
         // Masked, as everywhere on the kiosk: typing a number must not
         // reveal whose it is.

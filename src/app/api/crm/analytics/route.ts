@@ -9,6 +9,14 @@
  *   - topServices: [{ serviceId, name, count }]      (bar, top 10)
  *   - sources: [{ source, count }]                   (pie)
  *   - ltvBuckets: [{ bucket, count }]                (histogram)
+ *   - clinicLoad: { daily, bookedMin, workingMin, loadPct, previous }
+ *                                                     (line, UX-03)
+ *   - deltas: { revenuePct, noShowPp, loadPp }       (chips, UX-03)
+ *
+ * Deltas compare the window with the one of equal length right before it
+ * (`period-compare.ts`), null when the earlier window has nothing to
+ * compare with. The dashboard used to split the window in halves in the
+ * browser, which made a flat week read «+33 %».
  *
  * Period:
  *   ?period=week|month|quarter  (alias for fixed windows)
@@ -27,6 +35,12 @@ import {
   resolveAnalyticsRange,
   ymdKey,
 } from "@/server/analytics/range";
+import {
+  previousWindow,
+  rateDeltaPp,
+  relativeDeltaPct,
+} from "@/server/analytics/period-compare";
+import { loadClinicLoad } from "@/server/analytics/clinic-load";
 
 export { resolveAnalyticsRange };
 export type { AnalyticsPeriod };
@@ -118,6 +132,54 @@ export const GET = createApiListHandler(
         rate: total > 0 ? noShow / total : 0,
       };
     });
+
+    // ----- 3b. The previous window of equal length (UX-03) ----------------
+    // Totals only, for the chips: revenue, visits and no-shows.
+    const prev = previousWindow(from, to);
+    const [prevPayments, prevByStatus, clinicLoad] = await Promise.all([
+      prisma.payment.aggregate({
+        where: {
+          status: "PAID",
+          paidAt: { gte: prev.from, lt: prev.to },
+          ...(doctorId ? { appointment: { doctorId } } : {}),
+        },
+        _sum: { amount: true },
+      }),
+      prisma.appointment.groupBy({
+        by: ["status"],
+        where: {
+          date: { gte: prev.from, lt: prev.to },
+          ...(doctorId ? { doctorId } : {}),
+        },
+        _count: { _all: true },
+      }),
+      // «Динамика загрузки клиники»: booked minutes against the schedule's
+      // working minutes, per day and for both windows (clinic-load.ts).
+      loadClinicLoad(prisma, { from, to, previous: prev, doctorId }),
+    ]);
+    const revenueTotal = revenueDaily.reduce((a, d) => a + d.amount, 0);
+    const apptTotal = dailyAppts.length;
+    const noShowTotal = statusTotals.get("NO_SHOW") ?? 0;
+    let prevApptTotal = 0;
+    let prevNoShow = 0;
+    for (const g of prevByStatus as Array<{ status: string; _count: { _all: number } }>) {
+      prevApptTotal += g._count._all;
+      if (g.status === "NO_SHOW") prevNoShow += g._count._all;
+    }
+    const deltas = {
+      revenuePct: relativeDeltaPct(revenueTotal, prevPayments._sum.amount ?? 0),
+      noShowPp: rateDeltaPp(
+        { part: noShowTotal, whole: apptTotal },
+        { part: prevNoShow, whole: prevApptTotal },
+      ),
+      loadPp: rateDeltaPp(
+        { part: clinicLoad.bookedMin, whole: clinicLoad.workingMin },
+        {
+          part: clinicLoad.previous.bookedMin,
+          whole: clinicLoad.previous.workingMin,
+        },
+      ),
+    };
 
     // ----- 4. Top doctors by revenue ---------------------------------------
     const revenueByDoctor = new Map<string, number>();
@@ -268,6 +330,8 @@ export const GET = createApiListHandler(
       topServices,
       sources,
       ltvBuckets,
+      clinicLoad,
+      deltas,
     });
   },
 );

@@ -65,7 +65,8 @@ export function PatientsPageClient() {
   const t = useTranslations("patients");
   const router = useRouter();
   const locale = useLocale();
-  const { state, apiFilters, setFilter, clearAll } = usePatientsFilters();
+  const { state, apiFilters, setFilter, setFilters, clearAll } =
+    usePatientsFilters();
   const [nowMs] = React.useState(() => Date.now());
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -176,7 +177,7 @@ export function PatientsPageClient() {
             </div>
           </div>
 
-          <PatientsTiles rows={rows} total={total} activeKey="all" />
+          <PatientsTiles activeKey="all" />
 
           <PatientsKpiTabs
             rows={rows}
@@ -207,8 +208,8 @@ export function PatientsPageClient() {
               sort={state.sort}
               dir={state.dir}
               onSortChange={(sort, dir) => {
-                setFilter("sort", sort);
-                setFilter("dir", dir);
+                // One URL write for both keys (PT-17).
+                setFilters({ sort, dir });
               }}
               total={total}
               visibleColumns={visibleColumns}

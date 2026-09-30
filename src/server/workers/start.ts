@@ -33,6 +33,7 @@ import { startNotificationsSendWorker } from "./notifications-send";
 import { startNotificationsSchedulerWorker } from "./notifications-scheduler";
 import { startOutboxPumperWorker } from "./outbox-pumper";
 import { startPatientSummaryRefreshWorker } from "./patient-summary-refresh";
+import { startPatientSegmentsWorker } from "./patient-segments";
 import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
@@ -62,6 +63,12 @@ async function main() {
   // IN_PROGRESS visits left over from earlier days (audit Q-13), drafts
   // untouched.
   const lifecycleSweep = startAppointmentLifecycleSweepWorker(10 * 60_000);
+
+  // Audit PT-15 — patient segments (Новые / Активные / Остывают /
+  // Потерянные) follow the visit history: every 6 hours and once at start
+  // for what only time changes; a completed visit refreshes its patient
+  // at once (runCompletionEffects).
+  const patientSegments = startPatientSegmentsWorker();
 
   // Phase 13 Wave 2 — Action Center recompute every 15 minutes. Iterates
   // active clinics and fires the 10 detectors per clinic via runActionEngine.
@@ -178,6 +185,7 @@ async function main() {
     outboxPumper.stop();
     trialExpiry.stop();
     lifecycleSweep.stop();
+    patientSegments.stop();
     actionEngine.stop();
     revenue.stop();
     preVisit.stop();

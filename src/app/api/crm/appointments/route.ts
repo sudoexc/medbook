@@ -230,7 +230,9 @@ export const POST = createApiHandler(
       durationMin: body.durationMin,
       discountPct: body.discountPct,
       discountAmount: body.discountAmount,
-      priceFinal: body.priceFinal ?? null,
+      // Absent stays absent (AP-08): the booking kernel prices the visit
+      // from its services unless staff typed a price.
+      priceFinal: body.priceFinal,
       medicalCaseId: body.medicalCaseId ?? null,
       channel: body.channel,
       notes: body.notes ?? null,

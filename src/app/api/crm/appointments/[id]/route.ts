@@ -17,6 +17,7 @@ import { tashkentComponents } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
 import { applyWaitingIntake } from "@/server/appointments/intake";
 import { runCompletionEffects } from "@/server/appointments/completion-effects";
+import { runNoShowEffects } from "@/server/appointments/no-show";
 import {
   recomputeAppointmentPrice,
   recomputeCaseAppointments,
@@ -1085,7 +1086,13 @@ export const PATCH = createApiHandler(
     if (body.status === "CANCELLED") {
       fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
     } else if (body.status === "NO_SHOW") {
-      fireTrigger({ kind: "appointment.noshow", appointmentId: id });
+      // AP-04 — the effects every no-show path shares (message, risk
+      // tasks); the case was already repriced in the transaction above
+      // (`statusKillsVisit`). Only on the transition: a repeated NO_SHOW
+      // PATCH is a no-op.
+      if (before.status !== "NO_SHOW") {
+        await runNoShowEffects({ clinicId: after.clinicId, appointmentId: id });
+      }
     } else if (timeChanged) {
       // `timeChanged` is also true for a doctor-only swap (it re-runs conflict
       // detection), so compare the persisted starts: only an actual slot move

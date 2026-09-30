@@ -233,17 +233,10 @@ export function AnalyticsTopRows({
     [data.revenueDaily],
   );
 
-  const revenueDelta = React.useMemo(() => {
-    const half = Math.floor(data.revenueDaily.length / 2);
-    if (half < 1) return 0;
-    let prev = 0;
-    let curr = 0;
-    for (let i = 0; i < half; i += 1) prev += data.revenueDaily[i]!.amount;
-    for (let i = half; i < data.revenueDaily.length; i += 1)
-      curr += data.revenueDaily[i]!.amount;
-    if (prev === 0) return 0;
-    return ((curr - prev) / prev) * 100;
-  }, [data.revenueDaily]);
+  // UX-03 — against the previous window of equal length, from the server.
+  // The halves of the period used to be compared here: 3 days against 4 in
+  // a week, «+33 %» on a flat revenue. Null: nothing to compare, no chip.
+  const revenueDelta = data.deltas?.revenuePct ?? null;
 
   const totalAppointments = React.useMemo(
     () => data.appointmentsByStatus.reduce((a, s) => a + s.count, 0),
@@ -262,21 +255,7 @@ export function AnalyticsTopRows({
     return (totalNoShow / totalCompleted) * 100;
   }, [data.noShowDaily]);
 
-  const noShowDelta = React.useMemo(() => {
-    const series = data.noShowDaily;
-    const half = Math.floor(series.length / 2);
-    if (half < 1) return 0;
-    const rate = (slice: typeof series) => {
-      let t = 0;
-      let n = 0;
-      for (const p of slice) {
-        t += p.total;
-        n += p.noShow;
-      }
-      return t > 0 ? (n / t) * 100 : 0;
-    };
-    return rate(series.slice(half)) - rate(series.slice(0, half));
-  }, [data.noShowDaily]);
+  const noShowDelta = data.deltas?.noShowPp ?? null;
 
   const sourcesTotal = React.useMemo(
     () => data.sources.reduce((a, s) => a + s.count, 0),
@@ -342,10 +321,12 @@ export function AnalyticsTopRows({
         <KpiCardShell
           title={labels.revenue}
           delta={
-            <DeltaChip
-              label={pctSigned(revenueDelta)}
-              positive={revenueDelta >= 0}
-            />
+            revenueDelta !== null ? (
+              <DeltaChip
+                label={pctSigned(revenueDelta)}
+                positive={revenueDelta >= 0}
+              />
+            ) : undefined
           }
           primary={
             <MoneyText
@@ -417,10 +398,12 @@ export function AnalyticsTopRows({
         <KpiCardShell
           title={labels.noShow}
           delta={
-            <DeltaChip
-              label={labels.deltaPp(ppSigned(noShowDelta))}
-              positive={noShowDelta <= 0}
-            />
+            noShowDelta !== null ? (
+              <DeltaChip
+                label={labels.deltaPp(ppSigned(noShowDelta))}
+                positive={noShowDelta <= 0}
+              />
+            ) : undefined
           }
           primary={<AnimatedPercent value={noShowAvgRate} decimals={1} fromHundred />}
           body={

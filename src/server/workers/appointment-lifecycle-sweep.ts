@@ -41,6 +41,11 @@
  * clinic day can still be checked in with «Пришёл», which the audit row
  * written below makes possible (`canArriveAfterAutoNoShow`).
  *
+ * Audit AP-04: the auto no-show has the effects of any other no-show
+ * (`server/appointments/no-show.ts`). It used to write the status alone:
+ * the case kept pricing the follow-up as a free repeat of a visit that
+ * never happened, and the visit's risk tasks stayed open.
+ *
  * Tenant context: cross-clinic scan in SYSTEM, then audit + outbox events
  * fanned out per-row with explicit clinicId.
  *
@@ -61,6 +66,11 @@ import {
   minutesPastStart,
 } from "@/lib/appointments/overdue";
 import { fireTrigger } from "@/server/notifications/triggers";
+import {
+  NO_SHOW_FIELDS,
+  repriceCaseAfterNoShow,
+  runNoShowEffects,
+} from "@/server/appointments/no-show";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import {
   staleInProgressWhere,
@@ -94,6 +104,8 @@ export type SweepCandidate = {
   channel?: string;
   /** Reception's lane column; a row already in the queue is never swept. */
   queueStatus?: AppointmentStatus;
+  /** The case the visit belongs to; a no-show reprices it (AP-04). */
+  medicalCaseId?: string | null;
 };
 
 /**
@@ -283,6 +295,7 @@ async function tick(): Promise<void> {
         date: true,
         endDate: true,
         channel: true,
+        medicalCaseId: true,
       },
       // Bound the batch so a long outage backlog doesn't blow the event
       // loop on first tick. 500 stale rows per tick × every 10 min drains
@@ -307,15 +320,22 @@ async function tick(): Promise<void> {
     try {
       // Conditional on the status the scan saw and on the row still being
       // outside the queue, so a receptionist's click in between wins; both
-      // status columns move together (Q-14).
+      // status columns move together (Q-14). The case is repriced in the
+      // same transaction, only when the flip really happened (AP-04).
       const res = await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.appointment.updateMany({
-          where: {
-            id: row.id,
-            status: row.status,
-            queueStatus: { in: [...SWEEP_STATUSES] },
-          },
-          data: { status: "NO_SHOW", queueStatus: "NO_SHOW" },
+        prisma.$transaction(async (tx) => {
+          const written = await tx.appointment.updateMany({
+            where: {
+              id: row.id,
+              status: row.status,
+              queueStatus: { in: [...SWEEP_STATUSES] },
+            },
+            data: { ...NO_SHOW_FIELDS },
+          });
+          if (written.count > 0) {
+            await repriceCaseAfterNoShow(tx, row.medicalCaseId);
+          }
+          return written;
         }),
       );
       if (res.count === 0) continue;
@@ -367,11 +387,10 @@ async function tick(): Promise<void> {
       // didn't happen, want to reschedule?" Idempotent via the standard
       // NotificationSend (appointmentId, templateId) unique key, so a
       // duplicate auto-flip (impossible by status guard, but defensive)
-      // can't double-send.
-      fireTrigger({
-        kind: "appointment.no-show",
-        appointmentId: row.id,
-      });
+      // can't double-send. The visit's risk tasks close with it (AP-04).
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        runNoShowEffects({ clinicId: row.clinicId, appointmentId: row.id }),
+      );
 
       flipped += 1;
     } catch (e) {

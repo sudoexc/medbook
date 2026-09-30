@@ -23,24 +23,21 @@ import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
 import { createPublicClinicHandler } from "@/server/clinic-public/resolve";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
-import { tashkentComponents } from "@/lib/booking-validation";
+import { loadOnDutyDoctorIds } from "@/server/doctors/on-duty";
 import { initials } from "@/lib/format";
 import { boardRowKey } from "@/server/appointments/public-ticket";
 
 export const dynamic = "force-dynamic";
 
 export const GET = createPublicClinicHandler(async ({ ctx }) => {
-  // Tashkent wall-clock weekday — server runs UTC, so a naive day pick would
-  // choose the wrong schedule weekday near midnight.
-  const weekday = tashkentComponents(new Date()).dow;
-
   // Cabinet is now bound to the doctor (Phase 11) — pull it via the relation
   // instead of going through DoctorSchedule.cabinetId, which no longer exists.
-  const doctors = await prisma.doctor.findMany({
+  // Who is on the board is decided below by the real schedule and today's
+  // queue (Q-08), not by a weekday row.
+  const activeDoctors = await prisma.doctor.findMany({
     where: {
       clinicId: ctx.clinicId,
       isActive: true,
-      schedules: { some: { weekday, isActive: true } },
     },
     select: {
       id: true,
@@ -54,6 +51,13 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
     },
     orderBy: { nameRu: "asc" },
   });
+  // Q-08 — a doctor on leave or past his schedule's end is off the TV; a
+  // doctor with patients in his queue today is on it, schedule or not.
+  const onDuty = await loadOnDutyDoctorIds(prisma, {
+    clinicId: ctx.clinicId,
+    doctorIds: activeDoctors.map((d) => d.id),
+  });
+  const doctors = activeDoctors.filter((d) => onDuty.has(d.id));
 
   if (doctors.length === 0) {
     return ok({

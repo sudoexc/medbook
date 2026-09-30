@@ -4,6 +4,7 @@
       "tgTitle": "Telegram → yozuv",
       "callTitle": "Qo‘ng‘iroq → yozuv",
       "noShowTitle": "No-show: top-10",
+      "noShowByDoctorTitle": "Shifokorlar bo‘yicha kelmaganlar",
       "waitTimeTitle": "O‘rtacha kutish",
       "rate": "Konversiya",
       "converted": "Konvertatsiya qilindi",
@@ -14,6 +15,7 @@
       "noShowServicesTab": "Xizmatlar",
       "noShowEmpty": "Tanlangan davrda yakunlangan yoki kelmagan qabullar yo‘q",
       "waitTimeEmpty": "Tanlangan davr uchun kutish vaqti ma’lumoti yo‘q",
+      "noData": "ma’lumot yo‘q",
       "waitColumnDoctor": "Shifokor",
       "waitColumnAvg": "O‘rtacha",
       "waitColumnSamples": "Namuna",
@@ -312,11 +314,11 @@
     },
     "active": {
       "title": "Faol bemorlar",
-      "subtitle": "So'nggi 30 kunda tashrif buyurgan bemorlar — klinika daromadining asosi."
+      "subtitle": "Ikki va undan ortiq tashrif, oxirgisi 90 kundan ko'p bo'lmagan vaqt oldin."
     },
     "dormant": {
-      "title": "Faol bo'lmagan bemorlar",
-      "subtitle": "30 kundan ortiq tashrif qilmagan bemorlar — win-back qo'ng'iroq nomzodlari."
+      "title": "Sovigan bemorlar",
+      "subtitle": "Oxirgi tashrif 3 oydan 12 oygacha oldin bo'lgan. Qo'ng'iroq qilish uchun nomzodlar."
     }
   },
   "patients": {
@@ -495,8 +497,11 @@
       "newWeek": "Haftada yangi",
       "active": "Faol bemorlar",
       "dormantGt30": "Faol bo'lmagan > 30 kun",
+      "dormant": "Sovigan",
       "noShowRisk": "No-show xavfi",
       "avgCheck": "O'rtacha chek",
+      "noData": "ma'lumot yo'q",
+      "paymentsNotTracked": "To'lovlar CRMda yuritilmaydi",
       "deltaTotalPatients": "+{count} haftada",
       "deltaNewWeekPct": "+{pct}% o'tgan haftaga",
       "deltaActivePct": "{pct}% bazadan",
@@ -2458,11 +2463,14 @@
       "statusBusy": "Qabul",
       "statusIdle": "Tushlik",
       "statusFree": "Bo'sh",
+      "statusOff": "Smenada emas",
       "statusConsult": "Konsultatsiya",
       "statusLunch": "Tushlik",
       "cabinetN": "Kab. {cabinet}",
       "cabinetText": "Kabinet {cabinet}",
       "loadTodayLabel": "Bugungi yuklama",
+      "noData": "ma'lumot yo'q",
+      "notWorkingToday": "Bugun ishlamaydi",
       "revenueToday": "Bugungi tushum",
       "appointmentsCount": "Bugungi yozilishlar",
       "avgTime": "O'rtacha qabul vaqti",
@@ -2567,6 +2575,12 @@
       "appointmentsToday": "Bugungi yozilishlar",
       "avgCheck": "O'rtacha chek",
       "conversion": "Yozilishga konversiya",
+      "noShowPeriod": "Davr ichida kelmaganlar",
+      "loadToday": "Bugungi yuklama",
+      "revenuePeriod": "Davr tushumi",
+      "avgCheckPeriod": "Davrdagi o'rtacha chek",
+      "attendance": "Qabulga kelish",
+      "noData": "ma'lumot yo'q",
       "deltaPercentPositive": "+{value}% kechagidan",
       "deltaCountPositive": "+{value} kechagidan"
     },
@@ -2591,7 +2605,9 @@
       "onShift": "Qabuldagilar",
       "free": "Bo'sh",
       "onLunch": "Tushlikda",
+      "offShift": "Smenada emas",
       "clinicLoad": "Klinika yuklamasi",
+      "noData": "ma'lumot yo'q",
       "avgRating": "O'rtacha reyting",
       "ratingEmpty": "—",
       "viewAll": "Barcha hisobotlar"
@@ -2599,8 +2615,11 @@
     "heatmap": {
       "title": "Shifokorlar yuklamasi vaqt bo'yicha",
       "empty": "Ko'rsatish uchun ma'lumot yo'q",
+      "noWorkToday": "Bugun jadval bo'yicha hech kim ishlamaydi",
+      "offHours": "Jadvaldan tashqari",
       "timeHeader": "Vaqt",
       "cellTitle": "{count, plural, other {# yozuv}} · {pct}%",
+      "cellTitleMinutes": "{working} daqiqadan {booked} daqiqa band",
       "legendLow": "0–30% (past)",
       "legendMedium": "30–60% (o'rta)",
       "legendGood": "60–80% (yaxshi)",
@@ -4183,8 +4202,10 @@
       "state": {
         "ok": "Ulangan",
         "incomplete": "E'tibor talab qiladi",
-        "missing": "Sozlanmagan"
+        "missing": "Sozlanmagan",
+        "notConnected": "Ulanmagan"
       },
+      "telephonyNotConnectedHint": "CRMga hali qo'ng'iroqlar kelmagan: ATS bilan integratsiya ulanmagan.",
       "fields": {
         "label": "Yorliq (ixtiyoriy)",
         "labelPlaceholder": "main, backup, eskiz…",

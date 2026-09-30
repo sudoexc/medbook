@@ -12,12 +12,14 @@ import { InDevelopment } from "@/components/ui/in-development";
 import { buttonVariants } from "@/components/ui/button";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
-import type { DoctorAgg } from "../_hooks/use-doctors-stats";
 
 export interface DoctorsAiRecommendationsProps {
   doctors: DoctorRow[];
-  aggByDoctor: Map<string, DoctorAgg>;
-  dayCapacity: number;
+  /**
+   * Today's load per doctor from the schedule, percent; null without
+   * working time (DR-08). Replaces the fixed 10-visit day.
+   */
+  loadByDoctor: Map<string, number | null>;
   className?: string;
 }
 
@@ -83,8 +85,7 @@ function shortName(name: string): string {
  */
 export function DoctorsAiRecommendations({
   doctors,
-  aggByDoctor,
-  dayCapacity,
+  loadByDoctor,
   className,
 }: DoctorsAiRecommendationsProps) {
   const locale = useLocale();
@@ -128,15 +129,11 @@ export function DoctorsAiRecommendations({
   const recs = React.useMemo<Rec[]>(() => {
     const out: Rec[] = [];
     if (doctors.length === 0) return out;
-    const enriched = doctors.map((d) => {
-      const a = aggByDoctor.get(d.id);
-      const today = a?.todayCount ?? 0;
-      const load = dayCapacity > 0 ? today / dayCapacity : 0;
-      return {
-        doctor: d,
-        load,
-        today,
-      };
+    // Only doctors who work today by the schedule have a load to judge.
+    const enriched = doctors.flatMap((d) => {
+      const pct = loadByDoctor.get(d.id);
+      if (!d.isActive || pct === null || pct === undefined) return [];
+      return [{ doctor: d, load: pct / 100 }];
     });
     const overloaded = enriched.filter((x) => x.load > 0.85).sort((a, b) => b.load - a.load);
     const idle = enriched.filter((x) => x.load < 0.4).sort((a, b) => a.load - b.load);
@@ -180,20 +177,11 @@ export function DoctorsAiRecommendations({
       });
     }
 
-    if (enriched.length > 0) {
-      const doc = enriched[0]!.doctor;
-      out.push({
-        id: "evening",
-        title: t("eveningTitle", {
-          name: shortName(locale === "uz" ? doc.nameUz : doc.nameRu),
-        }),
-        description: t("eveningDescription"),
-        actionLabel: t("eveningAction"),
-      });
-    }
+    // The «evening demand» tip named whichever doctor came first in the
+    // list, with no demand data behind it (DR-08): gone.
 
     return out.slice(0, 4);
-  }, [doctors, aggByDoctor, dayCapacity, locale, t]);
+  }, [doctors, loadByDoctor, locale, t]);
 
   // Merge live AI candidates first, then fill remaining slots with heuristic
   // recommendations. Cap at 4 entries total — same as the original UI budget.

@@ -19,6 +19,7 @@ import {
   serializePatientForWrite,
 } from "@/server/patient/cipher-fields";
 import { toPatientListRow } from "@/server/patient/list-row";
+import { patientListOrderBy } from "@/server/patient/list-order";
 import {
   CreatePatientSchema,
   QueryPatientSchema,
@@ -100,7 +101,7 @@ export const GET = createApiListHandler(
     const take = q.limit + 1;
     const rows = await prisma.patient.findMany({
       where,
-      orderBy: { [q.sort]: q.dir },
+      orderBy: patientListOrderBy(q.sort, q.dir),
       take,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
     });

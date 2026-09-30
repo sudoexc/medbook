@@ -4,6 +4,7 @@
       "tgTitle": "Telegram → запись",
       "callTitle": "Звонок → запись",
       "noShowTitle": "No-show: топ-10",
+      "noShowByDoctorTitle": "Неявки по врачам",
       "waitTimeTitle": "Среднее ожидание",
       "rate": "Конверсия",
       "converted": "Конвертировано",
@@ -14,6 +15,7 @@
       "noShowServicesTab": "Услуги",
       "noShowEmpty": "Нет завершённых или пропущенных приёмов за период",
       "waitTimeEmpty": "Нет данных о времени ожидания за период",
+      "noData": "нет данных",
       "waitColumnDoctor": "Врач",
       "waitColumnAvg": "Среднее",
       "waitColumnSamples": "Выборка",
@@ -312,11 +314,11 @@
     },
     "active": {
       "title": "Активные пациенты",
-      "subtitle": "Пациенты с визитом за последние 30 дней — основа выручки клиники."
+      "subtitle": "Два визита и больше, последний не позже 90 дней назад."
     },
     "dormant": {
-      "title": "Неактивные пациенты",
-      "subtitle": "Пациенты без визита более 30 дней — кандидаты на win-back обзвон."
+      "title": "Остывают",
+      "subtitle": "Последний визит был от 3 до 12 месяцев назад. Кандидаты на обзвон."
     }
   },
   "patients": {
@@ -495,8 +497,11 @@
       "newWeek": "Новые за неделю",
       "active": "Активные пациенты",
       "dormantGt30": "Неактивные > 30 дней",
+      "dormant": "Остывают",
       "noShowRisk": "No-show risk",
       "avgCheck": "Средний чек",
+      "noData": "нет данных",
+      "paymentsNotTracked": "Оплаты не ведутся в CRM",
       "deltaTotalPatients": "+{count} за неделю",
       "deltaNewWeekPct": "+{pct}% к прошлой неделе",
       "deltaActivePct": "{pct}% от базы",
@@ -2458,11 +2463,14 @@
       "statusBusy": "Приём",
       "statusIdle": "Обед",
       "statusFree": "Свободен",
+      "statusOff": "Не на смене",
       "statusConsult": "Консультация",
       "statusLunch": "Обед",
       "cabinetN": "Каб. {cabinet}",
       "cabinetText": "Кабинет {cabinet}",
       "loadTodayLabel": "Загрузка сегодня",
+      "noData": "нет данных",
+      "notWorkingToday": "Сегодня не работает",
       "revenueToday": "Выручка сегодня",
       "appointmentsCount": "Записей сегодня",
       "avgTime": "Среднее время приёма",
@@ -2567,6 +2575,12 @@
       "appointmentsToday": "Записей сегодня",
       "avgCheck": "Средний чек",
       "conversion": "Конверсия в запись",
+      "noShowPeriod": "Неявки за период",
+      "loadToday": "Загрузка сегодня",
+      "revenuePeriod": "Выручка за период",
+      "avgCheckPeriod": "Средний чек за период",
+      "attendance": "Явка на приём",
+      "noData": "нет данных",
       "deltaPercentPositive": "+{value}% к вчера",
       "deltaCountPositive": "+{value} к вчера"
     },
@@ -2591,7 +2605,9 @@
       "onShift": "Ведут приём",
       "free": "Свободны",
       "onLunch": "На обеде",
+      "offShift": "Не на смене",
       "clinicLoad": "Загрузка клиники",
+      "noData": "нет данных",
       "avgRating": "Средний рейтинг",
       "ratingEmpty": "—",
       "viewAll": "Все отчёты"
@@ -2599,8 +2615,11 @@
     "heatmap": {
       "title": "Загрузка врачей по времени",
       "empty": "Нет данных для отображения",
+      "noWorkToday": "Сегодня по графику никто не работает",
+      "offHours": "Вне графика",
       "timeHeader": "Время",
       "cellTitle": "{count, plural, one {# запись} few {# записи} other {# записей}} · {pct}%",
+      "cellTitleMinutes": "Занято {booked} из {working} мин",
       "legendLow": "0–30% (низкая)",
       "legendMedium": "30–60% (средняя)",
       "legendGood": "60–80% (хорошая)",
@@ -4183,8 +4202,10 @@
       "state": {
         "ok": "Подключено",
         "incomplete": "Требует внимания",
-        "missing": "Не настроено"
+        "missing": "Не настроено",
+        "notConnected": "Не подключено"
       },
+      "telephonyNotConnectedHint": "Звонки в CRM ещё не поступали: интеграция с АТС не подключена.",
       "fields": {
         "label": "Метка (опционально)",
         "labelPlaceholder": "main, backup, eskiz…",

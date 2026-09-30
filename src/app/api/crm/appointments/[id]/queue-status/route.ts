@@ -25,7 +25,6 @@ import {
   canRoleAdvanceTo,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
-import { fireTrigger } from "@/server/notifications/triggers";
 import { confirmAppointment } from "@/server/appointments/confirm";
 import {
   AnotherVisitInProgressError,
@@ -43,6 +42,10 @@ import { sendCallNotice } from "@/server/telegram/call-notice";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 import { isStandingAutoNoShow } from "@/server/appointments/auto-no-show";
 import { recomputeCaseAppointments } from "@/server/pricing/recompute-appointment-price";
+import {
+  repriceCaseAfterNoShow,
+  runNoShowEffects,
+} from "@/server/appointments/no-show";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -348,6 +351,20 @@ export const PATCH = createApiHandler(
         });
       }
       after = started;
+    } else if (body.queueStatus === "NO_SHOW" && before.status !== "NO_SHOW") {
+      // AP-04 — «Не пришёл» from the cabinet or the visit card reprices the
+      // case like the drawer's PATCH does: a no-show can no longer anchor
+      // the case's free repeats, so the next visit goes back to full price.
+      // Same transaction as the status write, then the row is read back so
+      // the response carries the repriced fields.
+      after = await prisma.$transaction(async (tx) => {
+        await tx.appointment.update({ where: { id }, data });
+        await repriceCaseAfterNoShow(tx, before.medicalCaseId);
+        return tx.appointment.findUniqueOrThrow({
+          where: { id },
+          include: callInclude,
+        });
+      });
     } else {
       after = await prisma.appointment.update({ where: { id }, data, include: callInclude });
     }
@@ -440,10 +457,11 @@ export const PATCH = createApiHandler(
       }
     }
 
-    // Q-04 — a no-show marked here tells the patient the same as one marked
-    // through the generic PATCH (template-driven, best-effort).
+    // Q-04 / AP-04 — a no-show marked here has the same effects as one
+    // marked through the generic PATCH, the bulk action or the sweep: the
+    // patient's message and the visit's risk tasks (`runNoShowEffects`).
     if (body.queueStatus === "NO_SHOW" && before.status !== "NO_SHOW") {
-      fireTrigger({ kind: "appointment.noshow", appointmentId: id });
+      await runNoShowEffects({ clinicId: after.clinicId, appointmentId: id });
     }
 
     // AP-07 / PT-06 — reception closing the current patient («Вызвать из

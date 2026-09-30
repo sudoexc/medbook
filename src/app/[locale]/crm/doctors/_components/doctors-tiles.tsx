@@ -16,17 +16,17 @@ import { cn } from "@/lib/utils";
 import { CountUp, useCountUp } from "@/components/atoms/count-up";
 import { MoneyText } from "@/components/atoms/money-text";
 
-import type { DoctorAgg } from "../_hooks/use-doctors-stats";
+import type { DoctorAgg, DoctorsTodayData } from "../_hooks/use-doctors-stats";
 
 export interface DoctorsTilesProps {
   /** Aggregated stats for the full list (period-scoped) */
   aggByDoctor: Map<string, DoctorAgg>;
-  /** Number of doctors currently visible (post-filter) */
-  doctorsCount: number;
-  /** Capacity baseline per doctor for the current period */
-  capacity: number;
-  /** Stats failed to load: show «—», never zeros that look real (DR-01). */
+  /** Today's clinic totals from the schedule (DR-08); null while loading. */
+  today: DoctorsTodayData["clinic"] | null;
+  /** Period stats failed to load: show «—», never zeros that look real (DR-01). */
   unavailable?: boolean;
+  /** Today's numbers failed to load. */
+  todayUnavailable?: boolean;
   className?: string;
 }
 
@@ -52,126 +52,90 @@ type Tile = {
   tone: Tone;
   /** Each tile drills into the most relevant surface for the metric. */
   href: string;
+  /** Which load the tile depends on, for the «—» of a failed load. */
+  source: "period" | "today";
 };
-
-function formatInt(n: number, locale: string): string {
-  return new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(n);
-}
 
 /**
  * Top KPI strip for /crm/doctors — docs/6 - Врачи.png.
  *
- * Six tiles: Потери сегодня / Средняя загрузка / Доход сегодня / Записей
- * сегодня / Средний чек / Конверсия в запись.
+ * Six tiles, each labelled with what it really counts (audit DR-08):
+ *   Неявки за период       no-shows of the period;
+ *   Загрузка сегодня       booked minutes / working minutes by the schedule;
+ *   Выручка за период      completed visits of the period (stats.ts);
+ *   Записей сегодня        today's visits that hold the doctor's time;
+ *   Средний чек за период  revenue / completed visits;
+ *   Явка на приём          completed / (completed + no-shows).
+ * The old «Потери сегодня» multiplied a fixed 10-slot capacity by a
+ * made-up 150 000 сум fallback and showed tiins as thousands; «Доход
+ * сегодня» showed the period. A number that cannot be computed reads «нет
+ * данных», never a zero or a guess.
  */
 export function DoctorsTiles({
   aggByDoctor,
-  doctorsCount,
-  capacity,
+  today,
   unavailable = false,
+  todayUnavailable = false,
   className,
 }: DoctorsTilesProps) {
   const locale = useLocale();
   const t = useTranslations("crmDoctors.tiles");
   const stats = React.useMemo(() => {
-    let totalBooked = 0;
     let totalCompleted = 0;
     let totalNoShow = 0;
     let totalRevenue = 0;
-    let totalToday = 0;
     for (const a of aggByDoctor.values()) {
-      totalBooked += a.total;
       totalCompleted += a.completed;
       totalNoShow += a.noShow;
       totalRevenue += a.revenue;
-      totalToday += a.todayCount;
     }
-    const capPerPeriodAll = doctorsCount * capacity;
-    const loadPct =
-      capPerPeriodAll > 0
-        ? Math.round((totalBooked / capPerPeriodAll) * 100)
-        : 0;
-    // Empty-slot estimate: daily capacity assumed at 10 slots per doctor
-    const todayCap = doctorsCount * 10;
-    const emptyToday = Math.max(0, todayCap - totalToday);
-    // Avg check across completed
     const avgCheck =
-      totalCompleted > 0 ? Math.round(totalRevenue / totalCompleted) : 0;
-    // Conversion: completed / (completed + no_show) as proxy
+      totalCompleted > 0 ? Math.round(totalRevenue / totalCompleted) : null;
+    // Attendance: of the visits that were due and are settled, how many
+    // took place. Nothing settled yet: no rate.
     const denom = totalCompleted + totalNoShow;
-    const conversionPct =
-      denom > 0 ? Math.round((totalCompleted / denom) * 100) : 0;
-    // Estimated losses: empty slots * avg check + no-show count * avg check
-    const lostAvg = avgCheck > 0 ? avgCheck : 150_000;
-    const lossesToday = (emptyToday + totalNoShow) * lostAvg;
-    return {
-      lossesToday,
-      emptyToday,
-      noShow: totalNoShow,
-      loadPct,
-      totalRevenue,
-      totalToday,
-      avgCheck,
-      conversionPct,
-    };
-  }, [aggByDoctor, doctorsCount, capacity]);
+    const attendancePct =
+      denom > 0 ? Math.round((totalCompleted / denom) * 100) : null;
+    return { totalNoShow, totalRevenue, avgCheck, attendancePct };
+  }, [aggByDoctor]);
 
-  const animatedLosses = useCountUp(stats.lossesToday);
   const animatedRevenue = useCountUp(stats.totalRevenue);
-  const animatedAvgCheck = useCountUp(stats.avgCheck);
+  const animatedAvgCheck = useCountUp(stats.avgCheck ?? 0);
+
+  const noData = (
+    <span className="text-base font-semibold text-muted-foreground">
+      {t("noData")}
+    </span>
+  );
 
   const tiles: Tile[] = [
     {
-      key: "losses",
-      label: t("losses"),
-      value: (
-        <MoneyText
-          amount={Math.round(animatedLosses)}
-          currency="UZS"
-          className="text-xl font-bold"
-        />
-      ),
-      sub: (
-        <div className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
-          <div className="flex items-center justify-between gap-2">
-            <span>{t("emptySlots", { count: stats.emptyToday })}</span>
-            <span className="tabular-nums">
-              {t("thousandSuffix", {
-                value: formatInt(
-                  (stats.emptyToday * (stats.avgCheck || 150_000)) / 1_000,
-                  locale,
-                ),
-              })}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span>{t("noShow", { count: stats.noShow })}</span>
-            <span className="tabular-nums">
-              {t("thousandSuffix", {
-                value: formatInt(
-                  (stats.noShow * (stats.avgCheck || 150_000)) / 1_000,
-                  locale,
-                ),
-              })}
-            </span>
-          </div>
-        </div>
-      ),
+      key: "no-show",
+      label: t("noShowPeriod"),
+      value: <CountUp to={stats.totalNoShow} />,
       icon: AlertTriangleIcon,
       tone: "danger",
       href: `/${locale}/crm/analytics/loss`,
+      source: "period",
     },
     {
       key: "load",
-      label: t("avgLoad"),
-      value: <CountUp to={stats.loadPct} format={(n) => `${Math.round(n)}%`} />,
+      label: t("loadToday"),
+      value: !today ? (
+        "—"
+      ) : today.loadPct === null ? (
+        noData
+      ) : (
+        <CountUp to={today.loadPct} format={(n) => `${Math.round(n)}%`} />
+      ),
       icon: ActivityIcon,
       tone: "success",
       href: `/${locale}/crm/analytics/schedule-heatmap`,
+      source: "today",
     },
     {
       key: "revenue",
-      label: t("revenueToday"),
+      label: t("revenuePeriod"),
       value: (
         <MoneyText
           amount={Math.round(animatedRevenue)}
@@ -182,45 +146,57 @@ export function DoctorsTiles({
       icon: WalletIcon,
       tone: "primary",
       href: `/${locale}/crm/analytics/financial`,
+      source: "period",
     },
     {
       key: "appointments",
       label: t("appointmentsToday"),
-      value: <CountUp to={stats.totalToday} />,
+      value: today ? <CountUp to={today.booked} /> : "—",
       icon: CalendarIcon,
       tone: "info",
       href: `/${locale}/crm/appointments?dateMode=today`,
+      source: "today",
     },
     {
       key: "avg-check",
-      label: t("avgCheck"),
+      label: t("avgCheckPeriod"),
       value:
-        stats.avgCheck > 0 ? (
+        stats.avgCheck !== null ? (
           <MoneyText
             amount={Math.round(animatedAvgCheck)}
             currency="UZS"
             className="text-xl font-bold"
           />
         ) : (
-          "—"
+          noData
         ),
       icon: WalletIcon,
       tone: "warning",
       href: `/${locale}/crm/analytics/financial`,
+      source: "period",
     },
     {
-      key: "conversion",
-      label: t("conversion"),
-      value: <CountUp to={stats.conversionPct} format={(n) => `${Math.round(n)}%`} />,
+      key: "attendance",
+      label: t("attendance"),
+      value:
+        stats.attendancePct !== null ? (
+          <CountUp to={stats.attendancePct} format={(n) => `${Math.round(n)}%`} />
+        ) : (
+          noData
+        ),
       icon: TargetIcon,
       tone: "info",
       href: `/${locale}/crm/analytics/cohorts`,
+      source: "period",
     },
   ];
 
-  const shown: Tile[] = unavailable
-    ? tiles.map((tile) => ({ ...tile, value: "—", hint: undefined, sub: undefined }))
-    : tiles;
+  const shown: Tile[] = tiles.map((tile) =>
+    (tile.source === "period" && unavailable) ||
+    (tile.source === "today" && todayUnavailable)
+      ? { ...tile, value: "—", hint: undefined, sub: undefined }
+      : tile,
+  );
 
   return (
     <div

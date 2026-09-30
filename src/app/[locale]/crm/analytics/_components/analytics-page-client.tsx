@@ -97,24 +97,10 @@ function fetchJourney(period: Period): Promise<JourneyAnalyticsResponse> {
   });
 }
 
-const REASON_KEYS = [
-  "patientForgot",
-  "noTransport",
-  "wrongTime",
-  "feltBetter",
-  "noConfirm",
-  "personalReasons",
-  "wrongDoctor",
-  "longWait",
-  "weather",
-  "other",
-] as const;
-
 export function AnalyticsPageClient() {
   const t = useTranslations("analyticsDashboard");
   const tFunnels = useTranslations("analytics.funnels");
   const tJourney = useTranslations("analyticsDashboard.journey");
-  const tReasons = useTranslations("analyticsDashboard.noShowReasons");
   const tNoShowTable = useTranslations("analyticsDashboard.noShowTable");
   const tSummary = useTranslations("analyticsDashboard.summary");
   const tAxis = useTranslations("analyticsDashboard.axis");
@@ -142,11 +128,6 @@ export function AnalyticsPageClient() {
   const data = q.data;
   const funnels = qFunnels.data;
   const journey = qJourney.data;
-
-  const reasonLabels = React.useMemo(
-    () => REASON_KEYS.map((k) => tReasons(k)),
-    [tReasons],
-  );
 
   const periodRange = React.useMemo(() => {
     const end = new Date();
@@ -366,8 +347,10 @@ export function AnalyticsPageClient() {
               labels={{
                 tgTitle: tFunnels("tgTitle"),
                 callTitle: tFunnels("callTitle"),
-                noShowTitle: tFunnels("noShowTitle"),
+                noShowTitle: tFunnels("noShowByDoctorTitle"),
                 waitTimeTitle: tFunnels("waitTimeTitle"),
+                noData: tFunnels("noData"),
+                noShowEmpty: tFunnels("noShowEmpty"),
                 clinicLoadTitle: t("sections.clinicLoad"),
                 deltaPp: (value) => tSummary("deltaPp", { value }),
                 waitColumnDoctor: tFunnels("waitColumnDoctor"),
@@ -376,10 +359,9 @@ export function AnalyticsPageClient() {
                 seconds: tFunnels("seconds"),
                 minutes: tFunnels("minutes"),
                 waitTimeEmpty: tFunnels("waitTimeEmpty"),
-                noShowReasonHeader: tNoShowTable("reason"),
+                noShowDoctorHeader: tFunnels("waitColumnDoctor"),
                 noShowCountHeader: tNoShowTable("count"),
                 noShowShareHeader: tNoShowTable("share"),
-                reasonLabels,
                 pickName: (row) =>
                   locale === "uz" && row.nameUz ? row.nameUz : row.name,
               }}

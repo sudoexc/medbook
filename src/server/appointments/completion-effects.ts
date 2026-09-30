@@ -20,7 +20,9 @@
  *   - the referral reward is unique per (referrer, referred) pair and only
  *     minted for the patient's first completed visit;
  *   - `lastContactedAt` only ever moves forward;
- *   - the visit stats are recounted from the appointments, not incremented;
+ *   - the visit stats are recounted from the appointments, not incremented,
+ *     and the patient's segment follows them (audit PT-15: the second
+ *     visit makes the patient «Активный»);
  *   - the visit's pre-arrival risk tasks close (audit AC-17), which a second
  *     run finds already closed.
  *
@@ -41,6 +43,7 @@ import {
   bumpPatientLastContact,
   refreshPatientVisitStats,
 } from "@/server/patient/last-contacted";
+import { refreshPatientSegment } from "@/server/patient/segments";
 
 export interface CompletionEffectsInput {
   /** The request that closed the visit; the referral audit row cites it. */
@@ -78,6 +81,8 @@ export async function runCompletionEffects(
   // Both helpers log and swallow their own failures.
   await bumpPatientLastContact(patientId, input.completedAt);
   await refreshPatientVisitStats(patientId);
+  // Reads the stats just written; logs and swallows its own failures.
+  await refreshPatientSegment(patientId);
   // A seen patient is no longer a no-show or confirmation risk; logs and
   // swallows its own failures too.
   await retireVisitRiskActions(prisma, clinicId, appointmentId, "COMPLETED");

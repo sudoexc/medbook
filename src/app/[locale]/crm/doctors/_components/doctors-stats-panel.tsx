@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   ActivityIcon,
   ArrowRightIcon,
-  CoffeeIcon,
+  MoonIcon,
   StarIcon,
   StethoscopeIcon,
   UserCheckIcon,
@@ -23,10 +23,13 @@ import type { DoctorStatus } from "./doctor-card";
 
 export interface DoctorsStatsPanelProps {
   doctors: DoctorRow[];
-  /** Per-doctor derived live status (busy/idle/free) — same array used by cards. */
+  /** Live status of each active doctor (busy/free/off), same as the cards. */
   statuses: DoctorStatus[];
-  /** Clinic-wide load percentage (0-100) — same metric as the top KPI tile. */
-  clinicLoadPct: number;
+  /**
+   * Today's clinic load from the schedule, the «Загрузка сегодня» tile's
+   * number; null when nobody works today (DR-08).
+   */
+  clinicLoadPct: number | null;
   className?: string;
 }
 
@@ -64,7 +67,7 @@ export function DoctorsStatsPanel({
   const total = doctors.length;
   const onShift = statuses.filter((s) => s === "busy").length;
   const free = statuses.filter((s) => s === "free").length;
-  const onLunch = statuses.filter((s) => s === "idle").length;
+  const offShift = statuses.filter((s) => s === "off").length;
 
   const rating = React.useMemo(() => avgRating(doctors), [doctors]);
 
@@ -91,23 +94,26 @@ export function DoctorsStatsPanel({
       tone: "bg-muted text-muted-foreground",
     },
     {
-      key: "lunch",
-      label: t("onLunch"),
-      value: <CountUp to={onLunch} className="tabular-nums" />,
-      icon: CoffeeIcon,
-      tone: "bg-warning/15 text-[color:var(--warning-foreground)]",
+      key: "off",
+      label: t("offShift"),
+      value: <CountUp to={offShift} className="tabular-nums" />,
+      icon: MoonIcon,
+      tone: "bg-muted text-muted-foreground",
     },
     {
       key: "load",
       label: t("clinicLoad"),
-      value: (
-        <AnimatedPercent
-          value={clinicLoadPct}
-          decimals={0}
-          fromHundred
-          className="tabular-nums"
-        />
-      ),
+      value:
+        clinicLoadPct === null ? (
+          <span className="text-muted-foreground">{t("noData")}</span>
+        ) : (
+          <AnimatedPercent
+            value={clinicLoadPct}
+            decimals={0}
+            fromHundred
+            className="tabular-nums"
+          />
+        ),
       icon: ActivityIcon,
       tone: "bg-primary/10 text-primary",
     },

@@ -24,6 +24,7 @@ const h = vi.hoisted(() => ({
   mint: vi.fn(async () => ({ minted: true, rewardId: "rw_1" })),
   bump: vi.fn(async () => undefined),
   refresh: vi.fn(async () => undefined),
+  segment: vi.fn(async () => undefined),
   /** Spy standing in for the shared function in the route suites. */
   effects: vi.fn(async () => undefined),
   role: "RECEPTIONIST" as "RECEPTIONIST" | "DOCTOR",
@@ -45,6 +46,10 @@ describe("runCompletionEffects", () => {
       bumpPatientLastContact: h.bump,
       refreshPatientVisitStats: h.refresh,
     }));
+    vi.doMock("@/server/patient/segments", () => ({
+      refreshPatientSegment: h.segment,
+    }));
+    h.segment.mockClear();
     h.fireTrigger.mockClear();
     h.mint.mockClear();
     h.bump.mockClear();
@@ -83,6 +88,8 @@ describe("runCompletionEffects", () => {
       new Date("2026-09-26T07:10:00.000Z"),
     );
     expect(h.refresh).toHaveBeenCalledWith("p1");
+    // PT-15 — the segment follows the recounted visits.
+    expect(h.segment).toHaveBeenCalledWith("p1");
   });
 
   it("thankPatient=false runs the data effects without messaging the patient", async () => {
@@ -151,6 +158,7 @@ function mountRouteMocks() {
   vi.doUnmock("@/server/notifications/triggers");
   vi.doUnmock("@/server/patient-experience/referral-mint");
   vi.doUnmock("@/server/patient/last-contacted");
+  vi.doUnmock("@/server/patient/segments");
   vi.doMock("@/lib/auth", () => ({
     auth: vi.fn(async () => ({
       user: {

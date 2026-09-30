@@ -47,6 +47,7 @@ const t = {
     nameError: "Введите ФИО",
     error: "Ошибка. Попробуйте ещё раз.",
     recordError: "Ошибка записи",
+    doctorOffDuty: "Этот врач сейчас не принимает. Выберите другого врача или обратитесь в регистратуру.",
     selectService: "Выберите услугу",
     skipService: "Пропустить",
     service: "Услуга",
@@ -99,6 +100,7 @@ const t = {
     nameError: "F.I.Sh. kiriting",
     error: "Xatolik. Qayta urinib ko'ring.",
     recordError: "Yozilish xatosi",
+    doctorOffDuty: "Bu shifokor hozir qabul qilmayapti. Boshqa shifokorni tanlang yoki qabulxonaga murojaat qiling.",
     selectService: "Xizmatni tanlang",
     skipService: "O'tkazib yuborish",
     service: "Xizmat",
@@ -462,7 +464,16 @@ export default function KioskPage() {
         setStep("done");
         setTimeout(() => window.open(`/ticket/${data.ticketToken}?lang=${lang}`, "_blank"), 500);
       } else {
-        setError(L.recordError);
+        // Q-08 — the doctor went off duty between the list and the press
+        // (leave, end of schedule): say so instead of a bare error.
+        const reason =
+          res.status === 409
+            ? await res
+                .json()
+                .then((b: { reason?: string }) => b.reason ?? null)
+                .catch(() => null)
+            : null;
+        setError(reason === "doctor_off_duty" ? L.doctorOffDuty : L.recordError);
       }
     } catch {
       setError(L.error);

@@ -112,6 +112,11 @@ vi.mock("@/lib/prisma", () => {
         return state.appt;
       },
     ),
+    // The NO_SHOW path reads the row back after repricing its case (AP-04).
+    findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => {
+      if (!state.appt || state.appt.id !== where.id) throw new Error("no row");
+      return state.appt;
+    }),
     // The →WAITING path now allocates a queueOrder under Serializable isolation
     // (reception "Пришёл"); `allocateQueueOrder` reads max+1 per doctor/day via
     // `aggregate` inside `$transaction`.
@@ -266,7 +271,7 @@ describe("PATCH queue-status — CONFIRMED branch", () => {
     expect(confirmAppointment).not.toHaveBeenCalled();
   });
 
-  it("QS7 — queueStatus=NO_SHOW uses the flat-update path, no confirm helper", async () => {
+  it("QS7 — queueStatus=NO_SHOW uses the plain update (in the no-show transaction), no confirm helper", async () => {
     const PATCH = await loadPATCH();
     const { confirmAppointment } = await import("@/server/appointments/confirm");
     const res = await PATCH(patchReq("appt_1", { queueStatus: "NO_SHOW" }));

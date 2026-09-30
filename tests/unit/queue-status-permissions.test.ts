@@ -115,6 +115,12 @@ vi.mock("@/lib/prisma", () => {
       return row ? { ...row, doctor: { userId: row.doctorUserId } } : null;
     }),
     aggregate: h.aggregate,
+    findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => ({
+      ...state.appts.get(where.id),
+      patient: { fullName: "Каримова Дилноза", telegramId: null, preferredLang: "UZ" },
+      doctor: { nameRu: "Султанов А.", ticketPrefix: "A", cabinet: { number: "5" } },
+      clinic: { id: "c1", slug: "neurofax", tgBotToken: null, tgBotUsername: null },
+    })),
     update: vi.fn(async ({ where, data }: { where: { id: string }; data: Row }) => {
       h.updates.push({ id: where.id, data });
       const next = { ...state.appts.get(where.id), ...data };
@@ -228,8 +234,9 @@ describe("Q-04 — «Не пришёл» follows the visit's time", () => {
       status: "NO_SHOW",
       queueStatus: "NO_SHOW",
     });
+    // AP-04 — the canonical slug every no-show path now fires.
     expect(h.fireTrigger).toHaveBeenCalledWith({
-      kind: "appointment.noshow",
+      kind: "appointment.no-show",
       appointmentId: "a1",
     });
   });

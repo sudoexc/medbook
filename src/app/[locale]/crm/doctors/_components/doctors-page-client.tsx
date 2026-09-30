@@ -12,7 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   useDoctorsFilters,
   usePeriodRange,
-  type PeriodKey,
 } from "../_hooks/use-doctors-filters";
 import {
   flattenDoctors,
@@ -22,12 +21,12 @@ import {
 } from "../_hooks/use-doctors-list";
 import {
   toAggMap,
-  useDoctorsDayAppointments,
   useDoctorsStats,
+  useDoctorsToday,
   type DoctorAgg,
-  type DoctorAggregateAppointment,
+  type DoctorToday,
 } from "../_hooks/use-doctors-stats";
-import { DoctorCard, type DoctorStatus } from "./doctor-card";
+import { DoctorCard } from "./doctor-card";
 import { DoctorsTiles } from "./doctors-tiles";
 import { DoctorsQuickBook } from "./doctors-quick-book";
 import { DoctorsKpiTabs, type DoctorsTabKey } from "./doctors-kpi-tabs";
@@ -37,88 +36,28 @@ import { DoctorsTopRevenue } from "./doctors-top-revenue";
 import { DoctorsStatsPanel } from "./doctors-stats-panel";
 import { NewDoctorDialog } from "./new-doctor-dialog";
 
-const DAY_CAPACITY = 10;
-const WORKING_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-
-function capacityForPeriod(period: PeriodKey): number {
-  if (period === "today") return DAY_CAPACITY;
-  if (period === "week") return DAY_CAPACITY * 5;
-  if (period === "month") return DAY_CAPACITY * 22;
-  return DAY_CAPACITY * 66;
-}
-
-function todayRange(nowMs: number): { from: string; to: string } {
-  const d = new Date(nowMs);
-  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-  return { from: start.toISOString(), to: end.toISOString() };
-}
-
-function formatIdle(ms: number, hourShort: string, minuteShort: string): string {
-  const minutes = Math.max(0, Math.round(ms / 60_000));
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h > 0 && m > 0) return `${h}${hourShort} ${m}${minuteShort}`;
-  if (h > 0) return `${h}${hourShort}`;
-  return `${m}${minuteShort}`;
-}
-
-function deriveStatus(
-  nowMs: number,
-  todaysAppts: DoctorAggregateAppointment[],
-  hourShort: string,
-  minuteShort: string,
-): { status: DoctorStatus; idleFor: string | null; freeSlots: string[] } {
-  const occupiedHours = new Set<number>();
-  let lastEndMs: number | null = null;
-  let nextStartMs: number | null = null;
-  let busyNow = false;
-
-  for (const a of todaysAppts) {
-    const start = new Date(a.date).getTime();
-    const end = start + 30 * 60_000;
-    occupiedHours.add(new Date(start).getHours());
-    if (nowMs >= start && nowMs < end) busyNow = true;
-    if (end <= nowMs) {
-      if (lastEndMs === null || end > lastEndMs) lastEndMs = end;
-    } else {
-      if (nextStartMs === null || start < nextStartMs) nextStartMs = start;
-    }
-  }
-
-  const freeSlots = WORKING_HOURS.filter((h) => !occupiedHours.has(h))
-    .map((h) => {
-      const hh = String(h).padStart(2, "0");
-      return `${hh}:00`;
-    });
-
-  if (busyNow) return { status: "busy", idleFor: null, freeSlots };
-
-  // "Simпростой" if either no appts today at all after 9am, or we have a long
-  // gap between lastEnd and nextStart surrounding now.
-  const gapStart = lastEndMs ?? (() => {
-    const n = new Date(nowMs);
-    n.setHours(9, 0, 0, 0);
-    return n.getTime();
-  })();
-  const gapSince = Math.max(0, nowMs - gapStart);
-  const hasUpcoming = nextStartMs !== null && nextStartMs > nowMs;
-
-  if (gapSince > 60 * 60_000 && hasUpcoming) {
-    return { status: "idle", idleFor: formatIdle(gapSince, hourShort, minuteShort), freeSlots };
-  }
-
-  return { status: "free", idleFor: null, freeSlots };
-}
-
 type EnrichedDoctor = {
   doctor: DoctorRow;
   agg: DoctorAgg | null;
-  status: DoctorStatus;
-  idleFor: string | null;
-  freeSlots: string[];
+  /** Null for a deactivated doctor: nothing is computed for him today. */
+  today: DoctorToday | null;
   cabinet: string;
 };
+
+/**
+ * The load band a doctor's day falls in, from the schedule (DR-08). Null
+ * when he has no working time today: no band is honest then, so he is in
+ * none of the «Простаивают / Оптимально / Перегружены» tabs.
+ */
+function loadBand(
+  today: DoctorToday | null,
+): "idle" | "optimal" | "overloaded" | null {
+  const pct = today?.loadPct;
+  if (pct === null || pct === undefined) return null;
+  if (pct < 40) return "idle";
+  if (pct > 85) return "overloaded";
+  return "optimal";
+}
 
 export function DoctorsPageClient() {
   useDoctorsListRealtime();
@@ -133,11 +72,11 @@ export function DoctorsPageClient() {
   const periodAggQuery = useDoctorsStats(periodRange);
 
   const [activeTab, setActiveTab] = React.useState<DoctorsTabKey>("all");
-  const [nowMs] = React.useState(() => Date.now());
   const [newDoctorOpen, setNewDoctorOpen] = React.useState(false);
 
-  const todayR = React.useMemo(() => todayRange(nowMs), [nowMs]);
-  const todayAggQuery = useDoctorsDayAppointments(todayR);
+  // Today's working time, load, live status, next free slot and hour
+  // heatmap, from the schedule and the real visits (DR-08).
+  const todayQuery = useDoctorsToday();
 
   const allDoctors = flattenDoctors(listQuery.data);
 
@@ -147,43 +86,26 @@ export function DoctorsPageClient() {
   );
   // A failed load must read as a failure, not as a quiet clinic: the page
   // used to turn a 400 into zero revenue and 0 % load (DR-01).
-  const statsFailed = periodAggQuery.isError || todayAggQuery.isError;
+  const statsFailed = periodAggQuery.isError || todayQuery.isError;
   const retryStats = () => {
     if (periodAggQuery.isError) void periodAggQuery.refetch();
-    if (todayAggQuery.isError) void todayAggQuery.refetch();
+    if (todayQuery.isError) void todayQuery.refetch();
   };
 
-  const todayAppts = React.useMemo(
-    () => todayAggQuery.data ?? [],
-    [todayAggQuery.data],
-  );
+  const todayByDoctor = React.useMemo(() => {
+    const m = new Map<string, DoctorToday>();
+    for (const r of todayQuery.data?.doctors ?? []) m.set(r.doctorId, r);
+    return m;
+  }, [todayQuery.data]);
 
-  const byDoctorToday = React.useMemo(() => {
-    const out: Record<string, DoctorAggregateAppointment[]> = {};
-    for (const a of todayAppts) {
-      const id = a.doctor.id;
-      out[id] = out[id] ?? [];
-      out[id].push(a);
-    }
-    return out;
-  }, [todayAppts]);
-
-  const hourShort = t("hourShort");
-  const minuteShort = t("minuteShort");
   const enriched: EnrichedDoctor[] = React.useMemo(() => {
-    return allDoctors.map((d) => {
-      const todays = byDoctorToday[d.id] ?? [];
-      const { status, idleFor, freeSlots } = deriveStatus(nowMs, todays, hourShort, minuteShort);
-      return {
-        doctor: d,
-        agg: periodAggByDoctor.get(d.id) ?? null,
-        status,
-        idleFor,
-        freeSlots,
-        cabinet: d.cabinet?.number ?? "—",
-      };
-    });
-  }, [allDoctors, byDoctorToday, periodAggByDoctor, nowMs, hourShort, minuteShort]);
+    return allDoctors.map((d) => ({
+      doctor: d,
+      agg: periodAggByDoctor.get(d.id) ?? null,
+      today: todayByDoctor.get(d.id) ?? null,
+      cabinet: d.cabinet?.number ?? "—",
+    }));
+  }, [allDoctors, periodAggByDoctor, todayByDoctor]);
 
   const counts: Record<DoctorsTabKey, number> = React.useMemo(() => {
     let idle = 0;
@@ -191,11 +113,11 @@ export function DoctorsPageClient() {
     let overloaded = 0;
     let hasSlots = 0;
     for (const e of enriched) {
-      const load = e.agg ? e.agg.todayCount / DAY_CAPACITY : 0;
-      if (load < 0.4) idle += 1;
-      else if (load > 0.85) overloaded += 1;
-      else optimal += 1;
-      if (e.freeSlots.length > 0 && e.status !== "busy") hasSlots += 1;
+      const band = loadBand(e.today);
+      if (band === "idle") idle += 1;
+      else if (band === "optimal") optimal += 1;
+      else if (band === "overloaded") overloaded += 1;
+      if (e.today?.nextFree) hasSlots += 1;
     }
     return {
       all: enriched.length,
@@ -209,27 +131,22 @@ export function DoctorsPageClient() {
   const filteredEnriched = React.useMemo(() => {
     if (activeTab === "all") return enriched;
     return enriched.filter((e) => {
-      const load = e.agg ? e.agg.todayCount / DAY_CAPACITY : 0;
-      if (activeTab === "idle") return load < 0.4;
-      if (activeTab === "optimal") return load >= 0.4 && load <= 0.85;
-      if (activeTab === "overloaded") return load > 0.85;
-      if (activeTab === "has-slots")
-        return e.freeSlots.length > 0 && e.status !== "busy";
-      return true;
+      if (activeTab === "has-slots") return Boolean(e.today?.nextFree);
+      return loadBand(e.today) === activeTab;
     });
   }, [enriched, activeTab]);
 
-  const periodCapacity = capacityForPeriod(effectivePeriod);
-
-  const clinicLoadPct = React.useMemo(() => {
-    let totalBooked = 0;
-    for (const a of periodAggByDoctor.values()) totalBooked += a.total;
-    const cap = allDoctors.length * periodCapacity;
-    return cap > 0 ? Math.round((totalBooked / cap) * 100) : 0;
-  }, [periodAggByDoctor, allDoctors.length, periodCapacity]);
+  const loadByDoctor = React.useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const [id, r] of todayByDoctor) m.set(id, r.loadPct);
+    return m;
+  }, [todayByDoctor]);
 
   const liveStatuses = React.useMemo(
-    () => enriched.map((e) => e.status),
+    () =>
+      enriched
+        .filter((e) => e.doctor.isActive)
+        .map((e) => e.today?.status ?? "off"),
     [enriched],
   );
 
@@ -274,9 +191,9 @@ export function DoctorsPageClient() {
 
           <DoctorsTiles
             aggByDoctor={periodAggByDoctor}
-            doctorsCount={allDoctors.length}
-            capacity={periodCapacity}
+            today={todayQuery.data?.clinic ?? null}
             unavailable={periodAggQuery.isError}
+            todayUnavailable={todayQuery.isError}
           />
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
@@ -327,12 +244,9 @@ export function DoctorsPageClient() {
                   <DoctorCard
                     key={e.doctor.id}
                     doctor={e.doctor}
-                    agg={e.agg}
-                    dayCapacity={DAY_CAPACITY}
-                    status={e.status}
-                    idleFor={e.idleFor}
+                    today={e.today}
+                    todayLoading={todayQuery.isLoading}
                     cabinet={e.cabinet}
-                    freeSlots={e.freeSlots}
                   />
                 ))}
                 {filteredEnriched.length === 0 ? (
@@ -347,12 +261,11 @@ export function DoctorsPageClient() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_1fr]">
             <DoctorsHeatmap
               doctors={allDoctors}
-              appointments={todayAppts}
+              today={todayQuery.data?.doctors ?? []}
             />
             <DoctorsAiRecommendations
               doctors={allDoctors}
-              aggByDoctor={periodAggByDoctor}
-              dayCapacity={DAY_CAPACITY}
+              loadByDoctor={loadByDoctor}
             />
             <DoctorsTopRevenue
               doctors={allDoctors}
@@ -363,7 +276,7 @@ export function DoctorsPageClient() {
             <DoctorsStatsPanel
               doctors={allDoctors}
               statuses={liveStatuses}
-              clinicLoadPct={clinicLoadPct}
+              clinicLoadPct={todayQuery.data?.clinic.loadPct ?? null}
             />
           </div>
         </PageContainer>

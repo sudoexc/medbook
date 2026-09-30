@@ -40,9 +40,17 @@ import { selectedIdFromParams } from "@/app/[locale]/crm/telegram/_hooks/use-con
 import { TgPreviewWidget } from "@/app/[locale]/crm/reception/_components/tg-preview-widget";
 
 describe("new messages in the open chat are read as they arrive (audit G6-05)", () => {
-  /** Replays what the chat pane's effect sees, returns the marks it made. */
+  /**
+   * Replays what the chat pane's effect sees, returns the marks it made.
+   * `at` is the conversation's lastMessageAt (the newest message).
+   */
   function replay(
-    steps: Array<{ conversationId: string | null; unread: number; visible?: boolean }>,
+    steps: Array<{
+      conversationId: string | null;
+      unread: number;
+      at?: string | null;
+      visible?: boolean;
+    }>,
   ): string[] {
     let lastMarked: string | null = null;
     const marks: string[] = [];
@@ -50,6 +58,7 @@ describe("new messages in the open chat are read as they arrive (audit G6-05)", 
       const next = readMarkKey({
         conversationId: s.conversationId,
         unread: s.unread,
+        lastMessageAt: s.at ?? null,
         visible: s.visible ?? true,
         lastMarked,
       });
@@ -62,11 +71,11 @@ describe("new messages in the open chat are read as they arrive (audit G6-05)", 
   it("marks on opening and again for each message arriving while open", () => {
     expect(
       replay([
-        { conversationId: "c1", unread: 2 }, // opened with two unread
-        { conversationId: "c1", unread: 0 }, // marked
-        { conversationId: "c1", unread: 1 }, // the patient writes again
-        { conversationId: "c1", unread: 0 },
-        { conversationId: "c1", unread: 1 }, // and again
+        { conversationId: "c1", unread: 2, at: "t1" }, // opened with two unread
+        { conversationId: "c1", unread: 0, at: "t1" }, // marked
+        { conversationId: "c1", unread: 1, at: "t2" }, // the patient writes again
+        { conversationId: "c1", unread: 0, at: "t2" },
+        { conversationId: "c1", unread: 1, at: "t3" }, // and again
       ]),
     ).toEqual(["c1:2", "c1:1", "c1:1"]);
   });
@@ -74,20 +83,58 @@ describe("new messages in the open chat are read as they arrive (audit G6-05)", 
   it("does not loop on a count the server has not zeroed yet", () => {
     expect(
       replay([
-        { conversationId: "c1", unread: 1 },
-        { conversationId: "c1", unread: 1 },
-        { conversationId: "c1", unread: 1 },
+        { conversationId: "c1", unread: 1, at: "t1" },
+        { conversationId: "c1", unread: 1, at: "t1" },
+        { conversationId: "c1", unread: 1, at: "t1" },
       ]),
     ).toEqual(["c1:1"]);
+  });
+
+  it("review: a refused mark does not re-arm on its own optimistic zero", () => {
+    // VIEW_ONLY impersonation or a 500: the PATCH is refused, the cache was
+    // patched to 0 meanwhile, the refetch brings the same two unread back.
+    expect(
+      replay([
+        { conversationId: "c1", unread: 2, at: "t1" }, // marks
+        { conversationId: "c1", unread: 0, at: "t1" }, // optimistic zero
+        { conversationId: "c1", unread: 2, at: "t1" }, // refetch: still 2
+        { conversationId: "c1", unread: 0, at: "t1" },
+        { conversationId: "c1", unread: 2, at: "t1" },
+      ]),
+    ).toEqual(["c1:2"]);
+    // A message that really arrives afterwards is still read, once.
+    expect(
+      replay([
+        { conversationId: "c1", unread: 2, at: "t1" },
+        { conversationId: "c1", unread: 0, at: "t1" },
+        { conversationId: "c1", unread: 2, at: "t1" },
+        { conversationId: "c1", unread: 3, at: "t2" },
+        { conversationId: "c1", unread: 0, at: "t2" },
+        { conversationId: "c1", unread: 3, at: "t2" },
+      ]),
+    ).toEqual(["c1:2", "c1:3"]);
+  });
+
+  it("reopening a thread tries once more, switching away does not mark", () => {
+    expect(
+      replay([
+        { conversationId: "c1", unread: 2, at: "t1" }, // marks, refused
+        { conversationId: "c1", unread: 0, at: "t1" },
+        { conversationId: "c1", unread: 2, at: "t1" },
+        { conversationId: "c2", unread: 0, at: "t9" }, // another thread
+        { conversationId: "c1", unread: 2, at: "t1" }, // back: one more try
+        { conversationId: "c1", unread: 2, at: "t1" },
+      ]),
+    ).toEqual(["c1:2", "c1:2"]);
   });
 
   it("a hidden tab reads nothing, and reads on coming back", () => {
     expect(
       replay([
-        { conversationId: "c1", unread: 0 },
-        { conversationId: "c1", unread: 1, visible: false },
-        { conversationId: "c1", unread: 2, visible: false },
-        { conversationId: "c1", unread: 2, visible: true },
+        { conversationId: "c1", unread: 0, at: "t1" },
+        { conversationId: "c1", unread: 1, at: "t2", visible: false },
+        { conversationId: "c1", unread: 2, at: "t3", visible: false },
+        { conversationId: "c1", unread: 2, at: "t3", visible: true },
       ]),
     ).toEqual(["c1:2"]);
   });

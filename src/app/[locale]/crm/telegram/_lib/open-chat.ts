@@ -64,22 +64,36 @@ export function createStickToBottom(): StickToBottom {
 /**
  * When the open chat marks its messages read (audit G6-05): the chat is
  * marked on opening, and again for every message arriving while it stays
- * open and the page is in front of the operator. `lastMarked` is the
- * `conversationId:unread` pair marked last; the same pair is not marked
- * twice, so a count the server has not zeroed yet cannot loop.
+ * open and the page is in front of the operator.
+ *
+ * `lastMarked` is the `conversationId:lastMessageAt` pair marked last, i.e.
+ * the newest message the mark covered; the same pair is never marked twice.
+ * Keyed on the count, the mark re-armed on its own optimistic zero: a PATCH
+ * the server refused (VIEW_ONLY impersonation, a 500) brought the same count
+ * back on refetch, which read as a new pair, and the chat marked again
+ * several times a second, forever. Every patient message moves
+ * `lastMessageAt` together with the count (webhook, Mini App chat), so a
+ * real arrival still marks, and a refetch of the same state never does.
  */
 export function readMarkKey(input: {
   conversationId: string | null;
   unread: number;
+  lastMessageAt: string | null;
   visible: boolean;
   lastMarked: string | null;
 }): { mark: boolean; key: string | null } {
-  const { conversationId, unread, visible, lastMarked } = input;
-  // Nothing unread: forget the last pair, so the next arrival (0 → 1) marks.
-  if (!conversationId || unread <= 0) return { mark: false, key: null };
-  const key = `${conversationId}:${unread}`;
+  const { conversationId, unread, lastMessageAt, visible, lastMarked } = input;
+  // Nothing open: the next opening marks afresh.
+  if (!conversationId) return { mark: false, key: null };
+  // The pair marked last in THIS thread; another thread's pair is forgotten,
+  // so reopening a thread tries once more.
+  const mine = lastMarked?.startsWith(`${conversationId}:`) ? lastMarked : null;
+  // Nothing unread, the optimistic zero included: keep the pair, so the
+  // count coming back from a refused mark does not mark it again.
+  if (unread <= 0) return { mark: false, key: mine };
+  const key = `${conversationId}:${lastMessageAt ?? ""}`;
   // A hidden tab reads nothing; the pair is marked once the page is back.
-  if (!visible) return { mark: false, key: lastMarked };
-  if (key === lastMarked) return { mark: false, key };
+  if (!visible) return { mark: false, key: mine };
+  if (key === mine) return { mark: false, key };
   return { mark: true, key };
 }

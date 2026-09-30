@@ -51,6 +51,10 @@ const state = vi.hoisted(() => ({
   enqueued: [] as Array<{ queue: string; job: string; data: unknown }>,
   events: [] as Array<{ type: string; payload: Record<string, unknown> }>,
   takenExternalIds: new Set<string>(),
+  /** The next N SENT writes throw (a lock timeout after Telegram took it). */
+  sentWriteFailures: 0,
+  /** Clearing «Неотвеченные» throws. */
+  failAwaitingClear: false,
 }));
 
 vi.mock("@/lib/api-handler", () => {
@@ -134,6 +138,10 @@ vi.mock("@/lib/prisma", () => {
     update: vi.fn(
       async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const row = state.messages.find((m) => m.id === where.id)!;
+        if (data.status === "SENT" && state.sentWriteFailures > 0) {
+          state.sentWriteFailures -= 1;
+          throw new Error("canceling statement due to lock timeout");
+        }
         if (typeof data.externalId === "string" && state.takenExternalIds.has(data.externalId)) {
           throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
         }
@@ -175,6 +183,9 @@ vi.mock("@/lib/prisma", () => {
     findFirst: vi.fn(async () => state.conv),
     update: vi.fn(async () => ({})),
     updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      if (state.failAwaitingClear && "awaitingReplySince" in args.data) {
+        throw new Error("Can't reach database server");
+      }
       state.convUpdates.push(args);
       return { count: 1 };
     }),
@@ -293,6 +304,8 @@ beforeEach(() => {
   state.enqueued = [];
   state.events = [];
   state.takenExternalIds = new Set();
+  state.sentWriteFailures = 0;
+  state.failAwaitingClear = false;
 });
 
 const adoptions = () =>
@@ -365,6 +378,53 @@ describe("sending is queued, never inside the request (audit TG-17)", () => {
     state.takenExternalIds.add("4242");
     const { row } = await sendAndDeliver({ body: "Здравствуйте" });
     expect(row.status).toBe("SENT");
+  });
+});
+
+describe("a DB hiccup after Telegram took the message (review of TG-17)", () => {
+  /** The chat never shows «Не доставлено» for a message the patient has. */
+  const failedEvents = () =>
+    state.events.filter((e) => e.payload.status === "FAILED");
+
+  it("clearing «Неотвеченные» fails: the row stays SENT, no «Повторить»", async () => {
+    state.failAwaitingClear = true;
+    const res = await post({ body: "Да, можно в 15:00" });
+    const queued = await res.json();
+    const [job] = state.enqueued.splice(0);
+    expect(await deliverStaffMessage(job!.data as { messageId: string })).toBe("sent");
+    expect(state.messages[0]).toMatchObject({ status: "SENT", externalId: "4242" });
+    expect(state.messages[0]!.failedReason ?? null).toBeNull();
+    expect(state.sends).toHaveLength(1);
+    expect(failedEvents()).toEqual([]);
+    expect(state.events.at(-1)).toMatchObject({
+      payload: { messageId: queued.id, status: "SENT" },
+    });
+    // Nothing to retry: «Повторить» is refused for a SENT row.
+    expect((await retry(queued.id)).status).toBe(409);
+    expect(state.sends).toHaveLength(1);
+  });
+
+  it("the SENT write fails once: written on the second try, never FAILED", async () => {
+    state.sentWriteFailures = 1;
+    const res = await post({ body: "Да, можно в 15:00" });
+    await res.json();
+    const [job] = state.enqueued.splice(0);
+    expect(await deliverStaffMessage(job!.data as { messageId: string })).toBe("sent");
+    expect(state.messages[0]).toMatchObject({ status: "SENT", externalId: "4242" });
+    expect(failedEvents()).toEqual([]);
+    expect(state.sends).toHaveLength(1);
+  });
+
+  it("the SENT write keeps failing: left SENDING for the sweep, never FAILED tg_error", async () => {
+    state.sentWriteFailures = 2;
+    const res = await post({ body: "Да, можно в 15:00" });
+    await res.json();
+    const [job] = state.enqueued.splice(0);
+    expect(await deliverStaffMessage(job!.data as { messageId: string })).toBe("sent");
+    expect(state.messages[0]!.status).toBe("SENDING");
+    expect(state.messages[0]!.failedReason ?? null).toBeNull();
+    expect(failedEvents()).toEqual([]);
+    expect(state.sends).toHaveLength(1);
   });
 });
 

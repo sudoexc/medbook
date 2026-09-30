@@ -116,6 +116,7 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
   // header counter and the other receptionists' view pile up «unread» for a
   // conversation someone was reading.
   const unread = conversation?.unreadCount ?? 0;
+  const lastMessageAt = conversation?.lastMessageAt ?? null;
   const pageVisible = usePageVisible();
   const lastMarkedRef = React.useRef<string | null>(null);
   const mark = markRead.mutate;
@@ -123,12 +124,13 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
     const next = readMarkKey({
       conversationId,
       unread,
+      lastMessageAt,
       visible: pageVisible,
       lastMarked: lastMarkedRef.current,
     });
     lastMarkedRef.current = next.key;
     if (next.mark && conversationId) mark(conversationId);
-  }, [conversationId, unread, pageVisible, mark]);
+  }, [conversationId, unread, lastMessageAt, pageVisible, mark]);
 
   // Open on the newest message and follow new ones while the operator is at
   // the bottom (audit G6-06); history he scrolled up to stays put.

@@ -277,6 +277,12 @@ export async function deliverStaffMessage(
       return "failed";
     }
 
+    // Only the Telegram calls sit in this try: a throw here means Telegram
+    // did not take the message. What follows a send it accepted is
+    // bookkeeping, and a DB hiccup there must never reach tgFailReason and
+    // turn a delivered message into «Не доставлено» with «Повторить» (the
+    // patient would get it twice, the harm TG-17 removed).
+    let lastResult: { message_id: number } | null = null;
     try {
       const inlineKeyboard = Array.isArray(msg.buttons)
         ? (msg.buttons as Array<
@@ -288,7 +294,6 @@ export async function deliverStaffMessage(
         : {};
       const base = publicBaseFor(job);
 
-      let lastResult: { message_id: number } | null = null;
       if (attachments.length > 0) {
         // Caption rides on the first attachment, the inline keyboard on the
         // last. Images go as photos, everything else as documents by URL.
@@ -319,17 +324,6 @@ export async function deliverStaffMessage(
           lastResult = sent as { message_id: number };
         }
       }
-
-      await finish({
-        status: "SENT",
-        externalId: lastResult ? String(lastResult.message_id) : null,
-      });
-      if (!conv.externalId) await adoptTelegramChat(conv.id, chatId);
-      if (conv.patientId) {
-        await bumpPatientLastContact(conv.patientId, new Date());
-      }
-      await clearAwaitingReply(prisma, conv.id, msg.createdAt);
-      return "sent";
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
       console.error(
@@ -362,12 +356,70 @@ export async function deliverStaffMessage(
           .catch(() => undefined);
       }
       if (inAppOnly) {
-        await clearAwaitingReply(prisma, conv.id, msg.createdAt);
+        await bestEffort(`clear awaiting reply conv=${conv.id}`, () =>
+          clearAwaitingReply(prisma, conv.id, msg.createdAt),
+        );
         return "delivered_in_app";
       }
       return "failed";
     }
+
+    // Telegram took it. The SENT write gets one more try after a short
+    // pause (a lock timeout, a dropped connection); if both fail the row
+    // stays SENDING and the sweep closes it as tg_timeout, «могло дойти»,
+    // which is the honest account of a send nobody could record.
+    const sentData = {
+      status: "SENT" as const,
+      externalId: lastResult ? String(lastResult.message_id) : null,
+    };
+    let recorded = await bestEffort(`record SENT msg=${msg.id}`, () =>
+      finish(sentData),
+    );
+    if (!recorded) {
+      await pause(SENT_WRITE_RETRY_MS);
+      recorded = await bestEffort(`record SENT (retry) msg=${msg.id}`, () =>
+        finish(sentData),
+      );
+    }
+    if (!recorded) {
+      console.error(
+        `[crm:send] delivered but not recorded msg=${msg.id}: left SENDING for the sweep`,
+      );
+    }
+    if (!conv.externalId) await adoptTelegramChat(conv.id, chatId);
+    if (conv.patientId) {
+      await bumpPatientLastContact(conv.patientId, new Date());
+    }
+    await bestEffort(`clear awaiting reply conv=${conv.id}`, () =>
+      clearAwaitingReply(prisma, conv.id, msg.createdAt),
+    );
+    return "sent";
   });
+}
+
+/** Pause before the second SENT write. */
+export const SENT_WRITE_RETRY_MS = 500;
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Run a write that follows a message the patient already has (Telegram took
+ * it, or the Mini App shows it). Never throws: the outcome is settled
+ * whatever happens here. True when the write went through.
+ */
+async function bestEffort(
+  what: string,
+  fn: () => Promise<unknown>,
+): Promise<boolean> {
+  try {
+    await fn();
+    return true;
+  } catch (e) {
+    console.warn(`[crm:send] ${what} failed: ${(e as Error)?.message ?? String(e)}`);
+    return false;
+  }
 }
 
 /**

@@ -8,7 +8,9 @@
  * pass will change and can apply it without waiting for the worker.
  *
  * What it changes: `segment` of live (not deleted) patients whose stored
- * value differs from the rule. VIP is never touched. Nothing else.
+ * value differs from the rule. VIP is never touched. Nothing else. A
+ * patient with a visit booked ahead is never set to DORMANT or CHURN, the
+ * same as the worker (`upcomingVisitWhere`).
  *
  * It reads `visitsCount` / `lastVisitAt`. Run
  * scripts/backfill-patient-visit-stats.ts first if it has not been run since
@@ -27,6 +29,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
   classifyPatientSegment,
+  upcomingVisitWhere,
   type PatientSegmentValue,
 } from "../src/lib/patients/segment-rules";
 
@@ -72,8 +75,20 @@ async function main() {
     });
     if (rows.length === 0) break;
     scanned += rows.length;
+    const booked = await prisma.appointment.findMany({
+      where: upcomingVisitWhere(
+        rows.map((r) => r.id),
+        now,
+      ),
+      select: { patientId: true },
+      distinct: ["patientId"],
+    });
+    const upcoming = new Set(booked.map((b) => b.patientId));
     for (const r of rows) {
-      const next = classifyPatientSegment({ ...r, current: r.segment }, now);
+      const next = classifyPatientSegment(
+        { ...r, current: r.segment, hasUpcomingVisit: upcoming.has(r.id) },
+        now,
+      );
       const b = before.get(r.clinicId) ?? empty();
       const a = after.get(r.clinicId) ?? empty();
       b[r.segment] += 1;

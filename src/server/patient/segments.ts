@@ -5,13 +5,18 @@
  * Two writers:
  *   - `refreshPatientSegment`: one patient, right after a completed visit
  *     (`runCompletionEffects`), so the second visit makes the patient
- *     «Активный» at once;
+ *     «Активный» at once, and right after a booking or a walk-in
+ *     (`bookAppointment`, `registerWalkin`, a doctor's revert), so a
+ *     patient who has just booked leaves «Остывают» and the call list at
+ *     once;
  *   - `recomputePatientSegments`: every patient, from the periodic job, for
  *     what only time changes (90 days without a visit: «Остывают»; a year:
- *     «Потерянные»; a first-timer's 90 days running out).
+ *     «Потерянные»; a first-timer's 90 days running out; a booked visit
+ *     cancelled, missed or past).
  * Both read the denormalised visit columns `refreshPatientVisitStats`
  * keeps, the same ones the list shows as «Визиты» and «Последний визит»,
- * so the segment never disagrees with the row next to it.
+ * so the segment never disagrees with the row next to it, plus whether a
+ * visit is booked ahead (`upcomingVisitWhere`).
  *
  * VIP is a manual label: neither writer touches it, and the writes are
  * conditional on the row not being VIP so a label set in between wins.
@@ -20,6 +25,7 @@ import { prisma } from "@/lib/prisma";
 import {
   classifyPatientSegment,
   segmentChanges,
+  upcomingVisitWhere,
   type PatientSegmentValue,
 } from "@/lib/patients/segment-rules";
 
@@ -39,9 +45,24 @@ type PatientSegmentRow = {
   createdAt: Date;
 };
 
+/** Which of these patients have a visit booked ahead (`upcomingVisitWhere`). */
+async function patientsWithUpcomingVisit(
+  patientIds: ReadonlyArray<string>,
+  now: Date,
+): Promise<Set<string>> {
+  if (patientIds.length === 0) return new Set();
+  const rows = (await prisma.appointment.findMany({
+    where: upcomingVisitWhere(patientIds, now),
+    select: { patientId: true },
+    distinct: ["patientId"],
+  })) as Array<{ patientId: string }>;
+  return new Set(rows.map((r) => r.patientId));
+}
+
 /**
- * One patient. Call after `refreshPatientVisitStats`. Never throws: the
- * visit is already closed, a label must not fail it.
+ * One patient. Call after `refreshPatientVisitStats`, or after a booking.
+ * Never throws: the visit or the booking is already saved, a label must
+ * not fail it.
  */
 export async function refreshPatientSegment(
   patientId: string,
@@ -53,7 +74,11 @@ export async function refreshPatientSegment(
       select: PATIENT_SELECT,
     })) as PatientSegmentRow | null;
     if (!row) return;
-    const next = classifyPatientSegment({ ...row, current: row.segment }, now);
+    const upcoming = await patientsWithUpcomingVisit([row.id], now);
+    const next = classifyPatientSegment(
+      { ...row, current: row.segment, hasUpcomingVisit: upcoming.has(row.id) },
+      now,
+    );
     if (next === row.segment) return;
     await prisma.patient.updateMany({
       where: { id: patientId, segment: { not: "VIP" } },
@@ -90,8 +115,16 @@ export async function recomputePatientSegments(
     })) as PatientSegmentRow[];
     if (rows.length === 0) break;
     scanned += rows.length;
+    const upcoming = await patientsWithUpcomingVisit(
+      rows.map((r) => r.id),
+      now,
+    );
     const changes = segmentChanges(
-      rows.map((r) => ({ ...r, current: r.segment })),
+      rows.map((r) => ({
+        ...r,
+        current: r.segment,
+        hasUpcomingVisit: upcoming.has(r.id),
+      })),
       now,
     );
     for (const [segment, ids] of changes) {

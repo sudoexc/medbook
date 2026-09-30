@@ -1,11 +1,13 @@
 /**
  * Patient segment recompute (audit PT-15).
  *
- * A completed visit refreshes its patient's segment on the spot
- * (`runCompletionEffects`). What only the calendar changes needs a pass:
- * 90 days without a visit turn an active patient into «Остывают», a year
- * into «Потерянные», and a first-timer who never came back stops being
- * «Новый». This job reruns the rule of `src/lib/patients/segment-rules.ts`
+ * A completed visit and a new booking refresh the patient's segment on the
+ * spot (`runCompletionEffects`, `bookAppointment`, `registerWalkin`). What
+ * only the calendar changes needs a pass: 90 days without a visit turn an
+ * active patient into «Остывают», a year into «Потерянные», a first-timer
+ * who never came back stops being «Новый», and a booked visit that was
+ * cancelled, missed or left open stops holding the patient in NEW or
+ * ACTIVE. This job reruns the rule of `src/lib/patients/segment-rules.ts`
  * over every live patient.
  *
  * Cadence: every 6 hours plus once at start, so a deploy puts every segment

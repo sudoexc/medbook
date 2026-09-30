@@ -24,9 +24,20 @@
  * lists name the same patients; a neurology control visit usually falls
  * inside it, so a patient who keeps coming back stays «Активный».
  *
- * Pure and dependency-free: the server, the client and the data-fix script
- * all import it.
+ * A visit booked ahead overrides the calendar: a patient who is already
+ * coming is never «Остывают» or «Потерянные», he is counted as if his last
+ * contact were recent (NEW or ACTIVE by the visit count). Without it
+ * reception called patients whose control visit was already booked (the
+ * «Остывают» page is the call list), a DORMANT broadcast asked them to come
+ * back, and a first-timer rebooked for today walked in under a «Потерянный»
+ * badge. dormant-batch likewise skips a patient with a future booking.
+ *
+ * Pure, with no server imports: the server, the client and the data-fix
+ * script all import it.
  */
+
+import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 
 export type PatientSegmentValue = "NEW" | "ACTIVE" | "DORMANT" | "VIP" | "CHURN";
 
@@ -49,6 +60,27 @@ export interface SegmentInput {
   visitsCount: number;
   lastVisitAt: Date | null;
   createdAt: Date;
+  /**
+   * A visit is booked from today on and not cancelled, missed or seen yet
+   * (`upcomingVisitWhere`). Absent means no.
+   */
+  hasUpcomingVisit?: boolean;
+}
+
+/**
+ * The appointments that count as «visit booked ahead» for these patients:
+ * still expected or on the table (ACTIVE_VISIT_STATUSES), dated from the
+ * start of today in Tashkent. Today's start and not `now`, so a walk-in
+ * sitting in the queue since the morning, or a booking whose slot has just
+ * passed while the patient waits, still counts; a booking left open from
+ * an earlier day does not. A Prisma `where` for `appointment.findMany`.
+ */
+export function upcomingVisitWhere(patientIds: ReadonlyArray<string>, now: Date) {
+  return {
+    patientId: { in: [...patientIds] },
+    status: { in: [...ACTIVE_VISIT_STATUSES] },
+    date: { gte: tashkentDayBounds(now).dayStart },
+  };
 }
 
 export function classifyPatientSegment(
@@ -56,12 +88,16 @@ export function classifyPatientSegment(
   now: Date,
 ): PatientSegmentValue {
   if (input.current === "VIP") return "VIP";
+  const upcoming = input.hasUpcomingVisit === true;
   if (input.visitsCount <= 0 || !input.lastVisitAt) {
+    if (upcoming) return "NEW";
     return daysBetween(input.createdAt, now) <= SEGMENT_NEW_DAYS ? "NEW" : "CHURN";
   }
-  const since = daysBetween(input.lastVisitAt, now);
-  if (since > SEGMENT_DORMANT_MAX_DAYS) return "CHURN";
-  if (since > SEGMENT_ACTIVE_DAYS) return "DORMANT";
+  if (!upcoming) {
+    const since = daysBetween(input.lastVisitAt, now);
+    if (since > SEGMENT_DORMANT_MAX_DAYS) return "CHURN";
+    if (since > SEGMENT_ACTIVE_DAYS) return "DORMANT";
+  }
   return input.visitsCount >= 2 ? "ACTIVE" : "NEW";
 }
 

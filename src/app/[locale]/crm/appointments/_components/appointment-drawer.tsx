@@ -130,6 +130,7 @@ export function AppointmentDrawer({
   const tCase = useTranslations("appointments.case");
   const tChannel = useTranslations("appointments.channel");
   const tPayment = useTranslations("appointments.payment");
+  const tSegment = useTranslations("patients.segment");
   const locale = useLocale() as Locale;
   const role = useCurrentRole();
   const [caseSelectorOpen, setCaseSelectorOpen] = React.useState(false);
@@ -346,7 +347,13 @@ export function AppointmentDrawer({
                   </div>
                   <Badge variant="muted" className="shrink-0">
                     <UserIcon className="size-3" />
-                    {appt.patient.segment}
+                    {/* The label the patient list shows, never the raw enum
+                        («CHURN» on a patient walking in today, PT-15). */}
+                    {tSegment(
+                      appt.patient.segment.toLowerCase() as Lowercase<
+                        typeof appt.patient.segment
+                      >,
+                    )}
                   </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">

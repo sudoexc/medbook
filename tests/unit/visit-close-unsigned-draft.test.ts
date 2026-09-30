@@ -12,7 +12,9 @@
  *
  * The same file pins the visit REVERT side of VW-02 and G1-01: un-signing a
  * conclusion clears its composed handout (the next signature composes it
- * afresh) and keeps the signed state on record first.
+ * afresh) and keeps the signed state on record first. And PT-15: a revert
+ * that takes back a visit or gives a booking back refreshes the patient's
+ * segment.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -118,6 +120,10 @@ vi.mock("@/server/patient-experience/referral-mint", () => ({
 vi.mock("@/server/patient/last-contacted", () => ({
   bumpPatientLastContact: vi.fn(async () => undefined),
   refreshPatientVisitStats: vi.fn(async () => undefined),
+}));
+const segmentRefresh = vi.hoisted(() => vi.fn(async (_id: string) => undefined));
+vi.mock("@/server/patient/segments", () => ({
+  refreshPatientSegment: segmentRefresh,
 }));
 vi.mock("@/lib/appointment-transitions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/appointment-transitions")>()),
@@ -353,6 +359,44 @@ describe("visit revert: un-signing keeps the signed state and drops the stale ha
     await PATCH(req({ status: "IN_PROGRESS" }, "?revert=true"));
 
     expect(state.revisions).toHaveLength(1);
+  });
+
+  it("an un-completed visit refreshes the patient's segment (PT-15)", async () => {
+    segmentRefresh.mockClear();
+    const PATCH = await loadPatch();
+
+    const res = await PATCH(req({ status: "IN_PROGRESS" }, "?revert=true"));
+
+    expect(res.status).toBe(200);
+    expect(segmentRefresh).toHaveBeenCalledWith("p1");
+  });
+});
+
+describe("visit revert: a no-show or a cancellation undone gives the booking back (PT-15)", () => {
+  it.each(["NO_SHOW", "CANCELLED"] as const)(
+    "%s → BOOKED refreshes the segment, taking the patient off «Остывают»",
+    async (from) => {
+      state.apt = { ...state.apt, status: from, queueStatus: from, startedAt: null };
+      segmentRefresh.mockClear();
+      const PATCH = await loadPatch();
+
+      const res = await PATCH(req({ status: "BOOKED" }, "?revert=true"));
+
+      expect(res.status).toBe(200);
+      expect(state.appointmentUpdates[0]?.status).toBe("BOOKED");
+      expect(segmentRefresh).toHaveBeenCalledWith("p1");
+    },
+  );
+
+  it("SKIPPED → WAITING changes no booking and refreshes nothing", async () => {
+    state.apt = { ...state.apt, status: "SKIPPED", queueStatus: "SKIPPED" };
+    segmentRefresh.mockClear();
+    const PATCH = await loadPatch();
+
+    const res = await PATCH(req({ status: "WAITING" }, "?revert=true"));
+
+    expect(res.status).toBe(200);
+    expect(segmentRefresh).not.toHaveBeenCalled();
   });
 });
 

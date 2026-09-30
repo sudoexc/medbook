@@ -24,6 +24,7 @@ import {
 } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { refreshPatientVisitStats } from "@/server/patient/last-contacted";
+import { refreshPatientSegment } from "@/server/patient/segments";
 import { cancelAppointment } from "@/server/appointments/cancel";
 import {
   AnotherVisitInProgressError,
@@ -386,6 +387,17 @@ export const PATCH = createApiHandler(
       // than they had — permanently, if the visit is never re-completed.
       if (fromStatus === "COMPLETED") {
         await refreshPatientVisitStats(before.patientId);
+      }
+      // The segment follows both (PT-15): an un-completed visit takes back
+      // the visit it counted, and a no-show or a cancellation undone gives
+      // the patient his booking back, which takes him off «Остывают».
+      // Logs and swallows its own failures.
+      if (
+        fromStatus === "COMPLETED" ||
+        fromStatus === "NO_SHOW" ||
+        fromStatus === "CANCELLED"
+      ) {
+        await refreshPatientSegment(before.patientId);
       }
 
       return ok(revertedRow);

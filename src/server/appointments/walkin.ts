@@ -49,6 +49,7 @@ import {
   type PhoneOwnerAnswer,
   type PhoneOwnerSummary,
 } from "@/server/patient/phone-owner";
+import { refreshPatientSegment } from "@/server/patient/segments";
 
 /**
  * The caller's answer to «is this the person the number belongs to?»
@@ -379,6 +380,10 @@ export async function registerWalkin(
         queueStatus: "WAITING",
       },
     });
+    // Audit PT-15: a patient in today's queue is never «Потерянные»; the
+    // drawer showed the badge to reception as he walked in. Logs and
+    // swallows its own failures.
+    await refreshPatientSegment(patient.id);
   }
 
   return {

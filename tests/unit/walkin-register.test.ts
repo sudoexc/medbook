@@ -169,6 +169,11 @@ vi.mock("@/server/appointments/ticket-code", () => ({
   }),
 }));
 
+// PT-15: the walk-in refreshes the patient's segment (pinned in W5b).
+vi.mock("@/server/patient/segments", () => ({
+  refreshPatientSegment: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     doctor: {
@@ -1017,6 +1022,47 @@ describe("registerWalkin — realtime envelopes (W5)", () => {
       doctorId: "doc_alpha",
       queueStatus: "WAITING",
     });
+  });
+});
+
+describe("registerWalkin — the patient's segment follows the queue (PT-15) (W5b)", () => {
+  it("a fresh walk-in refreshes the segment: a patient in today's queue is never «Потерянный»", async () => {
+    seedDoctor();
+    seedPatient({ id: "pat_existing" });
+    const { refreshPatientSegment } = await import("@/server/patient/segments");
+    vi.mocked(refreshPatientSegment).mockClear();
+    const registerWalkin = await loadRegisterWalkin();
+
+    const r = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { id: "pat_existing" },
+    });
+
+    expect(r.ok).toBe(true);
+    expect(refreshPatientSegment).toHaveBeenCalledTimes(1);
+    expect(refreshPatientSegment).toHaveBeenCalledWith("pat_existing");
+  });
+
+  it("a duplicate press created nothing, so it refreshes nothing", async () => {
+    seedDoctor();
+    seedPatient({ id: "p1" });
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValueOnce({
+      id: "apt_existing",
+      queueOrder: 2,
+      ticketSeq: 2,
+      ticketCode: "EXIST1",
+    } as never);
+    const { refreshPatientSegment } = await import("@/server/patient/segments");
+    vi.mocked(refreshPatientSegment).mockClear();
+    const registerWalkin = await loadRegisterWalkin();
+
+    const r = await registerWalkin({ clinicId: "c1", doctorId: "doc_alpha", patient: { id: "p1" } });
+
+    if (!r.ok) throw new Error("walk-in refused");
+    expect(r.duplicate).toBe(true);
+    expect(refreshPatientSegment).not.toHaveBeenCalled();
   });
 });
 

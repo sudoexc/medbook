@@ -29,6 +29,7 @@
  *
  *   Post tx — separate side-effects, do not block the booking:
  *     • fireTrigger("appointment.created") — notification scheduling
+ *     • refreshPatientSegment — a booked patient leaves «Остывают» (PT-15)
  *     • autoAttachCase (when `autoAttachCaseOptions` provided) — case auto-attach
  *
  * The `appointment.created` envelope is `auditable: true` so the outbox
@@ -71,6 +72,7 @@ import {
   type AutoAttachCaseInput,
   type CaseAttachOutcome,
 } from "@/server/cases/attach";
+import { refreshPatientSegment } from "@/server/patient/segments";
 
 /**
  * The final price a new booking is stored with (audit AP-08).
@@ -722,6 +724,11 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
 
   // Notification scheduling (immediate + 24h/2h reminders).
   fireTrigger({ kind: "appointment.created", appointmentId: txResult.appt.id });
+
+  // Audit PT-15: a patient with a visit booked is never «Остывают» or
+  // «Потерянные». Without this he stayed on the call list and in DORMANT
+  // broadcasts until the 6-hour pass. Logs and swallows its own failures.
+  await refreshPatientSegment(input.patientId);
 
   // Mini-app surface uses post-tx auto-attach (0/1/2+ open cases logic). CRM
   // omits this and either pre-attaches via `medicalCaseId` or leaves the

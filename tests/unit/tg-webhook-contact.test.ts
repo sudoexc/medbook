@@ -119,6 +119,7 @@ vi.mock("@/server/notifications/auto-messages", () => ({
 }));
 
 import { POST } from "@/app/api/telegram/webhook/[clinicSlug]/route";
+import { prisma } from "@/lib/prisma";
 import { t as botT } from "@/server/telegram/messages";
 
 function contactUpdate(fromId: number, userId: number) {
@@ -150,6 +151,7 @@ async function send(body: unknown) {
 }
 
 beforeEach(() => {
+  vi.mocked(prisma.message.create).mockClear();
   state.applied = [];
   state.sent = [];
   state.fsmSteps = 0;
@@ -184,6 +186,13 @@ describe("TG webhook — shared contact", () => {
     await send(contactUpdate(111, 111));
     expect(state.fsmSteps).toBe(0);
     expect(state.applied).toHaveLength(1);
+  });
+
+  it("is stored marked as a contact, so a later reply never counts its bare number as a question", async () => {
+    await send(contactUpdate(111, 111));
+    const data = (vi.mocked(prisma.message.create).mock.calls[0]![0] as { data: Record<string, unknown> })
+      .data;
+    expect(data).toMatchObject({ direction: "IN", body: "998901234567", origin: "contact" });
   });
 
   it("hands the raw contact over, so a forwarded one (user_id ≠ sender) is judged by applyVerifiedContact", async () => {
@@ -228,6 +237,13 @@ describe("TG webhook — invite link needs the patient's own number (PT-04)", ()
         },
       },
     });
+  });
+
+  it("stores a typed message unmarked", async () => {
+    await send(startUpdate(999, "tok"));
+    const data = (vi.mocked(prisma.message.create).mock.calls[0]![0] as { data: Record<string, unknown> })
+      .data;
+    expect(data).toMatchObject({ direction: "IN", body: "/start tok", origin: null });
   });
 
   it("an old or foreign token falls through to the usual welcome", async () => {

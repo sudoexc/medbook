@@ -27,6 +27,13 @@ import { DOCTOR_DICTATION_LABEL } from "@/server/telegram/inbound-media";
 type ConversationWriter = Pick<typeof prisma, "conversation">;
 type ConversationReader = Pick<typeof prisma, "conversation" | "message">;
 
+/**
+ * `Message.origin` of an inbound shared contact. The row's body is the bare
+ * phone number, so the stored row needs this to be told apart from a typed
+ * message when a later reply asks what is still waiting.
+ */
+export const CONTACT_ORIGIN = "contact";
+
 export type InboundKind = {
   text?: string | null;
   /** A shared contact (the Mini App's «Подтвердить номер»): identity, not chat. */
@@ -59,10 +66,16 @@ export async function markAwaitingReply(
   });
 }
 
-/** Whether a stored inbound row (body only) waits for a person. */
-function storedInboundNeedsReply(body: string | null): boolean {
-  if (body === DOCTOR_DICTATION_LABEL) return false;
-  return inboundNeedsReply({ text: body });
+/** Whether a stored inbound row waits for a person, as the webhook decided. */
+export function storedInboundNeedsReply(row: {
+  body: string | null;
+  origin?: string | null;
+}): boolean {
+  return inboundNeedsReply({
+    text: row.body,
+    hasContact: row.origin === CONTACT_ORIGIN,
+    doctorDictation: row.body === DOCTOR_DICTATION_LABEL,
+  });
 }
 
 /**
@@ -82,10 +95,10 @@ export async function clearAwaitingReply(
       createdAt: { gt: repliedAt },
     },
     orderBy: { createdAt: "asc" },
-    select: { createdAt: true, body: true },
+    select: { createdAt: true, body: true, origin: true },
     take: 20,
   });
-  const stillWaiting = later.find((m) => storedInboundNeedsReply(m.body));
+  const stillWaiting = later.find(storedInboundNeedsReply);
   await db.conversation.updateMany({
     where: { id: conversationId, awaitingReplySince: { lte: repliedAt } },
     data: { awaitingReplySince: stillWaiting?.createdAt ?? null },

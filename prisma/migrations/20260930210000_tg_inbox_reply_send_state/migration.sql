@@ -24,17 +24,30 @@ ADD COLUMN     "origin" TEXT;
 CREATE UNIQUE INDEX "Message_notificationSendId_key" ON "Message"("notificationSendId");
 
 -- Backfill: a thread waits for a reply from its oldest patient message after
--- the last staff message that reached Telegram. Bot commands (/start) and the
--- doctor's own dictations never wait, the same rule the webhook applies from
--- now on (src/server/conversations/reply-state.ts).
+-- the last staff message that reached Telegram. Bot commands (/start), a
+-- shared contact and the doctor's own dictations never wait, the same rule
+-- the webhook applies from now on (src/server/conversations/reply-state.ts).
+-- Contacts were stored before they carried a marker: the row is the bare
+-- number the invite or the Mini App's «Подтвердить номер» sent, with nothing
+-- attached. Only what is still current waits: a thread the old tab showed
+-- (unread), or one the patient wrote to in the last 14 days. An older thread
+-- somebody already read was settled outside the chat, by phone or at the
+-- desk.
 UPDATE "Conversation" c
 SET "awaitingReplySince" = w."firstIn"
 FROM (
-  SELECT m."conversationId", MIN(m."createdAt") AS "firstIn"
+  SELECT
+    m."conversationId",
+    MIN(m."createdAt") AS "firstIn",
+    MAX(m."createdAt") AS "lastIn"
   FROM "Message" m
   WHERE m."direction" = 'IN'
     AND COALESCE(m."body", '') NOT LIKE '/%'
     AND COALESCE(m."body", '') <> '🎤 Диктовка врача'
+    AND NOT (
+      COALESCE(m."body", '') ~ '^\+?[0-9]{7,15}$'
+      AND COALESCE(m."attachments", 'null'::jsonb) = 'null'::jsonb
+    )
     AND m."createdAt" > COALESCE(
       (
         SELECT MAX(o."createdAt")
@@ -49,4 +62,8 @@ FROM (
   GROUP BY m."conversationId"
 ) w
 WHERE c."id" = w."conversationId"
-  AND c."awaitingReplySince" IS NULL;
+  AND c."awaitingReplySince" IS NULL
+  AND (
+    c."unreadCount" > 0
+    OR w."lastIn" > CURRENT_TIMESTAMP - INTERVAL '14 days'
+  );

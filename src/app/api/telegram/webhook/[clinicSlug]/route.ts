@@ -73,6 +73,7 @@ import {
 import { publishEventSafe } from "@/server/realtime/publish";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import {
+  CONTACT_ORIGIN,
   inboundNeedsReply,
   markAwaitingReply,
 } from "@/server/conversations/reply-state";
@@ -315,6 +316,10 @@ async function recordIncoming(
           direction: "IN",
           body: textBody || null,
           attachments: attachments.length > 0 ? attachments : null,
+          // The body of a shared contact is its bare number: the marker
+          // keeps it out of «Неотвеченные» once the row is all that is left.
+          origin:
+            message.contact && !opts.doctorDictation ? CONTACT_ORIGIN : null,
           externalId,
           status: "DELIVERED",
         } as never,

@@ -32,7 +32,7 @@ type Appointment = {
   priceFinal: number | null;
   doctor: { nameRu: string };
 };
-type Message = { id: string; createdAt: Date; direction: "IN" | "OUT"; body: string; conversationId: string; status: string; conversation: { patientId: string } };
+type Message = { id: string; createdAt: Date; direction: "IN" | "OUT"; body: string; conversationId: string; status: string; conversation: { patientId: string }; notificationSendId?: string | null };
 type Payment = {
   id: string;
   patientId: string;
@@ -149,8 +149,17 @@ vi.mock("@/lib/prisma", () => ({
       }),
     },
     message: {
-      findMany: vi.fn(async ({ where }: { where: { conversation: { patientId: string } } }) =>
-        state.messages.filter((m) => m.conversation.patientId === where.conversation.patientId),
+      findMany: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { conversation: { patientId: string }; notificationSendId?: null };
+        }) =>
+          state.messages.filter(
+            (m) =>
+              m.conversation.patientId === where.conversation.patientId &&
+              (where.notificationSendId === null ? (m.notificationSendId ?? null) === null : true),
+          ),
       ),
     },
     payment: {
@@ -473,5 +482,56 @@ describe("GET /api/crm/patients/[id]/communications — Phase 12 aggregation", (
     expect(byKind["payment"]).toBe("PAYMENT");
     expect(byKind["document"]).toBe("DOC");
     expect(byKind["call"]).toBe("COMM");
+  });
+});
+
+/**
+ * Pre-deploy review: a reminder the bot sent is copied into the dialog
+ * (audit G6-08). The card listed it twice, the copy as «Ответ оператора».
+ */
+describe("GET /api/crm/patients/[id]/communications: reminders copied into the dialog", () => {
+  it("lists a reminder once, as its notification, never as an operator reply", async () => {
+    const at = new Date("2026-09-30T05:00:00Z");
+    state.sends = [
+      {
+        id: "send1",
+        patientId: "p1",
+        createdAt: at,
+        channel: "TG",
+        status: "SENT",
+        body: "Завтра в 10:00 ждём вас",
+        scheduledFor: null,
+        sentAt: at,
+      },
+    ];
+    state.messages = [
+      {
+        id: "m_copy",
+        createdAt: at,
+        direction: "OUT",
+        body: "Завтра в 10:00 ждём вас",
+        conversationId: "conv1",
+        status: "SENT",
+        conversation: { patientId: "p1" },
+        notificationSendId: "send1",
+      },
+      {
+        id: "m_reply",
+        createdAt: new Date("2026-09-30T06:00:00Z"),
+        direction: "OUT",
+        body: "Да, записали",
+        conversationId: "conv1",
+        status: "SENT",
+        conversation: { patientId: "p1" },
+        notificationSendId: null,
+      },
+    ];
+
+    const items = await callGet("p1");
+    expect(items.filter((i) => i.kind === "notification").map((i) => i.id)).toEqual([
+      "send:send1",
+    ]);
+    const messages = items.filter((i) => i.kind === "message");
+    expect(messages.map((i) => i.id)).toEqual(["msg:m_reply"]);
   });
 });

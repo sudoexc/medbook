@@ -81,12 +81,17 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { GET as LIST } from "@/app/api/crm/conversations/route";
 import { GET as GET_ONE, PATCH } from "@/app/api/crm/conversations/[id]/route";
 import {
+  CONTACT_ORIGIN,
   clearAwaitingReply,
   inboundNeedsReply,
   markAwaitingReply,
+  storedInboundNeedsReply,
 } from "@/server/conversations/reply-state";
 import { pickSelectedConversation } from "@/app/[locale]/crm/telegram/_hooks/use-conversations";
 import type { InboxConversation } from "@/app/[locale]/crm/telegram/_hooks/types";
@@ -211,6 +216,67 @@ describe("what makes a thread wait (audit G6-03)", () => {
       where: { id: "conv_1", awaitingReplySince: { lte: repliedAt } },
       data: { awaitingReplySince: null },
     });
+  });
+});
+
+describe("a shared contact never waits, stored or live (pre-deploy review)", () => {
+  it("a stored contact row is its bare number: the marker keeps it out", () => {
+    expect(storedInboundNeedsReply({ body: "998901234567", origin: CONTACT_ORIGIN })).toBe(false);
+    // The same digits typed by the patient are a message like any other.
+    expect(storedInboundNeedsReply({ body: "998901234567", origin: null })).toBe(true);
+    expect(storedInboundNeedsReply({ body: "🎤 Диктовка врача" })).toBe(false);
+    expect(storedInboundNeedsReply({ body: "/start" })).toBe(false);
+  });
+
+  it("a reply followed only by a contact share leaves nothing waiting", async () => {
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    const repliedAt = new Date("2026-09-30T06:00:00Z");
+    const findMany = vi.fn(async () => [
+      { createdAt: new Date("2026-09-30T06:00:01Z"), body: "+998901234567", origin: CONTACT_ORIGIN },
+    ]);
+    await clearAwaitingReply(
+      { conversation: { updateMany }, message: { findMany } } as never,
+      "conv_1",
+      repliedAt,
+    );
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ origin: true }) }),
+    );
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "conv_1", awaitingReplySince: { lte: repliedAt } },
+      data: { awaitingReplySince: null },
+    });
+  });
+});
+
+describe("the «Неотвеченные» backfill (pre-deploy review)", () => {
+  const sql = readFileSync(
+    join(
+      process.cwd(),
+      "prisma/migrations/20260930210000_tg_inbox_reply_send_state/migration.sql",
+    ),
+    "utf8",
+  );
+  const backfill = sql.slice(sql.indexOf("UPDATE \"Conversation\""));
+
+  it("skips the contacts stored before the marker: a bare number with nothing attached", () => {
+    const shape = /COALESCE\(m\."body", ''\) ~ '(.+?)'/.exec(backfill);
+    expect(shape, "phone-shape filter").not.toBeNull();
+    expect(backfill).toMatch(/AND NOT \(\s*COALESCE\(m\."body"/);
+    expect(backfill).toMatch(/COALESCE\(m\."attachments", 'null'::jsonb\) = 'null'::jsonb/);
+    // The same pattern, read as the database reads it.
+    const phone = new RegExp(shape![1]!);
+    expect(phone.test("998901234567")).toBe(true);
+    expect(phone.test("+998901234567")).toBe(true);
+    expect(phone.test("Можно на 15:00?")).toBe(false);
+    expect(phone.test("12")).toBe(false);
+  });
+
+  it("only fills the tab with what is still current: unread, or written to in the last 14 days", () => {
+    expect(backfill).toMatch(/MAX\(m\."createdAt"\) AS "lastIn"/);
+    expect(backfill).toMatch(
+      /c\."unreadCount" > 0\s+OR w\."lastIn" > CURRENT_TIMESTAMP - INTERVAL '14 days'/,
+    );
   });
 });
 

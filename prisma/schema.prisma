@@ -2639,8 +2639,10 @@ model Message {
   externalId     String?
   replyToId      String?
   /// What an automatic outbound was (audit G6-08): `broadcast` (a campaign)
-  /// or `notification` (a reminder or other template the bot sent). Null
-  /// for the chat itself: patient, operator and bot dialogue.
+  /// or `notification` (a reminder or other template the bot sent). On an
+  /// inbound row, `contact`: a shared contact, whose body is the bare number
+  /// (identity, not chat). Null for the chat itself: patient, operator and
+  /// bot dialogue.
   origin         String?
   /// The NotificationSend this row mirrors into the chat; unique so a
   /// delivery is copied into the dialog once.

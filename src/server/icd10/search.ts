@@ -25,8 +25,9 @@
  *   - last, a tumour rubric that matched every word of a query that never
  *     called it a tumour («поражение головного мозга» → C71.8)
  * Ties break on code so the order is stable between identical queries.
- * Among the literal full matches, one category shows at most
- * `MAX_SIBLINGS` rubrics before the other categories have had their turn.
+ * When two categories flood the literal full matches with leaves that
+ * matched equally well, each shows `MAX_SIBLINGS` rubrics before the rest of
+ * either (see `spreadSiblings`).
  *
  * Normalisation folds ё→е and case. Cyrillic ё is typed inconsistently and
  * costing a doctor a result over a diacritic is not acceptable mid-visit.
@@ -617,6 +618,12 @@ type QueryWord = Token & {
 };
 
 /**
+ * One query word against one name: how well it matches (0 = not at all),
+ * and how much of that is the first-word bonus.
+ */
+type WordMatch = { score: number; lead: number };
+
+/**
  * How well one query word matches the name; 0 = not at all.
  *
  * Prefixes are where the old search went wrong: «боль» matched «Большой
@@ -625,8 +632,9 @@ type QueryWord = Token & {
  * be half typed (the query's last word) or once it is long enough to be
  * unambiguous, and the whole word always outranks it.
  */
-function wordScore(row: Indexed, q: QueryWord): number {
+function wordScore(row: Indexed, q: QueryWord): WordMatch {
   let best = 0;
+  let bestLead = 0;
   row.tokens.forEach((w, i) => {
     // «без ауры» only matches a name that also says «без ауры», and
     // «аура» / «с аурой» never matches one that does.
@@ -634,9 +642,15 @@ function wordScore(row: Indexed, q: QueryWord): number {
     if (LITERAL_ONLY.has(w.text) && w.text !== q.text) return;
     const first = i === 0 || i === row.leafStart ? WORD.first : 0;
     let s = 0;
-    if (w.text === q.text) s = WORD.exact + first;
-    else if (q.abbr) s = 0;
-    else if (q.prefix && w.text.startsWith(q.text)) s = WORD.prefix + first;
+    let lead = 0;
+    if (w.text === q.text) {
+      s = WORD.exact + first;
+      lead = first;
+    } else if (q.abbr) s = 0;
+    else if (q.prefix && w.text.startsWith(q.text)) {
+      s = WORD.prefix + first;
+      lead = first;
+    }
     // No first-word bonus from here on: «Сосудистая головная боль» is a
     // better answer to «головная боль» than «Головные боли, вызванные
     // спинномозговой анестезией».
@@ -648,9 +662,12 @@ function wordScore(row: Indexed, q: QueryWord): number {
     }
     // Both sides said «с» (or both «без»): the marker itself matched too.
     if (s > 0 && q.pol !== "any" && q.pol === w.pol) s += 2;
-    if (s > best) best = s;
+    if (s > best) {
+      best = s;
+      bestLead = lead;
+    }
   });
-  return best;
+  return { score: best, lead: bestLead };
 }
 
 /** Score bands. A band always beats everything below it, whatever the in-band score. */
@@ -676,6 +693,11 @@ type Scored = {
   full: boolean;
   /** Raised by a code a spoken form names: a curated pick, never held back. */
   named: boolean;
+  /**
+   * The score without the first-word bonus: how well the words matched,
+   * leaving aside where the name puts them. See `spreadSiblings`.
+   */
+  plain: number;
   /** A partial match that found only region words (see `REGION_STEMS`). */
   regionOnly: boolean;
   /**
@@ -687,6 +709,8 @@ type Scored = {
 
 type Literal = {
   score: number;
+  /** `score` without the first-word bonus. */
+  plain: number;
   full: boolean;
   regionOnly: boolean;
   /**
@@ -698,16 +722,34 @@ type Literal = {
 };
 
 /** Literal score of one row: a full match, a partial one, or nothing. */
-function literalScore(row: Indexed, words: QueryWord[]): Literal {
-  const scores = words.map((w) => wordScore(row, w));
-  const matched = scores.filter((s) => s > 0).length;
-  if (matched === 0) return { score: 0, full: false, regionOnly: false, loose: false };
+const NO_MATCH: Literal = {
+  score: 0,
+  plain: 0,
+  full: false,
+  regionOnly: false,
+  loose: false,
+};
+
+/** Every word matched: the first query word leads, the rest refine. */
+function fullScore(scores: number[]): number {
   const head = scores[0]!;
+  const sum = scores.reduce((a, b) => a + b, 0);
+  return BAND.full + head + (sum - head) / 10;
+}
+
+function literalScore(row: Indexed, words: QueryWord[]): Literal {
+  const matches = words.map((w) => wordScore(row, w));
+  const scores = matches.map((m) => m.score);
+  const matched = scores.filter((s) => s > 0).length;
+  if (matched === 0) return NO_MATCH;
   const sum = scores.reduce((a, b) => a + b, 0);
   const loose = scores.every((s) => s < WORD.inflected);
   if (matched === words.length) {
     return {
-      score: BAND.full + head + (sum - head) / 10,
+      score: fullScore(scores),
+      // Same arithmetic on whole numbers, so two names that matched the
+      // same way compare equal.
+      plain: fullScore(matches.map((m) => m.score - m.lead)),
       full: true,
       regionOnly: false,
       loose,
@@ -720,8 +762,10 @@ function literalScore(row: Indexed, words: QueryWord[]): Literal {
   // higher; the spoken forms, not word order, say which word is the
   // diagnosis («шейный остеохондроз» leads with the adjective). Which
   // partial matches are allowed at all is decided in `searchIcd10`.
+  const score = sum / words.length + matched;
   return {
-    score: sum / words.length + matched,
+    score,
+    plain: score,
     full: false,
     regionOnly: scores.every((s, i) => s === 0 || words[i]!.region),
     loose,
@@ -756,6 +800,7 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
   const scored = new Map<string, Scored>();
   for (const row of rows) {
     let score = 0;
+    let plain = 0;
     let full = false;
     let regionOnly = false;
     let loose = false;
@@ -763,7 +808,7 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
     if (row.code === term) score = BAND.exactCode;
     else if (row.code.startsWith(term)) score = BAND.codePrefix;
     else if (words.length > 0) {
-      ({ score, full, regionOnly, loose } = literalScore(row, words));
+      ({ score, plain, full, regionOnly, loose } = literalScore(row, words));
       // A tumour site reached by part of a query that names no tumour was
       // reached on anatomy alone (see `TUMOUR_WORD`).
       if (row.neoplasm && !full && !tumourQuery) score = 0;
@@ -785,6 +830,7 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
         row.tokens.some((t) => t.text === trailingMarker)
       ) {
         score += 3;
+        plain += 3;
       }
     }
     if (score > 0) {
@@ -794,6 +840,7 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
         score,
         full,
         named: false,
+        plain: full ? plain : score,
         regionOnly,
         demoted,
       });
@@ -838,15 +885,17 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
   // score, region words included, orders a form's codes: «протрузия шейного
   // отдела» puts the cervical M50.2 above the lumbar M51.1.
   const literal = (row: Indexed): Literal =>
-    words.length > 0
-      ? literalScore(row, words)
-      : { score: 0, full: false, regionOnly: false, loose: false };
+    words.length > 0 ? literalScore(row, words) : NO_MATCH;
   // A code the doctor's phrase stands for is what he meant, tumour or not:
   // it is never held back with the demoted rows.
   const raise = (row: Indexed, score: number, named: boolean) => {
     const existing = scored.get(row.code);
     if (existing) {
-      existing.score = Math.max(existing.score, score);
+      if (score > existing.score) {
+        // Raised by the doctor's phrase: no longer comparable on words.
+        existing.score = score;
+        existing.plain = score;
+      }
       existing.demoted = false;
       existing.named ||= named;
     } else {
@@ -856,6 +905,7 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
         score,
         full: false,
         named,
+        plain: score,
         regionOnly: false,
         demoted: false,
       });
@@ -907,45 +957,82 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
 }
 
 /**
- * How many rubrics of one category the literal full matches show before
- * every other category that matched has had its turn.
+ * How many rubrics of one flooding category show before the other
+ * categories of its run have had their turn.
  */
 const MAX_SIBLINGS = 3;
 
 /**
- * A category whose leaves repeat its own words fills the typeahead on its
- * own (CT-02 review): «сахарный диабет» matches all ten E12 leaves word for
- * word, they tie, and the code order put them ahead of every other kind of
- * diabetes. So among the literal full matches that are not a curated pick,
- * a category's fourth and later rubrics wait until the other categories of
- * that run have shown theirs; they stay above every weaker band. Picks count
- * towards their category, so two named E11 codes leave room for one more.
- * A code the doctor typed («E11») and a partial match (where the named
- * category's siblings are the point, see the region rule) are left as
- * ranked.
+ * More rubrics than this of one category in one run is a flood: the ten
+ * leaves the catalog gives each of E10..E14. A handful (M50's six cervical
+ * disc rubrics, G40's five epilepsies) is the answer itself.
+ */
+const FLOOD = 2 * MAX_SIBLINGS;
+
+/**
+ * Two categories whose leaves repeat their own words tie on the words, and
+ * code order alone decides which the doctor sees (CT-02 review): «сахарный
+ * диабет» matches the ten E12 leaves (diabetes of malnutrition) and the ten
+ * E14 ones word for word, and E12 filled the typeahead. So within a run of
+ * literal full matches that matched the query equally well, when two or
+ * more categories flood it, a flooding category's fourth and later rubrics
+ * wait for the end of the run.
+ *
+ * Equally well means the same score once the first-word bonus is set
+ * aside: E11 «Инсулиннезависимый сахарный диабет …» matched the same words
+ * as E12 «Сахарный диабет, связанный …» and only lost the bonus. A run
+ * never reaches past a row that matched better or worse, so a held rubric
+ * never drops below a weaker one («паркинсон»: G21 stays above the
+ * poisonings that only contain the word), and a single flooding category
+ * keeps its order («субарахноидальное кровоизлияние»: all of I60 before the
+ * newborn rows). Picks count towards their category, so two named E11 codes
+ * leave room for one more. Curated picks, a code the doctor typed («E11»)
+ * and partial matches are never held.
  */
 function spreadSiblings(ranked: Scored[]): Scored[] {
-  const seen = new Map<string, number>();
+  const categoryOf = (s: Scored) => s.code.split(".")[0]!;
   const capped = (s: Scored) =>
     s.full && !s.named && !s.demoted && s.score < BAND.codePrefix;
-  const out: Scored[] = [];
-  let kept: Scored[] = [];
-  let held: Scored[] = [];
-  const flush = () => {
-    out.push(...kept, ...held);
-    kept = [];
-    held = [];
+  const seen = new Map<string, number>();
+  const count = (s: Scored) => {
+    const n = (seen.get(categoryOf(s)) ?? 0) + 1;
+    seen.set(categoryOf(s), n);
+    return n;
   };
-  for (const s of ranked) {
-    const category = s.code.split(".")[0]!;
-    const n = (seen.get(category) ?? 0) + 1;
-    seen.set(category, n);
-    if (!capped(s)) {
-      flush();
-      out.push(s);
-    } else if (n > MAX_SIBLINGS) held.push(s);
-    else kept.push(s);
+  const out: Scored[] = [];
+  for (let i = 0; i < ranked.length; ) {
+    const head = ranked[i]!;
+    if (!capped(head)) {
+      count(head);
+      out.push(head);
+      i++;
+      continue;
+    }
+    let end = i + 1;
+    while (
+      end < ranked.length &&
+      capped(ranked[end]!) &&
+      ranked[end]!.plain === head.plain
+    ) {
+      end++;
+    }
+    const run = ranked.slice(i, end);
+    const size = new Map<string, number>();
+    for (const s of run) size.set(categoryOf(s), (size.get(categoryOf(s)) ?? 0) + 1);
+    const floods = new Set(
+      [...size].filter(([, n]) => n > FLOOD).map(([category]) => category),
+    );
+    const held: Scored[] = [];
+    for (const s of run) {
+      const n = count(s);
+      if (floods.size > 1 && floods.has(categoryOf(s)) && n > MAX_SIBLINGS) {
+        held.push(s);
+      } else {
+        out.push(s);
+      }
+    }
+    out.push(...held);
+    i = end;
   }
-  flush();
   return out;
 }

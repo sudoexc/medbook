@@ -122,6 +122,10 @@ export const GET = createApiListHandler(
       prisma.message.findMany({
         where: {
           conversation: { patientId },
+          // A reminder or broadcast copied into the dialog (audit G6-08) is
+          // already here as its NotificationSend: listed twice, and the copy
+          // would read «Ответ оператора».
+          notificationSendId: null,
           ...(lt ? { createdAt: lt } : {}),
         },
         orderBy: { createdAt: "desc" },

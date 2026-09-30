@@ -405,6 +405,19 @@ describe("ICD search: diabetes as a comorbidity", () => {
     expect(perCategory(codes.slice(0, 12))).toBeLessThanOrEqual(3);
   });
 
+  it("reaches E10 and E11 through an equal match that only lost the first-word bonus", () => {
+    // E11 «Инсулиннезависимый сахарный диабет …» matched the same words as
+    // E12 «Сахарный диабет, связанный …», so it may pass E12's fourth leaf.
+    const codes = top("сахарный диабет", 25);
+    expect(codes.indexOf("E11.0")).toBeGreaterThan(-1);
+    expect(codes.indexOf("E11.0")).toBeLessThan(codes.indexOf("E12.3"));
+    // A weaker match («сахарного диабета», «несахарный») never does.
+    for (const code of ["E13.0", "E23.2", "N25.1"]) {
+      const at = codes.indexOf(code);
+      if (at >= 0) expect(at, code).toBeGreaterThan(codes.indexOf("E12.3"));
+    }
+  });
+
   it("leaves a typed code and an unrelated word alone", () => {
     // The doctor asked for the category: all of it, in code order.
     expect(top("E11", 10)).toEqual([
@@ -413,5 +426,72 @@ describe("ICD search: diabetes as a comorbidity", () => {
     ]);
     // «СД» is a whole word: «сдавление» is still compression.
     for (const code of top("сдавление")) expect(code).not.toMatch(/^E1[0-4]/);
+  });
+});
+
+/**
+ * Pre-deploy review of the sibling cap: holding a category's fourth rubric
+ * until every other category had shown one pushed the doctor's rubric below
+ * poisonings, newborn and injury codes on plain queries nobody curated. A
+ * category's own rubrics now keep their place unless a second category
+ * floods the same equally good matches.
+ */
+describe("ICD search: a category's rubrics are not held behind weaker rows", () => {
+  const top = (q: string) => searchIcd10(q, 25).map((r) => r.code);
+  /** Every `before` code is listed, and ahead of every `after` code listed. */
+  const ahead = (q: string, before: string[], after: string[]) => {
+    const codes = top(q);
+    for (const b of before) {
+      const at = codes.indexOf(b);
+      expect(at, `${q}: ${b} listed`).toBeGreaterThan(-1);
+      for (const a of after) {
+        const other = codes.indexOf(a);
+        if (other >= 0) expect(at, `${q}: ${b} before ${a}`).toBeLessThan(other);
+      }
+    }
+  };
+
+  it("эпилепсия: all of G40 before family history and aphasia", () => {
+    ahead("эпилепсия", ["G40.0", "G40.1", "G40.2", "G40.3"], ["Z82.0", "F80.3"]);
+  });
+
+  it("паркинсон: secondary parkinsonism before the drug poisonings", () => {
+    ahead("паркинсон", ["G20", "G21.8", "G21.9"], ["T42.8", "X41", "X61", "Y11", "Y46.7"]);
+  });
+
+  it("шейный: the cervical disc rubrics before the neck injuries", () => {
+    ahead(
+      "шейный",
+      ["M50.3", "M50.8", "M50.9"],
+      ["S11.2", "S12.0", "S12.1", "S13.1", "S13.4", "S14.0", "S14.1", "S14.2"],
+    );
+  });
+
+  it("субарахноидальное кровоизлияние: all of I60 before newborn and trauma", () => {
+    ahead(
+      "субарахноидальное кровоизлияние",
+      ["I60.3", "I60.4", "I60.5", "I60.6", "I60.7", "I60.9"],
+      ["P10.3", "P52.5", "S06.6", "I69.0"],
+    );
+  });
+
+  it("инфаркт мозга: the acute infarct before its sequelae", () => {
+    ahead(
+      "инфаркт мозга",
+      ["I63.3", "I63.4", "I63.5", "I63.6", "I63.9"],
+      ["I69.3", "I69.4"],
+    );
+  });
+
+  it("депрессивный эпизод and головная боль keep the rubric that says it", () => {
+    ahead("депрессивный эпизод", ["F32.3", "F32.9"], ["F33.0", "F33.1", "F33.2"]);
+    ahead("головная боль", ["G44.3", "G44.0", "G44.8"], ["O29.4", "O74.5", "O89.4"]);
+  });
+
+  it("still spreads two categories that flood equally good matches", () => {
+    // «кровоизлияние» ties I60 and I61 word for word: both show.
+    const codes = top("кровоизлияние");
+    expect(codes).toContain("I61.0");
+    expect(codes.filter((c) => c.startsWith("I60")).length).toBeLessThanOrEqual(3);
   });
 });

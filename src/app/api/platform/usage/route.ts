@@ -15,7 +15,9 @@
  *                        ranges past the migration date. Kept so the
  *                        platform dashboard can still surface the legacy
  *                        SMS bill against months that pre-date removal.)
- *   - tgMessages        (Message direction=OUT kind=TEXT/... in Conversation)
+ *   - tgMessages        (Message direction=OUT kind=TEXT/... in Conversation,
+ *                        without the dialog copies of reminders and
+ *                        broadcasts: `origin` null)
  *   - calls             (Call createdAt)
  *   - patients          (Patient createdAt — new patients acquired)
  *
@@ -70,6 +72,9 @@ export const GET = createPlatformListHandler(async ({ request }) => {
       where: {
         createdAt: range,
         direction: "OUT",
+        // Not the dialog copies of reminders and broadcasts (audit G6-08):
+        // each is one Telegram message, already sent and counted once.
+        origin: null,
       },
       _count: { _all: true },
     }),

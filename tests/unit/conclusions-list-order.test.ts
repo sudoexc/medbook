@@ -208,4 +208,16 @@ describe("the helpers", () => {
       id: { lt: "n6" },
     });
   });
+
+  it("gives the NOT NULL createdAt a bare direction and no null branch", () => {
+    // Prisma rejects `{ sort, nulls }` and `{ createdAt: null }` on a
+    // required column (the drafts tab answered 500); see
+    // conclusions-list-prisma.test.ts for the check against the client.
+    expect(listOrderBy("createdAt")).toEqual([{ createdAt: "desc" }, { id: "desc" }]);
+    expect(keysetAfter("createdAt", { value: at(5), id: "d1" })).toEqual({
+      OR: [{ createdAt: { lt: at(5) } }, { createdAt: at(5), id: { lt: "d1" } }],
+    });
+    // No draft has a null createdAt, so such a cursor cannot be placed.
+    expect(keysetAfter("createdAt", { value: null, id: "d1" })).toBeNull();
+  });
 });

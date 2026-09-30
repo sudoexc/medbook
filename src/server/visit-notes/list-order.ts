@@ -17,7 +17,16 @@
  *   - the cursor carries the last row's own values, and the next page is
  *     everything strictly after that pair (keyset paging), so a row that
  *     changes in between is neither repeated nor skipped.
+ *
+ * The two fields are not built alike. `finalizedAt` is nullable (a legacy
+ * signed note may lack it), so its order places nulls and its keyset has
+ * null branches. `createdAt` is NOT NULL, and Prisma accepts only a bare
+ * direction and a non-null value for it: `{ sort, nulls }` or
+ * `{ createdAt: null }` fail validation before the query runs, which broke
+ * the drafts tab. The return types are Prisma's own so the compiler, not a
+ * mocked client, catches a shape the column does not take.
  */
+import type { Prisma } from "@/generated/prisma/client";
 
 export type ListSortField = "finalizedAt" | "createdAt";
 
@@ -26,8 +35,10 @@ export function listSortField(status: "DRAFT" | "FINALIZED" | undefined): ListSo
 }
 
 /** Newest first; a signed note without a signing time (legacy) goes last. */
-export function listOrderBy(field: ListSortField) {
-  return [{ [field]: { sort: "desc" as const, nulls: "last" as const } }, { id: "desc" as const }];
+export function listOrderBy(field: ListSortField): Prisma.VisitNoteOrderByWithRelationInput[] {
+  return field === "finalizedAt"
+    ? [{ finalizedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }]
+    : [{ createdAt: "desc" }, { id: "desc" }];
 }
 
 export type ListCursor = { value: Date | null; id: string };
@@ -53,17 +64,29 @@ export function decodeListCursor(raw: string): ListCursor | { id: string } | nul
   return { value: new Date(Number(head)), id };
 }
 
-/** The rows after the cursor in `listOrderBy` order. */
-export function keysetAfter(field: ListSortField, cursor: ListCursor) {
-  if (cursor.value == null) {
-    return { [field]: null, id: { lt: cursor.id } };
+/**
+ * The rows after the cursor in `listOrderBy` order, or null when the cursor
+ * cannot be placed in it: a value-less cursor on `createdAt`, which no row
+ * of that order produces (a hand-edited URL, a cursor from the other tab).
+ */
+export function keysetAfter(
+  field: ListSortField,
+  cursor: ListCursor,
+): Prisma.VisitNoteWhereInput | null {
+  const { value, id } = cursor;
+  if (field === "createdAt") {
+    if (value == null) return null;
+    return {
+      OR: [{ createdAt: { lt: value } }, { createdAt: value, id: { lt: id } }],
+    };
   }
+  if (value == null) return { finalizedAt: null, id: { lt: id } };
   return {
     OR: [
-      { [field]: { lt: cursor.value } },
-      { [field]: cursor.value, id: { lt: cursor.id } },
+      { finalizedAt: { lt: value } },
+      { finalizedAt: value, id: { lt: id } },
       // Nulls sort last: every one of them comes after a dated row.
-      { [field]: null },
+      { finalizedAt: null },
     ],
   };
 }

@@ -343,3 +343,75 @@ describe("ICD search: sequelae worded with a word in between", () => {
     ]);
   });
 });
+
+/**
+ * Review of CT-02: once the catalog listed E10..E14 leaf by leaf, «сахарный
+ * диабет» matched fifty rows word for word, the ten E12 leaves (diabetes of
+ * malnutrition) tied at the top and no E11 made the typeahead at all. Type 2
+ * diabetes is the usual comorbidity next to a polyneuropathy on the new
+ * multi-diagnosis card; the first suggestion was the wrong kind.
+ */
+describe("ICD search: diabetes as a comorbidity", () => {
+  const top = (q: string, n = 10) => searchIcd10(q, n).map((r) => r.code);
+  const perCategory = (codes: string[]) => {
+    const n = new Map<string, number>();
+    for (const c of codes) n.set(c.split(".")[0]!, (n.get(c.split(".")[0]!) ?? 0) + 1);
+    return Math.max(...n.values());
+  };
+
+  it("offers type 2 first for the untyped phrase, and no category floods", () => {
+    const codes = top("сахарный диабет", 25);
+    expect(codes.slice(0, 5)).toEqual(["E11.9", "E11.4", "E10.9", "E10.4", "E14.9"]);
+    expect(perCategory(codes.slice(0, 10))).toBeLessThanOrEqual(3);
+    expect(top("СД", 5)).toEqual(codes.slice(0, 5));
+  });
+
+  it("reads the type the doctor names, in the usual spellings", () => {
+    for (const q of [
+      "сахарный диабет 2 типа",
+      "Сахарный диабет 2-го типа",
+      "сахарный диабет тип 2",
+      "диабет 2 типа",
+      "СД 2 типа",
+      "сд 2",
+      "СД2",
+    ]) {
+      const codes = top(q);
+      expect(codes.slice(0, 2), q).toEqual(["E11.9", "E11.4"]);
+      // The rest of E11 follows; a pregnancy code of the same type may close it.
+      for (const code of codes) expect(code, `${q} → ${code}`).toMatch(/^(E11|O24\.1)/);
+    }
+    for (const q of ["сахарный диабет 1 типа", "СД 1 типа", "сд1"]) {
+      const codes = top(q);
+      expect(codes.slice(0, 2), q).toEqual(["E10.9", "E10.4"]);
+      for (const code of codes) expect(code, `${q} → ${code}`).toMatch(/^(E10|O24\.0)/);
+    }
+    // The number is the diagnosis: 1 and 2 are not the same form.
+    expect(expandSynonyms("сахарный диабет 1 типа").codes).not.toContain("E11.9");
+  });
+
+  it("reads the insulin wording, with or without the linking «о»", () => {
+    expect(top("инсулиннезависимый", 2)).toEqual(["E11.9", "E11.4"]);
+    expect(top("инсулинонезависимый сахарный диабет", 2)).toEqual(["E11.9", "E11.4"]);
+    expect(top("инсулинозависимый", 2)).toEqual(["E10.9", "E10.4"]);
+  });
+
+  it("reaches every kind of diabetes while the word is still being typed", () => {
+    // No spoken form matches half a word: the sibling cap alone keeps E12
+    // from filling the list.
+    const codes = top("сахарный диаб", 25);
+    expect(codes.some((c) => c.startsWith("E11"))).toBe(true);
+    expect(codes.some((c) => c.startsWith("E10"))).toBe(true);
+    expect(perCategory(codes.slice(0, 12))).toBeLessThanOrEqual(3);
+  });
+
+  it("leaves a typed code and an unrelated word alone", () => {
+    // The doctor asked for the category: all of it, in code order.
+    expect(top("E11", 10)).toEqual([
+      "E11.0", "E11.1", "E11.2", "E11.3", "E11.4",
+      "E11.5", "E11.6", "E11.7", "E11.8", "E11.9",
+    ]);
+    // «СД» is a whole word: «сдавление» is still compression.
+    for (const code of top("сдавление")) expect(code).not.toMatch(/^E1[0-4]/);
+  });
+});

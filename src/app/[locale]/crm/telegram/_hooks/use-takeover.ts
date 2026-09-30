@@ -3,7 +3,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import type { ConversationListResponse, InboxConversation } from "./types";
+import type { InboxConversation } from "./types";
+import {
+  invalidateConversationCaches,
+  patchConversationCaches,
+} from "./use-conversations";
 
 /**
  * Toggle Conversation.mode between `bot` and `takeover` with an optimistic
@@ -33,21 +37,14 @@ export function useTakeover() {
     },
     onMutate: async (input) => {
       await qc.cancelQueries({ queryKey: ["tg-conversations"] });
-      // Walk every matching cache and flip mode in-place.
-      const snapshots: Array<[readonly unknown[], unknown]> = [];
-      qc.getQueriesData<{ pages: ConversationListResponse[] }>({
-        queryKey: ["tg-conversations"],
-      }).forEach(([key, data]) => {
-        snapshots.push([key, data]);
-        if (!data) return;
-        const pages = data.pages.map((p) => ({
-          ...p,
-          rows: p.rows.map((r) =>
-            r.id === input.conversationId ? { ...r, mode: input.mode } : r,
-          ),
-        }));
-        qc.setQueryData(key, { ...data, pages });
-      });
+      await qc.cancelQueries({ queryKey: ["tg-conversation"] });
+      // Snapshot every cache holding the thread (the lists and the single
+      // row the inbox opens by id, G6-07), then flip mode in place.
+      const snapshots: Array<[readonly unknown[], unknown]> = [
+        ...qc.getQueriesData({ queryKey: ["tg-conversations"] }),
+        ...qc.getQueriesData({ queryKey: ["tg-conversation"] }),
+      ];
+      patchConversationCaches(qc, input.conversationId, { mode: input.mode });
       return { snapshots };
     },
     onError: (err, _input, ctx) => {
@@ -57,7 +54,7 @@ export function useTakeover() {
       toast.error(err instanceof Error ? err.message : "Takeover failed");
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
+      invalidateConversationCaches(qc);
     },
   });
 }

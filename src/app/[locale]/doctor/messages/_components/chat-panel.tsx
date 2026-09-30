@@ -206,6 +206,7 @@ function ChatHeader({ conv }: { conv: ConversationRow }) {
 
 const STATUS_ICON: Record<MessageStatus, React.ReactNode> = {
   QUEUED: <ClockIcon className="size-3" />,
+  SENDING: <ClockIcon className="size-3" />,
   SENT: <CheckIcon className="size-3" />,
   DELIVERED: (
     <span className="inline-flex items-center text-primary">

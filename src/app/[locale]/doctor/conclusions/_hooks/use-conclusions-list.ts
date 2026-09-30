@@ -12,6 +12,8 @@ export type ConclusionRow = {
   /** The diagnoses after the main one, as stored (read with parseAdditionalDiagnoses). */
   additionalDiagnoses?: unknown;
   updatedAt: string;
+  /** When the note was opened: the drafts tab is ordered by it. */
+  createdAt: string;
   patient: { id: string; fullName: string };
   appointment: { id: string; date: string; status: string };
 };

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { InboxConversation } from "./types";
+import { invalidateConversationCaches } from "./use-conversations";
 
 export type Assignee = {
   id: string;
@@ -81,7 +82,7 @@ export function useUpdateConversationMeta(conversationId: string) {
       return (await res.json()) as InboxConversation;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
+      invalidateConversationCaches(qc);
     },
   });
 }

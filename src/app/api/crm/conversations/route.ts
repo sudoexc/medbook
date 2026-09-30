@@ -8,6 +8,7 @@ import { ok, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
 import { doctorConversationScope } from "@/server/conversations/doctor-scope";
 import { QueryConversationSchema } from "@/server/schemas/conversation";
+import { unansweredWhere } from "@/server/conversations/reply-state";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -30,6 +31,7 @@ export const GET = createApiListHandler(
     }
     if (q.patientId) where.patientId = q.patientId;
     if (q.unread) where.unreadCount = { gt: 0 };
+    if (q.unanswered) Object.assign(where, unansweredWhere());
 
     // Doctor scope: `doctorId=me` (or explicit id) restricts to conversations
     // either assigned to that doctor's User or tied to one of their

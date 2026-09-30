@@ -2206,7 +2206,7 @@
   },
   "services": {
     "title": "Xizmatlar va narxlar",
-    "subtitle": "Narxlar jadvali, 18.05.2026 dan",
+    "subtitle": "Narxlar jadvali, {date} dan",
     "sum": "so'm",
     "groups": {
       "consultations": {
@@ -2214,23 +2214,19 @@
         "items": [
           {
             "name": "Nevrolog konsultatsiyasi",
-            "note": "Busakov Baxtiyor · 8:00 dan 17:00 gacha",
-            "price": "300 000"
+            "note": "Busakov Baxtiyor · 8:00 dan 17:00 gacha"
           },
           {
             "name": "Nevrolog konsultatsiyasi",
-            "note": "Sultonov Aziz · 8:30 dan 17:00 gacha",
-            "price": "200 000"
+            "note": "Sultonov Aziz · 8:30 dan 17:00 gacha"
           },
           {
             "name": "Bolalar nevrologi va pediatr",
-            "note": "9:00 dan 15:00 gacha",
-            "price": "200 000"
+            "note": "9:00 dan 15:00 gacha"
           },
           {
             "name": "Kardiolog konsultatsiyasi",
-            "note": "9:00 dan 13:00 gacha",
-            "price": "200 000"
+            "note": "9:00 dan 13:00 gacha"
           }
         ]
       },
@@ -2239,45 +2235,36 @@
         "items": [
           {
             "name": "EEG",
-            "note": "elektroensefalogramma",
-            "price": "150 000"
+            "note": "elektroensefalogramma"
           },
           {
-            "name": "Uyqudagi EEG va 6 yoshgacha bolalar",
-            "price": "200 000"
+            "name": "Uyqudagi EEG va 6 yoshgacha bolalar"
           },
           {
-            "name": "Uyqudagi EEG, 1 soat",
-            "price": "300 000"
+            "name": "Uyqudagi EEG, 1 soat"
           },
           {
             "name": "ReoEG",
-            "note": "reoensefalografiya",
-            "price": "100 000"
+            "note": "reoensefalografiya"
           },
           {
             "name": "ExoEG",
-            "note": "exoensefalografiya",
-            "price": "50 000"
+            "note": "exoensefalografiya"
           },
           {
-            "name": "EKG",
-            "price": "70 000"
+            "name": "EKG"
           },
           {
             "name": "ExoKG",
-            "note": "yurak UZI",
-            "price": "150 000"
+            "note": "yurak UZI"
           },
           {
             "name": "Doppler BSA",
-            "note": "bo'yin tomirlari UZI",
-            "price": "150 000"
+            "note": "bo'yin tomirlari UZI"
           },
           {
             "name": "Bitta organ UZI / neyrosonografiya",
-            "note": "10:00 dan 14:00 gacha",
-            "price": "80 000"
+            "note": "10:00 dan 14:00 gacha"
           }
         ]
       }
@@ -3327,6 +3314,7 @@
       "call": "Qo'ng'iroq qilish",
       "moreMenu": "Suhbat amallari",
       "markRead": "O'qilgan deb belgilash",
+      "markAnswered": "Javob shart emas",
       "noMessages": "Tarix bo'sh",
       "today": "Bugun",
       "yesterday": "Kecha",
@@ -3563,6 +3551,13 @@
       "audio": "Audio",
       "download": "Yuklab olish",
       "unfilledPlaceholders": "Matnda ma'lumotsiz shablon maydonlari qoldi: {fields}. Ularni matn bilan almashtirib, qayta yuboring.",
+      "sending": "Yuborilmoqda",
+      "retry": "Qayta yuborish",
+      "retryFailed": "Qayta yuborib bo'lmadi. Yana urinib ko'ring.",
+      "origin": {
+        "broadcast": "Tarqatma",
+        "notification": "Bildirishnoma"
+      },
       "failed": {
         "title": "Yetkazilmadi",
         "toast": "Xabar yetkazilmadi: {reason}",
@@ -3570,6 +3565,7 @@
         "tg_not_started": "bemor bot bilan chatni hali boshlamagan",
         "no_telegram": "bemorda Telegram yo'q",
         "tg_error": "Telegram xabarni qabul qilmadi",
+        "tg_timeout": "Telegram o'z vaqtida javob bermadi, xabar yetib borgan bo'lishi mumkin. Qayta yuborishdan oldin bemordan aniqlang",
         "channel_unavailable": "bu suhbat kanali endi ishlamaydi",
         "bot_not_connected": "klinika boti Telegramga ulanmagan",
         "not_sent": "xabar Telegramga yuborilmagan",
@@ -6566,10 +6562,9 @@
         "remove": "Sevimlilardan olib tashlash"
       },
       "applyProtocol": {
-        "fallbackSummary": "Shablon barcha tuzilmaviy maydonlarga qo‘llanadi.",
+        "fallbackSummary": "Qabulga protokoldagi tayinlovlar, tavsiyalar, nazorat tashrifi va xulosa matni qo‘shiladi.",
         "conclusionAddendum": "Xulosaga qo‘shimcha",
         "footerHint": "Maydonlardagi mavjud ma’lumotlar saqlanadi, takrorlar qo‘shilmaydi.",
-        "labsHint": "G3’da laboratoriya moduliga bog‘lanadi",
         "sections": {
           "complaints": "Shikoyatlar",
           "anamnesis": "Anamnez",
@@ -7669,6 +7664,7 @@
         "loading": "Xulosa yuklanmoqda…",
         "loadError": "Xulosani yuklab bo‘lmadi.",
         "finalizedAt": "Yakunlangan · {date}",
+        "moreDiagnoses": "+{count}",
         "statusDraft": "Qoralama",
         "remainingExpired": "muddati tugadi",
         "remainingHoursMinutes": "{h} soat {m} daqiqa",
@@ -7963,7 +7959,9 @@
         "foundCount": "Topildi: {count}",
         "clickToCopy": "Bosing — buferga nusxalash",
         "emptyQuery": "«{query}» so‘rovi bo‘yicha hech narsa topilmadi.",
-        "unmapped": "Boblar bo‘yicha tasniflanmagan: {count, plural, other {# kod}}.",
+        "chapterLoading": "Bob yuklanmoqda…",
+        "chapterError": "Bobni yuklab bo‘lmadi.",
+        "loadMore": "Yana ko‘rsatish ({shown} / {total})",
         "copied": "Nusxalandi",
         "copyFailed": "Nusxalab bo‘lmadi",
         "chapters": {
@@ -7982,9 +7980,13 @@
           "M00-M99": "Suyak-mushak tizimi",
           "N00-N99": "Siydik-tanosil tizimi",
           "O00-O99": "Homiladorlik, tug‘ish va tug‘ruqdan keyingi davr",
+          "P00-P96": "Perinatal davrning ayrim holatlari",
+          "Q00-Q99": "Tug‘ma anomaliyalar va xromosoma buzilishlari",
           "R00-R99": "Alomatlar va belgilar",
           "S00-T98": "Jarohatlar va zaharlanishlar",
-          "Z00-Z99": "Sog‘liq omillari va shifokorga murojaat"
+          "V01-Y98": "Kasallanish va o‘limning tashqi sabablari",
+          "Z00-Z99": "Sog‘liq omillari va shifokorga murojaat",
+          "U00-U85": "Maxsus maqsadlar uchun kodlar"
         }
       },
       "tabs": {

@@ -5,6 +5,9 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 export type MessageDirection = "IN" | "OUT";
 export type MessageStatus =
   | "QUEUED"
+  // Staff messages now leave through a send worker (audit TG-17): QUEUED,
+  // then SENDING while Telegram is called, then SENT or FAILED.
+  | "SENDING"
   | "SENT"
   | "DELIVERED"
   | "READ"

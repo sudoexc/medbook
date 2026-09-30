@@ -12,6 +12,10 @@ import {
   DownloadIcon,
   MicIcon,
   MusicIcon,
+  MegaphoneIcon,
+  BellIcon,
+  RotateCwIcon,
+  Loader2Icon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -120,12 +124,18 @@ export interface MessageBubbleProps {
   groupStart?: boolean;
   /** Last message of the run — gets the tail corner + avatar. */
   groupEnd?: boolean;
+  /** «Повторить» on a staff message that did not go out (audit TG-17). */
+  onRetry?: (message: InboxMessage) => void;
+  /** The retry of this message is on its way to the server. */
+  retrying?: boolean;
 }
 
 export function MessageBubble({
   message,
   groupStart = true,
   groupEnd = true,
+  onRetry,
+  retrying = false,
 }: MessageBubbleProps) {
   const t = useTranslations("tgInbox");
   const isOut = message.direction === "OUT";
@@ -152,6 +162,18 @@ export function MessageBubble({
 
   const isBotReply = isOut && !message.senderId;
   const onRight = isOut;
+  // A reminder or broadcast the bot sent, copied into the dialog (audit
+  // G6-08): named as such, so the patient's answer reads in context.
+  const origin = isOut ? (message.origin ?? null) : null;
+  // What a person wrote and the worker has not finished yet (audit TG-17).
+  const sending =
+    isOut && (message.status === "QUEUED" || message.status === "SENDING");
+  const canRetry =
+    isOut &&
+    message.status === "FAILED" &&
+    Boolean(message.senderId) &&
+    !origin &&
+    Boolean(onRetry);
 
   return (
     <div
@@ -174,7 +196,11 @@ export function MessageBubble({
             )}
             aria-hidden
           >
-            {isBotReply ? (
+            {origin === "broadcast" ? (
+              <MegaphoneIcon className="size-3.5" />
+            ) : origin === "notification" ? (
+              <BellIcon className="size-3.5" />
+            ) : isBotReply ? (
               <BotIcon className="size-3.5" />
             ) : (
               <HeadsetIcon className="size-3.5" />
@@ -204,7 +230,15 @@ export function MessageBubble({
               isBotReply ? "text-primary" : "text-foreground/70",
             )}
           >
-            {isBotReply ? t("mode.bot") : message.sender?.name ?? t("mode.operator")}
+            {origin ? (
+              <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+                {t(`message.origin.${origin}`)}
+              </span>
+            ) : isBotReply ? (
+              t("mode.bot")
+            ) : (
+              (message.sender?.name ?? t("mode.operator"))
+            )}
           </div>
         ) : null}
         {images.length > 0 ? (
@@ -371,11 +405,29 @@ export function MessageBubble({
           )}
         >
           <DateText date={message.createdAt} style="time" />
+          {sending ? <span>{t("message.sending")}</span> : null}
           {isOut ? <DeliveryIcon status={message.status} /> : null}
         </div>
         {isOut && message.status === "FAILED" ? (
-          <div className="mt-0.5 text-right text-[11px] font-medium text-destructive">
-            {t("message.failed.title")}: {failedReasonText(t, message.failedReason)}
+          <div className="mt-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-right text-[12px] font-medium text-destructive">
+            <span>
+              {t("message.failed.title")}: {failedReasonText(t, message.failedReason)}
+            </span>
+            {canRetry ? (
+              <button
+                type="button"
+                onClick={() => onRetry?.(message)}
+                disabled={retrying}
+                className="inline-flex h-7 items-center gap-1 rounded-full border border-destructive/40 bg-card px-2.5 text-[12px] font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
+              >
+                {retrying ? (
+                  <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <RotateCwIcon className="size-3.5" aria-hidden />
+                )}
+                {t("message.retry")}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -386,6 +438,7 @@ export function MessageBubble({
 function DeliveryIcon({ status }: { status: InboxMessage["status"] }) {
   switch (status) {
     case "QUEUED":
+    case "SENDING":
       return <ClockIcon className="size-3" />;
     case "SENT":
       return <CheckIcon className="size-3" />;

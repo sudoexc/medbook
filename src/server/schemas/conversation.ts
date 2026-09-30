@@ -19,6 +19,11 @@ export const UpdateConversationSchema = z.object({
   snoozedUntil: z.coerce.date().nullable().optional(),
   markRead: z.boolean().optional(),
   /**
+   * «Ответ не нужен» (audit G6-03): the patient's last message needs no
+   * answer («Спасибо!»), so the thread leaves «Неотвеченные» without a reply.
+   */
+  markAnswered: z.literal(true).optional(),
+  /**
    * Staff confirmed the chat's Telegram account is the linked card's own
    * (audit TG-11 review): bind it even though the card holds history or
    * the profile goes by another name.
@@ -44,6 +49,11 @@ export const QueryConversationSchema = z.object({
    */
   patientId: z.string().optional(),
   unread: z.coerce.boolean().optional(),
+  /**
+   * «Неотвеченные» (audit G6-03): a patient message no staff reply followed
+   * (`awaitingReplySince`), unlike `unread`, which opening the chat clears.
+   */
+  unanswered: z.coerce.boolean().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),

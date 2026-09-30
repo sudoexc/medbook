@@ -28,6 +28,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 
 import { resolveAdapters } from "@/server/notifications/adapters";
 import { recordNotificationDelivery } from "@/server/notifications/record-delivery";
+import { mirrorNotificationToConversation } from "@/server/conversations/notification-mirror";
 import { getRateLimiter } from "@/server/notifications/rate-limit";
 import { enqueue, getQueue } from "@/server/queue";
 import { MANUAL_APPOINTMENT_REMINDER_KEY } from "@/server/notifications/default-templates";
@@ -317,6 +318,7 @@ async function deliver(job: DeliverJob): Promise<void> {
       // operator routes the patient through TG / call instead.
       throw new Error(`Channel ${send.channel} not dispatchable`);
     }
+    const sentAt = new Date();
     await runWithTenant({ kind: "SYSTEM" }, () =>
       recordNotificationDelivery({
         send: {
@@ -330,10 +332,23 @@ async function deliver(job: DeliverJob): Promise<void> {
         outcome: {
           kind: "sent",
           externalId,
-          sentAt: new Date(),
+          sentAt,
         },
       }),
     );
+    // Audit G6-08: the reminder or broadcast also appears in the patient's
+    // dialog, so the operator sees what «Не смогу» answers. Best effort: the
+    // patient already has the message, and a throw here would land in the
+    // retry branch below and send it again.
+    await mirrorNotificationToConversation({
+      clinicId: send.clinicId,
+      sendId: send.id,
+      patientId: send.patientId ?? null,
+      chatId: send.recipient,
+      body: send.body,
+      campaignId: send.campaignId ?? null,
+      sentAt,
+    }).catch(() => null);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
 

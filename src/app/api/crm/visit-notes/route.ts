@@ -10,6 +10,7 @@
  * later in Phase 4 — we ship the endpoint now so the schema stays in one
  * place).
  */
+import type { Prisma } from "@/generated/prisma/client";
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
@@ -19,6 +20,13 @@ import {
   QueryVisitNoteSchema,
 } from "@/server/schemas/visit-note";
 import { MAX_ADDITIONAL_DIAGNOSES } from "@/lib/visit-diagnoses";
+import {
+  decodeListCursor,
+  encodeListCursor,
+  keysetAfter,
+  listOrderBy,
+  listSortField,
+} from "@/server/visit-notes/list-order";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR"] },
@@ -27,7 +35,9 @@ export const GET = createApiListHandler(
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
 
-    const where: Record<string, unknown> = {};
+    // Prisma's own type: a filter the columns do not take fails the build
+    // instead of answering 500 at runtime.
+    const where: Prisma.VisitNoteWhereInput = {};
     if (q.status) where.status = q.status;
     if (q.patientId) where.patientId = q.patientId;
 
@@ -58,34 +68,57 @@ export const GET = createApiListHandler(
         // The visit's other diagnoses: a conclusion is found by any of them.
         // JSON paths by position, one per possible entry.
         ...Array.from({ length: MAX_ADDITIONAL_DIAGNOSES }, (_, i) =>
-          (["name", "code"] as const).map((field) => ({
-            additionalDiagnoses: {
-              path: [String(i), field],
-              string_contains: term,
-              mode: "insensitive",
-            },
-          })),
+          (["name", "code"] as const).map(
+            (field): Prisma.VisitNoteWhereInput => ({
+              additionalDiagnoses: {
+                path: [String(i), field],
+                string_contains: term,
+                mode: "insensitive",
+              },
+            }),
+          ),
         ).flat(),
         { patient: { fullName: { contains: term, mode: "insensitive" } } },
       ];
     }
 
-    const take = q.limit + 1;
+    // Signed ones by when they were signed, drafts by when they were opened,
+    // the id breaking ties, paged by keyset (audit DC-11, see list-order.ts).
+    const field = listSortField(q.status);
+    if (q.cursor) {
+      const decoded = decodeListCursor(q.cursor);
+      let after = decoded && "value" in decoded ? decoded : null;
+      if (decoded && !after) {
+        // A page loaded before the keyset cursor: read its row's values.
+        const row = await prisma.visitNote.findUnique({
+          where: { id: decoded.id },
+          select: { finalizedAt: true, createdAt: true },
+        });
+        if (row) after = { value: row[field], id: decoded.id };
+      }
+      // A cursor that cannot be placed ends the list rather than starting
+      // it over: the client would append the first page again.
+      const keyset = after ? keysetAfter(field, after) : null;
+      if (!keyset) return ok({ rows: [], nextCursor: null });
+      where.AND = [keyset];
+    }
+
     const rows = await prisma.visitNote.findMany({
       where,
-      orderBy: { updatedAt: "desc" },
-      take,
-      ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
+      orderBy: listOrderBy(field),
+      take: q.limit + 1,
       include: {
         patient: { select: { id: true, fullName: true } },
         appointment: { select: { id: true, date: true, status: true } },
       },
     });
 
+    // The cursor is the last row SENT: the next page starts right after it.
     let nextCursor: string | null = null;
     if (rows.length > q.limit) {
-      const next = rows.pop();
-      nextCursor = next?.id ?? null;
+      rows.pop();
+      const last = rows[rows.length - 1]!;
+      nextCursor = encodeListCursor(last[field], last.id);
     }
 
     return ok({ rows, nextCursor });

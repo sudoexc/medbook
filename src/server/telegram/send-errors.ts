@@ -7,8 +7,19 @@
  * and what short reason to store so staff see why a message did not arrive.
  */
 
+/**
+ * Marker in the text of `TgUncertainSendError` (send.ts): Telegram gave no
+ * answer, so whether the message arrived is unknown. Lives here, not in
+ * send.ts, so reading an error never pulls in the network client.
+ */
+export const TG_UNCERTAIN_MARKER = "outcome unknown";
+
 /** A staff message's `Message.failedReason` code for a Telegram failure. */
-export type TgFailReason = "tg_blocked" | "tg_not_started" | "tg_error";
+export type TgFailReason =
+  | "tg_blocked"
+  | "tg_not_started"
+  | "tg_timeout"
+  | "tg_error";
 
 /**
  * Telegram hard-fail errors that mean the patient can no longer receive the
@@ -30,5 +41,8 @@ export function tgFailReason(message: string): TgFailReason {
   if (message.toLowerCase().includes("bot can't initiate conversation")) {
     return "tg_not_started";
   }
+  // No answer from Telegram (audit TG-17): the message may have arrived, so
+  // staff are told to check before sending it again.
+  if (message.includes(TG_UNCERTAIN_MARKER)) return "tg_timeout";
   return "tg_error";
 }

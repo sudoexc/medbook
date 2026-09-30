@@ -6,7 +6,9 @@
  * corrected inside the 24h window, or a drug removed after a revert and
  * re-sign, left the old text in front of the patient. The code now recomposes
  * it on every signature and correction; this script repairs the notes that
- * went stale before that.
+ * went stale before that. Since audit VW-07 it is composed in the patient's
+ * language, so a run also recomposes the Russian handout of a patient who
+ * reads Uzbek.
  *
  * A note is repaired when it is FINALIZED, signed since SINCE (default
  * 2026-09-21, the day the handout tab was removed: before it a doctor could
@@ -52,10 +54,19 @@ async function main() {
 
   const notes = await prisma.visitNote.findMany({
     where: { status: "FINALIZED", firstFinalizedAt: { gte: SINCE } },
+    // The handout is composed in the patient's language (audit VW-07): a
+    // re-run recomposes the Russian handouts of Uzbek-reading patients.
     include: {
-      patient: { select: { fullName: true } },
-      doctor: { select: { nameRu: true, specializationRu: true } },
-      clinic: { select: { nameRu: true } },
+      patient: { select: { fullName: true, preferredLang: true } },
+      doctor: {
+        select: {
+          nameRu: true,
+          nameUz: true,
+          specializationRu: true,
+          specializationUz: true,
+        },
+      },
+      clinic: { select: { nameRu: true, nameUz: true } },
       appointment: { select: { date: true } },
       visitPrescriptions: { orderBy: { sortOrder: "asc" } },
       conclusionDocument: { select: { fileUrl: true } },
@@ -68,6 +79,9 @@ async function main() {
       note,
       composed: composeNoteHandout(note, {
         diagnosisName: note.diagnosisName,
+        // Without them a note with several diagnoses would compose short
+        // and be «repaired» by losing them.
+        additionalDiagnoses: note.additionalDiagnoses,
         complaints: note.complaints,
         prescriptions: note.prescriptions,
         advice: note.advice,

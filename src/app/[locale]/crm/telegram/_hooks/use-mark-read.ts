@@ -3,14 +3,18 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import type { ConversationListResponse } from "./types";
+import {
+  invalidateConversationCaches,
+  patchConversationCaches,
+} from "./use-conversations";
 
 /**
  * Zero out `unreadCount` for the focused conversation. We only call the
  * server when the cached count is non-zero so re-renders don't spam the API.
  *
- * The cache is patched optimistically in every `["tg-conversations", …]`
- * query so the badge in the list disappears immediately.
+ * The cache is patched optimistically in every list and single-thread cache
+ * so the badge disappears immediately. Reading never answers: the thread
+ * stays in «Неотвеченные» (audit G6-03).
  */
 export function useMarkConversationRead() {
   const qc = useQueryClient();
@@ -28,24 +32,38 @@ export function useMarkConversationRead() {
     },
     onMutate: async (conversationId) => {
       inFlight.current.add(conversationId);
-      qc.getQueriesData<{ pages: ConversationListResponse[] }>({
-        queryKey: ["tg-conversations"],
-      }).forEach(([key, data]) => {
-        if (!data) return;
-        const pages = data.pages.map((p) => ({
-          ...p,
-          rows: p.rows.map((r) =>
-            r.id === conversationId ? { ...r, unreadCount: 0 } : r,
-          ),
-        }));
-        qc.setQueryData(key, { ...data, pages });
-      });
+      patchConversationCaches(qc, conversationId, { unreadCount: 0 });
     },
     onSettled: (_data, _err, conversationId) => {
       inFlight.current.delete(conversationId);
-      void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
+      invalidateConversationCaches(qc);
       void qc.invalidateQueries({ queryKey: ["reception", "conversations"] });
       void qc.invalidateQueries({ queryKey: ["shell-summary"] });
+    },
+  });
+}
+
+/**
+ * «Ответ не нужен»: the patient's last message («Спасибо!») needs no answer,
+ * so the thread leaves «Неотвеченные» without a reply (audit G6-03).
+ */
+export function useMarkConversationAnswered() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (conversationId: string): Promise<void> => {
+      const res = await fetch(`/api/crm/conversations/${conversationId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ markAnswered: true }),
+      });
+      if (!res.ok) throw new Error(`mark-answered failed: ${res.status}`);
+    },
+    onMutate: async (conversationId) => {
+      patchConversationCaches(qc, conversationId, { awaitingReplySince: null });
+    },
+    onSettled: () => {
+      invalidateConversationCaches(qc);
     },
   });
 }

@@ -2,8 +2,10 @@
  * /api/crm/conversations/[id]/messages — list + send.
  * See docs/TZ.md §6.4.
  *
- * POST creates an OUT Message row, dispatches it to the channel (Telegram
- * for tg conversations) and updates the parent Conversation. Inline
+ * POST creates an OUT Message row QUEUED, updates the parent Conversation
+ * and hands the row to the send worker (src/server/conversations/
+ * staff-dispatch.ts), answering at once (audit TG-17). The worker sends it
+ * and flips it to SENT / FAILED, announced on the realtime bus. Inline
  * keyboards are forwarded as Telegram inline_keyboard markup.
  *
  * A message is SENT only when Telegram accepted it, FAILED with a reason
@@ -22,16 +24,12 @@ import {
 } from "@/server/schemas/message";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
-import { sendMessage, sendPhoto, sendDocumentUrl } from "@/server/telegram/send";
-import { tgFailReason } from "@/server/telegram/send-errors";
 import { extractPlaceholders } from "@/server/notifications/template";
-import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import { isOwnChatAttachmentUrl } from "@/server/conversations/staff-send";
 import {
-  adoptTelegramChat,
-  clinicBotConnected,
-  isOwnChatAttachmentUrl,
-  telegramChatIdFor,
-} from "@/server/conversations/staff-send";
+  enqueueStaffMessage,
+  staffSendBlocker,
+} from "@/server/conversations/staff-dispatch";
 
 function conversationIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -166,131 +164,23 @@ export const POST = createApiHandler(
       return created;
     });
 
+    // Telegram is called by the send worker, never inside this request
+    // (audit TG-17): over the slow egress a send could take two minutes,
+    // nginx answered 504 and the operator sent the message again. What is
+    // known without Telegram (no bot, no chat, a legacy SMS thread) is
+    // answered right here.
     let dispatched = msg;
-    // Where in Telegram this goes. A thread the clinic opened from the patient
-    // card has no bot chat id yet (`externalId` null) and used to be marked
-    // DELIVERED with nothing sent, the patient never saw it (audit TG-04). A
-    // private chat's id is the user's id, so the card's telegramId reaches it.
-    const chatId = telegramChatIdFor(conv);
-    if (conv.channel === "TG" && !clinicBotConnected(conv.clinic.tgBotToken)) {
-      // No bot: send.ts would answer with a made up message id and the row
-      // would read SENT (and adopt the chat) while the patient got nothing.
+    const blocker = staffSendBlocker(conv);
+    if (blocker) {
       dispatched = await prisma.message.update({
         where: { id: msg.id },
-        data: { status: "FAILED", failedReason: "bot_not_connected" },
+        data: { status: "FAILED", failedReason: blocker },
       });
-    } else if (conv.channel === "TG" && !chatId) {
-      dispatched = await prisma.message.update({
-        where: { id: msg.id },
-        data: { status: "FAILED", failedReason: "no_telegram" },
+    } else {
+      await enqueueStaffMessage({
+        messageId: msg.id,
+        publicBase: new URL(request.url).origin,
       });
-    } else if (conv.channel === "TG" && chatId) {
-      try {
-        const inlineKeyboard = Array.isArray(body.buttons)
-          ? (body.buttons as Array<
-              Array<{ text: string; callback_data?: string; url?: string }>
-            >)
-          : null;
-        const replyMarkup = inlineKeyboard
-          ? { reply_markup: { inline_keyboard: inlineKeyboard } }
-          : {};
-
-        // Telegram fetches photos by URL — must be reachable from the public
-        // internet. Prefer `TG_WEBHOOK_BASE_URL` (already used for the bot
-        // webhook, e.g. an ngrok tunnel in dev) and fall back to the request
-        // origin (which is localhost in dev → Telegram returns "wrong file").
-        const publicBase =
-          process.env.TG_WEBHOOK_BASE_URL?.replace(/\/$/, "") ||
-          new URL(request.url).origin;
-        const absolute = (u: string) =>
-          /^https?:\/\//i.test(u)
-            ? u
-            : `${publicBase}${u.startsWith("/") ? u : `/${u}`}`;
-
-        let lastResult: { message_id: number } | null = null;
-        if (attachments.length > 0) {
-          // Caption rides on the first attachment; the inline keyboard on the
-          // last. Images → sendPhoto, everything else → sendDocument (by URL).
-          for (let i = 0; i < attachments.length; i++) {
-            const att = attachments[i];
-            const isLast = i === attachments.length - 1;
-            const caption =
-              i === 0 && body.body && body.body.length > 0 ? body.body : undefined;
-            const opts = isLast ? replyMarkup : {};
-            const url = absolute(att.url);
-            const r =
-              att.kind === "image"
-                ? await sendPhoto(conv.clinic, chatId, url, caption, opts)
-                : await sendDocumentUrl(conv.clinic, chatId, url, caption, opts);
-            if (r && typeof r === "object" && "message_id" in r) {
-              lastResult = r as { message_id: number };
-            }
-          }
-        } else {
-          const sent = await sendMessage(
-            conv.clinic,
-            chatId,
-            body.body,
-            replyMarkup,
-          );
-          if (sent && typeof sent === "object" && "message_id" in sent) {
-            lastResult = sent as { message_id: number };
-          }
-        }
-
-        dispatched = await prisma.message.update({
-          where: { id: msg.id },
-          data: {
-            status: "SENT",
-            externalId: lastResult ? String(lastResult.message_id) : null,
-          },
-        });
-        if (!conv.externalId) await adoptTelegramChat(conv.id, chatId);
-      } catch (e) {
-        const reason = e instanceof Error ? e.message : String(e);
-        console.error(
-          `[crm:send] tg dispatch failed conv=${conversationId}: ${reason}`,
-        );
-        const failedReason = tgFailReason(reason);
-        // «Never pressed Start» on a thread with no bot chat yet is the
-        // Mini App in-app chat: the reply is stored and pushed to the Mini
-        // App over SSE, so the patient reads it there. That is delivered,
-        // not «не доставлено»; the missed DM is kept as the reason. A
-        // blocked bot or any other failure stays FAILED (audit TG-04).
-        const inAppOnly =
-          !conv.externalId &&
-          conv.channel === "TG" &&
-          failedReason === "tg_not_started";
-        dispatched = await prisma.message.update({
-          where: { id: msg.id },
-          data: inAppOnly
-            ? { status: "DELIVERED", failedReason }
-            : { status: "FAILED", failedReason },
-        });
-        // Same fallback block signal as the notification worker: reachability
-        // counters and broadcast audiences drop the patient.
-        if (failedReason === "tg_blocked" && conv.patientId) {
-          await prisma.patient
-            .updateMany({
-              where: { id: conv.patientId, tgBlockedAt: null },
-              data: { tgBlockedAt: new Date() },
-            })
-            .catch(() => undefined);
-        }
-      }
-    } else if (conv.channel === "SMS") {
-      // Legacy SMS conversation — SMS channel was removed (see
-      // docs/TZ-sms-removal.md). New replies cannot be dispatched; mark
-      // FAILED so the operator switches to the patient's TG/Call instead
-      // of leaving the row stuck QUEUED forever.
-      dispatched = await prisma.message.update({
-        where: { id: msg.id },
-        data: { status: "FAILED", failedReason: "channel_unavailable" },
-      });
-    }
-
-    if (dispatched.status === "SENT" && conv.patientId) {
-      await bumpPatientLastContact(conv.patientId, dispatched.createdAt);
     }
 
     await audit(request, {
@@ -314,6 +204,8 @@ export const POST = createApiHandler(
           // patient-scoped mini-app SSE filter (legacy v1 event → payload is
           // the only patient hint).
           patientId: conv.patientId,
+          status: dispatched.status,
+          failedReason: dispatched.failedReason ?? null,
         },
       });
     }

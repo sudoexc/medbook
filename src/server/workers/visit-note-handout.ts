@@ -500,6 +500,8 @@ type BridgeNote = {
   patientId: string;
   doctorId: string;
   finalizedAt: Date | null;
+  /** The version this pass read; the stamp lands only on it (see below). */
+  updatedAt: Date;
   followUpDays: number | null;
   followUpDate: Date | null;
   followUpNote: string | null;
@@ -668,10 +670,21 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
   await syncFollowUpAction(prisma, note, now);
 
   // Stamp LAST — anything above failing leaves the note in the sweep.
-  await prisma.visitNote.update({
-    where: { id: note.id },
-    data: { medicationsBridgedAt: now },
-  });
+  //
+  // Raw SQL, like the handout anchor above (audit VW-08): `visitNote.update`
+  // bumps `updatedAt`, which the conclusion screen's optimistic lock
+  // compares. Every in-window prescription fix clears this anchor, the
+  // bridge stamped it ~30 s later, and the doctor's NEXT fix of the same
+  // conclusion was refused as «изменено в другом окне» and rolled back.
+  //
+  // Only on the version this pass read: a correction that landed while it
+  // ran moved `updatedAt` (and cleared the anchor again), so the stamp
+  // matches nothing and the next tick reconciles the newer prescriptions.
+  await prisma.$executeRaw`
+    UPDATE "VisitNote"
+    SET "medicationsBridgedAt" = ${now}
+    WHERE "id" = ${note.id} AND "updatedAt" = ${note.updatedAt}
+  `;
 }
 
 export async function runMedicationBridgeTick(
@@ -696,6 +709,7 @@ export async function runMedicationBridgeTick(
         patientId: true,
         doctorId: true,
         finalizedAt: true,
+        updatedAt: true,
         followUpDays: true,
         followUpDate: true,
         followUpNote: true,

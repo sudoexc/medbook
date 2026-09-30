@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   ChevronDownIcon,
   CopyIcon,
@@ -13,20 +14,46 @@ import {
 import { cn } from "@/lib/utils";
 import { useDebounced } from "@/hooks/use-debounced";
 import { toast } from "@/components/ui/sonner";
-import { ICD10_ENTRIES, type Icd10Entry } from "@/server/icd10/data";
+import {
+  DEFAULT_ICD10_CHAPTER,
+  ICD10_CHAPTERS,
+} from "@/lib/icd10-chapters";
 
 import { useIcd10Search } from "../_hooks/use-icd10-search";
 import { Highlight } from "./highlight";
-import {
-  ICD10_CHAPTERS,
-  chapterIdFor,
-  groupByChapter,
-} from "./icd10-chapters";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
+/**
+ * Codes per request when a chapter is browsed: the most the catalog API
+ * hands out at once. «Показать ещё» fetches the next page.
+ */
+const CHAPTER_PAGE = 200;
+
+type Entry = { code: string; nameRu: string };
+
+type ChapterPage = { rows: Entry[]; total: number };
+
+async function fetchChapter(
+  id: string,
+  offset: number,
+  signal: AbortSignal,
+): Promise<ChapterPage> {
+  const params = new URLSearchParams({
+    range: id,
+    offset: String(offset),
+    limit: String(CHAPTER_PAGE),
+  });
+  const res = await fetch(`/api/crm/icd10/search?${params.toString()}`, {
+    credentials: "include",
+    signal,
+  });
+  if (!res.ok) throw new Error(`icd10 chapter: ${res.status}`);
+  return (await res.json()) as ChapterPage;
+}
+
 async function copyDiagnosis(
-  entry: Icd10Entry,
+  entry: Entry,
   messages: { copied: string; copyFailed: string },
 ) {
   const text = `${entry.code} — ${entry.nameRu}`;
@@ -42,7 +69,7 @@ function Row({
   entry,
   term,
 }: {
-  entry: Icd10Entry;
+  entry: Entry;
   term: string;
 }) {
   const t = useTranslations("doctor.references");
@@ -68,29 +95,87 @@ function Row({
   );
 }
 
-export function Icd10Browser() {
+/**
+ * The codes of one open chapter, a page at a time. The catalog stays on the
+ * server (audit CT-11): importing it here shipped all 1.4 MB of it to every
+ * doctor's browser, and opening the biggest chapter rendered 1278 rows at
+ * once on the clinic's slow PCs.
+ */
+function ChapterCodes({ id }: { id: string }) {
+  const t = useTranslations("doctor.references");
+  const query = useInfiniteQuery({
+    queryKey: ["doctor", "references", "icd10", "chapter", id],
+    queryFn: ({ pageParam, signal }) => fetchChapter(id, pageParam, signal),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const shown = pages.reduce((n, p) => n + p.rows.length, 0);
+      return last.rows.length > 0 && shown < last.total ? shown : undefined;
+    },
+    // Reference data: it changes with a deploy, not during a shift.
+    staleTime: 60 * 60_000,
+  });
+
+  const rows = query.data?.pages.flatMap((p) => p.rows) ?? [];
+  const total = query.data?.pages.at(-1)?.total ?? 0;
+
+  if (query.isPending) {
+    return (
+      <div className="flex items-center gap-2 border-t border-border px-5 py-4 text-xs text-muted-foreground">
+        <Loader2Icon className="size-3.5 animate-spin" />
+        {t("icd10.chapterLoading")}
+      </div>
+    );
+  }
+  if (query.isError) {
+    return (
+      <div className="border-t border-border px-5 py-4 text-xs text-destructive">
+        {t("icd10.chapterError")}
+      </div>
+    );
+  }
+  return (
+    <ul className="space-y-0.5 border-t border-border bg-muted/10 px-2 py-2">
+      {rows.map((e) => (
+        <li key={e.code}>
+          <Row entry={e} term="" />
+        </li>
+      ))}
+      {query.hasNextPage ? (
+        <li>
+          <button
+            type="button"
+            onClick={() => query.fetchNextPage()}
+            disabled={query.isFetchingNextPage}
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/5 disabled:opacity-60"
+          >
+            {query.isFetchingNextPage ? (
+              <Loader2Icon className="size-3.5 animate-spin" />
+            ) : null}
+            {t("icd10.loadMore", { shown: rows.length, total })}
+          </button>
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
+export function Icd10Browser({
+  chapterCounts,
+}: {
+  /** Codes per chapter id, counted on the server. */
+  chapterCounts: Record<string, number>;
+}) {
   const t = useTranslations("doctor.references");
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebounced(q, SEARCH_DEBOUNCE_MS);
   const searching = debouncedQ.trim().length >= 2;
   const { data, isFetching, isError } = useIcd10Search(debouncedQ);
 
-  // Default: open the chapter that contains the most entries so the page
-  // doesn't look empty on first load. Recomputed once.
-  const [openChapters, setOpenChapters] = React.useState<Set<string>>(() => {
-    const grouped = groupByChapter(ICD10_ENTRIES);
-    let biggestId: string | null = null;
-    let biggestCount = 0;
-    for (const [id, list] of grouped) {
-      if (list.length > biggestCount) {
-        biggestCount = list.length;
-        biggestId = id;
-      }
-    }
-    return new Set(biggestId ? [biggestId] : []);
-  });
-
-  const grouped = React.useMemo(() => groupByChapter(ICD10_ENTRIES), []);
+  // The neurologist's own chapter opens first; it used to be the biggest
+  // one (injuries), which is noise here.
+  const [openChapters, setOpenChapters] = React.useState<Set<string>>(
+    () => new Set([DEFAULT_ICD10_CHAPTER]),
+  );
 
   const toggleChapter = (id: string) => {
     setOpenChapters((prev) => {
@@ -160,8 +245,8 @@ export function Icd10Browser() {
       ) : (
         <div className="space-y-3">
           {ICD10_CHAPTERS.map((ch) => {
-            const entries = grouped.get(ch.id) ?? [];
-            if (entries.length === 0) return null;
+            const count = chapterCounts[ch.id] ?? 0;
+            if (count === 0) return null;
             const isOpen = openChapters.has(ch.id);
             return (
               <section
@@ -175,13 +260,13 @@ export function Icd10Browser() {
                   className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/40"
                 >
                   <span className="w-24 shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
-                    {ch.range}
+                    {ch.id}
                   </span>
                   <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
                     {t(`icd10.chapters.${ch.id}`)}
                   </span>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {entries.length}
+                    {count}
                   </span>
                   <ChevronDownIcon
                     className={cn(
@@ -190,31 +275,10 @@ export function Icd10Browser() {
                     )}
                   />
                 </button>
-                {isOpen ? (
-                  <ul className="space-y-0.5 border-t border-border bg-muted/10 px-2 py-2">
-                    {entries.map((e) => (
-                      <li key={e.code}>
-                        <Row entry={e} term="" />
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
+                {isOpen ? <ChapterCodes id={ch.id} /> : null}
               </section>
             );
           })}
-          {/* If a code in data.ts ever falls outside known chapters, surface
-              it instead of swallowing — easier to spot a missing chapter. */}
-          {(() => {
-            const unmapped = ICD10_ENTRIES.filter(
-              (e) => chapterIdFor(e.code) === null,
-            );
-            if (unmapped.length === 0) return null;
-            return (
-              <section className="rounded-2xl border border-warning/40 bg-warning/5 px-5 py-3 text-xs text-warning">
-                {t("icd10.unmapped", { count: unmapped.length })}
-              </section>
-            );
-          })()}
         </div>
       )}
     </div>

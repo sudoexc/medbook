@@ -15,6 +15,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { invalidateSitePrices } from "@/lib/site-prices";
 import { ok, err, parseQuery } from "@/server/http";
 import { CreateServiceSchema, QueryServiceSchema } from "@/server/schemas/service";
 
@@ -102,6 +103,8 @@ export const POST = createApiHandler(
         entityId: created.id,
         meta: { after: created, doctorIds: ids },
       });
+      // The public price sheet reads the catalog (LD-07).
+      invalidateSitePrices();
       return ok(created, 201);
     } catch (e) {
       const msg = (e as Error).message || "";

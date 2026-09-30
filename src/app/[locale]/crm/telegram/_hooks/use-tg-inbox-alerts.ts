@@ -21,6 +21,10 @@ import { useTranslations } from "next-intl";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
 
+import { failedReasonText } from "../_lib/failed-reason";
+import { invalidateConversationCaches } from "./use-conversations";
+import { settlePendingSend } from "./use-send-message";
+
 const PULSE_MS = 2500;
 
 export function useTgInboxAlerts(opts: {
@@ -45,8 +49,9 @@ export function useTgInboxAlerts(opts: {
   useLiveEvents(
     (event) => {
       // Always refresh the list on any tg.* event so mode/status flips and
-      // assignee changes propagate without a manual reload.
-      void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
+      // assignee changes propagate without a manual reload. The thread
+      // opened by id (outside the loaded list, G6-07) refreshes with it.
+      invalidateConversationCaches(qc);
       // Keep the overview counters fresh when patients link/block via the bot.
       void qc.invalidateQueries({ queryKey: ["tg-stats"] });
 
@@ -60,6 +65,38 @@ export function useTgInboxAlerts(opts: {
 
       const conversationId = event.payload.conversationId;
       if (!conversationId) return;
+
+      // A message this tab queued has an outcome (audit TG-17). Its failure
+      // is said out loud here, in the sender's tab only; the bubble keeps
+      // «Не доставлено» and «Повторить».
+      if (event.type === "tg.message.new" && event.payload.direction === "OUT") {
+        const p = event.payload as {
+          messageId?: string;
+          status?: string;
+          failedReason?: string | null;
+        };
+        if (
+          p.messageId &&
+          (p.status === "SENT" || p.status === "DELIVERED" || p.status === "FAILED") &&
+          settlePendingSend(p.messageId) &&
+          p.status === "FAILED"
+        ) {
+          const open = activeIdRef.current !== conversationId;
+          toast.error(
+            t("message.failed.toast", {
+              reason: failedReasonText(t, p.failedReason),
+            }),
+            open
+              ? {
+                  action: {
+                    label: t("alerts.open"),
+                    onClick: () => onSelectRef.current(conversationId),
+                  },
+                }
+              : undefined,
+          );
+        }
+      }
 
       setPulsedIds((prev) => {
         const next = new Set(prev);

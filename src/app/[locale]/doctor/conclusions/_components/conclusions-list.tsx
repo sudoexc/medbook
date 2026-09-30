@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatClinicDateTime } from "@/lib/format";
 
 import { AdditionalDiagnosesLine } from "../../_components/additional-diagnoses-line";
 import {
@@ -158,14 +159,11 @@ function TabBtn({
 
 function ConclusionRowItem({ row, locale }: { row: ConclusionRow; locale: string }) {
   const tr = useTranslations("doctor.conclusions");
-  const date = row.finalizedAt ?? row.updatedAt;
-  const formatted = new Date(date).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // The value the list is ordered by (audit DC-11): when it was signed, or
+  // for a draft when it was opened. `updatedAt` moved with every autosave,
+  // so the dates shown jumped around a list sorted by something else.
+  const date = row.finalizedAt ?? row.createdAt ?? row.updatedAt;
+  const formatted = formatClinicDateTime(date, locale === "uz" ? "uz" : "ru");
 
   return (
     <li>

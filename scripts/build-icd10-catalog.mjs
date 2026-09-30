@@ -265,6 +265,71 @@ function withContext(name, parentName) {
   return `${parentName}: ${lcFirst(name)}`;
 }
 
+// ───────────────────────── Shared fourth characters ─────────────────────────
+
+/**
+ * Categories whose subcategories the book lists once, in the block's note
+ * (audit CT-02). Under «E10-E14 САХАРНЫЙ ДИАБЕТ» it reads «Следующие
+ * четвертые знаки используются с рубриками E10-E14: .0 С комой … .9 Без
+ * осложнений», and E10…E14 themselves are rows without children. Taken as
+ * leaves, the catalog offered E11 and no E11.4, so a diabetic polyneuropathy
+ * (E11.4 with G63.2*, as G63.2* itself says) went into a conclusion as a
+ * bare E11. Each such category is expanded into the subcategories the note
+ * names, worded from the note itself, and becomes a heading like every
+ * other category with subcategories.
+ *
+ * Only where the block's categories have no rows of their own: V90-V94
+ * carries the same note over categories the dump already subdivides.
+ *
+ * The book marks .2 to .4 with a dagger: that is the pairing convention with
+ * the asterisk codes naming the complication (G63.2*), written on the line
+ * of the note. The code the clinic writes is E11.4.
+ */
+const SHARED_FOURTH = /Следующие четвертые знаки используются с рубриками ([A-Z]\d{2})-([A-Z]\d{2}):/;
+
+function sharedFourthCharacters(info) {
+  if (!info) return null;
+  const head = info.match(SHARED_FOURTH);
+  if (!head) return null;
+  const subs = [];
+  for (const raw of info.slice(head.index + head[0].length).split("\\n")) {
+    const m = raw.replace(/''/g, "'").trim().match(/^\.(\d)\+?\s+(.+)$/);
+    if (!m) continue;
+    // «С комой Диабетическая: . кома …»: the title, then its inclusion
+    // terms, which start at the next capitalised word.
+    const [first, ...rest] = m[2].split(/\s+/);
+    const title = [first];
+    for (const w of rest) {
+      if (!/^[а-яё]/.test(w)) break;
+      title.push(w);
+    }
+    subs.push({ digit: m[1], title: title.join(" ") });
+  }
+  return { from: head[1], to: head[2], subs };
+}
+
+/**
+ * Chapter XXII, «Коды для особых целей»: the dump predates it, and a patient
+ * after COVID-19 (U09.9) could not be coded at all. The WHO ICD-10 codes for
+ * COVID-19, worded as the Russian Ministry of Health's letters on coding
+ * COVID-19 word them. Nothing else of the chapter is in clinical use here.
+ */
+const SUPPLEMENT = [
+  { code: "U07.1", name: "COVID-19, вирус идентифицирован" },
+  { code: "U07.2", name: "COVID-19, вирус не идентифицирован" },
+  { code: "U08.9", name: "Личный анамнез COVID-19, неуточненный" },
+  { code: "U09.9", name: "Состояние после COVID-19, неуточненное" },
+  {
+    code: "U10.9",
+    name: "Мультисистемный воспалительный синдром, связанный с COVID-19, неуточненный",
+  },
+  { code: "U11.9", name: "Необходимость иммунизации против COVID-19, неуточненная" },
+  {
+    code: "U12.9",
+    name: "Вакцины против COVID-19, вызвавшие неблагоприятные реакции при терапевтическом применении, неуточненные",
+  },
+];
+
 // ───────────────────────── Build ─────────────────────────
 
 const rows = [];
@@ -279,9 +344,43 @@ for (const m of sql.matchAll(ROW)) {
     parentId: /^\d+$/.test(parentId.trim()) ? Number(parentId.trim()) : null,
     leaf: nodeCount === "0",
     name: repairName(code, rawName, info ?? null),
+    info: info ?? null,
   });
 }
 const byId = new Map(rows.map((r) => [r.id, r]));
+
+// Category row id → the subcategories its block's note gives it.
+const expanded = new Map();
+for (const block of rows) {
+  if (!block.code.includes("-")) continue;
+  const shared = sharedFourthCharacters(block.info);
+  if (!shared) continue;
+  const cats = rows.filter(
+    (r) =>
+      r.parentId === block.id &&
+      /^[A-Z]\d{2}$/.test(r.code) &&
+      r.code >= shared.from &&
+      r.code <= shared.to,
+  );
+  if (cats.length === 0 || cats.some((c) => !c.leaf)) continue;
+  const digits = shared.subs.map((s) => s.digit).join("");
+  if (digits !== "0123456789") {
+    console.error(`${block.code}: the note lists fourth characters «${digits}», not .0 to .9`);
+    process.exit(1);
+  }
+  for (const c of cats) {
+    // «Сахарный диабет, связанный с недостаточностью питания, с комой»:
+    // a category worded with a comma takes one before the subcategory too.
+    const sep = c.name.includes(",") ? ", " : " ";
+    expanded.set(
+      c.id,
+      shared.subs.map((s) => ({
+        code: `${c.code}.${s.digit}`,
+        name: `${c.name}${sep}${lcFirst(s.title)}`,
+      })),
+    );
+  }
+}
 
 /**
  * The category a leaf belongs to, or null under a block («A00-A09»): a
@@ -312,10 +411,34 @@ for (const r of rows) {
   }
   if (seen.has(r.code)) continue;
   seen.add(r.code);
+  const subs = expanded.get(r.id);
+  if (subs) {
+    // E11 is a heading now; its subcategories are the diagnoses.
+    headings++;
+    for (const s of subs) {
+      seen.add(s.code);
+      entries.push({ code: s.code, name: s.name, own: s.name, parent: r });
+    }
+    continue;
+  }
   const parent = categoryOf(r);
   const full = parent ? composeName(r.code, r.name, parent.name) : null;
   if (full) composed++;
   entries.push({ code: r.code, name: full ?? r.name, own: r.name, parent });
+}
+for (const s of SUPPLEMENT) {
+  if (seen.has(s.code)) {
+    console.error(`${s.code} is in the dump now: drop it from SUPPLEMENT`);
+    process.exit(1);
+  }
+  seen.add(s.code);
+  entries.push({ code: s.code, name: s.name, own: s.name, parent: null });
+}
+// Every code the catalog ships has the classifier's shape (audit CT-02).
+const misshapen = entries.filter((e) => !CODE_SHAPE.test(e.code));
+if (misshapen.length > 0) {
+  console.error(`Codes of a wrong shape: ${misshapen.map((e) => e.code).join(", ")}`);
+  process.exit(1);
 }
 
 // Leaves that still share a name («Острая интоксикация» under every F1x):
@@ -379,7 +502,13 @@ writeFileSync(
  * Некоторые инфекционные болезни") are not diagnoses a doctor writes down.
  * A leaf whose own wording only continues its category («Головного мозга над
  * мозговым наметом») carries the category's words, so every name is a
- * diagnosis on its own and no two codes share one.
+ * diagnosis on its own and no two codes share one. Categories the book
+ * subdivides in a block note (E10-E14) carry those subcategories, and the
+ * COVID-19 codes of chapter U, which the dump predates, are added.
+ *
+ * Server code only: the payload is 1.4 MB, and a client component that
+ * imports it ships all of it to the browser (audit CT-11). Browsers read the
+ * catalog through /api/crm/icd10/search.
  *
  * ${entries.length} codes across ${Object.keys(byChapter).length} chapters.
  */
@@ -401,6 +530,8 @@ console.log(`мусорных строк:     ${junk}`);
 console.log(`переносов собрано:  ${repaired.length}`);
 for (const r of repaired) console.log(`  ${r}`);
 console.log(`с контекстом рубрики: ${composed}`);
+console.log(`рубрик с общим 4-м знаком: ${expanded.size}`);
+console.log(`добавлено вручную:  ${SUPPLEMENT.length}`);
 console.log(`кодов записано:     ${entries.length}`);
 console.log(
   `по главам:          ${Object.entries(byChapter)

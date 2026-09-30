@@ -65,11 +65,14 @@ vi.mock("@/lib/prisma", () => ({
       upsert: vi.fn(async () => ({ ...state.conv })),
       update: vi.fn(async () => ({})),
       updateMany: vi.fn(
-        async ({ where, data }: { where: Record<string, unknown>; data: { patientId: string } }) => {
+        async ({ where, data }: { where: Record<string, unknown>; data: { patientId?: string } }) => {
+          // Only the thread↔card link moves `patientId`; the «awaiting reply»
+          // stamp (audit G6-03) writes another column.
+          if (!("patientId" in data)) return { count: 1 };
           const hit =
             (!("id" in where) || where.id === state.conv.id) &&
             (!("patientId" in where) || where.patientId === state.conv.patientId);
-          if (hit) state.conv.patientId = data.patientId;
+          if (hit) state.conv.patientId = data.patientId!;
           return { count: hit ? 1 : 0 };
         },
       ),

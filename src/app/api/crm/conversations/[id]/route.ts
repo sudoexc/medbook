@@ -14,6 +14,7 @@ import {
   type ThreadTelegramLink,
 } from "@/server/conversations/link-patient";
 import { threadProfileName } from "@/lib/patients/telegram-card";
+import { doctorConversationScope } from "@/server/conversations/doctor-scope";
 
 /**
  * Who may confirm that a chat's Telegram account is a card's own: the roles
@@ -37,10 +38,32 @@ export const GET = createApiListHandler(
     // makes the security boundary visible in the handler itself.
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     if (!clinicId) return notFound();
+    // The inbox opens a thread by id when it is not on the loaded page of
+    // the list (audit G6-07: a link from the reception widget, the search
+    // or a toast). A doctor reads by id only what his list would show him.
+    const where: Record<string, unknown> = { id, clinicId };
+    if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
+      const doc = await prisma.doctor.findFirst({
+        where: { userId: ctx.userId },
+        select: { id: true },
+      });
+      if (doc) {
+        where.AND = [{ OR: doctorConversationScope(doc.id, ctx.userId) }];
+      }
+    }
     const row = await prisma.conversation.findFirst({
-      where: { id, clinicId },
+      where,
+      // Same shape as a row of the list, so the inbox renders either.
       include: {
-        patient: { select: { id: true, fullName: true, phone: true, photoUrl: true } },
+        patient: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            photoUrl: true,
+            tgBlockedAt: true,
+          },
+        },
         assignedTo: { select: { id: true, name: true } },
       },
     });
@@ -62,7 +85,7 @@ export const PATCH = createApiHandler(
       where: { id, clinicId },
     });
     if (!before) return notFound();
-    const { markRead, linkTelegram, ...rest } = body;
+    const { markRead, markAnswered, linkTelegram, ...rest } = body;
     if (linkTelegram) {
       if (ctx.kind !== "TENANT" || !TELEGRAM_CONFIRM_ROLES.has(ctx.role)) {
         return err("forbidden", 403, { reason: "telegram_link_role" });
@@ -89,6 +112,7 @@ export const PATCH = createApiHandler(
     }
     const data: Record<string, unknown> = { ...rest };
     if (markRead) data.unreadCount = 0;
+    if (markAnswered) data.awaitingReplySince = null;
     // updateMany so an unscoped `update({ where: { id }})` can never write
     // across tenants; we already verified the row exists in this clinic.
     // A bare Telegram confirmation changes nothing on the thread itself.
@@ -149,6 +173,7 @@ export const PATCH = createApiHandler(
         status: after.status,
         assigneeId: after.assignedToId ?? null,
         unreadCount: after.unreadCount,
+        awaitingReplySince: after.awaitingReplySince?.toISOString() ?? null,
         // Route the thread-meta change to the patient's mini-app conversations
         // list via the patient-scoped SSE filter.
         patientId: after.patientId,

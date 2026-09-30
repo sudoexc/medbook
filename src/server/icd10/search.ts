@@ -25,6 +25,8 @@
  *   - last, a tumour rubric that matched every word of a query that never
  *     called it a tumour («поражение головного мозга» → C71.8)
  * Ties break on code so the order is stable between identical queries.
+ * Among the literal full matches, one category shows at most
+ * `MAX_SIBLINGS` rubrics before the other categories have had their turn.
  *
  * Normalisation folds ё→е and case. Cyrillic ё is typed inconsistently and
  * costing a doctor a result over a diacritic is not acceptable mid-visit.
@@ -42,6 +44,26 @@ type SpokenForm = {
 };
 
 /**
+ * Diabetes as the doctor says it. Since the catalog lists E10..E14 leaf by
+ * leaf (CT-02), «сахарный диабет» matches fifty rows word for word; the
+ * first ten were E12, diabetes of malnutrition, and no E11 made the
+ * typeahead at all. The classifier names the types by insulin dependence,
+ * never by number, so «2 типа» and «1 типа» are spelled out below, and a
+ * type named by the doctor brings its whole category. Type 2 leads the
+ * untyped phrase: it is the diabetes behind the neuropathies this clinic
+ * codes. E14.9 closes it for the visit where the type is not known.
+ */
+const DIABETES: SpokenForm = { codes: ["E11.9", "E11.4", "E10.9", "E10.4", "E14.9"] };
+const DIABETES_2: SpokenForm = {
+  codes: ["E11.9", "E11.4"],
+  phrases: ["инсулиннезависимый сахарный диабет"],
+};
+const DIABETES_1: SpokenForm = {
+  codes: ["E10.9", "E10.4"],
+  phrases: ["инсулинзависимый сахарный диабет"],
+};
+
+/**
  * What the doctor says → what the classifier calls it.
  *
  * The register's wording is official; the clinic's is spoken. «ТИА»,
@@ -53,7 +75,9 @@ type SpokenForm = {
  *
  * Keys written in CAPITALS are abbreviations. They match whole words only,
  * both as a key and as a literal search word, so «ТИА» never reaches тиамин
- * and «ХИМ» never reaches химические ожоги.
+ * and «ХИМ» never reaches химические ожоги. An abbreviation counts as a word
+ * however short it is («СД»), and so does a number inside a key («2 типа»):
+ * see `significantTokens` and `formTokens`.
  *
  * Every code here must exist in data.json (a unit test checks), and they are
  * the standard ICD-10 rubrics a Russian-speaking neurologist writes for the
@@ -137,6 +161,9 @@ export const SPOKEN_FORMS: Readonly<Record<string, SpokenForm>> = {
 
   // Peripheral nerves.
   полинейропатия: { codes: ["G62.9", "G63.2*"] },
+  // Coded twice (audit CT-02): the diabetes with its neurological
+  // complication, and the polyneuropathy that G63.2* names.
+  "диабетическая полинейропатия": { codes: ["G63.2*", "E11.4", "E10.4"] },
   карпальный: { codes: ["G56.0"] },
   "карпальный синдром": { codes: ["G56.0"] },
   "туннельный синдром": { codes: ["G56.0"] },
@@ -177,6 +204,29 @@ export const SPOKEN_FORMS: Readonly<Record<string, SpokenForm>> = {
   // Other.
   ДЦП: { codes: ["G80.9"] },
 
+  // Diabetes, the usual comorbidity next to a polyneuropathy (CT-02
+  // review): see `DIABETES`.
+  "сахарный диабет": DIABETES,
+  СД: DIABETES,
+  "сахарный диабет 2 типа": DIABETES_2,
+  "сахарный диабет тип 2": DIABETES_2,
+  "диабет 2 типа": DIABETES_2,
+  "диабет тип 2": DIABETES_2,
+  "СД 2 типа": DIABETES_2,
+  "СД тип 2": DIABETES_2,
+  "СД 2": DIABETES_2,
+  СД2: DIABETES_2,
+  инсулиннезависимый: { codes: DIABETES_2.codes },
+  "сахарный диабет 1 типа": DIABETES_1,
+  "сахарный диабет тип 1": DIABETES_1,
+  "диабет 1 типа": DIABETES_1,
+  "диабет тип 1": DIABETES_1,
+  "СД 1 типа": DIABETES_1,
+  "СД тип 1": DIABETES_1,
+  "СД 1": DIABETES_1,
+  СД1: DIABETES_1,
+  инсулинзависимый: { codes: DIABETES_1.codes },
+
   // Tumours (audit CT-06). The classifier never says «опухоль» or names a
   // histology for these rubrics: it says «новообразование» plus a site. A
   // meningioma is coded by its site and behaviour, benign by default.
@@ -207,11 +257,14 @@ export function normalizeIcdTerm(s: string): string {
 /**
  * Spelling variants the classifier never uses. The register writes
  * «полиневропатия», doctors write «полинейропатия» as often as not, and the
- * query used to come back empty. Applied to both sides, only for matching:
+ * query used to come back empty. Likewise «инсулинонезависимый» for the
+ * register's «инсулиннезависимый». Applied to both sides, only for matching:
  * `normalizeIcdTerm` also keys the clinic-learned catalog and stays as is.
  */
 function foldSpelling(s: string): string {
-  return s.replace(/нейропат/g, "невропат");
+  return s
+    .replace(/нейропат/g, "невропат")
+    .replace(/инсулино(?=(не)?зависим)/g, "инсулин");
 }
 
 /**
@@ -289,18 +342,36 @@ function isMarker(word: string): boolean {
   return word === NEGATION || WITH.has(word);
 }
 
-/** Query words worth matching on: not stop words, long enough to mean it. */
+/**
+ * Query words worth matching on: not stop words, long enough to mean it.
+ * A curated abbreviation means it at any length: without that «СД 2 типа»
+ * was the word «типа» alone.
+ */
 function significantTokens(tokens: Token[]): Token[] {
   const kept = tokens.filter(
-    (t) => t.text.length >= 3 && !STOP_WORDS.has(t.text) && !isMarker(t.text),
+    (t) =>
+      (t.text.length >= 3 || isAbbreviation(t.text)) &&
+      !STOP_WORDS.has(t.text) &&
+      !isMarker(t.text),
   );
   return kept.length > 0 ? kept : tokens.filter((t) => !isMarker(t.text));
 }
 
-/** Content words of a spoken-form key, as stems, plus whether it is an abbreviation. */
+/**
+ * The words a spoken form is matched on: the significant ones plus numbers,
+ * in query order. In a key a number is the diagnosis («сахарный диабет 1
+ * типа» and «2 типа» are different codes). The literal search keeps ignoring
+ * numbers: in the catalog they are mostly cross-references («(G02.0*)»), and
+ * a stray «2» would match hundreds of rows.
+ */
+function formTokens(tokens: Token[]): Token[] {
+  const words = new Set(significantTokens(tokens));
+  return tokens.filter((t) => words.has(t) || /^\d+$/.test(t.text));
+}
+
+/** Content words of a spoken-form key, as stems. */
 type CompiledForm = {
   stems: string[];
-  abbr: boolean;
   form: SpokenForm;
 };
 
@@ -310,20 +381,24 @@ let abbreviations: Set<string> | null = null;
 function getForms(): CompiledForm[] {
   if (compiled) return compiled;
   compiled = Object.entries(SPOKEN_FORMS).map(([key, form]) => ({
-    stems: significantTokens(tokenize(normalizeIcdTerm(key))).map((t) => t.stem),
-    // «ТИА» in the source: every letter a capital, more than one of them.
-    abbr: key.length > 1 && key === key.toUpperCase() && key !== key.toLowerCase(),
+    stems: formTokens(tokenize(normalizeIcdTerm(key))).map((t) => t.stem),
     form,
   }));
-  abbreviations = new Set(
-    compiled.filter((f) => f.abbr).map((f) => f.stems.join(" ")),
-  );
   return compiled;
 }
 
+/**
+ * A curated abbreviation, as typed: «ТИА» in the source, every letter a
+ * capital and more than one of them. Read from the keys directly, since
+ * compiling the keys already asks which of their words are abbreviations.
+ */
 function isAbbreviation(word: string): boolean {
-  getForms();
-  return abbreviations!.has(word);
+  abbreviations ??= new Set(
+    Object.keys(SPOKEN_FORMS)
+      .filter((k) => k.length > 1 && k === k.toUpperCase() && k !== k.toLowerCase())
+      .map(normalizeIcdTerm),
+  );
+  return abbreviations.has(word);
 }
 
 type FormHit = { form: SpokenForm; direct: boolean };
@@ -368,7 +443,7 @@ function matchForm(key: readonly string[], q: readonly Token[]): number[] | null
  * inside it would otherwise add acute stroke codes to a sequelae query.
  */
 function findSpokenForms(query: Token[]): FormHit[] {
-  const q = significantTokens(query);
+  const q = formTokens(query);
   const found: { form: SpokenForm; at: number[] }[] = [];
   for (const f of getForms()) {
     if (f.stems.length === 0 || f.stems.length > q.length) continue;
@@ -599,6 +674,8 @@ type Scored = {
   code: string;
   score: number;
   full: boolean;
+  /** Raised by a code a spoken form names: a curated pick, never held back. */
+  named: boolean;
   /** A partial match that found only region words (see `REGION_STEMS`). */
   regionOnly: boolean;
   /**
@@ -716,6 +793,7 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
         code: row.code,
         score,
         full,
+        named: false,
         regionOnly,
         demoted,
       });
@@ -765,17 +843,19 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
       : { score: 0, full: false, regionOnly: false, loose: false };
   // A code the doctor's phrase stands for is what he meant, tumour or not:
   // it is never held back with the demoted rows.
-  const raise = (row: Indexed, score: number) => {
+  const raise = (row: Indexed, score: number, named: boolean) => {
     const existing = scored.get(row.code);
     if (existing) {
       existing.score = Math.max(existing.score, score);
       existing.demoted = false;
+      existing.named ||= named;
     } else {
       scored.set(row.code, {
         entry: row.entry,
         code: row.code,
         score,
         full: false,
+        named,
         regionOnly: false,
         demoted: false,
       });
@@ -796,9 +876,9 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
       if (!row) return;
       const order = codes.length - i;
       const lit = literal(row);
-      if (lit.full) raise(row, BAND.promoted + order);
-      else if (direct) raise(row, BAND.spokenCode + order);
-      else raise(row, BAND.spokenInside + lit.score + order / 10);
+      if (lit.full) raise(row, BAND.promoted + order, true);
+      else if (direct) raise(row, BAND.spokenCode + order, true);
+      else raise(row, BAND.spokenInside + lit.score + order / 10, true);
     });
     for (const phrase of form.phrases ?? []) {
       const need = significantTokens(tokenize(normalizeIcdTerm(phrase)));
@@ -809,18 +889,63 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
         raise(
           row,
           direct ? BAND.spokenPhrase + lit.score / 10 : BAND.spokenInside + lit.score,
+          false,
         );
       }
     }
   }
 
-  return [...scored.values()]
-    .sort(
-      (a, b) =>
-        Number(a.demoted) - Number(b.demoted) ||
-        b.score - a.score ||
-        a.code.localeCompare(b.code),
-    )
+  const ranked = [...scored.values()].sort(
+    (a, b) =>
+      Number(a.demoted) - Number(b.demoted) ||
+      b.score - a.score ||
+      a.code.localeCompare(b.code),
+  );
+  return spreadSiblings(ranked)
     .slice(0, limit)
     .map((s) => s.entry);
+}
+
+/**
+ * How many rubrics of one category the literal full matches show before
+ * every other category that matched has had its turn.
+ */
+const MAX_SIBLINGS = 3;
+
+/**
+ * A category whose leaves repeat its own words fills the typeahead on its
+ * own (CT-02 review): «сахарный диабет» matches all ten E12 leaves word for
+ * word, they tie, and the code order put them ahead of every other kind of
+ * diabetes. So among the literal full matches that are not a curated pick,
+ * a category's fourth and later rubrics wait until the other categories of
+ * that run have shown theirs; they stay above every weaker band. Picks count
+ * towards their category, so two named E11 codes leave room for one more.
+ * A code the doctor typed («E11») and a partial match (where the named
+ * category's siblings are the point, see the region rule) are left as
+ * ranked.
+ */
+function spreadSiblings(ranked: Scored[]): Scored[] {
+  const seen = new Map<string, number>();
+  const capped = (s: Scored) =>
+    s.full && !s.named && !s.demoted && s.score < BAND.codePrefix;
+  const out: Scored[] = [];
+  let kept: Scored[] = [];
+  let held: Scored[] = [];
+  const flush = () => {
+    out.push(...kept, ...held);
+    kept = [];
+    held = [];
+  };
+  for (const s of ranked) {
+    const category = s.code.split(".")[0]!;
+    const n = (seen.get(category) ?? 0) + 1;
+    seen.set(category, n);
+    if (!capped(s)) {
+      flush();
+      out.push(s);
+    } else if (n > MAX_SIBLINGS) held.push(s);
+    else kept.push(s);
+  }
+  flush();
+  return out;
 }

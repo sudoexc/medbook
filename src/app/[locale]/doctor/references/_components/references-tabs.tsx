@@ -8,7 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DrugBrowser } from "./drug-browser";
 import { Icd10Browser } from "./icd10-browser";
 
-export function ReferencesTabs() {
+export function ReferencesTabs({
+  icdChapterCounts,
+}: {
+  /** Codes per ICD-10 chapter, counted on the server (the catalog stays there). */
+  icdChapterCounts: Record<string, number>;
+}) {
   const t = useTranslations("doctor.references");
   return (
     <Tabs defaultValue="diseases" className="gap-4">
@@ -23,7 +28,7 @@ export function ReferencesTabs() {
         </TabsTrigger>
       </TabsList>
       <TabsContent value="diseases">
-        <Icd10Browser />
+        <Icd10Browser chapterCounts={icdChapterCounts} />
       </TabsContent>
       <TabsContent value="drugs">
         <DrugBrowser />

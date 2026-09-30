@@ -98,19 +98,23 @@ function atcOf(d: DuplicateDrug): string {
   return d.atcCode?.trim().toUpperCase() ?? "";
 }
 
-/** The classes a drug counts in for the duplicate check, with their titles. */
+/**
+ * The classes a drug counts in for the duplicate check. `title` opens the
+ * warning, which then names the two drugs: «Два препарата класса «НПВС»:
+ * Ибупрофен и Диклофенак» (audit G4-05).
+ */
 export function duplicateClassesOf(
   d: DuplicateDrug,
 ): { key: string; title: string }[] {
   const out = DUPLICATE_CLASSES.filter((c) => drugInClass(d, c.cls)).map((c) => ({
     key: c.key,
-    title: `Один класс: ${c.labelRu}`,
+    title: `Два препарата класса «${c.labelRu}»`,
   }));
   const atc = atcOf(d);
   // «N03AX», «N06BX»: residual groups of unrelated drugs, not a class.
   if (atc.length >= 5 && atc[4] !== "X") {
     const l4 = atc.slice(0, 5);
-    out.push({ key: `atc:${l4}`, title: `Один класс ATC: ${l4}` });
+    out.push({ key: `atc:${l4}`, title: `Два препарата одной группы ATC ${l4}` });
   }
   return out;
 }

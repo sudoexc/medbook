@@ -455,6 +455,7 @@ describe("medication bridge — reconciliation on re-run", () => {
       patientId: "p1",
       doctorId: "doc_1",
       finalizedAt: new Date("2026-08-20T06:00:00.000Z"),
+      updatedAt: new Date("2026-08-20T06:05:00.000Z"),
       followUpDays: null,
       followUpDate: null,
       followUpNote: null,
@@ -583,14 +584,28 @@ describe("medication bridge — reconciliation on re-run", () => {
   it("re-stamps medicationsBridgedAt so the note leaves the sweep again", async () => {
     vi.resetModules();
     const mod = await import("@/server/workers/visit-note-handout");
+    const { prisma } = await import("@/lib/prisma");
+    const raw = prisma.$executeRaw as unknown as ReturnType<typeof vi.fn>;
+    raw.mockClear();
     state.bridgeNotes = [bridgeNote([{ ...RX_BASE, sortOrder: 0 }])];
 
     const now = new Date("2026-08-20T10:00:00.000Z");
     const out = await mod.runMedicationBridgeTick(now);
 
     expect(out.bridged).toBe(1);
-    expect(state.bridgeStamps).toHaveLength(1);
-    expect(state.bridgeStamps[0].medicationsBridgedAt).toEqual(now);
+    // Audit VW-08: raw SQL, never visitNote.update, which would bump
+    // updatedAt and make the doctor's next correction a false 409.
+    expect(state.bridgeStamps).toHaveLength(0);
+    const stamp = raw.mock.calls.find(([sql]) =>
+      (sql as TemplateStringsArray).join("?").includes('"medicationsBridgedAt"'),
+    );
+    expect(stamp).toBeDefined();
+    const sql = (stamp![0] as TemplateStringsArray).join("?");
+    expect(sql).toMatch(/SET "medicationsBridgedAt" = \?/);
+    expect(sql).not.toMatch(/SET[^W]*"updatedAt"/);
+    // Only on the version it read: a correction mid-pass keeps it in the sweep.
+    expect(sql).toMatch(/WHERE "id" = \? AND "updatedAt" = \?/);
+    expect(stamp!.slice(1)).toEqual([now, "vn_1", new Date("2026-08-20T06:05:00.000Z")]);
   });
 
   // Audit AC-03: the control-visit call is written once and never refreshed,

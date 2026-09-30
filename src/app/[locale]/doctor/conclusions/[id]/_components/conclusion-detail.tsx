@@ -52,6 +52,7 @@ import {
 } from "../../../_components/diagnosis-follow-up-cards";
 import { PrescriptionConstructor } from "../../../reception/_components/prescription-constructor";
 import { AmendmentsSection } from "./amendments-section";
+import { DiagnosisHeading } from "./diagnosis-heading";
 import { RevisionsSection } from "./revisions-section";
 import { TelegramSendPanel } from "../../../_components/telegram-send-panel";
 
@@ -293,13 +294,11 @@ export function ConclusionDetail({
             <FileTextIcon className="size-5" />
           </span>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-foreground">
-              {/* Free text counts: keying the header off the code alone showed
-                  «Без диагноза» on conclusions that carry one in words. */}
-              {[note.diagnosisCode, note.diagnosisName]
-                .filter((v) => Boolean(v && v.trim()))
-                .join(" · ") || tr("noDiagnosis")}
-            </div>
+            <DiagnosisHeading
+              diagnosisCode={note.diagnosisCode}
+              diagnosisName={note.diagnosisName}
+              additionalDiagnoses={note.additionalDiagnoses}
+            />
             <div className="text-xs text-muted-foreground">
               {note.status === "FINALIZED"
                 ? tr("detail.finalizedAt", { date: formatDateTime(note.finalizedAt) })

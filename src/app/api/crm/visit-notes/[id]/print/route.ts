@@ -26,6 +26,8 @@ import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+import { composedHandoutLocale } from "@/lib/catalogs/handout-composer";
+import { composeNoteHandout } from "@/server/visit-notes/handout";
 import { followUpDue, formatFollowUpLine } from "@/lib/visit-follow-up";
 import { mintOrReuseInviteUrl } from "@/server/telegram/invite-token";
 import {
@@ -843,8 +845,38 @@ export const GET = createApiListHandler(
               "Памятка ещё не сформирована. На экране приёма нажмите «Сформировать», затем повторите печать.",
           };
 
-    const handoutBody = note.patientHandoutMarkdown?.trim()
-      ? renderHandoutHtml(note.patientHandoutMarkdown)
+    // The handout is stored in the patient's language (audit VW-07). Printed
+    // in the other one from the print bar, it is composed again in that one,
+    // so its text follows the headings instead of staying in the stored
+    // language under them. Text the composer did not write prints as stored.
+    const storedHandout = note.patientHandoutMarkdown?.trim()
+      ? note.patientHandoutMarkdown
+      : null;
+    const storedLocale = composedHandoutLocale(storedHandout);
+    const handoutMarkdown =
+      storedHandout && storedLocale && storedLocale !== locale
+        ? (composeNoteHandout(
+            {
+              patient: note.patient,
+              doctor: note.doctor,
+              clinic,
+              appointment: note.appointment,
+            },
+            {
+              diagnosisName: note.diagnosisName,
+              additionalDiagnoses: note.additionalDiagnoses,
+              complaints: note.complaints,
+              prescriptions: note.prescriptions,
+              advice: note.advice,
+              followUpNote: note.followUpNote,
+              visitPrescriptions: note.visitPrescriptions,
+            },
+            new Date(),
+            locale,
+          ) ?? storedHandout)
+        : storedHandout;
+    const handoutBody = handoutMarkdown
+      ? renderHandoutHtml(handoutMarkdown)
       : `<p class="empty">${escapeHtml(handoutLabels.emptyHint)}</p>`;
 
     const handoutGridSection = medGridTable

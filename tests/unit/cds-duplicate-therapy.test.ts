@@ -151,15 +151,26 @@ describe("real duplicates still warn", () => {
   });
 
   it.each([
-    ["ibuprofen", "diclofenac", "Один класс: НПВС"],
-    ["nimesulide", "diclofenac", "Один класс: НПВС"],
-    ["eletriptan", "sumatriptan", "Один класс: триптаны"],
-    ["simvastatin", "atorvastatin", "Один класс: статины"],
-    ["warfarin", "rivaroxaban", "Один класс: антикоагулянты"],
+    ["ibuprofen", "diclofenac", "Два препарата класса «НПВС»: Ибупрофен и Диклофенак"],
+    ["nimesulide", "diclofenac", "Два препарата класса «НПВС»: Нимесулид и Диклофенак"],
+    ["eletriptan", "sumatriptan", "Два препарата класса «триптаны»: Элетриптан и Суматриптан"],
+    ["simvastatin", "atorvastatin", "Два препарата класса «статины»: Симвастатин и Аторвастатин"],
+    ["warfarin", "rivaroxaban", "Два препарата класса «антикоагулянты»: Варфарин и Ривароксабан"],
   ])("%s + %s → %s", async (a, b, title) => {
     const r = await check([a, b]);
     expect(dups(r).map((w) => w.title)).toEqual([title]);
     expect(dups(r)[0]!.severity).toBe("MODERATE");
+  });
+
+  // Audit G4-05: «Один класс ATC: N03AX» three times named no drug, and
+  // the three lines shared one key.
+  it("three of one class: a line per pair, each naming its pair", async () => {
+    const r = await check(["ibuprofen", "diclofenac", "nimesulide"]);
+    expect(dups(r).map((w) => w.title)).toEqual([
+      "Два препарата класса «НПВС»: Ибупрофен и Диклофенак",
+      "Два препарата класса «НПВС»: Ибупрофен и Нимесулид",
+      "Два препарата класса «НПВС»: Диклофенак и Нимесулид",
+    ]);
   });
 
   it("a plain ATC level 4 group still counts", () => {
@@ -168,7 +179,7 @@ describe("real duplicates still warn", () => {
         { id: "a", inn: "a", nameRu: "A", atcCode: "C03CA01" },
         { id: "b", inn: "b", nameRu: "B", atcCode: "C03CA04" },
       )?.title,
-    ).toBe("Один класс ATC: C03CA");
+    ).toBe("Два препарата одной группы ATC C03CA");
   });
 });
 

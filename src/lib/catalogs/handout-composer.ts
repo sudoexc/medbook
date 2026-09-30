@@ -153,6 +153,21 @@ const STRINGS = {
 export type HandoutGuideSection = keyof HandoutGuideBlocks;
 
 /**
+ * The language a composed handout is in, read from its title line; null for
+ * text this composer did not write. Lets the print recompose the handout in
+ * the language picked on the print bar instead of printing a Russian body
+ * under Uzbek headings (audit VW-07).
+ */
+export function composedHandoutLocale(
+  markdown: string | null | undefined,
+): HandoutLocale | null {
+  const first = markdown?.trimStart().split("\n", 1)[0]?.trim();
+  if (first === STRINGS.ru.title) return "ru";
+  if (first === STRINGS.uz.title) return "uz";
+  return null;
+}
+
+/**
  * Bold Markdown header for a guide section — exported so the guide card's
  * per-section «Вставить в памятку» writes the exact same header the full
  * composer would, keeping mixed documents consistent.

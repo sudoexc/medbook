@@ -7,6 +7,7 @@ import { Reviews } from "@/components/sections/reviews";
 import { Cta } from "@/components/sections/cta";
 import { Faq } from "@/components/sections/faq";
 import { getDoctors } from "@/lib/doctors";
+import { getSitePriceSheet } from "@/lib/site-prices";
 import { serializeJsonLd } from "@/lib/json-ld";
 import ruMessages from "@/messages/ru.json";
 import uzMessages from "@/messages/uz.json";
@@ -20,7 +21,11 @@ export default async function Home({
 }) {
   const { locale } = await params;
   const faq = msgs[locale]?.faq || msgs.ru.faq;
-  const doctors = await getDoctors();
+  // Prices from the CRM catalog, not the message files (audit LD-07).
+  const [doctors, priceSheet] = await Promise.all([
+    getDoctors(),
+    getSitePriceSheet(),
+  ]);
 
   const faqJsonLd = {
     "@context": "https://schema.org",
@@ -47,7 +52,7 @@ export default async function Home({
       <Visit />
       <TelegramShowcase />
       <Doctors doctors={doctors} />
-      <Services />
+      <Services sheet={priceSheet} />
       <Reviews />
       <Faq />
       <Cta />

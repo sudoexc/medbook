@@ -20,6 +20,7 @@ const state = vi.hoisted(() => ({
   },
   messages: [] as Array<Record<string, unknown>>,
   convUpdates: [] as Array<Record<string, unknown>>,
+  awaitMarks: [] as Array<{ where: Record<string, unknown>; data: Record<string, unknown> }>,
   events: [] as Array<{ type: string; payload: Record<string, unknown> }>,
   doctor: null as null | { userId: string; doctorId: string; lang: "ru" },
 }));
@@ -40,6 +41,12 @@ vi.mock("@/lib/prisma", () => ({
         state.convUpdates.push(args.data);
         return {};
       }),
+      updateMany: vi.fn(
+        async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          state.awaitMarks.push(args);
+          return { count: 1 };
+        },
+      ),
     },
     message: {
       create: vi.fn(async (args: { data: Record<string, unknown> }) => {
@@ -142,6 +149,7 @@ async function send(message: Record<string, unknown>) {
 beforeEach(() => {
   state.messages = [];
   state.convUpdates = [];
+  state.awaitMarks = [];
   state.events = [];
   state.doctor = null;
   vi.mocked(handleDoctorVoice).mockClear();
@@ -216,5 +224,36 @@ describe("TG webhook — a doctor's voice dictation", () => {
     });
     expect(state.messages[0]!.body).toBe("🎤 Диктовка врача");
     expect(state.messages[0]!.attachments).toBeNull();
+  });
+});
+
+describe("TG webhook — «Неотвеченные» (audit G6-03)", () => {
+  const marks = () =>
+    state.awaitMarks.filter((u) => "awaitingReplySince" in u.data);
+
+  it("a patient's question puts the thread in the tab, from its first message", async () => {
+    await send({ text: "Можно перенести на завтра?" });
+    expect(marks()).toEqual([
+      {
+        where: { id: "conv_1", awaitingReplySince: null },
+        data: { awaitingReplySince: expect.any(Date) },
+      },
+    ]);
+  });
+
+  it("a voice note waits for a person too", async () => {
+    await send({
+      voice: { file_id: "v2", file_unique_id: "u2", duration: 5, mime_type: "audio/ogg" },
+    });
+    expect(marks()).toHaveLength(1);
+  });
+
+  it("/start and a doctor's dictation wait for nobody", async () => {
+    await send({ text: "/start" });
+    state.doctor = { userId: "u_doc", doctorId: "d_doc", lang: "ru" };
+    await send({
+      voice: { file_id: "v3", file_unique_id: "u3", duration: 30, mime_type: "audio/ogg" },
+    });
+    expect(marks()).toEqual([]);
   });
 });

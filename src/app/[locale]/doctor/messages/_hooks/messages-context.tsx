@@ -59,14 +59,28 @@ export function MessagesProvider({
         : null,
   });
 
+  // «Открыть» on a Telegram alert lands here with `?conv=<id>` (audit
+  // DC-04). The provider used to read only `patientId`, so the button opened
+  // an inbox with no thread selected. The param is stripped once read, like
+  // `patientId` below, so picking another thread is not undone.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  React.useEffect(() => {
+    const conv = searchParams.get("conv");
+    if (!conv) return;
+    setSelectedId(conv);
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("conv");
+    const qs = next.toString();
+    router.replace(qs ? `?${qs}` : "?", { scroll: false });
+  }, [searchParams, router]);
+
   // Deep-link autoselect: when the messages page is opened with
   // `?patientId=<id>` (e.g. from the patients table «Написать» button or
   // the patient detail page), resolve that patient to a conversation via
   // the find-or-create endpoint and select it. The patientId param is then
   // stripped from the URL so a manual reselect doesn't keep reopening the
   // same thread.
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const autoselectedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     const patientId = searchParams.get("patientId");

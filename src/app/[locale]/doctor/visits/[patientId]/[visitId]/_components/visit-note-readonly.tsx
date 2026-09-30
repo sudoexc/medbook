@@ -1,6 +1,7 @@
 import { CalendarIcon, ClockIcon, SparklesIcon } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 
+import { formatDate, type Locale } from "@/lib/format";
 import { visitDiagnosesOf, type VisitDiagnosis } from "@/lib/visit-diagnoses";
 
 type Note = {
@@ -27,33 +28,15 @@ type Note = {
   } | null;
 };
 
-const RU_MONTHS = [
-  "января",
-  "февраля",
-  "марта",
-  "апреля",
-  "мая",
-  "июня",
-  "июля",
-  "августа",
-  "сентября",
-  "октября",
-  "ноября",
-  "декабря",
-];
-
-function ruDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getDate()} ${RU_MONTHS[d.getMonth()] ?? ""} ${d.getFullYear()}`;
-}
-
-function hhmm(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
 export async function VisitNoteReadOnly({ note }: { note: Note }) {
   const t = await getTranslations("doctor.visits");
+  // A server component: `getHours()` here reads the server's zone, which is
+  // UTC in production, so a 10:00 visit showed 05:00 and a note signed at
+  // 01:30 showed the day before (audit UX-05). formatDate pins the clinic's
+  // zone, and the month names follow the doctor's language.
+  const locale: Locale = (await getLocale()) === "uz" ? "uz" : "ru";
+  const day = (iso: string) => formatDate(iso, locale, "long");
+  const hhmm = (iso: string) => formatDate(iso, locale, "time");
   const appt = note.appointment;
   // Saving settles the set so the main one is always first; reading it by
   // position keeps every diagnosis on screen even for a hand-made row.
@@ -65,7 +48,7 @@ export async function VisitNoteReadOnly({ note }: { note: Note }) {
           {appt && (
             <>
               <Meta icon={<CalendarIcon className="size-4" />} label={t("note.date")}>
-                {ruDate(appt.date)}
+                {day(appt.date)}
               </Meta>
               <Meta icon={<ClockIcon className="size-4" />} label={t("note.time")}>
                 {hhmm(appt.date)}–{hhmm(appt.endDate)}
@@ -77,7 +60,7 @@ export async function VisitNoteReadOnly({ note }: { note: Note }) {
           )}
           {note.finalizedAt && (
             <Meta label={t("note.finalizedAt")}>
-              {ruDate(note.finalizedAt)} · {hhmm(note.finalizedAt)}
+              {day(note.finalizedAt)} · {hhmm(note.finalizedAt)}
             </Meta>
           )}
           {note.aiGenerated && (

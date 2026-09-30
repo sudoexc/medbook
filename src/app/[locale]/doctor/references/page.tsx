@@ -1,5 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
+import { icd10ChapterCounts } from "@/server/icd10/chapters";
+
 import { ReferencesTabs } from "./_components/references-tabs";
 
 export default async function ReferencesPage() {
@@ -17,7 +19,7 @@ export default async function ReferencesPage() {
         </div>
       </div>
 
-      <ReferencesTabs />
+      <ReferencesTabs icdChapterCounts={icd10ChapterCounts()} />
     </div>
   );
 }

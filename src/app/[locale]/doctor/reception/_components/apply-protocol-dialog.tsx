@@ -3,28 +3,31 @@
 /**
  * Phase G2 / Ф3 — protocol apply dialog.
  *
- * Shows the protocol's full bundle (complaints/anamnesis/exam/prescriptions/
- * advice + recommended labs + conclusion preview) before the doctor commits.
- * Ф3: structured `prescriptionItems` render via the shared line formatter;
- * the legacy free-text lines show only when there are no structured items —
- * mirroring the apply semantics. On confirm: merges each template array into
- * the corresponding visit-note field (preserving existing chips, no
- * duplicates), appends structured rows to the prescription constructor, and
- * appends the conclusion markdown to the editor body.
+ * Shows exactly what «Применить» adds to the visit (handleApplyProtocol in
+ * structured-fields-panel.tsx), and nothing else:
+ *   - the prescriptions: structured `prescriptionItems` via the shared line
+ *     formatter, or the legacy free-text lines when there are none;
+ *   - the advice lines;
+ *   - the control visit, only while the doctor has not set one himself
+ *     (his own plan is never replaced);
+ *   - the conclusion text, appended to the editor.
+ * Existing prescriptions and advice are kept and never duplicated.
+ *
+ * It used to preview the protocol's complaints, anamnesis, examination and
+ * recommended labs too (audit VW-12). None of them is applied: the visit
+ * screen has no such fields any more and there is no lab module. The doctor
+ * saw them, pressed «Применить» and looked for them in vain.
  */
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   CalendarClockIcon,
   CheckIcon,
-  ClipboardListIcon,
   FileTextIcon,
   PillIcon,
-  ScrollTextIcon,
   SparklesIcon,
-  StethoscopeIcon,
-  TestTube2Icon,
   WandSparklesIcon,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -48,6 +51,8 @@ type Props = {
   onOpenChange: (next: boolean) => void;
   protocol: ClinicalProtocolRow | null;
   onApply: (protocol: ClinicalProtocolRow) => void;
+  /** The visit already has a control visit: the protocol's is not applied. */
+  followUpSet?: boolean;
 };
 
 export function ApplyProtocolDialog({
@@ -55,6 +60,7 @@ export function ApplyProtocolDialog({
   onOpenChange,
   protocol,
   onApply,
+  followUpSet = false,
 }: Props) {
   const t = useTranslations("doctor.receptionDialogs");
   const locale = useLocale() === "uz" ? "uz" : "ru";
@@ -103,21 +109,6 @@ export function ApplyProtocolDialog({
         </DialogHeader>
 
         <div className="max-h-[55vh] space-y-3 overflow-y-auto border-y px-5 py-3 text-xs">
-          <PreviewSection
-            Icon={ClipboardListIcon}
-            label={t("applyProtocol.sections.complaints")}
-            items={protocol.complaintsTemplate}
-          />
-          <PreviewSection
-            Icon={ScrollTextIcon}
-            label={t("applyProtocol.sections.anamnesis")}
-            items={protocol.anamnesisTemplate}
-          />
-          <PreviewSection
-            Icon={StethoscopeIcon}
-            label={t("applyProtocol.sections.examination")}
-            items={protocol.examinationTemplate}
-          />
           {itemLines.length > 0 ? (
             <PreviewSection
               Icon={PillIcon}
@@ -137,15 +128,7 @@ export function ApplyProtocolDialog({
             label={t("applyProtocol.sections.advice")}
             items={protocol.adviceTemplate}
           />
-          {protocol.recommendedLabs.length > 0 ? (
-            <PreviewSection
-              Icon={TestTube2Icon}
-              label={t("applyProtocol.sections.recommendedLabs")}
-              items={protocol.recommendedLabs}
-              hint={t("applyProtocol.labsHint")}
-            />
-          ) : null}
-          {protocol.followUpDays ? (
+          {protocol.followUpDays && !followUpSet ? (
             <div className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
               <CalendarClockIcon className="size-3" />
               {t("applyProtocol.followUp", { days: protocol.followUpDays })}
@@ -189,7 +172,7 @@ function PreviewSection({
   items,
   hint,
 }: {
-  Icon: typeof ClipboardListIcon;
+  Icon: LucideIcon;
   label: string;
   items: string[];
   hint?: string;

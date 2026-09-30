@@ -2201,7 +2201,7 @@
   },
   "services": {
     "title": "Xizmatlar va narxlar",
-    "subtitle": "Narxlar jadvali, 18.05.2026 dan",
+    "subtitle": "Narxlar jadvali, {date} dan",
     "sum": "so'm",
     "groups": {
       "consultations": {
@@ -2209,23 +2209,19 @@
         "items": [
           {
             "name": "Nevrolog konsultatsiyasi",
-            "note": "Busakov Baxtiyor · 8:00 dan 17:00 gacha",
-            "price": "300 000"
+            "note": "Busakov Baxtiyor · 8:00 dan 17:00 gacha"
           },
           {
             "name": "Nevrolog konsultatsiyasi",
-            "note": "Sultonov Aziz · 8:30 dan 17:00 gacha",
-            "price": "200 000"
+            "note": "Sultonov Aziz · 8:30 dan 17:00 gacha"
           },
           {
             "name": "Bolalar nevrologi va pediatr",
-            "note": "9:00 dan 15:00 gacha",
-            "price": "200 000"
+            "note": "9:00 dan 15:00 gacha"
           },
           {
             "name": "Kardiolog konsultatsiyasi",
-            "note": "9:00 dan 13:00 gacha",
-            "price": "200 000"
+            "note": "9:00 dan 13:00 gacha"
           }
         ]
       },
@@ -2234,45 +2230,36 @@
         "items": [
           {
             "name": "EEG",
-            "note": "elektroensefalogramma",
-            "price": "150 000"
+            "note": "elektroensefalogramma"
           },
           {
-            "name": "Uyqudagi EEG va 6 yoshgacha bolalar",
-            "price": "200 000"
+            "name": "Uyqudagi EEG va 6 yoshgacha bolalar"
           },
           {
-            "name": "Uyqudagi EEG, 1 soat",
-            "price": "300 000"
+            "name": "Uyqudagi EEG, 1 soat"
           },
           {
             "name": "ReoEG",
-            "note": "reoensefalografiya",
-            "price": "100 000"
+            "note": "reoensefalografiya"
           },
           {
             "name": "ExoEG",
-            "note": "exoensefalografiya",
-            "price": "50 000"
+            "note": "exoensefalografiya"
           },
           {
-            "name": "EKG",
-            "price": "70 000"
+            "name": "EKG"
           },
           {
             "name": "ExoKG",
-            "note": "yurak UZI",
-            "price": "150 000"
+            "note": "yurak UZI"
           },
           {
             "name": "Doppler BSA",
-            "note": "bo'yin tomirlari UZI",
-            "price": "150 000"
+            "note": "bo'yin tomirlari UZI"
           },
           {
             "name": "Bitta organ UZI / neyrosonografiya",
-            "note": "10:00 dan 14:00 gacha",
-            "price": "80 000"
+            "note": "10:00 dan 14:00 gacha"
           }
         ]
       }
@@ -3308,6 +3295,7 @@
       "call": "Qo'ng'iroq qilish",
       "moreMenu": "Suhbat amallari",
       "markRead": "O'qilgan deb belgilash",
+      "markAnswered": "Javob shart emas",
       "noMessages": "Tarix bo'sh",
       "today": "Bugun",
       "yesterday": "Kecha",
@@ -3544,6 +3532,13 @@
       "audio": "Audio",
       "download": "Yuklab olish",
       "unfilledPlaceholders": "Matnda ma'lumotsiz shablon maydonlari qoldi: {fields}. Ularni matn bilan almashtirib, qayta yuboring.",
+      "sending": "Yuborilmoqda",
+      "retry": "Qayta yuborish",
+      "retryFailed": "Qayta yuborib bo'lmadi. Yana urinib ko'ring.",
+      "origin": {
+        "broadcast": "Tarqatma",
+        "notification": "Bildirishnoma"
+      },
       "failed": {
         "title": "Yetkazilmadi",
         "toast": "Xabar yetkazilmadi: {reason}",
@@ -3551,6 +3546,7 @@
         "tg_not_started": "bemor bot bilan chatni hali boshlamagan",
         "no_telegram": "bemorda Telegram yo'q",
         "tg_error": "Telegram xabarni qabul qilmadi",
+        "tg_timeout": "Telegram o'z vaqtida javob bermadi, xabar yetib borgan bo'lishi mumkin. Qayta yuborishdan oldin bemordan aniqlang",
         "channel_unavailable": "bu suhbat kanali endi ishlamaydi",
         "bot_not_connected": "klinika boti Telegramga ulanmagan",
         "not_sent": "xabar Telegramga yuborilmagan",

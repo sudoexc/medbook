@@ -9,6 +9,8 @@ const FAILED_REASONS = new Set([
   "tg_not_started",
   "no_telegram",
   "tg_error",
+  // No answer from Telegram, the message may have arrived (audit TG-17).
+  "tg_timeout",
   "channel_unavailable",
   "bot_not_connected",
   "not_sent",

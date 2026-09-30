@@ -40,15 +40,20 @@ type Temperature = "hot" | "warm" | "cold";
 type TempFilter = "all" | Temperature;
 const TEMP_FILTERS: TempFilter[] = ["all", "hot", "warm", "cold"];
 
-const HOT_MAX_MIN = 120; // unread + last activity within 2h → needs reply now
+const HOT_MAX_MIN = 120; // waiting for a reply + last activity within 2h → needs reply now
 const WARM_MAX_MIN = 24 * 60; // activity within a day → still warm
 
-/** Lead-urgency heuristic from unread + recency (client-side triage). */
+/**
+ * Lead-urgency heuristic from «waiting for a reply» + recency (client-side
+ * triage). Waiting, not unread: an open chat is read at once (G6-05) while
+ * the question in it is still unanswered (G6-03).
+ */
 function temperatureOf(row: InboxConversation, now: number): Temperature {
   const last = row.lastMessageAt ? new Date(row.lastMessageAt).getTime() : 0;
   const ageMin = last ? (now - last) / 60_000 : Number.POSITIVE_INFINITY;
-  if (row.unreadCount > 0 && ageMin <= HOT_MAX_MIN) return "hot";
-  if (row.unreadCount > 0 || ageMin <= WARM_MAX_MIN) return "warm";
+  const waiting = Boolean(row.awaitingReplySince);
+  if (waiting && ageMin <= HOT_MAX_MIN) return "hot";
+  if (waiting || ageMin <= WARM_MAX_MIN) return "warm";
   return "cold";
 }
 
@@ -60,7 +65,7 @@ const TEMP_DOT: Record<TempFilter, string> = {
 };
 
 function tabFromFilters(f: ConversationFilters): InboxTab {
-  if (f.unreadOnly) return "unanswered";
+  if (f.unanswered) return "unanswered";
   if (f.mode === "takeover") return "active";
   return "all";
 }
@@ -108,9 +113,9 @@ export function ConversationList({
     f === "all" ? rows.length : tempCounts[f];
 
   const setTab = (tab: InboxTab) => {
-    if (tab === "unanswered") setFilters({ unreadOnly: true, mode: "all" });
-    else if (tab === "active") setFilters({ mode: "takeover", unreadOnly: false });
-    else setFilters({ mode: "all", unreadOnly: false });
+    if (tab === "unanswered") setFilters({ unanswered: true, mode: "all" });
+    else if (tab === "active") setFilters({ mode: "takeover", unanswered: false });
+    else setFilters({ mode: "all", unanswered: false });
   };
 
   const scrollRef = React.useRef<HTMLDivElement | null>(null);

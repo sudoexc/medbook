@@ -56,7 +56,7 @@ import {
 } from "@/components/appointments/phone-owner-prompt";
 
 import type { InboxConversation, InboxMessage } from "../_hooks/types";
-import { conversationsKey } from "../_hooks/use-conversations";
+import { invalidateConversationCaches } from "../_hooks/use-conversations";
 import { useUpdateConversationMeta } from "../_hooks/use-conversation-meta";
 import { flattenMessages, useTgMessages } from "../_hooks/use-tg-messages";
 import { useMarkConversationRead } from "../_hooks/use-mark-read";
@@ -1449,16 +1449,8 @@ function CreatePatientForm({
       // The card may have just learned the chat's Telegram: the rail must
       // not keep offering to bind it from a cached copy.
       void qc.invalidateQueries({ queryKey: ["patient-mini", id] });
-      void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
-      void qc.invalidateQueries({
-        queryKey: conversationsKey({
-          q: "",
-          mode: "all",
-          unreadOnly: false,
-          patientId: null,
-          assignee: "all",
-        }),
-      });
+      // Every list page and the thread opened by id (G6-07).
+      invalidateConversationCaches(qc);
     },
     onError: (err) => {
       if (err instanceof PhoneOwnerMismatchError) {

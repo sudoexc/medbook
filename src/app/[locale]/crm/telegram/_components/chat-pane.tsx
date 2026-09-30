@@ -31,7 +31,13 @@ import {
   useTgMessages,
   useTgMessagesRealtime,
 } from "../_hooks/use-tg-messages";
-import { useMarkConversationRead } from "../_hooks/use-mark-read";
+import {
+  useMarkConversationAnswered,
+  useMarkConversationRead,
+} from "../_hooks/use-mark-read";
+import { useRetryMessage } from "../_hooks/use-send-message";
+import { usePageVisible } from "../_hooks/use-page-visible";
+import { createStickToBottom, readMarkKey } from "../_lib/open-chat";
 import { useChatFind } from "../_hooks/use-tg-events";
 import {
   useAssignees,
@@ -94,6 +100,8 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
   const messagesQuery = useTgMessages(conversation?.id ?? null);
   const messages = flattenMessages(messagesQuery.data?.pages);
   const markRead = useMarkConversationRead();
+  const markAnswered = useMarkConversationAnswered();
+  const retry = useRetryMessage();
   const [showScrollDown, setShowScrollDown] = React.useState(false);
 
   const conversationId = conversation?.id ?? null;
@@ -102,31 +110,58 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
   // the thread only refreshes on the 60s poll (the list updates separately via
   // useTgInboxAlerts, which is why the unread badge moved but the thread lagged).
   useTgMessagesRealtime(conversationId);
-  const unread = conversation?.unreadCount ?? 0;
-  const lastMarkedRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    if (!conversationId || unread <= 0) return;
-    if (lastMarkedRef.current === conversationId) return;
-    lastMarkedRef.current = conversationId;
-    markRead.mutate(conversationId);
-  }, [conversationId, unread, markRead]);
 
-  // Stick-to-bottom on new messages; preserve scroll when loading older.
-  const messageCountRef = React.useRef(messages.length);
+  // Read what arrives while the chat is open and the page is in front of the
+  // operator (audit G6-05): marking once per opening let the badge, the
+  // header counter and the other receptionists' view pile up «unread» for a
+  // conversation someone was reading.
+  const unread = conversation?.unreadCount ?? 0;
+  const pageVisible = usePageVisible();
+  const lastMarkedRef = React.useRef<string | null>(null);
+  const mark = markRead.mutate;
+  React.useEffect(() => {
+    const next = readMarkKey({
+      conversationId,
+      unread,
+      visible: pageVisible,
+      lastMarked: lastMarkedRef.current,
+    });
+    lastMarkedRef.current = next.key;
+    if (next.mark && conversationId) mark(conversationId);
+  }, [conversationId, unread, pageVisible, mark]);
+
+  // Open on the newest message and follow new ones while the operator is at
+  // the bottom (audit G6-06); history he scrolled up to stays put.
+  const [stick] = React.useState(createStickToBottom);
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  React.useLayoutEffect(() => {
+    stick.reset();
+    const el = scrollRef.current;
+    if (el) stick.onContentChange(el);
+  }, [conversationId, stick]);
+  const newestId = messages.length > 0 ? messages[messages.length - 1]!.id : null;
+  React.useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) stick.onContentChange(el);
+  }, [messages.length, newestId, stick]);
   React.useEffect(() => {
     const el = scrollRef.current;
+    const content = contentRef.current;
     if (!el) return;
-    const prev = messageCountRef.current;
-    messageCountRef.current = messages.length;
-    // If we only gained newer messages and user was near bottom, scroll down.
-    if (messages.length > prev) {
-      const nearBottom =
-        el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-      if (nearBottom) {
-        el.scrollTop = el.scrollHeight;
-      }
-    }
-  }, [messages.length]);
+    const onScroll = () => stick.onScroll(el);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    // Photos and voice players take their height once loaded: keep the
+    // newest message in view while following.
+    const ro =
+      content && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => stick.onContentChange(el))
+        : null;
+    if (ro && content) ro.observe(content);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro?.disconnect();
+    };
+  }, [conversationId, stick]);
 
   // Toggle the scroll-to-bottom FAB when the user has scrolled up far enough
   // that newer messages are off-screen. Guarded with functional setState so the
@@ -294,7 +329,7 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
                 <MoreVerticalIcon className="size-4" />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-44 p-1">
+            <PopoverContent align="end" className="w-52 p-1">
               <button
                 type="button"
                 onClick={() => markRead.mutate(conversation.id)}
@@ -302,6 +337,17 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
               >
                 {t("chat.markRead")}
               </button>
+              {/* A «Спасибо!» needs no answer: take the thread out of
+                  «Неотвеченные» without writing back (audit G6-03). */}
+              {conversation.awaitingReplySince ? (
+                <button
+                  type="button"
+                  onClick={() => markAnswered.mutate(conversation.id)}
+                  className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+                >
+                  {t("chat.markAnswered")}
+                </button>
+              ) : null}
             </PopoverContent>
           </Popover>
         </div>
@@ -313,6 +359,7 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto bg-muted/10 px-4 py-3"
       >
+        <div ref={contentRef}>
         {messagesQuery.isLoading ? (
           <div className="flex justify-center py-4 text-muted-foreground">
             <Loader2Icon className="size-4 animate-spin" />
@@ -350,12 +397,22 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
                     message={m}
                     groupStart={groupStart}
                     groupEnd={groupEnd}
+                    onRetry={(msg) =>
+                      retry.mutate({
+                        conversationId: msg.conversationId,
+                        messageId: msg.id,
+                      })
+                    }
+                    retrying={
+                      retry.isPending && retry.variables?.messageId === m.id
+                    }
                   />
                 </React.Fragment>
               );
             })}
           </>
         )}
+        </div>
       </div>
         {showScrollDown ? (
           <button

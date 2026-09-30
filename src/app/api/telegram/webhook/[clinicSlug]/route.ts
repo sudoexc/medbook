@@ -73,6 +73,10 @@ import {
 import { publishEventSafe } from "@/server/realtime/publish";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import {
+  inboundNeedsReply,
+  markAwaitingReply,
+} from "@/server/conversations/reply-state";
+import {
   readWelcomeConfig,
   type WelcomeConfig,
 } from "@/server/notifications/auto-messages";
@@ -302,6 +306,7 @@ async function recordIncoming(
 
     // Dedupe on (clinicId, externalId) — Telegram may retry a webhook.
     const externalId = String(message.message_id);
+    let stored = false;
     try {
       await prisma.message.create({
         data: {
@@ -314,10 +319,28 @@ async function recordIncoming(
           status: "DELIVERED",
         } as never,
       });
+      stored = true;
     } catch (e) {
       // Unique violation on (clinicId, externalId) means retry — ignore.
       const msg = e instanceof Error ? e.message : String(e);
       if (!/Unique constraint/i.test(msg)) throw e;
+    }
+
+    // «Неотвеченные» (audit G6-03): the thread waits for a person until
+    // staff answer. Only for a newly stored message, so a webhook retry of
+    // one that was already answered cannot put the thread back in the tab.
+    // Best effort: the message is saved, the inbox must still hear of it.
+    if (
+      stored &&
+      inboundNeedsReply({
+        text: message.text ?? null,
+        hasContact: Boolean(message.contact),
+        doctorDictation: opts.doctorDictation,
+      })
+    ) {
+      await markAwaitingReply(prisma, conv.id, now).catch((markErr: unknown) => {
+        console.warn(`[tg:webhook] awaiting-reply mark failed`, markErr);
+      });
     }
 
     return {

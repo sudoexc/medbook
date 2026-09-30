@@ -133,6 +133,10 @@ enum MessageDirection {
 
 enum MessageStatus {
   QUEUED
+  // In-flight claim for a staff message (audit TG-17): the send worker flips
+  // QUEUED→SENDING in one conditional update before the Telegram call, so a
+  // duplicate job or the stale-message sweep can never send it twice.
+  SENDING
   SENT
   DELIVERED
   READ
@@ -2598,6 +2602,12 @@ model Conversation {
   lastMessageAt    DateTime?
   lastMessageText  String?
   unreadCount      Int                  @default(0)
+  /// Oldest patient message still waiting for a staff reply (audit G6-03):
+  /// the inbox tab «Неотвеченные». Separate from `unreadCount`, which only
+  /// says nobody opened the chat: reading a question is not answering it.
+  /// Set by an inbound that needs a person, cleared by a staff reply that
+  /// reached the patient or by «Ответ не нужен».
+  awaitingReplySince DateTime?
   snoozedUntil     DateTime?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
@@ -2628,6 +2638,13 @@ model Message {
   failedReason   String?
   externalId     String?
   replyToId      String?
+  /// What an automatic outbound was (audit G6-08): `broadcast` (a campaign)
+  /// or `notification` (a reminder or other template the bot sent). Null
+  /// for the chat itself: patient, operator and bot dialogue.
+  origin         String?
+  /// The NotificationSend this row mirrors into the chat; unique so a
+  /// delivery is copied into the dialog once.
+  notificationSendId String?      @unique
   createdAt      DateTime         @default(now())
 
   @@unique([clinicId, externalId])

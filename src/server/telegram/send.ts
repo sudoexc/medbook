@@ -15,6 +15,9 @@
  *  - 5xx → exponential backoff.
  *  - Other non-2xx → throw with a readable message so the worker / caller
  *    can mark the message FAILED.
+ *  - A caller that must not duplicate a message (staff chat, TG-17) passes
+ *    `delivery: { retryUncertain: false }`: timeouts are then reported as
+ *    `TgUncertainSendError` instead of being sent again.
  *
  * This module deliberately has zero business logic: it is the pure I/O layer
  * for the state machine in `state.ts` and the adapter in
@@ -28,6 +31,7 @@
  * knowledge of the encryption at all.
  */
 import { readTgBotToken } from "@/server/crypto/secret-fields";
+import { TG_UNCERTAIN_MARKER } from "./send-errors";
 
 export type TgInlineButton = {
   text: string;
@@ -54,7 +58,70 @@ export type SendMessageOptions = {
   reply_markup?: TgReplyMarkup;
   reply_to_message_id?: number;
   disable_web_page_preview?: boolean;
+  /** How hard to try; not part of the Telegram payload. */
+  delivery?: TgDeliveryPolicy;
 };
+
+/**
+ * Retry policy for one call.
+ *
+ * The default retries every network failure: right for idempotent reads and
+ * for the bot's replies, wrong for a message a person wrote. A timeout or a
+ * dropped connection after the request left can mean Telegram already
+ * delivered it, and a retry then sends it twice (audit TG-17: patients got
+ * «Ждём вас в 15:00» two and three times). `retryUncertain: false` retries
+ * only failures where the request provably never reached Telegram (no
+ * connection, DNS), plus 429 and 5xx, and reports anything else as
+ * `TgUncertainSendError` so the caller can say «могло дойти» instead of
+ * guessing.
+ */
+export type TgDeliveryPolicy = {
+  retryUncertain?: boolean;
+  /** Per-attempt timeout; a slow proxy needs more than the 8s default. */
+  attemptTimeoutMs?: number;
+};
+
+/**
+ * The request may have reached Telegram but no answer came back (timeout,
+ * connection dropped mid-request). Whether the patient got the message is
+ * unknown.
+ */
+export class TgUncertainSendError extends Error {
+  constructor(method: string, cause: unknown) {
+    super(
+      `Telegram ${method} ${TG_UNCERTAIN_MARKER}: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+    this.name = "TgUncertainSendError";
+  }
+}
+
+/**
+ * Connection-phase failures: the request never left this box, so a retry
+ * cannot duplicate anything. Node's fetch (undici) reports them as
+ * `TypeError("fetch failed")` with the system error code on `cause`.
+ */
+const CONNECT_FAILURE_CODES = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+export function isConnectFailure(e: unknown): boolean {
+  const seen = new Set<unknown>();
+  let cur: unknown = e;
+  while (cur && typeof cur === "object" && !seen.has(cur)) {
+    seen.add(cur);
+    const code = (cur as { code?: unknown }).code;
+    if (typeof code === "string" && CONNECT_FAILURE_CODES.has(code)) return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
 
 export type TgClinicMinimal = {
   id: string;
@@ -94,12 +161,13 @@ async function tgCall<T>(
   token: string,
   method: string,
   payload: Record<string, unknown>,
+  timeoutMs: number = PER_ATTEMPT_TIMEOUT_MS,
 ): Promise<TgApiResponse<T>> {
   const res = await fetch(`${API_ROOT}/bot${token}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   // Telegram always returns JSON, even for errors.
   return (await res.json()) as TgApiResponse<T>;
@@ -128,14 +196,21 @@ async function tgCallWithBackoff<T>(
   token: string,
   method: string,
   payload: Record<string, unknown>,
+  policy: TgDeliveryPolicy = {},
 ): Promise<T> {
+  const retryUncertain = policy.retryUncertain ?? true;
   let lastErrDesc = "";
   let lastNetworkErr: unknown = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     let resp: TgApiResponse<T>;
     try {
-      resp = await tgCall<T>(token, method, payload);
+      resp = await tgCall<T>(token, method, payload, policy.attemptTimeoutMs);
     } catch (e) {
+      // The request may have been delivered: never repeat it for a caller
+      // that cannot afford a duplicate (audit TG-17).
+      if (!retryUncertain && !isConnectFailure(e)) {
+        throw new TgUncertainSendError(method, e);
+      }
       lastNetworkErr = e;
       if (attempt < MAX_ATTEMPTS - 1) {
         await sleep(backoffMs(attempt));
@@ -205,7 +280,12 @@ export async function sendMessage(
   };
   const token = readTgBotToken(clinic.tgBotToken);
   if (!token) return logNoop(clinic, "sendMessage", payload);
-  return tgCallWithBackoff<TgMessageResult>(token, "sendMessage", payload);
+  return tgCallWithBackoff<TgMessageResult>(
+    token,
+    "sendMessage",
+    payload,
+    opts.delivery,
+  );
 }
 
 /** Send a photo (by URL or file_id). */
@@ -225,7 +305,12 @@ export async function sendPhoto(
   };
   const token = readTgBotToken(clinic.tgBotToken);
   if (!token) return logNoop(clinic, "sendPhoto", payload);
-  return tgCallWithBackoff<TgMessageResult>(token, "sendPhoto", payload);
+  return tgCallWithBackoff<TgMessageResult>(
+    token,
+    "sendPhoto",
+    payload,
+    opts.delivery,
+  );
 }
 
 /**
@@ -252,7 +337,12 @@ export async function sendDocumentUrl(
   };
   const token = readTgBotToken(clinic.tgBotToken);
   if (!token) return logNoop(clinic, "sendDocument", payload);
-  return tgCallWithBackoff<TgMessageResult>(token, "sendDocument", payload);
+  return tgCallWithBackoff<TgMessageResult>(
+    token,
+    "sendDocument",
+    payload,
+    opts.delivery,
+  );
 }
 
 /** Edit an existing message's text. */

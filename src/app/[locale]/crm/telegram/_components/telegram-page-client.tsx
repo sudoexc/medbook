@@ -9,11 +9,14 @@ import { Button } from "@/components/ui/button";
 import { SendIcon, SettingsIcon, HistoryIcon } from "lucide-react";
 
 import {
+  useConversation,
   useConversations,
   useConversationsFilters,
   useSelectedConversationId,
   flattenConversations,
+  pickSelectedConversation,
 } from "../_hooks/use-conversations";
+import type { InboxConversation } from "../_hooks/types";
 import type {
   BroadcastHistoryItem,
   BroadcastSegment,
@@ -68,16 +71,26 @@ export function TelegramPageClient({
 
   const listQuery = useConversations(filters);
   const rows = flattenConversations(listQuery.data?.pages);
-  const selected = rows.find((r) => r.id === selectedId) ?? null;
+  // The selected thread is shown whether or not it is on the loaded page or
+  // in the active tab (audit G6-07): a link from the reception widget, the
+  // search or a toast opens it by id, and a thread answered in
+  // «Неотвеченные» stays on screen after it leaves the tab (G6-03).
+  const oneQuery = useConversation(selectedId);
+  const [lastShown, setLastShown] = React.useState<InboxConversation | null>(
+    null,
+  );
+  const selected = pickSelectedConversation({
+    selectedId,
+    rows,
+    fetched: oneQuery.data,
+    previous: lastShown,
+  });
+  // Remember what the pane shows (derived state, settles in one pass).
+  if (selected && selected !== lastShown) setLastShown(selected);
 
-  // On first load, auto-select the most recently active conversation so the
-  // middle column isn't empty. We only do this when there's no `conv=` in the
-  // URL — we never override an operator's explicit pick.
-  React.useEffect(() => {
-    if (!selectedId && rows.length > 0) {
-      setSelectedId(rows[0]!.id);
-    }
-  }, [selectedId, rows, setSelectedId]);
+  // No auto-open: entering the section used to select the freshest thread
+  // and mark it read, so it left «Неотвеченные» for everyone with nobody
+  // having answered (audit G6-03). The chat pane asks to pick a thread.
 
   if (!botConfigured) {
     return (

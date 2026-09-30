@@ -109,8 +109,10 @@ function ConversationRowItem({ row }: { row: ConversationRow }) {
     : "";
   return (
     <li>
+      {/* `conv` is what the inbox reads: `?c=` opened another, freshest
+          thread and marked it read (audit G6-07). */}
       <Link
-        href={`/${locale}/crm/telegram?c=${row.id}`}
+        href={`/${locale}/crm/telegram?conv=${encodeURIComponent(row.id)}`}
         className="flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-muted/60"
       >
         <AvatarWithStatus

@@ -37,6 +37,11 @@ export type InboxConversation = {
   lastMessageAt: string | null;
   lastMessageText: string | null;
   unreadCount: number;
+  /**
+   * Oldest patient message no staff reply followed (audit G6-03): the thread
+   * is in «Неотвеченные» while set. Reading it does not clear it.
+   */
+  awaitingReplySince?: string | null;
   snoozedUntil: string | null;
   createdAt: string;
   updatedAt: string;
@@ -51,9 +56,15 @@ export type InboxMessage = {
   buttons: unknown;
   senderId: string | null;
   sender: { id: string; name: string } | null;
-  status: "QUEUED" | "SENT" | "DELIVERED" | "READ" | "FAILED";
+  /** QUEUED / SENDING: the send worker has not finished it yet (TG-17). */
+  status: "QUEUED" | "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
   /** Why a FAILED staff message did not reach Telegram (`tg_blocked`, …). */
   failedReason?: string | null;
+  /**
+   * An automatic message the bot sent (audit G6-08): a campaign or a
+   * reminder copied into the dialog. Null for the chat itself.
+   */
+  origin?: "broadcast" | "notification" | null;
   externalId: string | null;
   replyToId: string | null;
   createdAt: string;

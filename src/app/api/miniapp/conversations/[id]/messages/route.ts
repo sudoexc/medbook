@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { markAwaitingReply } from "@/server/conversations/reply-state";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -147,6 +148,9 @@ export async function POST(request: Request): Promise<Response> {
           unreadCount: { increment: 1 },
         },
       });
+      // A patient's in-app message waits for staff like a Telegram one
+      // (audit G6-03, «Неотвеченные»).
+      await markAwaitingReply(tx, conv.id, msg.createdAt);
       return msg;
     });
 

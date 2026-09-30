@@ -10,6 +10,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { invalidateSitePrices } from "@/lib/site-prices";
 import { ok, notFound } from "@/server/http";
 import { UpdateDoctorServicesSchema } from "@/server/schemas/doctor-services";
 
@@ -107,6 +108,8 @@ export const PUT = createApiHandler(
         })) as never,
       }),
     ]);
+    // A doctor's own price is on the public price sheet (LD-07).
+    invalidateSitePrices();
 
     const rows = await prisma.serviceOnDoctor.findMany({
       where: { doctorId },

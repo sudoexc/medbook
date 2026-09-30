@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { failedReasonText } from "../_lib/failed-reason";
 import type { InboxMessage, MessagesResponse } from "./types";
 import { messagesKey } from "./use-tg-messages";
+import { invalidateConversationCaches } from "./use-conversations";
 
 export type ChatAttachment = {
   kind: "image" | "file";
@@ -39,8 +40,30 @@ function unfilledFieldsOf(responseText: string): string[] | null {
 }
 
 /**
+ * Messages this tab sent that the worker has not finished (audit TG-17). The
+ * POST only queues a message; SENT or FAILED arrives later on the realtime
+ * bus. A failure toasts in the tab that sent it (`useTgInboxAlerts`), not in
+ * every operator's.
+ */
+const pendingSends = new Set<string>();
+
+export function trackPendingSend(messageId: string): void {
+  pendingSends.add(messageId);
+}
+
+/** Forget a pending send; true when this tab was waiting for it. */
+export function settlePendingSend(messageId: string): boolean {
+  return pendingSends.delete(messageId);
+}
+
+/**
  * Optimistic send. Adds a temp OUT row to the top page in cache; on
  * success, invalidates to re-fetch. On error, shows toast + rollback.
+ *
+ * Success means «queued» (audit TG-17): the row comes back QUEUED at once
+ * and the bubble shows «Отправляется» until the worker reports SENT, or
+ * «Не доставлено» with «Повторить». Nothing here waits for Telegram, so a
+ * slow send never looks like a failure worth sending again.
  */
 export function useSendMessage() {
   const qc = useQueryClient();
@@ -124,21 +147,63 @@ export function useSendMessage() {
     },
 
     onSuccess: (data, payload) => {
-      // The row is saved either way; say so when Telegram did not take it,
-      // rather than leaving a quiet red mark (audit TG-04).
+      // The row is saved either way; say so when it cannot go out at all
+      // (no bot, no Telegram), rather than leaving a quiet red mark (audit
+      // TG-04). A queued row reports later.
       if (data?.status === "FAILED") {
         toast.error(
           t("message.failed.toast", {
             reason: failedReasonText(t, data.failedReason),
           }),
         );
+      } else if (data?.id) {
+        trackPendingSend(data.id);
       }
       void qc.invalidateQueries({
         queryKey: messagesKey(payload.conversationId),
       });
-      void qc.invalidateQueries({
-        queryKey: ["tg-conversations"],
-      });
+      invalidateConversationCaches(qc);
+    },
+  });
+}
+
+/**
+ * «Повторить» on a staff message that did not reach the patient (audit
+ * TG-17): the same row goes back to the queue.
+ */
+export function useRetryMessage() {
+  const qc = useQueryClient();
+  const t = useTranslations("tgInbox");
+
+  return useMutation({
+    mutationFn: async (m: {
+      conversationId: string;
+      messageId: string;
+    }): Promise<InboxMessage> => {
+      const res = await fetch(
+        `/api/crm/conversations/${m.conversationId}/messages/${m.messageId}/retry`,
+        { method: "POST", credentials: "include" },
+      );
+      if (!res.ok) {
+        throw new Error(t("message.retryFailed"));
+      }
+      return (await res.json()) as InboxMessage;
+    },
+    onSuccess: (data, m) => {
+      if (data?.status === "FAILED") {
+        toast.error(
+          t("message.failed.toast", {
+            reason: failedReasonText(t, data.failedReason),
+          }),
+        );
+      } else if (data?.id) {
+        trackPendingSend(data.id);
+      }
+      void qc.invalidateQueries({ queryKey: messagesKey(m.conversationId) });
+      invalidateConversationCaches(qc);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : t("message.retryFailed"));
     },
   });
 }

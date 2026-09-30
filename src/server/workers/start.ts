@@ -37,6 +37,7 @@ import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
 import { startReferralDocumentWorker } from "./referral-document";
+import { startStaffMessagesSendWorker } from "./staff-messages-send";
 import { startVisitNoteHandoutWorker } from "./visit-note-handout";
 import { startVoiceSoapWorker } from "./voice-soap";
 
@@ -44,6 +45,11 @@ async function main() {
   console.info("[workers] starting…");
   startNotificationsSendWorker();
   const scheduler = startNotificationsSchedulerWorker(60_000);
+
+  // Audit TG-17 — staff chat messages leave through this queue, not the HTTP
+  // request (a slow Telegram egress made nginx answer 504 and operators sent
+  // twice). 20s sweep re-queues lost jobs and closes stale ones.
+  const staffMessages = startStaffMessagesSendWorker();
 
   // Cross-surface sync Phase A.5 — drain EventOutbox to local bus + Redis.
   // 200ms poll keeps in-flight latency well under 1s; locks rows with
@@ -175,6 +181,7 @@ async function main() {
   const shutdown = (signal: NodeJS.Signals) => {
     console.info(`[workers] received ${signal} — shutting down`);
     scheduler.stop();
+    staffMessages.stop();
     outboxPumper.stop();
     trialExpiry.stop();
     lifecycleSweep.stop();

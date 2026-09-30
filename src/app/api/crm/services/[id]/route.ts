@@ -12,6 +12,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { invalidateSitePrices } from "@/lib/site-prices";
 import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateServiceSchema } from "@/server/schemas/service";
 
@@ -91,6 +92,8 @@ export const PATCH = createApiHandler(
         entityId: id,
         meta: { ...d, doctorsReplaced: doctorIds !== undefined },
       });
+      // The public price sheet shows this price on the next page load (LD-07).
+      invalidateSitePrices();
       return ok(after);
     } catch (e) {
       const msg = (e as Error).message || "";
@@ -109,6 +112,8 @@ export const DELETE = createApiHandler(
     const before = await prisma.service.findUnique({ where: { id } });
     if (!before) return notFound();
     await prisma.service.update({ where: { id }, data: { isActive: false } });
+    // A switched-off service leaves the public price sheet (LD-07).
+    invalidateSitePrices();
     await audit(request, {
       action: "service.deactivate",
       entityType: "Service",

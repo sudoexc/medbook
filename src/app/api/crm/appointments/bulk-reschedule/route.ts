@@ -30,8 +30,6 @@ import { tashkentComponents } from "@/lib/booking-validation";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { fireTrigger } from "@/server/notifications/triggers";
-import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
-import { AUDIT_ACTION } from "@/lib/audit-actions";
 
 export const POST = createApiHandler(
   {
@@ -236,32 +234,10 @@ export const POST = createApiHandler(
       fireTrigger({ kind: "appointment.rescheduled", appointmentId: p.id });
     }
 
-    // The move records «Перенести» on each visit's open risk rows, as the
-    // single PATCH does (audit AC-10).
-    if (ctx.kind === "TENANT" && body.deltaMinutes !== 0) {
-      for (const p of planned) {
-        const stamped = await recordRescheduleOutcome({
-          clinicId: ctx.clinicId,
-          appointmentId: p.id,
-          actorId: ctx.userId,
-        });
-        for (const a of stamped) {
-          await audit(request, {
-            action: AUDIT_ACTION.ACTION_OUTCOME,
-            entityType: "Action",
-            entityId: a.id,
-            meta: {
-              type: a.type,
-              appointmentId: p.id,
-              outcome: "RESCHEDULED",
-              oldStatus: a.oldStatus,
-              newStatus: a.newStatus,
-              via: "appointment.bulk-reschedule",
-            },
-          });
-        }
-      }
-    }
+    // No «Перенести» outcome here (audit AC-10): a shift of the doctor's day
+    // is not a call to each patient. Their open risk rows follow the visits
+    // on the engine's next pass; only a move saved from the risk-today row
+    // records the outcome (`recordRescheduleOutcome`).
 
     await audit(request, {
       action: "appointment.bulk-reschedule",

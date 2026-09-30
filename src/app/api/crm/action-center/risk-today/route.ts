@@ -31,6 +31,16 @@
  * still land here via high_risk or no_contact reasons — confirmation lowers
  * the unconfirmed signal but doesn't eliminate every other risk.
  *
+ * Money (audit AC-15): a row's expected loss is its visit price × the
+ * no-show model's risk (NO_SHOW_RISK_HIGH). The price is the visit's own, else
+ * the clinic's average completed visit over 90 days (`getClinicAvgVisitTiins`,
+ * the figure the dashboard uses). «Не подтверждена» and «не на связи» carry
+ * ordering weights, not probabilities, so they are never turned into money,
+ * and neither is a visit with no price when the clinic has no average. With
+ * nothing priced the total is null and the chip is hidden. Every row used to
+ * be priced at `priceFinal ?? 80 000 сум` × those weights: a phone booking
+ * without a price became 80 000 × 0.4..0.7 of «потери» with no source.
+ *
  * Tenant scoping: the Prisma extension already injects `clinicId` into every
  * relevant model. We only need an explicit clinic fetch to read `timezone`.
  */
@@ -38,6 +48,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
 import { clinicTodayBounds } from "@/server/actions/clinic-day";
+import { getClinicAvgVisitTiins } from "@/server/revenue/avg-visit";
 import {
   RISK_ACTION_TYPES,
   RISK_TODAY_APPOINTMENT_STATUSES,
@@ -66,6 +77,9 @@ export type RiskTodayRow = {
   status: (typeof RISK_TODAY_APPOINTMENT_STATUSES)[number];
   reasons: RiskReason[];
   riskScore: number;
+  /** Price × no-show risk (tiins); null when the row has no model risk or
+   *  no price to apply it to. The header chip sums these. */
+  expectedLossTiins: number | null;
   actionIds: string[];
   /** How many appointment reminders already went out (TG cascade) — lets the
    *  receptionist see "3 напоминания ушло, не подтвердил" before calling. */
@@ -93,7 +107,8 @@ export type RiskTodayResponse = {
     total: number;       // open + handledToday
     open: number;        // = appointments.length
     handledToday: number;
-    estimatedLossTiins: number;
+    /** Σ rows' `expectedLossTiins`; null when no row could be priced. */
+    estimatedLossTiins: number | null;
   };
   windowStart: string;
   windowEnd: string;
@@ -109,11 +124,9 @@ const NO_CONTACT_RISK_FLOOR = 0.4;
 // Cap so a 365-day no-contact never out-shouts a 95% no-show risk.
 const NO_CONTACT_RISK_CEILING = 0.7;
 // Base score for an unconfirmed-24h reason. Sits between low/high so the
-// signal triggers a UI nudge without dominating no-show predictions.
+// signal triggers a UI nudge without dominating no-show predictions. An
+// ordering weight only: never priced (see the header).
 const UNCONFIRMED_RISK_BASE = 0.6;
-// Default expected loss multiplier when an appointment has no priceFinal set
-// (e.g. a brand-new booking awaiting service catalog assignment).
-const FALLBACK_PRICE_TIINS = 8_000_000; // 80,000 UZS — matches AVG_VISIT_TIINS on the client
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
@@ -268,7 +281,19 @@ export const GET = createApiListHandler(
     );
 
     const rows: RiskTodayRow[] = [];
-    let estimatedLossTiins = 0;
+    let lossSum = 0;
+    let lossPriced = false;
+    // The clinic average, read once and only when a risky visit has no
+    // price of its own. Null: the clinic has no priced completed visit.
+    let avgVisit: number | null | undefined;
+    const priceOf = async (priceFinal: number | null): Promise<number | null> => {
+      if (priceFinal !== null) return priceFinal;
+      if (avgVisit === undefined) {
+        const avg = await getClinicAvgVisitTiins(now);
+        avgVisit = avg > 0 ? avg : null;
+      }
+      return avgVisit;
+    };
 
     for (const ap of appts) {
       const reasons: RiskReason[] = [];
@@ -276,6 +301,8 @@ export const GET = createApiListHandler(
       let riskScore = 0;
 
       const open = openByAppt.get(ap.id) ?? [];
+      // The no-show model's own probability, the only risk that is priced.
+      let modelRisk: number | null = null;
       let noContactTask: NoContactCallPayload | null = null;
       for (const act of open) {
         actionIds.push(act.id);
@@ -287,6 +314,9 @@ export const GET = createApiListHandler(
           const p = act.payload as NoShowRiskHighPayload;
           reasons.push({ kind: "high_risk", risk: p.risk });
           if (p.risk > riskScore) riskScore = p.risk;
+          if (typeof p.risk === "number" && Number.isFinite(p.risk)) {
+            modelRisk = Math.max(modelRisk ?? 0, p.risk);
+          }
         } else if (act.type === "UNCONFIRMED_24H") {
           // Use the appointment's own start to avoid drift between detector
           // timestamp and current clock.
@@ -339,9 +369,15 @@ export const GET = createApiListHandler(
 
       if (reasons.length === 0) continue;
 
-      const priceTiins = ap.priceFinal ?? FALLBACK_PRICE_TIINS;
-      // Expected loss = price × highest reason risk.
-      estimatedLossTiins += Math.round(priceTiins * riskScore);
+      let expectedLossTiins: number | null = null;
+      if (modelRisk !== null) {
+        const price = await priceOf(ap.priceFinal);
+        if (price !== null) {
+          expectedLossTiins = Math.round(price * modelRisk);
+          lossSum += expectedLossTiins;
+          lossPriced = true;
+        }
+      }
 
       rows.push({
         appointmentId: ap.id,
@@ -359,6 +395,7 @@ export const GET = createApiListHandler(
         status: ap.status as RiskTodayRow["status"],
         reasons,
         riskScore: Math.round(riskScore * 100) / 100,
+        expectedLossTiins,
         actionIds,
         remindersSent: remindersByAppt.get(ap.id) ?? 0,
         confirmed: ap.status === "CONFIRMED",
@@ -420,7 +457,7 @@ export const GET = createApiListHandler(
         total: rows.length + handled.length,
         open: rows.length,
         handledToday: handled.length,
-        estimatedLossTiins,
+        estimatedLossTiins: lossPriced ? lossSum : null,
       },
       windowStart: dayStart.toISOString(),
       windowEnd: dayEnd.toISOString(),

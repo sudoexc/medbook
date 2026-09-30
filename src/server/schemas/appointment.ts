@@ -84,6 +84,11 @@ export const UpdateAppointmentSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
   cancelReason: z.string().max(500).nullable().optional(),
   medicalCaseId: z.string().nullable().optional(),
+  // Not a column (audit AC-10): set by the drawer that a risk-today row's
+  // «Перенести» opened, so a saved move of this visit records that outcome.
+  // Any other move (calendar drag, bulk shift) leaves it out and records
+  // nothing, because nobody called the patient.
+  riskOutcome: z.literal("RESCHEDULED").optional(),
 });
 
 export const QueryAppointmentSchema = z.object({

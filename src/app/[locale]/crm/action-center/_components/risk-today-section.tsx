@@ -77,6 +77,7 @@ import { useSnoozeAction } from "../_hooks/use-actions";
 import {
   RISK_TODAY_KEY,
   STALE_APPOINTMENT_REASONS,
+  RISK_TODAY_FROM,
   dropRiskRowFromCache,
   useRecordOutcome,
   useRiskToday,
@@ -102,7 +103,9 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
   const open = data?.appointments.length ?? 0;
   const handled = data?.totals.handledToday ?? 0;
   const total = data?.totals.total ?? 0;
-  const loss = data?.totals.estimatedLossTiins ?? 0;
+  // Null when no row could be priced (audit AC-15): the chip is hidden
+  // rather than showing a sum with no source.
+  const loss = data?.totals.estimatedLossTiins ?? null;
 
   // Filters: three independent axes (doctor / category / service) combined
   // with AND. Facets are derived from the unfiltered row set so chip counts
@@ -172,7 +175,7 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
               onOpenHandled={handled > 0 ? openHandled : undefined}
             />
           ) : null}
-          {open > 0 && loss > 0 ? (
+          {open > 0 && loss !== null && loss > 0 ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
               <AlertTriangleIcon className="size-3.5" />
               <span className="tabular-nums">
@@ -397,7 +400,10 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   // ignored the patient and phone it was sent, so «Звонок» opens the patient
   // card, which has the number and the history to call with.
   const patientHref = `/${locale}/crm/patients/${row.patientId}`;
-  const apptHref = `/${locale}/crm/appointments?ap=${row.appointmentId}&from=risk-today`;
+  const apptHref = `/${locale}/crm/appointments?ap=${row.appointmentId}`;
+  // Only «Перенести» carries the marker (audit AC-10): a time saved in the
+  // drawer it opens records the outcome. «Открыть запись» just shows it.
+  const rescheduleHref = `${apptHref}&from=${RISK_TODAY_FROM}`;
   const handlePath = patientHref;
 
   // Records the call outcome for this appointment (TZ-risk-outcomes §1).
@@ -415,7 +421,7 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
     // drawer, and saving the new time there closes this row with the outcome.
     // A drawer closed without saving leaves the row in the list, as it should.
     if (input.outcome === "RESCHEDULED") {
-      router.push(apptHref);
+      router.push(rescheduleHref);
       return;
     }
     setBusy(true);

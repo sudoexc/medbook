@@ -35,6 +35,9 @@ const state = {
   emitted: [] as Array<{ kind: string; appointmentId: string }>,
   fired: [] as Array<{ kind: string; appointmentId: string }>,
   audits: [] as Array<{ action: string }>,
+  /** The visits' risk tasks, one open, one a callback promised on the phone. */
+  actions: [] as Array<Record<string, unknown>>,
+  actionWrites: 0,
 };
 
 /** 2026-09-12 11:00 Tashkent (UTC+5) → 06:00Z. */
@@ -144,6 +147,17 @@ vi.mock("@/lib/prisma", () => ({
         },
       ),
     },
+    action: {
+      findMany: vi.fn(async () => state.actions),
+      update: vi.fn(async () => {
+        state.actionWrites++;
+        return {};
+      }),
+      updateMany: vi.fn(async () => {
+        state.actionWrites++;
+        return { count: 0 };
+      }),
+    },
     $transaction: vi.fn(async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
       const { prisma } = await import("@/lib/prisma");
       return fn(prisma);
@@ -173,6 +187,23 @@ beforeEach(() => {
   state.emitted = [];
   state.fired = [];
   state.audits = [];
+  state.actions = [
+    {
+      id: "act_u",
+      type: "UNCONFIRMED_24H",
+      status: "OPEN",
+      outcome: null,
+      dedupeKey: "UNCONFIRMED_24H:appointmentId=apt_1",
+    },
+    {
+      id: "act_cb",
+      type: "NO_SHOW_RISK_HIGH",
+      status: "SNOOZED",
+      outcome: "CALLBACK",
+      dedupeKey: "NO_SHOW_RISK_HIGH:appointmentId=apt_2",
+    },
+  ];
+  state.actionWrites = 0;
 });
 
 // ----- tests ---------------------------------------------------------------
@@ -230,5 +261,18 @@ describe("bulk-reschedule", () => {
     expect(state.updates).toEqual([]);
     expect(state.emitted).toEqual([]);
     expect(state.fired).toEqual([]);
+  });
+});
+
+// Audit AC-10 review: the shift used to stamp every visit's open risk task
+// as «Перенести», with the mover as the one who handled it, although nobody
+// called anyone; a callback promised on the phone was overwritten too.
+describe("bulk-reschedule and the risk tasks", () => {
+  it("records no call outcome and leaves every task as it was", async () => {
+    const POST = await loadPost();
+    const res = await POST(req({ ids: ["apt_1", "apt_2"], deltaMinutes: 30 }));
+    expect(res.status).toBe(200);
+    expect(state.actionWrites).toBe(0);
+    expect(state.audits.map((a) => a.action)).not.toContain("ACTION_OUTCOME");
   });
 });

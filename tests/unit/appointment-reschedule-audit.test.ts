@@ -39,10 +39,21 @@ type Appointment = {
 };
 
 const state = {
+  role: "ADMIN" as "ADMIN" | "RECEPTIONIST" | "DOCTOR",
   apt: null as Appointment | null,
   audits: [] as Array<{ action: string; entityId: string | null; meta: unknown }>,
   publishes: [] as Array<{ type: string; payload: unknown }>,
+  /** Every `data` the route wrote to the appointment row. */
+  writes: [] as Array<Record<string, unknown>>,
 };
+
+// Audit AC-10: the risk-today «Перенести» outcome is written by the move
+// saved from that row only. The recorder itself is pinned against an
+// in-memory clinic in risk-today-outcome.test.ts; here only who calls it.
+const recordReschedule = vi.hoisted(() => vi.fn());
+vi.mock("@/server/actions/risk-outcome", () => ({
+  recordRescheduleOutcome: recordReschedule,
+}));
 
 function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
   const start = new Date("2026-06-01T10:00:00.000Z");
@@ -79,7 +90,7 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({
     user: {
       id: "u_admin",
-      role: "ADMIN",
+      role: state.role,
       clinicId: "c1",
       email: "admin@example.test",
     },
@@ -96,7 +107,7 @@ vi.mock("@/lib/tenant-context", () => ({
     kind: "TENANT" as const,
     clinicId: "c1",
     userId: "u_admin",
-    role: "ADMIN" as const,
+    role: state.role,
   }),
 }));
 
@@ -161,6 +172,7 @@ vi.mock("@/lib/prisma", () => ({
           if (!state.apt || state.apt.id !== where.id) {
             throw new Error("not found");
           }
+          state.writes.push(data);
           state.apt = { ...state.apt, ...(data as Partial<Appointment>) };
           return state.apt;
         },
@@ -232,9 +244,13 @@ function patchReq(body: unknown): Request {
 }
 
 beforeEach(() => {
+  state.role = "ADMIN";
   state.apt = makeAppointment();
   state.audits = [];
   state.publishes = [];
+  state.writes = [];
+  recordReschedule.mockReset();
+  recordReschedule.mockResolvedValue({ recorded: false });
 });
 
 // ----- tests ---------------------------------------------------------------
@@ -319,5 +335,86 @@ describe("PATCH /api/crm/appointments/[id] — APPOINTMENT_RESCHEDULED audit", (
       (a) => a.action === "APPOINTMENT_RESCHEDULED",
     );
     expect(reschedule).toBeUndefined();
+  });
+});
+
+describe("PATCH /api/crm/appointments/[id] — the risk-today «Перенести» (audit AC-10)", () => {
+  const BEFORE = new Date("2026-06-01T10:00:00.000Z");
+
+  it("a move from the calendar or any other drawer records no outcome", async () => {
+    const PATCH = await loadPatch();
+    const res = await PATCH(patchReq({ time: "11:30" }));
+    expect(res.status).toBe(200);
+    expect(recordReschedule).not.toHaveBeenCalled();
+    expect(state.audits.map((a) => a.action)).not.toContain("ACTION_OUTCOME");
+    expect(((await res.json()) as { riskOutcome?: string }).riskOutcome).toBeUndefined();
+  });
+
+  it("a move saved in the drawer the risk row opened records it, with the visit as listed", async () => {
+    state.role = "RECEPTIONIST";
+    recordReschedule.mockResolvedValue({
+      recorded: true,
+      appointmentId: "apt_1",
+      patientId: "p1",
+      actions: [
+        { id: "act_1", type: "NO_CONTACT_CALL", oldStatus: "OPEN", newStatus: "DONE", callAttempts: 0 },
+      ],
+      createdActionId: "act_1",
+      contactBumped: true,
+    });
+    const PATCH = await loadPatch();
+    const res = await PATCH(patchReq({ time: "11:30", riskOutcome: "RESCHEDULED" }));
+    expect(res.status).toBe(200);
+
+    expect(recordReschedule).toHaveBeenCalledTimes(1);
+    expect(recordReschedule.mock.calls[0]![0]).toMatchObject({
+      clinicId: "c1",
+      actorId: "u_admin",
+      before: { id: "apt_1", date: BEFORE, status: "BOOKED" },
+    });
+    // The flag is a request marker: it never reaches the appointment row.
+    for (const data of state.writes) expect(data).not.toHaveProperty("riskOutcome");
+    // Audited like the outcome endpoint, and the drawer is told it happened.
+    const outcome = state.audits.find((a) => a.action === "ACTION_OUTCOME");
+    expect(outcome?.meta).toMatchObject({
+      outcome: "RESCHEDULED",
+      createdForOutcome: true,
+      via: "appointment.reschedule",
+    });
+    expect(state.audits.map((a) => a.action)).toContain("PATIENT_CONTACT_MARKED");
+    expect(((await res.json()) as { riskOutcome?: string }).riskOutcome).toBe("RESCHEDULED");
+  });
+
+  it("nothing is recorded when the start did not move", async () => {
+    const PATCH = await loadPatch();
+    const res = await PATCH(patchReq({ time: "10:00", riskOutcome: "RESCHEDULED" }));
+    expect(res.status).toBe(200);
+    expect(recordReschedule).not.toHaveBeenCalled();
+  });
+
+  it("a doctor's PATCH never records a risk outcome", async () => {
+    state.role = "DOCTOR";
+    state.apt = makeAppointment({ doctor: { userId: "u_admin" } });
+    const PATCH = await loadPatch();
+    const res = await PATCH(patchReq({ time: "11:30", riskOutcome: "RESCHEDULED" }));
+    expect(res.status).toBe(200);
+    expect(recordReschedule).not.toHaveBeenCalled();
+  });
+
+  it("the drawer sends the marker only when the risk row opened it", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const read = (rel: string) => readFileSync(path.join(process.cwd(), rel), "utf8");
+    const section = read("src/app/[locale]/crm/action-center/_components/risk-today-section.tsx");
+    // «Перенести» carries it; «Открыть запись» does not.
+    expect(section).toContain("const rescheduleHref = `${apptHref}&from=${RISK_TODAY_FROM}`;");
+    expect(section).toContain("router.push(rescheduleHref)");
+    expect(section).toContain("const apptHref = `/${locale}/crm/appointments?ap=${row.appointmentId}`;");
+    const page = read("src/app/[locale]/crm/appointments/_components/appointments-page-client.tsx");
+    expect(page).toContain('searchParams?.get("from") === RISK_TODAY_FROM');
+    // Closing the drawer or opening another row drops the marker.
+    expect(page).toContain('if (sp.get("from") === RISK_TODAY_FROM) sp.delete("from");');
+    const drawer = read("src/app/[locale]/crm/appointments/_components/appointment-drawer.tsx");
+    expect(drawer).toContain('...(recordsRiskReschedule ? { riskOutcome: "RESCHEDULED" as const } : {})');
   });
 });

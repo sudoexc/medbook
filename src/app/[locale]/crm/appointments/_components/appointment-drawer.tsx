@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2Icon,
   ChevronDownIcon,
@@ -77,6 +77,7 @@ import {
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
+import { RISK_TODAY_KEY } from "../../action-center/_hooks/use-risk-today";
 
 // Two-lanes: schedule-lane channels only. WALKIN/KIOSK are excluded — a
 // channel flip to WALKIN would teleport the row into the live queue (and the
@@ -86,6 +87,9 @@ const CHANNELS = ["PHONE", "TELEGRAM", "WEBSITE"] as const;
 export interface AppointmentDrawerProps {
   appointmentId: string | null;
   onClose: () => void;
+  /** Opened by a risk-today row's «Перенести»: a saved new time records that
+   *  outcome for the row (audit AC-10). */
+  recordsRiskReschedule?: boolean;
 }
 
 type CommunicationRow = {
@@ -118,8 +122,11 @@ function usePatientTimeline(patientId: string | null) {
 export function AppointmentDrawer({
   appointmentId,
   onClose,
+  recordsRiskReschedule = false,
 }: AppointmentDrawerProps) {
   const t = useTranslations("appointments.drawer");
+  const tRisk = useTranslations("actionCenter.dashboard.riskToday");
+  const qc = useQueryClient();
   const tCase = useTranslations("appointments.case");
   const tChannel = useTranslations("appointments.channel");
   const tPayment = useTranslations("appointments.payment");
@@ -219,8 +226,24 @@ export function AppointmentDrawer({
       {
         time: next.time,
         ...(dateChanged ? { date: nextDateYmd } : {}),
+        ...(recordsRiskReschedule ? { riskOutcome: "RESCHEDULED" as const } : {}),
       },
       {
+        onSuccess: (fresh) => {
+          // Set by the server only when the move was recorded as the row's
+          // outcome: the row left the risk list with «Перенести» in
+          // «Обработано сегодня». Say so, and refresh the list for the way
+          // back.
+          if ((fresh as { riskOutcome?: string }).riskOutcome !== "RESCHEDULED") {
+            return;
+          }
+          toast.success(
+            tRisk("outcomeMenu.success", {
+              outcome: tRisk("outcome.RESCHEDULED"),
+            }),
+          );
+          void qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
+        },
         onError: (err) => {
           if (err instanceof AppointmentConflictError) {
             toast.error(

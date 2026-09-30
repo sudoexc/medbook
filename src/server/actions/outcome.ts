@@ -12,8 +12,9 @@
  *
  *   CONFIRMED     → confirmAppointment(via INBOUND_CALL) + Action DONE(outcome)
  *   RESCHEDULED   → refused by both endpoints (audit AC-10): written with the
- *                   same DONE stamp by the move itself, once the new time is
- *                   saved (`recordRescheduleOutcome` in `risk-outcome.ts`)
+ *                   same DONE stamp by a move saved from the risk list, once
+ *                   the new time is committed (`recordRescheduleOutcome` in
+ *                   `risk-outcome.ts`)
  *   CALLBACK      → before the visit: Action SNOOZED until callbackAt (+ note),
  *                   the row resurfaces then. At or after the visit time: the
  *                   call is handed to a PATIENT_CALLBACK task (see below)
@@ -73,7 +74,8 @@ export function normalizeOutcomeInput(input: OutcomeInput): OutcomeInput {
  * Recorded as a call outcome it closed the visit's risk rows before any date
  * was moved, and a drawer closed without saving left a visit «перенесён»
  * that was still at 15:00 and out of every list. The endpoints refuse it; the
- * appointment PATCH and the bulk shift write it after the move.
+ * appointment PATCH writes it after a move saved in the drawer the risk-today
+ * row opened.
  */
 export function outcomeRecordedByTheMove(outcome: ActionOutcome): boolean {
   return outcome === "RESCHEDULED";

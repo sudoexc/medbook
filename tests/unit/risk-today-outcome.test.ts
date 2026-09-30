@@ -51,6 +51,8 @@ const db = {
   audits: [] as Array<{ action: string; meta: Record<string, unknown> }>,
   confirmCalls: [] as Array<Record<string, unknown>>,
   cancelCalls: [] as Array<Record<string, unknown>>,
+  /** The clinic's average completed visit (`getClinicAvgVisitTiins`). */
+  avgVisitTiins: null as number | null,
   seq: 0,
 };
 
@@ -168,6 +170,7 @@ vi.mock("@/lib/prisma", () => {
             .sort((x, y) => x.date.getTime() - y.date.getTime())
             .map(apptShape),
         ),
+        aggregate: vi.fn(async () => ({ _avg: { priceFinal: db.avgVisitTiins } })),
       },
       patient: {
         updateMany: vi.fn(
@@ -296,6 +299,7 @@ beforeEach(() => {
   db.audits = [];
   db.confirmCalls = [];
   db.cancelCalls = [];
+  db.avgVisitTiins = null;
   db.seq = 0;
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   seedNoContactRow();
@@ -664,8 +668,9 @@ describe("risk action bookkeeping", () => {
 
 // Audit AC-10: «Перенести» used to close the visit's risk rows before any
 // date was moved; a drawer closed without saving left a visit «перенесён»
-// that was still at 15:00 and out of every list.
-describe("«Перенести» is recorded by the move itself", () => {
+// that was still at 15:00 and out of every list. Now the row's button opens
+// the drawer and the saved move records the outcome, and only that move.
+describe("«Перенести» is recorded by the move saved from the risk list", () => {
   function seedUnconfirmedRow(over: Record<string, unknown> = {}) {
     db.actions.set("act_r", {
       id: "act_r",
@@ -695,6 +700,18 @@ describe("«Перенести» is recorded by the move itself", () => {
     });
   }
 
+  /** The PATCH committed the new start; the risk list showed `before`. */
+  async function saveMove(to: Date, beforeStatus = "CONFIRMED") {
+    db.appts.get("ap_1")!.date = to;
+    const { recordRescheduleOutcome } = await import("@/server/actions/risk-outcome");
+    return recordRescheduleOutcome({
+      clinicId: "c1",
+      actorId: "u_recept",
+      before: { id: "ap_1", date: APPT_AT, status: beforeStatus },
+      now: NOW,
+    });
+  }
+
   it("the outcome endpoint refuses it and the row stays in the list", async () => {
     seedUnconfirmedRow();
     const { post, get } = await routes();
@@ -708,19 +725,51 @@ describe("«Перенести» is recorded by the move itself", () => {
     expect(data.handled).toEqual([]);
   });
 
-  it("a saved move stamps the visit's open risk rows with who moved it", async () => {
+  it("a «не на связи»-only row moved to later today leaves the list, handled as «Перенести»", async () => {
+    const { get } = await routes();
+    expect((await riskToday(get)).appointments[0]!.actionIds).toEqual([]);
+
+    const rec = await saveMove(new Date(APPT_AT.getTime() + 2 * 60 * 60 * 1000));
+    expect(rec).toMatchObject({ recorded: true, contactBumped: true });
+
+    // The call task the row stood for, closed with the outcome.
+    const [task] = [...db.actions.values()];
+    expect(task).toMatchObject({
+      type: "NO_CONTACT_CALL",
+      status: "DONE",
+      outcome: "RESCHEDULED",
+      resolvedById: "u_recept",
+    });
+    expect(rec.recorded && rec.createdActionId).toBe(task!.id);
+    // Reception agreed the new time with the patient.
+    expect(db.patients.get("p_1")!.lastContactedAt).toEqual(NOW);
+
+    const data = await riskToday(get);
+    expect(data.appointments).toEqual([]);
+    expect(data.handled).toEqual([
+      expect.objectContaining({ appointmentId: "ap_1", outcome: "RESCHEDULED" }),
+    ]);
+  });
+
+  it("a «не на связи»-only row moved to tomorrow is not flagged «не на связи» there", async () => {
+    const tomorrow = new Date(APPT_AT.getTime() + 24 * 60 * 60 * 1000);
+    const rec = await saveMove(tomorrow);
+    expect(rec.recorded).toBe(true);
+
+    // Tomorrow morning: the visit is on the list's day, the patient is not.
+    vi.setSystemTime(new Date(NOW.getTime() + 24 * 60 * 60 * 1000));
+    const { get } = await routes();
+    expect((await riskToday(get)).appointments).toEqual([]);
+  });
+
+  it("stamps the visit's open risk rows with who moved it", async () => {
     seedUnconfirmedRow();
     const { get } = await routes();
-    const { recordRescheduleOutcome } = await import("@/server/actions/risk-outcome");
-    const stamped = await recordRescheduleOutcome({
-      clinicId: "c1",
-      appointmentId: "ap_1",
-      actorId: "u_recept",
-      now: NOW,
-    });
-    expect(stamped).toEqual([
+    const rec = await saveMove(new Date(APPT_AT.getTime() + 60 * 60 * 1000));
+    expect(rec.recorded && rec.actions).toEqual([
       expect.objectContaining({ id: "act_r", oldStatus: "OPEN", newStatus: "DONE" }),
     ]);
+    expect(rec.recorded && rec.createdActionId).toBeNull();
     expect(db.actions.get("act_r")).toMatchObject({
       status: "DONE",
       outcome: "RESCHEDULED",
@@ -735,14 +784,164 @@ describe("«Перенести» is recorded by the move itself", () => {
 
   it("leaves a row somebody already closed alone", async () => {
     seedUnconfirmedRow({ status: "DONE", outcome: "CONFIRMED", doneAt: NOW });
+    await saveMove(new Date(APPT_AT.getTime() + 60 * 60 * 1000));
+    expect(db.actions.get("act_r")).toMatchObject({ status: "DONE", outcome: "CONFIRMED" });
+  });
+
+  it("keeps a callback promised for later: its row is not the call made now", async () => {
+    const promised = new Date(NOW.getTime() + 2 * 60 * 60 * 1000);
+    seedUnconfirmedRow({
+      status: "SNOOZED",
+      outcome: "CALLBACK",
+      snoozeUntil: promised,
+      callbackAt: promised,
+    });
+    await saveMove(new Date(APPT_AT.getTime() + 60 * 60 * 1000));
+    expect(db.actions.get("act_r")).toMatchObject({
+      status: "SNOOZED",
+      outcome: "CALLBACK",
+      snoozeUntil: promised,
+    });
+  });
+
+  it("records nothing for a visit the risk list could not show", async () => {
+    seedUnconfirmedRow();
+    // The patient had already arrived: a WAITING visit is not on the list.
+    let rec = await saveMove(new Date(APPT_AT.getTime() + 60 * 60 * 1000), "WAITING");
+    expect(rec).toEqual({ recorded: false });
+
+    // Next week's visit moved from its drawer is no risk-today row either.
     const { recordRescheduleOutcome } = await import("@/server/actions/risk-outcome");
-    const stamped = await recordRescheduleOutcome({
+    rec = await recordRescheduleOutcome({
       clinicId: "c1",
-      appointmentId: "ap_1",
       actorId: "u_recept",
+      before: {
+        id: "ap_1",
+        date: new Date(APPT_AT.getTime() + 7 * 24 * 60 * 60 * 1000),
+        status: "CONFIRMED",
+      },
       now: NOW,
     });
-    expect(stamped).toEqual([]);
-    expect(db.actions.get("act_r")).toMatchObject({ status: "DONE", outcome: "CONFIRMED" });
+    expect(rec).toEqual({ recorded: false });
+
+    expect(db.actions.get("act_r")).toMatchObject({ status: "OPEN", outcome: null });
+    expect(db.actions.size).toBe(1);
+    expect(db.patients.get("p_1")!.lastContactedAt).toEqual(LAST_CONTACT);
+  });
+});
+
+// Audit AC-15: the loss chip of this list priced every row at `priceFinal ??
+// 80 000 сум` × an ordering weight (0.6 for «не подтверждена», 0.4..0.7 for
+// «не на связи»). Money now comes only from the no-show model's risk and a
+// real price: the visit's own, else the clinic's average.
+describe("the risk list's loss chip", () => {
+  function seedNoShowRisk(risk: number) {
+    db.actions.set("act_n", {
+      id: "act_n",
+      clinicId: "c1",
+      type: "NO_SHOW_RISK_HIGH",
+      severity: "high",
+      status: "OPEN",
+      payload: {
+        type: "NO_SHOW_RISK_HIGH",
+        appointmentId: "ap_1",
+        patientId: "p_1",
+        patientName: "Каримова Нодира",
+        appointmentAt: APPT_AT.toISOString(),
+        risk,
+      },
+      dedupeKey: "NO_SHOW_RISK_HIGH:appointmentId=ap_1",
+      snoozeUntil: null,
+      doneAt: null,
+      expiresAt: APPT_AT,
+      outcome: null,
+      outcomeNote: null,
+      callbackAt: null,
+      resolvedById: null,
+      callAttempts: 0,
+      updatedAt: NOW,
+    });
+  }
+
+  async function lossOf() {
+    const { get } = await routes();
+    const res = await get(new Request("https://x/api/crm/action-center/risk-today"));
+    return (await res.json()) as {
+      appointments: Array<{ expectedLossTiins: number | null }>;
+      totals: { estimatedLossTiins: number | null };
+    };
+  }
+
+  it("prices no «не на связи» row: no chip", async () => {
+    db.avgVisitTiins = 15_000_000;
+    const data = await lossOf();
+    expect(data.appointments).toHaveLength(1);
+    expect(data.appointments[0]!.expectedLossTiins).toBeNull();
+    expect(data.totals.estimatedLossTiins).toBeNull();
+  });
+
+  it("prices no «не подтверждена» row either", async () => {
+    db.appts.get("ap_1")!.status = "BOOKED";
+    db.actions.set("act_u", {
+      id: "act_u",
+      clinicId: "c1",
+      type: "UNCONFIRMED_24H",
+      status: "OPEN",
+      payload: { type: "UNCONFIRMED_24H", appointmentId: "ap_1", patientId: "p_1" },
+      dedupeKey: "UNCONFIRMED_24H:appointmentId=ap_1",
+      snoozeUntil: null,
+      updatedAt: NOW,
+    });
+    db.avgVisitTiins = 15_000_000;
+    const data = await lossOf();
+    expect(data.appointments[0]!.expectedLossTiins).toBeNull();
+    expect(data.totals.estimatedLossTiins).toBeNull();
+  });
+
+  it("a no-show risk is the visit's price × the model's risk", async () => {
+    seedNoShowRisk(0.5);
+    const data = await lossOf();
+    expect(data.appointments[0]!.expectedLossTiins).toBe(10_000_000);
+    expect(data.totals.estimatedLossTiins).toBe(10_000_000);
+  });
+
+  it("a visit without a price uses the clinic's average, not 80 000 сум", async () => {
+    db.appts.get("ap_1")!.priceFinal = null;
+    db.avgVisitTiins = 15_000_000;
+    seedNoShowRisk(0.5);
+    const data = await lossOf();
+    expect(data.appointments[0]!.expectedLossTiins).toBe(7_500_000);
+    expect(data.totals.estimatedLossTiins).toBe(7_500_000);
+  });
+
+  it("without a price and without an average there is no figure", async () => {
+    db.appts.get("ap_1")!.priceFinal = null;
+    seedNoShowRisk(0.5);
+    const data = await lossOf();
+    expect(data.appointments[0]!.expectedLossTiins).toBeNull();
+    expect(data.totals.estimatedLossTiins).toBeNull();
+  });
+
+  it("the widget drops a handled row's own share, and hides the chip at none", async () => {
+    const { riskLossOf } = await import(
+      "@/app/[locale]/crm/action-center/_hooks/use-risk-today"
+    );
+    const row = (expectedLossTiins: number | null) =>
+      ({ expectedLossTiins }) as Parameters<typeof riskLossOf>[0][number];
+    expect(riskLossOf([row(3), row(null), row(4)])).toBe(7);
+    expect(riskLossOf([row(null)])).toBeNull();
+    expect(riskLossOf([])).toBeNull();
+  });
+
+  it("no invented price is left in the list or the widget", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    for (const rel of [
+      "src/app/api/crm/action-center/risk-today/route.ts",
+      "src/app/[locale]/crm/action-center/_hooks/use-risk-today.ts",
+    ]) {
+      const src = readFileSync(path.join(process.cwd(), rel), "utf8");
+      expect(src, rel).not.toMatch(/FALLBACK_PRICE|8_000_000/);
+    }
   });
 });

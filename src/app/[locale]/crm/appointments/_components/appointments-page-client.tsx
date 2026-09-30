@@ -27,6 +27,7 @@ import { AppointmentsTable } from "./appointments-table";
 import { AppointmentsRightRail } from "./appointments-right-rail";
 import { AppointmentDrawer } from "./appointment-drawer";
 import { ExportButton } from "./export-button";
+import { RISK_TODAY_FROM } from "../../action-center/_hooks/use-risk-today";
 
 /**
  * Root client component for `/crm/appointments` (TZ §6.2).
@@ -66,11 +67,17 @@ export function AppointmentsPageClient() {
 
   // --- drawer state (synced via `?ap=`) -----------------------------------
   const openRowId = searchParams?.get("ap") ?? null;
+  // Opened by a risk-today row's «Перенести» (audit AC-10): a new time saved
+  // in the drawer records that outcome. The marker belongs to that one visit,
+  // so it is dropped as soon as the drawer closes or shows another row.
+  const recordsRiskReschedule =
+    openRowId !== null && searchParams?.get("from") === RISK_TODAY_FROM;
   const openRow = React.useCallback(
     (id: string | null) => {
       const sp = new URLSearchParams(searchParams?.toString() ?? "");
       if (id) sp.set("ap", id);
       else sp.delete("ap");
+      if (sp.get("from") === RISK_TODAY_FROM) sp.delete("from");
       const qs = sp.toString();
       router.replace(qs ? `?${qs}` : "?", { scroll: false });
     },
@@ -297,6 +304,7 @@ export function AppointmentsPageClient() {
       <AppointmentDrawer
         appointmentId={openRowId}
         onClose={() => openRow(null)}
+        recordsRiskReschedule={recordsRiskReschedule}
       />
 
       <NewAppointmentDialog

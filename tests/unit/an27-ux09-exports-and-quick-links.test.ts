@@ -77,9 +77,25 @@ describe("patients list segment filter", () => {
 describe("Action Center quick actions", () => {
   const client = read("src/app/[locale]/crm/action-center/_components/action-center-client.tsx");
 
-  it("reactivation opens the dormant patients list", () => {
-    expect(client).toContain("/crm/patients/segments/dormant");
+  // Review of UX-09: the dormant segment list filters on the stored
+  // `Patient.segment`, which nothing recalculates (PT-15), so it was always
+  // empty while the hint counted patients without a visit for 90 days.
+  it("reactivation opens the wizard that counts the hint's patients, for whoever can launch it", () => {
+    expect(client).toContain('const REACTIVATION_HREF = "/crm/notifications/campaigns/new";');
+    expect(client).not.toContain("/crm/patients/segments/dormant");
     expect(client).not.toContain("/crm/patients?segment=dormant");
+    // The quick tile and the AI hint both, and only for an admin (the
+    // campaign launch is ADMIN-only, like the DORMANT_BATCH task).
+    expect(client.match(/REACTIVATION_HREF/g)!.length).toBeGreaterThanOrEqual(3);
+    expect(client.match(/\.\.\.\(canReactivate\s*\?/g)).toHaveLength(2);
+    expect(client.match(/canReactivate=\{isAdmin\}/g)).toHaveLength(2);
+  });
+
+  it("the dormant segment page offers the Call Center only on a plan that has it", () => {
+    const view = read("src/app/[locale]/crm/patients/segments/_components/segment-view.tsx");
+    expect(view).toContain('segment === "dormant" && hasCallCenter');
+    const page = read("src/app/[locale]/crm/patients/segments/dormant/page.tsx");
+    expect(page).toContain("hasCallCenter={flags.hasCallCenter}");
   });
 
   it("the Telegram broadcast opens the broadcast dialog, for whoever can broadcast", () => {

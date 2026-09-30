@@ -60,6 +60,14 @@ import {
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
 
+/** Who may record a risk-today outcome: the roles of its endpoint (and
+ *  SUPER_ADMIN, whom the handler lets through every role list). */
+const RISK_OUTCOME_ROLES: ReadonlySet<string> = new Set([
+  "ADMIN",
+  "RECEPTIONIST",
+  "SUPER_ADMIN",
+]);
+
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? "";
@@ -692,6 +700,8 @@ export const PATCH = createApiHandler(
     }
 
     const data: Record<string, unknown> = { ...body };
+    // A request flag, not a column (read after the commit below).
+    delete data.riskOutcome;
     // Keep the queue column in lockstep with status — the reception board
     // reads `queueStatus` while the doctor's my-day mutation only sends
     // `status`. The queue-status route already writes both; without this
@@ -1006,31 +1016,56 @@ export const PATCH = createApiHandler(
         },
       });
     }
-    // «Перенести» is recorded by the move itself (audit AC-10): once the new
-    // start is saved, the visit's open risk rows close with the outcome and
-    // the person who moved it, and «Обработано сегодня» lists it. The
-    // risk-today button only opens this drawer; a drawer closed without
-    // saving never reaches here and the row stays in the list.
-    if (ctx.kind === "TENANT" && before.date.getTime() !== after.date.getTime()) {
-      const stamped = await recordRescheduleOutcome({
+    // «Перенести» from the risk-today list is recorded by the saved move
+    // (audit AC-10): the row's button only opens this drawer, which sends
+    // `riskOutcome`. A drawer closed without saving never reaches here and
+    // the row stays in the list. Only a move from that row counts: a
+    // calendar drag or a doctor's PATCH is not a call to the patient, so it
+    // closes no task as «Перенести» and marks nobody contacted. Same roles
+    // as the risk-today outcome endpoint.
+    let riskOutcomeRecorded = false;
+    if (
+      ctx.kind === "TENANT" &&
+      body.riskOutcome === "RESCHEDULED" &&
+      RISK_OUTCOME_ROLES.has(ctx.role) &&
+      before.date.getTime() !== after.date.getTime()
+    ) {
+      const rec = await recordRescheduleOutcome({
         clinicId: after.clinicId,
-        appointmentId: id,
         actorId: ctx.userId,
+        before: { id, date: before.date, status: before.status },
       });
-      for (const a of stamped) {
-        await audit(request, {
-          action: AUDIT_ACTION.ACTION_OUTCOME,
-          entityType: "Action",
-          entityId: a.id,
-          meta: {
-            type: a.type,
-            appointmentId: id,
-            outcome: "RESCHEDULED",
-            oldStatus: a.oldStatus,
-            newStatus: a.newStatus,
-            via: "appointment.reschedule",
-          },
-        });
+      if (rec.recorded) {
+        riskOutcomeRecorded = true;
+        for (const a of rec.actions) {
+          await audit(request, {
+            action: AUDIT_ACTION.ACTION_OUTCOME,
+            entityType: "Action",
+            entityId: a.id,
+            meta: {
+              type: a.type,
+              appointmentId: id,
+              outcome: "RESCHEDULED",
+              oldStatus: a.oldStatus,
+              newStatus: a.newStatus,
+              createdForOutcome: a.id === rec.createdActionId,
+              via: "appointment.reschedule",
+            },
+          });
+        }
+        if (rec.contactBumped) {
+          await audit(request, {
+            action: AUDIT_ACTION.PATIENT_CONTACT_MARKED,
+            entityType: "Patient",
+            entityId: rec.patientId,
+            meta: {
+              appointmentId: id,
+              surface: "action-center.risk-today",
+              outcome: "RESCHEDULED",
+              at: new Date().toISOString(),
+            },
+          });
+        }
       }
     }
     if (txOut.recomputed?.reason === "free_repeat") {
@@ -1079,7 +1114,8 @@ export const PATCH = createApiHandler(
       });
     }
 
-    return ok(after);
+    // The drawer says «Исход записан» only when it was.
+    return ok(riskOutcomeRecorded ? { ...after, riskOutcome: "RESCHEDULED" } : after);
   }
 );
 

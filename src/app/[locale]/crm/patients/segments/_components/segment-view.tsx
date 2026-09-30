@@ -76,7 +76,14 @@ function filtersFor(segment: SegmentKey): PatientsListFilters {
   }
 }
 
-export function PatientSegmentView({ segment }: { segment: SegmentKey }) {
+export function PatientSegmentView({
+  segment,
+  hasCallCenter = false,
+}: {
+  segment: SegmentKey;
+  /** The plan has the Call Center; without it `/crm/call-center` is a 404. */
+  hasCallCenter?: boolean;
+}) {
   const t = useTranslations("patientsSegments");
   const locale = useLocale();
   const router = useRouter();
@@ -136,7 +143,7 @@ export function PatientSegmentView({ segment }: { segment: SegmentKey }) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {segment === "dormant" ? (
+            {segment === "dormant" && hasCallCenter ? (
               <Button
                 variant="outline"
                 onClick={() =>

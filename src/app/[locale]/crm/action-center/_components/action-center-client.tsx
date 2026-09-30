@@ -204,10 +204,12 @@ export function ActionCenterClient({
             buckets={buckets}
             hasCallCenter={hasCallCenter}
             hasTelegramInbox={hasTelegramInbox}
+            canReactivate={isAdmin}
           />
           <QuickActionsGrid
             hasCallCenter={hasCallCenter}
             canBroadcast={canBroadcast}
+            canReactivate={isAdmin}
           />
           <TodayLosses
             buckets={buckets}
@@ -1026,10 +1028,12 @@ function AiRecs({
   buckets,
   hasCallCenter,
   hasTelegramInbox,
+  canReactivate,
 }: {
   buckets: Buckets;
   hasCallCenter: boolean;
   hasTelegramInbox: boolean;
+  canReactivate: boolean;
 }) {
   const td = useTranslations("actionCenter.dashboard.aiRecs");
   const tdal = useTranslations("actionCenter.dashboard.actionsList");
@@ -1071,13 +1075,17 @@ function AiRecs({
           },
         ]
       : []),
-    {
-      title: td("rec4Title"),
-      body: td("rec4Body", { count: dormantCount }),
-      cta: tdal("ctaReactivation"),
-      tone: "violet" as const,
-      href: "/crm/patients/segments/dormant",
-    },
+    ...(canReactivate
+      ? [
+          {
+            title: td("rec4Title"),
+            body: td("rec4Body", { count: dormantCount }),
+            cta: tdal("ctaReactivation"),
+            tone: "violet" as const,
+            href: REACTIVATION_HREF,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -1119,22 +1127,36 @@ function AiRecs({
 }
 
 /**
+ * Where «Запустить реактивацию» leads (audit UX-09): the reactivation
+ * wizard, which buckets patients by `lastVisitAt` exactly as the
+ * DORMANT_BATCH tasks behind the «N пациентов без визита более 90 дней» hint
+ * count them, and previews how many of them it can reach. The dormant
+ * segment list it used to open filters on the stored `Patient.segment`,
+ * which nothing recalculates (PT-15), so it was always empty. Launching a
+ * campaign is an admin's, like the DORMANT_BATCH task, so only admins get
+ * the link.
+ */
+const REACTIVATION_HREF = "/crm/notifications/campaigns/new";
+
+/**
  * Quick actions (audit UX-09, AC-14). Every tile opens a working screen in
  * the viewer's language: the links used to drop the locale (an uz user
  * landed in ru), «Запустить реактивацию» sent `segment=dormant`, which the
  * patients API refuses (400), and «Рассылка Telegram» opened the
  * notification log, where nothing reads `compose`. Now reactivation opens
- * the dormant patients list, and the broadcast tile, shown only to whoever
- * can broadcast, opens the Telegram inbox with the broadcast dialog up.
- * «Начать обзвон» goes to the Call Center when the plan has it, else to the
- * risk list on this page.
+ * the reactivation wizard (`REACTIVATION_HREF`) for whoever can launch it,
+ * and the broadcast tile, shown only to whoever can broadcast, opens the
+ * Telegram inbox with the broadcast dialog up. «Начать обзвон» goes to the
+ * Call Center when the plan has it, else to the risk list on this page.
  */
 function QuickActionsGrid({
   hasCallCenter,
   canBroadcast,
+  canReactivate,
 }: {
   hasCallCenter: boolean;
   canBroadcast: boolean;
+  canReactivate: boolean;
 }) {
   const td = useTranslations("actionCenter.dashboard.quickActions");
   const locale = useLocale();
@@ -1164,13 +1186,17 @@ function QuickActionsGrid({
       tone: "success" as const,
       href: `/${locale}/crm/calendar?date=${addTashkentDays(tashkentToday(), 1)}`,
     },
-    {
-      key: "reactivate",
-      label: td("startReactivation"),
-      icon: <RefreshCwIcon className="size-5" />,
-      tone: "violet" as const,
-      href: `/${locale}/crm/patients/segments/dormant`,
-    },
+    ...(canReactivate
+      ? [
+          {
+            key: "reactivate",
+            label: td("startReactivation"),
+            icon: <RefreshCwIcon className="size-5" />,
+            tone: "violet" as const,
+            href: `/${locale}${REACTIVATION_HREF}`,
+          },
+        ]
+      : []),
   ];
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">

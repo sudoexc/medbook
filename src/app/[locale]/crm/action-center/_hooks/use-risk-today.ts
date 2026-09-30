@@ -32,6 +32,13 @@ export type RiskOutcome =
 
 export const RISK_TODAY_KEY = ["action-center", "risk-today"] as const;
 
+/**
+ * `from` marker of the appointments link a row's «Перенести» opens (audit
+ * AC-10). The drawer opened with it sends `riskOutcome`, so the saved move
+ * records the outcome; a move made anywhere else records nothing.
+ */
+export const RISK_TODAY_FROM = "risk-today";
+
 export function useRiskToday() {
   const q = useQuery<RiskTodayResponse, Error>({
     queryKey: RISK_TODAY_KEY,
@@ -62,11 +69,20 @@ export function useRiskToday() {
   return q;
 }
 
-// Must mirror the server's per-row loss formula in route.ts:
-//   estimatedLossTiins += (priceFinal ?? FALLBACK) * riskScore
-// otherwise the «X сум до потери» chip stays stuck at the original total
-// until the next refetch.
-const FALLBACK_PRICE_TIINS = 8_000_000;
+/**
+ * The loss chip over `rows`: the sum of their priced shares, as the server
+ * sums them, or null (chip hidden) when none of them has one.
+ */
+export function riskLossOf(rows: RiskTodayRow[]): number | null {
+  let sum = 0;
+  let priced = false;
+  for (const r of rows) {
+    if (r.expectedLossTiins === null) continue;
+    sum += r.expectedLossTiins;
+    priced = true;
+  }
+  return priced ? sum : null;
+}
 
 /**
  * Optimistically drop one row from the cached risk-today response so the UI
@@ -87,9 +103,6 @@ export function dropRiskRowFromCache(
     const next = prev.appointments.filter(
       (a) => a.appointmentId !== appointmentId,
     );
-    const droppedLoss = Math.round(
-      (target.priceFinalTiins ?? FALLBACK_PRICE_TIINS) * target.riskScore,
-    );
     return {
       ...prev,
       appointments: next,
@@ -97,10 +110,9 @@ export function dropRiskRowFromCache(
         ...prev.totals,
         open: next.length,
         handledToday: prev.totals.handledToday + (countsHandled ? 1 : 0),
-        estimatedLossTiins: Math.max(
-          0,
-          prev.totals.estimatedLossTiins - droppedLoss,
-        ),
+        // From the rows' own shares as the server priced them, so the chip
+        // follows without re-deriving the formula here (audit AC-15).
+        estimatedLossTiins: riskLossOf(next),
       },
     };
   });

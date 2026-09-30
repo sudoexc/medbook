@@ -129,6 +129,9 @@ export type AppointmentPatchInput = {
   priceFinal?: number | null;
   discountPct?: number;
   discountAmount?: number;
+  /** Request flag, not a field: the move is a risk-today «Перенести»
+   *  (audit AC-10). */
+  riskOutcome?: "RESCHEDULED";
 };
 
 /**
@@ -203,9 +206,11 @@ export function usePatchAppointment(id: string) {
       await qc.cancelQueries({ queryKey: appointmentKey(id) });
       const previous = qc.getQueryData<AppointmentDetail>(appointmentKey(id));
       if (previous) {
+        const { riskOutcome: _flag, ...fields } = patch;
+        void _flag;
         qc.setQueryData<AppointmentDetail>(appointmentKey(id), {
           ...previous,
-          ...patch,
+          ...fields,
         } as AppointmentDetail);
       }
       return { previous };

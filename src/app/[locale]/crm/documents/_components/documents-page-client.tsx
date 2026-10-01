@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BadgeCheckIcon,
+  BanIcon,
   DownloadIcon,
   EyeIcon,
   PenLineIcon,
@@ -41,6 +42,7 @@ import { documentHref } from "@/lib/storage-ref";
 import {
   canMarkSigned,
   isPatientDocument,
+  isVoidedDocument,
   type DocumentSourceValue,
 } from "@/lib/document-guards";
 
@@ -286,7 +288,16 @@ export function DocumentsPageClient() {
                       {formatSize(d.sizeBytes)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {d.signedAt || canMarkSigned(d) ? (
+                      {/* CD-09: voided by ADMIN, kept as a record. */}
+                      {isVoidedDocument(d) ? (
+                        <span
+                          title={d.voidReason ?? undefined}
+                          className="mr-1 inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive"
+                        >
+                          <BanIcon className="size-3" />
+                          {t("voided")}
+                        </span>
+                      ) : d.signedAt || canMarkSigned(d) ? (
                         d.signedAt ? (
                           <span
                             title={new Date(d.signedAt).toLocaleString(

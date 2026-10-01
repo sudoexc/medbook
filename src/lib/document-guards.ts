@@ -12,6 +12,9 @@
  *   - A signed consent or contract is the clinic's proof. «Заменить файл»
  *     used to keep «Подписано» on whatever was uploaded instead and delete
  *     the original scan.
+ *   - Since nobody may delete a signed record, one filed by mistake is
+ *     voided instead (ADMIN, with a reason): it stays, file and all, but
+ *     no longer counts as signed and leaves the patient's Mini App.
  */
 
 export type DocumentSourceValue = "STAFF" | "PATIENT" | "SYSTEM";
@@ -22,6 +25,7 @@ export type DocumentGuardInput = {
   referralId?: string | null;
   signedAt?: Date | string | null;
   source?: string | null;
+  voidedAt?: Date | string | null;
 };
 
 export type DocumentLock = "rendered_document" | "signed_document";
@@ -46,6 +50,11 @@ export function isRenderedDocument(doc: DocumentGuardInput): boolean {
 /** Sent by the patient from the Mini App, never checked by the clinic. */
 export function isPatientDocument(doc: Pick<DocumentGuardInput, "source">): boolean {
   return doc.source === "PATIENT";
+}
+
+/** Voided by ADMIN: kept as a record, never shown as valid. */
+export function isVoidedDocument(doc: Pick<DocumentGuardInput, "voidedAt">): boolean {
+  return doc.voidedAt != null;
 }
 
 /** Why this document may not be deleted, or null when it may. */
@@ -73,7 +82,17 @@ export function canMarkSigned(doc: DocumentGuardInput): boolean {
   return (
     (SIGNABLE_DOCUMENT_TYPES as readonly string[]).includes(doc.type) &&
     doc.signedAt == null &&
+    !isVoidedDocument(doc) &&
     !isPatientDocument(doc) &&
     !isRenderedDocument(doc)
   );
+}
+
+/**
+ * May ADMIN void this document? Only a signed record that is not voided
+ * yet. An unsigned upload is simply deleted; a conclusion or a referral PDF
+ * is corrected through its source record, which re-renders it.
+ */
+export function canVoidDocument(doc: DocumentGuardInput): boolean {
+  return documentDeleteLock(doc) === "signed_document" && !isVoidedDocument(doc);
 }

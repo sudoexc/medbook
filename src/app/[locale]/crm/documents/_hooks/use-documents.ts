@@ -45,6 +45,9 @@ export interface DocumentRow {
   mimeType: string | null;
   sizeBytes: number | null;
   signedAt: string | null;
+  /** CD-09: voided by ADMIN with a reason, kept as a record. */
+  voidedAt: string | null;
+  voidReason: string | null;
   source: DocumentSourceValue;
   visitNoteId: string | null;
   referralId: string | null;

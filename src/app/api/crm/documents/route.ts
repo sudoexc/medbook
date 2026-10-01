@@ -5,9 +5,10 @@
  * POST stores the metadata + the `fileUrl` of bytes the UI already sent to
  * `/api/crm/documents/upload`, together with that upload's receipt, or an
  * external `https:` link (audit CD-08, see `@/server/documents/file-ref`).
- * Rows created here are `source = STAFF` (CD-06). A consent captured
- * already signed (the signature pad, CD-05) is stamped `signedAt`, and the
- * unsigned consent it signs, if named, is stamped with it.
+ * Rows created here are `source = STAFF` (CD-06). A signature captured on
+ * the pad that signs a named unsigned consent (CD-05) is stamped `signedAt`
+ * together with that consent; nothing else is ever created signed, so a
+ * stray signature never becomes a legal record nobody can delete.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -217,9 +218,11 @@ export const POST = createApiHandler(
       }
     }
 
-    // CD-05: only a consent or contract is ever «signed», and the paper the
-    // signature belongs to must be this patient's unsigned clinic consent.
-    const signs = body.signed === true || Boolean(body.signsDocumentId);
+    // CD-05: a document is created signed only as the signature of this
+    // patient's unsigned clinic consent, and is then a consent itself. A
+    // bare «signed consent» with no consent text behind it was locked for
+    // good (CD-09), even when it was a test scribble on the wrong card.
+    const signs = Boolean(body.signsDocumentId);
     if (
       signs &&
       !(SIGNABLE_DOCUMENT_TYPES as readonly string[]).includes(body.type)

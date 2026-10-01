@@ -33,6 +33,9 @@ export type DoctorDocumentRow = {
   source: "STAFF" | "PATIENT" | "SYSTEM";
   /** Set on a signed consent/contract (CD-09: file and row locked). */
   signedAt: string | null;
+  /** Voided by ADMIN with a reason (CD-09): kept, never valid. */
+  voidedAt: string | null;
+  voidReason: string | null;
   createdAt: string;
   patient: { id: string; fullName: string } | null;
   uploadedBy: { id: string; name: string } | null;

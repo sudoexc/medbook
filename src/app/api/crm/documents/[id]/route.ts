@@ -11,8 +11,9 @@
  * Legal records are never deleted and never get a new file (audit CD-09,
  * see `@/lib/document-guards`): a rendered conclusion or referral answers
  * 409 `rendered_document`, a signed consent or contract 409
- * `signed_document`. Every edit and deletion is published to the patient's
- * Mini App (`document.updated` / `document.deleted`).
+ * `signed_document` (ADMIN voids a misfiled one instead, see `./void`).
+ * Every edit and deletion is published to the patient's Mini App
+ * (`document.updated` / `document.deleted`).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -29,15 +30,10 @@ import {
 import {
   documentDeleteLock,
   documentReplaceLock,
+  isVoidedDocument,
   type DocumentLock,
 } from "@/lib/document-guards";
-import {
-  newCorrelationId,
-  publishViaOutbox,
-  type OutboxTx,
-} from "@/server/realtime/outbox";
-import type { ActorRole, Surface } from "@/server/realtime/envelope";
-import type { TenantContext } from "@/lib/tenant-context";
+import { publishDocumentChange } from "@/server/documents/change-events";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -56,38 +52,6 @@ function lockedResponse(lock: DocumentLock): Response {
         message:
           "A signed consent or contract is a legal record: it cannot be deleted and its file cannot be replaced.",
       });
-}
-
-/** Tell the patient's Mini App the document changed or is gone (CD-09). */
-async function publishDocumentChange(
-  tx: OutboxTx,
-  ctx: TenantContext,
-  type: "document.updated" | "document.deleted",
-  doc: { id: string; clinicId: string; patientId: string; type: string },
-): Promise<void> {
-  const userId = ctx.kind === "TENANT" ? ctx.userId : null;
-  const role = ctx.kind === "TENANT" ? ctx.role : null;
-  const actorRole: ActorRole =
-    role === "DOCTOR" ? "DOCTOR" : role === "ADMIN" ? "ADMIN" : "SYSTEM";
-  const surface: Surface = role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
-  await publishViaOutbox(tx, {
-    correlationId: newCorrelationId(),
-    actor: {
-      role: actorRole,
-      userId,
-      patientId: null,
-      onBehalfOfPatientId: null,
-      label: role && userId ? `${role.toLowerCase()}:${userId}` : "system",
-    },
-    surface,
-    tenantScope: { clinicId: doc.clinicId, patientId: doc.patientId },
-    type,
-    payload: {
-      documentId: doc.id,
-      patientId: doc.patientId,
-      documentType: doc.type,
-    },
-  });
 }
 
 export const GET = createApiListHandler(
@@ -118,7 +82,8 @@ export const GET = createApiListHandler(
  *     the Document row directly would silently detach the legal record from
  *     what the source says. They must be edited through their source.
  *   - the file and the type of a signed consent/contract (CD-09): its title
- *     may be corrected, the signed paper itself stays as signed.
+ *     may be corrected, the signed paper itself stays as signed. Nothing on
+ *     a voided one, not even the title.
  *   - number / verifyToken / signedAt / source — system-managed fields.
  */
 export const PATCH = createApiHandler(
@@ -140,6 +105,10 @@ export const PATCH = createApiHandler(
     // edited here, not even the title (see `isRenderedDocument`).
     const lock = documentReplaceLock(before);
     if (lock === "rendered_document") return lockedResponse(lock);
+    // A voided record is the trail of a correction: it stays as it was.
+    if (isVoidedDocument(before)) {
+      return err("VoidedDocumentLocked", 409, { reason: "voided_document" });
+    }
 
     // A replaced file must be bytes this clinic just uploaded (receipt) and
     // nobody else's object, or an https link (CD-08). Resending the current

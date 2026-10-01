@@ -8,17 +8,23 @@
  *     409, and edits/deletions reach the patient's Mini App.
  *   - CD-06: the origin is an explicit `source`; «ожидают подписи» and «Отметить
  *     подписанным» only ever concern the clinic's own consents.
- *   - CD-05: a consent captured on the signature pad is filed already signed,
- *     and the unsigned consent it belongs to is stamped with it.
+ *   - CD-05: a signature captured on the pad that signs a named unsigned
+ *     consent is filed signed together with it. Nothing else is created
+ *     signed: a bare «signed consent» (no consent text, maybe the wrong
+ *     patient's card) was locked for good (review finding).
+ *   - A signed record filed by mistake is voided by ADMIN with a reason
+ *     instead of deleted: row and file stay, nothing edits it any more.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   canMarkSigned,
+  canVoidDocument,
   documentDeleteLock,
   documentReplaceLock,
   isPatientDocument,
   isRenderedDocument,
+  isVoidedDocument,
 } from "@/lib/document-guards";
 import { signDocumentUpload } from "@/server/documents/file-ref";
 
@@ -41,6 +47,9 @@ type Doc = {
   uploadedById: string | null;
   source: string;
   signedAt: Date | null;
+  voidedAt: Date | null;
+  voidedById: string | null;
+  voidReason: string | null;
   createdAt: Date;
 };
 
@@ -58,6 +67,7 @@ const h = vi.hoisted(() => ({
   created: [] as Array<Record<string, unknown>>,
   published: [] as Array<{ type: string; payload: Record<string, unknown> }>,
   audits: [] as string[],
+  auditMeta: [] as Array<{ action: string; meta: unknown }>,
   listWhere: null as Record<string, unknown> | null,
 }));
 
@@ -107,9 +117,17 @@ vi.mock("@/lib/prisma", () => {
       h.docs.set(where.id, row);
       return row;
     }),
+    // Conditional updates (`signedAt: null`, `voidedAt: null`) apply only
+    // while the row still matches, like Postgres would.
     updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
       h.updateMany.push(args);
-      return { count: 1 };
+      const { id, ...rest } = args.where as { id: string } & Record<string, unknown>;
+      const row = h.docs.get(id);
+      const matches =
+        !!row &&
+        Object.entries(rest).every(([k, v]) => (v === null ? row[k] == null : row[k] === v));
+      if (row && matches) h.docs.set(id, { ...row, ...args.data });
+      return { count: matches ? 1 : 0 };
     }),
     delete: vi.fn(async ({ where }: { where: { id: string } }) => {
       h.deleted.push(where.id);
@@ -130,8 +148,9 @@ vi.mock("@/lib/prisma", () => {
     patient: { findFirst: vi.fn(async () => ({ id: "p1" })) },
     appointment: { findFirst: vi.fn(async () => ({ id: "a1" })) },
     auditLog: {
-      create: vi.fn(async ({ data }: { data: { action: string } }) => {
+      create: vi.fn(async ({ data }: { data: { action: string; meta?: unknown } }) => {
         h.audits.push(data.action);
+        h.auditMeta.push({ action: data.action, meta: data.meta });
         return { id: "al" };
       }),
     },
@@ -143,6 +162,7 @@ vi.mock("@/lib/prisma", () => {
 
 import { DELETE, PATCH } from "@/app/api/crm/documents/[id]/route";
 import { POST as SIGN } from "@/app/api/crm/documents/[id]/sign/route";
+import { POST as VOID } from "@/app/api/crm/documents/[id]/void/route";
 import { GET as LIST, POST as CREATE } from "@/app/api/crm/documents/route";
 
 function makeDoc(overrides: Partial<Doc> = {}): Doc {
@@ -161,6 +181,9 @@ function makeDoc(overrides: Partial<Doc> = {}): Doc {
     uploadedById: "u_admin",
     source: "STAFF",
     signedAt: null,
+    voidedAt: null,
+    voidedById: null,
+    voidReason: null,
     createdAt: new Date("2026-09-01T09:00:00Z"),
     ...overrides,
   };
@@ -182,6 +205,14 @@ const patch = (body: unknown, id = "d1") =>
   );
 const sign = (id = "d1") =>
   SIGN(new Request(`https://x/api/crm/documents/${id}/sign`, { method: "POST" }));
+const voidDoc = (body: unknown, id = "d1") =>
+  VOID(
+    new Request(`https://x/api/crm/documents/${id}/void`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 const create = (body: unknown) =>
   CREATE(
     new Request("https://x/api/crm/documents", {
@@ -201,6 +232,7 @@ beforeEach(() => {
   h.created = [];
   h.published = [];
   h.audits = [];
+  h.auditMeta = [];
   h.listWhere = null;
 });
 
@@ -226,6 +258,20 @@ describe("document guards (pure)", () => {
     expect(isPatientDocument({ source: "PATIENT" })).toBe(true);
     // The old proxy: a worker conclusion has no uploader, yet is not the patient's.
     expect(isPatientDocument({ source: "SYSTEM" })).toBe(false);
+  });
+
+  it("only a signed record can be voided, once; a voided one stays locked and never signable", () => {
+    const signed = { type: "CONSENT", source: "STAFF", signedAt: new Date() };
+    expect(canVoidDocument(signed)).toBe(true);
+    expect(canVoidDocument({ type: "CONSENT", source: "STAFF", signedAt: null })).toBe(false);
+    expect(canVoidDocument({ type: "CONCLUSION", source: "SYSTEM", visitNoteId: "vn1" })).toBe(false);
+
+    const voided = { ...signed, voidedAt: new Date() };
+    expect(isVoidedDocument(voided)).toBe(true);
+    expect(canVoidDocument(voided)).toBe(false);
+    // Kept as a record: still not deletable, its file still not replaceable.
+    expect(documentDeleteLock(voided)).toBe("signed_document");
+    expect(canMarkSigned({ type: "CONSENT", source: "STAFF", voidedAt: new Date() })).toBe(false);
   });
 });
 
@@ -350,7 +396,7 @@ describe("POST /api/crm/documents (CD-05, CD-06)", () => {
     expect(h.created[0]).toMatchObject({ source: "STAFF", signedAt: null });
   });
 
-  it("a signature captured on the pad is a signed consent, and signs the consent it names", async () => {
+  it("a signature that signs a named consent is filed signed, and signs that consent", async () => {
     put(makeDoc({ id: "consent1", type: "CONSENT", title: "Согласие на лечение" }));
     const res = await create({
       patientId: "p1",
@@ -360,7 +406,6 @@ describe("POST /api/crm/documents (CD-05, CD-06)", () => {
       uploadToken: signDocumentUpload("c1", key),
       mimeType: "image/png",
       sizeBytes: 48_000,
-      signed: true,
       signsDocumentId: "consent1",
     });
     expect(res.status).toBe(201);
@@ -382,7 +427,6 @@ describe("POST /api/crm/documents (CD-05, CD-06)", () => {
       title: "Подпись",
       fileUrl: url,
       uploadToken: signDocumentUpload("c1", key),
-      signed: true,
       signsDocumentId: "consent1",
     });
     expect(res.status).toBe(400);
@@ -402,15 +446,145 @@ describe("POST /api/crm/documents (CD-05, CD-06)", () => {
   });
 
   it("only a consent or contract is ever filed as signed", async () => {
+    put(makeDoc({ id: "consent1", type: "CONSENT" }));
     const res = await create({
       patientId: "p1",
       type: "RESULT",
       title: "МРТ",
       fileUrl: url,
       uploadToken: signDocumentUpload("c1", key),
-      signed: true,
+      signsDocumentId: "consent1",
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ reason: "signed_only_for_consent" });
+    expect(h.updateMany).toEqual([]);
+  });
+
+  it("a signature with no consent picked is filed unsigned as «Прочее» and stays deletable", async () => {
+    const res = await create({
+      patientId: "p1",
+      type: "OTHER",
+      title: "Подпись пациента 01.10.2026",
+      fileUrl: url,
+      uploadToken: signDocumentUpload("c1", key),
+      mimeType: "image/png",
+      sizeBytes: 48_000,
+    });
+    expect(res.status).toBe(201);
+    expect(h.created[0]).toMatchObject({ type: "OTHER", signedAt: null });
+    expect(documentDeleteLock(h.created[0] as never)).toBeNull();
+    expect(h.updateMany).toEqual([]);
+    expect(h.audits).not.toContain("document.sign");
+  });
+
+  it("a bare `signed: true` no longer mints a signed consent nobody can delete", async () => {
+    const res = await create({
+      patientId: "p1",
+      type: "CONSENT",
+      title: "Подпись пациента 01.10.2026",
+      fileUrl: url,
+      uploadToken: signDocumentUpload("c1", key),
+      signed: true,
+    });
+    expect(res.status).toBe(201);
+    expect(h.created[0]?.signedAt).toBeNull();
+    expect(documentDeleteLock(h.created[0] as never)).toBeNull();
+  });
+});
+
+describe("POST /api/crm/documents/[id]/void (CD-09)", () => {
+  const SIGNED_AT = new Date("2026-10-01T09:00:00Z");
+
+  it("ADMIN voids a misfiled signed consent: row, file and signature stay, the Mini App is told, the reason is audited", async () => {
+    put(makeDoc({ type: "CONSENT", title: "Подпись: Согласие", signedAt: SIGNED_AT }));
+    const res = await voidDoc({ reason: "  Подпись другого пациента  " });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: "d1", voidReason: "Подпись другого пациента" });
+
+    expect(h.updateMany).toEqual([
+      {
+        where: { id: "d1", voidedAt: null },
+        data: {
+          voidedAt: expect.any(Date),
+          voidedById: "u_admin",
+          voidReason: "Подпись другого пациента",
+        },
+      },
+    ]);
+    const row = h.docs.get("d1")!;
+    expect(row.signedAt).toEqual(SIGNED_AT);
+    expect(row.fileUrl).toBe(OLD_URL);
+    expect(h.deleted).toEqual([]);
+    expect(h.deletedKeys).toEqual([]);
+    expect(h.published).toEqual([
+      {
+        type: "document.updated",
+        payload: { documentId: "d1", patientId: "p1", documentType: "CONSENT" },
+      },
+    ]);
+    expect(h.auditMeta).toContainEqual({
+      action: "document.void",
+      meta: expect.objectContaining({
+        reason: "Подпись другого пациента",
+        before: expect.objectContaining({ signedAt: SIGNED_AT, fileUrl: OLD_URL }),
+      }),
+    });
+  });
+
+  it("is ADMIN only", async () => {
+    put(makeDoc({ type: "CONSENT", signedAt: SIGNED_AT }));
+    for (const role of ["RECEPTIONIST", "DOCTOR", "NURSE"]) {
+      h.user = { id: "u_x", role, clinicId: "c1", email: "x@x.test" };
+      expect((await voidDoc({ reason: "по ошибке" })).status, role).toBe(403);
+    }
+    expect(h.updateMany).toEqual([]);
+  });
+
+  it("needs a reason", async () => {
+    put(makeDoc({ type: "CONSENT", signedAt: SIGNED_AT }));
+    expect((await voidDoc({})).status).toBe(400);
+    expect((await voidDoc({ reason: "  a " })).status).toBe(400);
+    expect(h.updateMany).toEqual([]);
+  });
+
+  it("refuses an unsigned upload (delete it) and a rendered conclusion (correct its note)", async () => {
+    put(makeDoc({ type: "CONSENT", signedAt: null }));
+    let res = await voidDoc({ reason: "по ошибке" });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ reason: "not_voidable" });
+
+    put(makeDoc({ type: "CONCLUSION", visitNoteId: "vn1", source: "SYSTEM" }));
+    res = await voidDoc({ reason: "по ошибке" });
+    expect(res.status).toBe(409);
+    expect(h.updateMany).toEqual([]);
+    expect(h.published).toEqual([]);
+  });
+
+  it("voiding twice keeps the first reason and writes nothing", async () => {
+    put(
+      makeDoc({
+        type: "CONSENT",
+        signedAt: SIGNED_AT,
+        voidedAt: new Date(),
+        voidedById: "u_other",
+        voidReason: "первая причина",
+      }),
+    );
+    const res = await voidDoc({ reason: "вторая причина" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ voidReason: "первая причина" });
+    expect(h.updateMany).toEqual([]);
+    expect(h.published).toEqual([]);
+    expect(h.audits).toEqual([]);
+  });
+
+  it("a voided record can be neither edited nor deleted", async () => {
+    put(makeDoc({ type: "CONSENT", signedAt: SIGNED_AT, voidedAt: new Date() }));
+    const renamed = await patch({ title: "Другое название" });
+    expect(renamed.status).toBe(409);
+    expect(await renamed.json()).toMatchObject({ reason: "voided_document" });
+    expect((await del()).status).toBe(409);
+    expect(h.updates).toEqual([]);
+    expect(h.deleted).toEqual([]);
   });
 });

@@ -120,12 +120,14 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       mimeType: true,
       sizeBytes: true,
       createdAt: true,
+      voidedAt: true,
     },
   });
   // The patient only ever sees their own documents, so `seq` here is
   // identical to the staff-side `seq` for the same row. We can derive
   // it directly from the descending list: `seq = total - i` where `i`
-  // is the zero-based index in the desc-sorted slice.
+  // is the zero-based index in the desc-sorted slice. Counted before the
+  // voided rows are dropped, so the numbers still match the CRM's.
   const total = docs.length;
   // The stored fileUrl is the bare `${MINIO_PUBLIC_URL}/${bucket}/${key}` —
   // unsigned, so a direct GET returns MinIO's `AccessDenied` XML (which
@@ -136,16 +138,25 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   // route — auth-checked + served with the right Content-Type. The URL is
   // opened as a plain link, so it carries a short-lived link for this one
   // document instead of the patient's initData (audit MA-07).
-  const proxied = docs.map((d, i) => ({
-    ...d,
-    seq: total - i,
-    fileUrl: miniAppDocumentUrl({
-      clinicId: ctx.clinicId,
-      clinicSlug: ctx.clinicSlug,
-      patientId: acting.patientId,
-      documentId: d.id,
-    }),
-  }));
+  //
+  // A document ADMIN voided (CD-09: another patient's signature filed on
+  // this card, a consent marked signed by mistake) is no longer shown.
+  const proxied = docs.flatMap(({ voidedAt, ...d }, i) =>
+    voidedAt != null
+      ? []
+      : [
+          {
+            ...d,
+            seq: total - i,
+            fileUrl: miniAppDocumentUrl({
+              clinicId: ctx.clinicId,
+              clinicSlug: ctx.clinicSlug,
+              patientId: acting.patientId,
+              documentId: d.id,
+            }),
+          },
+        ],
+  );
   return ok({ documents: proxied });
 });
 

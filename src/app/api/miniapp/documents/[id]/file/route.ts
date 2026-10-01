@@ -71,8 +71,15 @@ export async function GET(
   }
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
+    // A voided document (CD-09) has left the patient's list; an old link
+    // to it opens nothing either.
     const doc = await prisma.document.findFirst({
-      where: { id, clinicId: owner.clinicId, patientId: owner.patientId },
+      where: {
+        id,
+        clinicId: owner.clinicId,
+        patientId: owner.patientId,
+        voidedAt: null,
+      },
       select: { id: true, fileUrl: true, mimeType: true, title: true },
     });
     if (!doc) return err("NotFound", 404);

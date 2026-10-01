@@ -2525,6 +2525,14 @@ model Document {
   // CONSENT/CONTRACT signature capture. NULL = awaiting signature; the
   // "ожидают подписи" filter keys off this. Stamped by POST .../[id]/sign.
   signedAt      DateTime?
+  // A signed record is never deleted (audit CD-09). One filed by mistake
+  // (another patient's signature, «Отметить подписанным» pressed by error) is
+  // voided by ADMIN with a reason instead (POST .../[id]/void): the row and
+  // its file stay for the audit trail, the CRM shows it as voided and the
+  // patient's Mini App no longer lists it.
+  voidedAt      DateTime?
+  voidedById    String?
+  voidReason    String?
   createdAt     DateTime     @default(now())
 
   @@index([clinicId, patientId, createdAt])

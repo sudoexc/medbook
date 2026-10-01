@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
+  BanIcon,
   DownloadIcon,
   EyeIcon,
   FileIcon,
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -29,6 +31,7 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -44,11 +47,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import { documentDeleteLock, isPatientDocument } from "@/lib/document-guards";
+import {
+  canVoidDocument,
+  documentDeleteLock,
+  isPatientDocument,
+  isVoidedDocument,
+} from "@/lib/document-guards";
 import { uploadDocumentFile } from "@/lib/document-upload-client";
 import { tashkentToday } from "@/lib/tashkent-time";
 
 import type { Patient } from "../../_hooks/use-patient";
+import { useCurrentRole } from "../../_hooks/use-current-role";
 import {
   documentDownloadHref,
   flattenDocuments,
@@ -57,6 +66,7 @@ import {
   usePatientDocumentsInfinite,
   usePendingConsents,
   useSaveSignature,
+  useVoidDocument,
   type DocumentTypeFilter,
   type PatientDocument,
   type SaveSignatureError,
@@ -110,6 +120,14 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   const create = useCreateDocument(patient.id);
   const remove = useDeleteDocument(patient.id);
   const saveSignature = useSaveSignature(patient.id);
+  const voidDocument = useVoidDocument(patient.id);
+  // CD-09: a signed record is never deleted; ADMIN voids a misfiled one.
+  // Cosmetic: the void route answers 403 to anyone else.
+  const canVoid = useCurrentRole() === "ADMIN";
+  const [voidTarget, setVoidTarget] = React.useState<PatientDocument | null>(
+    null,
+  );
+  const [voidReason, setVoidReason] = React.useState("");
   const [signOpen, setSignOpen] = React.useState(false);
   const [dragOver, setDragOver] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -145,6 +163,19 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
       else toast.error(t("deleteError"));
     }
   }, [deleteTarget, remove, t]);
+
+  const confirmVoid = React.useCallback(async () => {
+    const reason = voidReason.trim();
+    if (!voidTarget || reason.length < VOID_REASON_MIN) return;
+    try {
+      await voidDocument.mutateAsync({ documentId: voidTarget.id, reason });
+      toast.success(t("voided"));
+      setVoidTarget(null);
+      setVoidReason("");
+    } catch {
+      toast.error(t("voidError"));
+    }
+  }, [voidDocument, voidReason, voidTarget, t]);
 
   const uploadOne = React.useCallback(
     (file: File) => uploadDocumentFile(file, patient.id),
@@ -328,7 +359,19 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                       {t("patientBadge")}
                     </span>
                   ) : null}
-                  {doc.signedAt ? (
+                  {/* CD-09: a voided record no longer counts as signed. */}
+                  {isVoidedDocument(doc) ? (
+                    <span
+                      title={
+                        doc.voidReason
+                          ? t("voidedReason", { reason: doc.voidReason })
+                          : undefined
+                      }
+                      className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive"
+                    >
+                      {t("voidedBadge")}
+                    </span>
+                  ) : doc.signedAt ? (
                     <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
                       {t("signedBadge")}
                     </span>
@@ -401,6 +444,20 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                       <Trash2Icon className="size-3" />
                     </Button>
                   )}
+                  {canVoid && canVoidDocument(doc) ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setVoidReason("");
+                        setVoidTarget(doc);
+                      }}
+                      aria-label={t("voidAria")}
+                      title={t("voidAria")}
+                    >
+                      <BanIcon className="size-3" />
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -450,6 +507,47 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
         target={previewTarget}
       />
 
+      <Dialog
+        open={voidTarget !== null}
+        onOpenChange={(v) => !v && setVoidTarget(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t("voidTitle", { name: voidTarget?.title ?? "" })}
+            </DialogTitle>
+            <DialogDescription>{t("voidHint")}</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={voidReason}
+            onChange={(e) => setVoidReason(e.target.value)}
+            placeholder={t("voidReasonPlaceholder")}
+            aria-label={t("voidReasonPlaceholder")}
+            rows={3}
+            maxLength={500}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setVoidTarget(null)}
+              disabled={voidDocument.isPending}
+            >
+              {t("voidBack")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmVoid()}
+              disabled={
+                voidReason.trim().length < VOID_REASON_MIN ||
+                voidDocument.isPending
+              }
+            >
+              {t("voidConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(v) => !v && setDeleteTarget(null)}
@@ -484,8 +582,10 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
 
 /**
  * Minimal signature pad using native <canvas>. The PNG is uploaded as a file
- * and filed as a signed consent (CD-05); the receptionist may name the
- * unsigned consent or contract it signs. The canvas is drawn at 1x: the
+ * (CD-05). Picking one of the patient's unsigned consents files it as that
+ * consent's signature, and both become signed records. With none picked it
+ * is filed as «Прочее», unsigned and deletable, and the dialog says so: a
+ * bare signature is not a signed consent. The canvas is drawn at 1x: the
  * signature is a record, not artwork, and a 2x bitmap only doubled the
  * upload.
  */
@@ -508,7 +608,7 @@ function SignaturePadDialog({
   const [drawing, setDrawing] = React.useState(false);
   const [hasInk, setHasInk] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [consentId, setConsentId] = React.useState<string>(NEW_CONSENT);
+  const [consentId, setConsentId] = React.useState<string>(NO_CONSENT);
   const pending = usePendingConsents(patientId, open);
   const consents = pending.data ?? [];
 
@@ -524,7 +624,7 @@ function SignaturePadDialog({
 
   React.useEffect(() => {
     if (!open) return;
-    setConsentId(NEW_CONSENT);
+    setConsentId(NO_CONSENT);
     setHasInk(false);
     const c = canvasRef.current;
     if (!c) return;
@@ -561,7 +661,7 @@ function SignaturePadDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NEW_CONSENT}>{t("consentNone")}</SelectItem>
+                <SelectItem value={NO_CONSENT}>{t("consentNone")}</SelectItem>
                 {consents.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.title}
@@ -597,6 +697,12 @@ function SignaturePadDialog({
           />
         </div>
         <p className="text-xs text-muted-foreground">{t("hint")}</p>
+        {consentId === NO_CONSENT && pending.isSuccess ? (
+          <p className="text-xs text-muted-foreground">
+            {consents.length === 0 ? `${t("noPendingConsents")} ` : null}
+            {t("hintUnbound")}
+          </p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" onClick={clear} disabled={saving}>
             {t("clear")}
@@ -643,5 +749,8 @@ function SignaturePadDialog({
   );
 }
 
-/** Select value for «not tied to an existing consent». */
-const NEW_CONSENT = "__new";
+/** Select value for «not tied to a consent»: filed as «Прочее», unsigned. */
+const NO_CONSENT = "__new";
+
+/** Same floor as the void route's schema. */
+const VOID_REASON_MIN = 3;

@@ -15,6 +15,16 @@ Base path: `/api/crm/documents`
   deleted and never get a new file or type. The API answers 409
   (`rendered_document` / `signed_document`) for every role, ADMIN included,
   and the lists hide the buttons.
+- A signed record filed by mistake (another patient's signature, «Отметить
+  подписанным» pressed on the wrong paper) is voided by ADMIN with a reason
+  instead (`voidedAt`, `voidedById`, `voidReason`). The row and its file stay
+  and the audit log has a `document.void` row; the CRM lists it as
+  «Аннулирован», the patient's Mini App no longer lists or serves it, «send
+  to Telegram» skips it, and nothing on it can be edited any more
+  (409 `voided_document`).
+- Only a signature that signs a named consent is ever created signed. The
+  patient card's signature pad files a signature with no consent picked as
+  `OTHER`, unsigned and deletable.
 
 ## Endpoints
 
@@ -27,9 +37,10 @@ Base path: `/api/crm/documents`
 - **Roles:** ADMIN, RECEPTIONIST, DOCTOR, NURSE.
 - Body: `CreateDocumentSchema` — patientId, type, title, fileUrl required.
   A stored file needs the `uploadToken` receipt from `POST /api/crm/documents/upload`
-  (no `data:` URLs, the signature pad uploads its PNG too). `signed: true` files
-  a consent/contract already signed; `signsDocumentId` stamps the unsigned
-  consent the signature belongs to.
+  (no `data:` URLs, the signature pad uploads its PNG too). `signsDocumentId`
+  names the patient's unsigned clinic consent/contract this signature signs:
+  the new document (a CONSENT/CONTRACT) and that consent are both stamped
+  signed (400 `consent_not_signable` / `signed_only_for_consent` otherwise).
 
 ### `GET /api/crm/documents/[id]` — fetch.
 
@@ -38,6 +49,8 @@ Base path: `/api/crm/documents`
 ### `DELETE /api/crm/documents/[id]` — ADMIN, DOCTOR (own uploads).
 
 ### `POST /api/crm/documents/[id]/sign` — mark the clinic's consent/contract signed (409 `not_signable` otherwise).
+
+### `POST /api/crm/documents/[id]/void` — ADMIN. Body `{ reason }` (3 to 500 characters). Voids a signed consent/contract (409 `not_voidable` for anything else); voiding twice returns the row unchanged.
 
 Edits and deletions publish `document.updated` / `document.deleted`, which
 refresh the patient's Mini App documents list.

@@ -6,9 +6,15 @@
  * thousands of characters against a 1000-character column: every save was
  * a 400, the dialog stayed open with a raw error code, and the clinic could
  * believe consents were being collected. Now the PNG goes through the upload
- * route like any other file, the document is filed as an already signed
- * consent, and, when the receptionist picked one, the unsigned consent it
- * belongs to is stamped signed in the same request.
+ * route like any other file.
+ *
+ * Only a signature that signs one of the patient's unsigned consents is a
+ * signed record: it is filed as a consent and the consent it belongs to is
+ * stamped signed in the same request, after which neither can be deleted
+ * (CD-09). A signature with no consent picked is filed as «Прочее»,
+ * unsigned: a bare PNG labelled «Согласие · Подписан» had no consent text
+ * behind it, and a scribble on the wrong patient's card stayed there for
+ * good.
  */
 import type { UploadedDocumentFile } from "@/lib/document-upload-client";
 
@@ -37,13 +43,13 @@ export function canvasToPngFile(
 /** Body of `POST /api/crm/documents` for a captured signature. */
 export type SignatureDocumentInput = {
   patientId: string;
-  type: "CONSENT";
+  /** CONSENT only when it signs `signsDocumentId`; OTHER otherwise. */
+  type: "CONSENT" | "OTHER";
   title: string;
   fileUrl: string;
   uploadToken: string | null;
   mimeType: string;
   sizeBytes: number | null;
-  signed: true;
   signsDocumentId: string | null;
 };
 
@@ -59,18 +65,18 @@ export async function saveSignature(input: {
   discardUpload: (file: UploadedDocumentFile) => Promise<unknown>;
 }): Promise<void> {
   const file = await canvasToPngFile(input.canvas, input.fileName);
+  const signsDocumentId = input.signsDocumentId ?? null;
   const uploaded = await input.upload(file);
   try {
     await input.createDocument({
       patientId: input.patientId,
-      type: "CONSENT",
+      type: signsDocumentId ? "CONSENT" : "OTHER",
       title: input.title,
       fileUrl: uploaded.fileUrl,
       uploadToken: uploaded.uploadToken,
       mimeType: uploaded.mimeType ?? SIGNATURE_MIME,
       sizeBytes: uploaded.sizeBytes ?? file.size,
-      signed: true,
-      signsDocumentId: input.signsDocumentId ?? null,
+      signsDocumentId,
     });
   } catch (e) {
     // The bytes are stored but nothing points at them: take them back so

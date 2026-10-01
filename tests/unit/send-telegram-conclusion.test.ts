@@ -173,7 +173,12 @@ describe("POST /api/crm/visit-notes/[id]/send-telegram (VW-06)", () => {
     });
     expect(h.sent).toEqual(["Заключение от 01.10.2026", "МРТ"]);
     // The conclusion has its own lookup: attachments never repeat it.
-    expect(h.attachmentsWhere).toMatchObject({ visitNoteId: null, type: { not: "CONCLUSION" } });
+    expect(h.attachmentsWhere).toMatchObject({
+      visitNoteId: null,
+      type: { not: "CONCLUSION" },
+      // CD-09: a document ADMIN voided is never sent.
+      voidedAt: null,
+    });
   });
 
   it("within 30 s of signing: 409 conclusion_rendering and nothing is sent", async () => {

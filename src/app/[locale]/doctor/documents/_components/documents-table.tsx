@@ -21,7 +21,7 @@ import {
   RenameDocumentDialog,
   ReplaceDocumentFileDialog,
 } from "../../_components/document-edit-dialogs";
-import { isPatientDocument } from "@/lib/document-guards";
+import { isPatientDocument, isVoidedDocument } from "@/lib/document-guards";
 import { useDoctorProfile } from "../../settings/_hooks/use-doctor-profile";
 import { useDocumentsFilters } from "../_hooks/documents-context";
 import {
@@ -273,6 +273,15 @@ function DocumentRow({
         >
           {t(TYPE_LABEL_KEY[doc.type])}
         </span>
+        {/* CD-09: voided by ADMIN, kept as a record but not valid. */}
+        {isVoidedDocument(doc) ? (
+          <div
+            className="mt-1 text-[11px] font-medium text-destructive"
+            title={doc.voidReason ?? undefined}
+          >
+            {t("row.voided")}
+          </div>
+        ) : null}
       </div>
 
       <div className="min-w-0">

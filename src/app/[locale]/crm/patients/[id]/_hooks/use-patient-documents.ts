@@ -46,6 +46,9 @@ export type PatientDocument = {
   source: DocumentSourceValue;
   /** Set on a signed consent/contract; such a row is a legal record (CD-09). */
   signedAt: string | null;
+  /** Voided by ADMIN with a reason: kept, never counted as signed (CD-09). */
+  voidedAt: string | null;
+  voidReason: string | null;
   visitNoteId: string | null;
   referralId: string | null;
   /** Per-patient sequence: `#1` is the oldest, `#N` the newest upload. */
@@ -231,6 +234,33 @@ export function useDeleteDocument(patientId: string) {
 }
 
 /**
+ * ADMIN voids a signed record filed by mistake (CD-09), with a reason. The
+ * row stays in the card, marked voided; the patient's Mini App drops it.
+ */
+export function useVoidDocument(patientId: string) {
+  const qc = useQueryClient();
+  return useMutation<PatientDocument, Error, { documentId: string; reason: string }>({
+    mutationFn: async ({ documentId, reason }) => {
+      const res = await fetch(
+        `/api/crm/documents/${encodeURIComponent(documentId)}/void`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason }),
+        },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as PatientDocument;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patient", patientId, "documents"] });
+      qc.invalidateQueries({ queryKey: ["documents", "list"] });
+    },
+  });
+}
+
+/**
  * The patient's unsigned clinic consents and contracts, for the signature
  * pad's «к какому документу» choice (CD-05). Same filter as the library's
  * «ожидают подписи».
@@ -267,8 +297,10 @@ export type SaveSignatureInput = {
 export type SaveSignatureError = Error & { reason?: string };
 
 /**
- * Signature pad save (CD-05): PNG through the upload route, then a signed
- * CONSENT document. Toasts are the caller's: it knows the dialog's wording.
+ * Signature pad save (CD-05): PNG through the upload route, then the
+ * document: a signed consent when it signs one of the patient's pending
+ * consents, an unsigned «Прочее» otherwise. Toasts are the caller's: it
+ * knows the dialog's wording.
  */
 export function useSaveSignature(patientId: string) {
   const qc = useQueryClient();

@@ -19,10 +19,11 @@ export const DocumentSourceEnum = z.enum(["STAFF", "PATIENT", "SYSTEM"]);
  * The signature pad uploads its PNG the same way: an inline data: URL never
  * fit the 1000-character column limit, so the pad never saved (CD-05).
  *
- * `signed` files a consent or contract that is already signed (the pad
- * captures the signature itself), so it never waits in «ожидают подписи».
  * `signsDocumentId` names an unsigned consent or contract of the same
- * patient that this signature signs; it is stamped signed with it.
+ * patient that this signature (the pad's PNG, filed as a consent) signs;
+ * both are stamped signed. A signature with no consent behind it is not a
+ * signed consent: the pad files it as OTHER, unsigned and deletable, so a
+ * scribble on the wrong patient's card never becomes a legal record.
  */
 export const CreateDocumentSchema = z.object({
   patientId: z.string(),
@@ -33,7 +34,6 @@ export const CreateDocumentSchema = z.object({
   uploadToken: z.string().max(200).optional().nullable(),
   mimeType: z.string().max(120).optional().nullable(),
   sizeBytes: z.number().int().min(0).optional().nullable(),
-  signed: z.boolean().optional(),
   signsDocumentId: z.string().min(1).max(64).optional().nullable(),
 });
 
@@ -60,6 +60,15 @@ export const UpdateDocumentSchema = z
     sizeBytes: z.number().int().min(0).optional().nullable(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "empty_patch" });
+
+/**
+ * POST /api/crm/documents/[id]/void: ADMIN voids a signed record filed by
+ * mistake (CD-09). The reason is required: it is the only account of why a
+ * legal record stopped counting.
+ */
+export const VoidDocumentSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
 
 export const QueryDocumentSchema = z.object({
   patientId: z.string().optional(),

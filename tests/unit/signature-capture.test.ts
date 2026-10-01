@@ -3,9 +3,13 @@
  *
  * It put `canvas.toDataURL()` of a 900×440 canvas into `Document.fileUrl`:
  * tens of thousands of base64 characters against a 1000-character limit, so
- * every save was a 400. Now the PNG is uploaded like any file and the
- * document is filed as a signed consent, with the upload taken back if the
- * document cannot be saved.
+ * every save was a 400. Now the PNG is uploaded like any file, with the
+ * upload taken back if the document cannot be saved.
+ *
+ * Only a signature that signs one of the patient's pending consents is filed
+ * as a (signed) consent. With none picked it is «Прочее», unsigned: a bare
+ * «signed consent» could be deleted by nobody, not even when it was a test
+ * scribble on the wrong patient's card (review finding).
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -56,7 +60,7 @@ describe("the old inline save (why it always failed)", () => {
 });
 
 describe("saveSignature", () => {
-  it("uploads the 900×440 PNG and files a signed consent pointing at the stored file", async () => {
+  it("uploads the 900×440 PNG; with no consent picked it is filed as an unsigned «Прочее»", async () => {
     const uploaded: File[] = [];
     const docs: SignatureDocumentInput[] = [];
     const discard = vi.fn(async () => undefined);
@@ -83,13 +87,12 @@ describe("saveSignature", () => {
     expect(docs).toEqual([
       {
         patientId: "p1",
-        type: "CONSENT",
+        type: "OTHER",
         title: "Подпись пациента 01.10.2026",
         fileUrl: STORED.fileUrl,
         uploadToken: "receipt",
         mimeType: "image/png",
         sizeBytes: 48_000,
-        signed: true,
         signsDocumentId: null,
       },
     ]);
@@ -98,7 +101,7 @@ describe("saveSignature", () => {
     expect(discard).not.toHaveBeenCalled();
   });
 
-  it("names the consent it signs", async () => {
+  it("names the consent it signs, and only then is filed as a consent", async () => {
     const docs: SignatureDocumentInput[] = [];
     await saveSignature({
       canvas: fakeCanvas(),
@@ -112,7 +115,8 @@ describe("saveSignature", () => {
       },
       discardUpload: async () => undefined,
     });
-    expect(docs[0]?.signsDocumentId).toBe("consent1");
+    expect(docs[0]).toMatchObject({ type: "CONSENT", signsDocumentId: "consent1" });
+    expect(CreateDocumentSchema.safeParse(docs[0]).success).toBe(true);
   });
 
   it("takes the upload back and rethrows when the document is refused", async () => {

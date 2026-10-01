@@ -26,7 +26,11 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 
 import type { DocumentType } from "../documents/_hooks/use-doctor-documents";
-import { documentReplaceLock, isRenderedDocument } from "@/lib/document-guards";
+import {
+  documentReplaceLock,
+  isRenderedDocument,
+  isVoidedDocument,
+} from "@/lib/document-guards";
 
 /** Full label map — includes CONCLUSION so rendered handouts display right. */
 export const DOCUMENT_TYPE_LABEL_KEY: Record<DocumentType, string> = {
@@ -63,19 +67,21 @@ export type EditableDocumentCheck = {
   referralId?: string | null;
   source?: string | null;
   signedAt?: string | null;
+  voidedAt?: string | null;
 };
 
 /**
  * Mirror of the server-side PATCH/DELETE guards so the UI never shows a
  * button the API would reject: doctor edits only their own uploads, and
- * rendered documents (conclusions, referral PDFs) are never editable.
+ * rendered documents (conclusions, referral PDFs) and voided records (CD-09)
+ * are never editable.
  */
 export function canEditDocument(
   doc: EditableDocumentCheck,
   myUserId: string | null | undefined,
 ): boolean {
   if (!myUserId) return false;
-  if (isRenderedDocument(doc)) return false;
+  if (isRenderedDocument(doc) || isVoidedDocument(doc)) return false;
   const ownerId = doc.uploadedById ?? doc.uploadedBy?.id ?? null;
   return ownerId === myUserId;
 }

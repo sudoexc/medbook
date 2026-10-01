@@ -140,6 +140,8 @@ export const POST = createApiHandler(
             appointmentId: note.appointmentId,
             visitNoteId: null,
             type: { not: "CONCLUSION" },
+            // Voided by ADMIN (CD-09): filed on this visit by mistake.
+            voidedAt: null,
           },
           select: docSelect,
           orderBy: { createdAt: "asc" },

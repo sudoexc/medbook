@@ -226,6 +226,63 @@ function ymdOfUtcDay(ms: number): string {
 }
 
 /**
+ * The latest firing slot (09:00 local on the cadence's day) at or before
+ * `now`: the slot `computeNextRunAt` would have handed out for it.
+ */
+export function latestRunAtOrBefore(
+  cadence: ScheduleCadence,
+  now: Date,
+  timeZone: string,
+): Date {
+  const civ = getCivilParts(now, timeZone);
+  const beforeAnchor =
+    civ.hour < RUN_HOUR || (civ.hour === RUN_HOUR && civ.minute < RUN_MINUTE);
+  const DAY = 24 * 60 * 60 * 1000;
+  // Civil-date arithmetic on a UTC midnight, then back to the zone's 09:00.
+  const today = Date.UTC(civ.year, civ.month - 1, civ.day);
+  let slotDay: number;
+  if (cadence === "DAILY") {
+    slotDay = beforeAnchor ? today - DAY : today;
+  } else if (cadence === "WEEKLY") {
+    const thisMonday = today - (civ.weekday - 1) * DAY;
+    slotDay = civ.weekday === 1 && beforeAnchor ? thisMonday - 7 * DAY : thisMonday;
+  } else {
+    slotDay =
+      civ.day === 1 && beforeAnchor
+        ? Date.UTC(civ.year, civ.month - 2, 1)
+        : Date.UTC(civ.year, civ.month - 1, 1);
+  }
+  const d = new Date(slotDay);
+  return civilToUtc(
+    d.getUTCFullYear(),
+    d.getUTCMonth() + 1,
+    d.getUTCDate(),
+    RUN_HOUR,
+    RUN_MINUTE,
+    timeZone,
+  );
+}
+
+/**
+ * The firing time whose window a due schedule reports (audit AN-18 review):
+ * its own `nextRunAt` while that is still the latest slot due, so a tick a
+ * few minutes or hours late reports the day it was due for; otherwise the
+ * latest slot at or before `now`. A schedule left behind by more than one
+ * step (re-enabled weeks after it was auto-disabled, a long worker outage)
+ * used to send the period of its stale `nextRunAt`: «Отчёт за 05.10» on
+ * 20.10, or a month long over.
+ */
+export function reportRunAnchor(
+  cadence: ScheduleCadence,
+  nextRunAt: Date,
+  now: Date,
+  timeZone: string,
+): Date {
+  const latest = latestRunAtOrBefore(cadence, now, timeZone);
+  return nextRunAt.getTime() >= latest.getTime() ? nextRunAt : latest;
+}
+
+/**
  * The days a scheduled report covers when it fires at `runAt` (audit
  * AN-18): DAILY is the day before, WEEKLY the previous Monday to Sunday,
  * MONTHLY the previous calendar month, all in the clinic's civil calendar.
@@ -234,8 +291,8 @@ function ymdOfUtcDay(ms: number): string {
  * always the last 30 days, so «ежедневный» brought a month every morning;
  * with dates it resent the same frozen September in November. The worker
  * now overrides the saved dates with this window, and `runAt` is the
- * schedule's own firing time (`nextRunAt`), so a late tick still reports
- * the day it was due for.
+ * schedule's firing time from `reportRunAnchor`, so a late tick still
+ * reports the day it was due for and a stale one the latest due window.
  */
 export function reportPeriodForRun(
   cadence: ScheduleCadence,

@@ -336,7 +336,7 @@ describe("AN-25: the financial dashboard keeps its window and says when", () => 
       rows: [row("2026-09-30", 500), row("2026-10-01", 0)],
       window,
       todayCollectedLiveTiins: 7_000,
-      paymentsTracked: true,
+      trackedSince: new Date("2026-06-01T00:00:00+05:00"),
       now: new Date("2026-09-30T19:31:00Z"),
     });
     expect(snap.today?.revenueCollectedTiins).toBe(7_000);

@@ -21,7 +21,11 @@
  *   - `dataAsOf` is when the MV was refreshed ("refreshedAt"), not the time
  *     of the request, which made hour-old numbers look live;
  *   - money collected is only shown when the clinic records payments in
- *     the CRM (`paymentsRecordedSince`), otherwise the page says so.
+ *     the CRM (`paymentsRecordedSince`), otherwise the page says so;
+ *   - and only over the days it recorded all of them (review): the switch
+ *     is turned on mid-month and mid-day, and the days before it are not
+ *     zero takings. Month-to-date and the projection need the whole month
+ *     recorded, the trend starts on the first fully recorded day.
  */
 
 import {
@@ -32,6 +36,7 @@ import {
 } from "@/lib/analytics/dashboard-math";
 import { tashkentDayBoundsForDateString } from "@/lib/booking-validation";
 import type { prisma as prismaClient } from "@/lib/prisma";
+import { addTashkentDays, tashkentDateOf } from "@/lib/tashkent-time";
 import { paymentsRecordedSince } from "@/server/patient/finance";
 
 export { FINANCIAL_TREND_DAYS, financialWindow };
@@ -47,7 +52,12 @@ interface RawDayRow {
 
 export interface FinancialDailyPoint {
   day: string; // YYYY-MM-DD
-  revenueCollectedTiins: number;
+  /**
+   * PAID payments of the day; null when the clinic did not record all of
+   * that day's payments in the CRM (before `measuredFrom`, or never), which
+   * is not the same as a day without takings.
+   */
+  revenueCollectedTiins: number | null;
   revenueScheduledTiins: number;
   noShowLossTiins: number;
 }
@@ -61,17 +71,42 @@ export interface FinancialPaceSnapshot {
    * does not record payments in the CRM.
    */
   todayCollectedLiveTiins: number | null;
+  /**
+   * When recording was switched on today: that moment (ISO), and
+   * `todayCollectedLiveTiins` counts from it. Null otherwise.
+   */
+  todayCollectedSince: string | null;
   /** `Clinic.paymentsTrackedSince` is set. */
   paymentsTracked: boolean;
+  /** The first Tashkent day with all its payments in the CRM; null if none. */
+  measuredFrom: string | null;
   /** Month-to-date totals (from the 1st through `now`). */
   mtd: {
-    revenueCollectedTiins: number;
+    /**
+     * Collected from `collectedFrom` through today; null when no fully
+     * recorded day of this month has started yet.
+     */
+    revenueCollectedTiins: number | null;
+    /**
+     * First day summed: the 1st, or `measuredFrom` when recording began
+     * this month (then it is not a month-to-date and there is no forecast).
+     */
+    collectedFrom: string | null;
     revenueScheduledTiins: number;
     noShowLossTiins: number;
   };
-  /** Naive linear forecast: MTD-collected scaled to full month. */
-  forecastMonthEndTiins: number;
+  /**
+   * Naive linear forecast: MTD-collected scaled to full month. Null unless
+   * the whole month so far is recorded: a part of the month scaled by
+   * days-in-month over day-of-month is not a forecast.
+   */
+  forecastMonthEndTiins: number | null;
   daily: FinancialDailyPoint[];
+  /**
+   * First day the collected trend draws: the window's start, or
+   * `measuredFrom` when that is later. Null when payments are not recorded.
+   */
+  trendFrom: string | null;
   /** Inclusive first day and exclusive end of `daily`, Tashkent days. */
   range: { from: string; toExcl: string };
   /** When the MV's numbers were computed (its last REFRESH); null if never. */
@@ -86,15 +121,38 @@ function dayKeyOf(d: Date): string {
   return new Date(d).toISOString().slice(0, 10);
 }
 
+/**
+ * The first Tashkent day whose payments are all in the CRM: the day
+ * recording was switched on when that happened at its midnight, else the
+ * next one. The settings switch stamps the moment it is turned on, so the
+ * morning before it is not recorded.
+ */
+export function firstFullyRecordedDay(trackedSince: Date | null): string | null {
+  if (!trackedSince) return null;
+  const key = tashkentDateOf(trackedSince);
+  const { dayStart } = tashkentDayBoundsForDateString(key);
+  return trackedSince.getTime() <= dayStart.getTime() ? key : addTashkentDays(key, 1);
+}
+
 /** Pure: the snapshot from the MV rows of the window. */
 export function buildFinancialSnapshot(input: {
   rows: ReadonlyArray<RawDayRow>;
   window: FinancialWindow;
   todayCollectedLiveTiins: number | null;
-  paymentsTracked: boolean;
+  /** `Clinic.paymentsTrackedSince`. */
+  trackedSince: Date | null;
   now: Date;
 }): FinancialPaceSnapshot {
   const { window } = input;
+  const measuredFrom = firstFullyRecordedDay(input.trackedSince);
+  // Day keys compare as strings.
+  const collectedFrom =
+    measuredFrom === null
+      ? null
+      : measuredFrom > window.monthStart
+        ? measuredFrom
+        : window.monthStart;
+  const hasMtd = collectedFrom !== null && collectedFrom <= window.todayKey;
   let today: FinancialDailyPoint | null = null;
   const daily: FinancialDailyPoint[] = [];
   let mtdCollected = 0;
@@ -103,20 +161,23 @@ export function buildFinancialSnapshot(input: {
   let refreshedAt: number | null = null;
   for (const r of input.rows) {
     const key = dayKeyOf(r.day);
+    const recorded = measuredFrom !== null && key >= measuredFrom;
     const point: FinancialDailyPoint = {
       day: key,
-      revenueCollectedTiins: Number(r.revenueCollectedTiins),
+      revenueCollectedTiins: recorded ? Number(r.revenueCollectedTiins) : null,
       revenueScheduledTiins: Number(r.revenueScheduledTiins),
       noShowLossTiins: Number(r.noShowLossTiins),
     };
-    if (key === window.todayKey && input.todayCollectedLiveTiins !== null) {
+    if (recorded && key === window.todayKey && input.todayCollectedLiveTiins !== null) {
       // The live figure replaces the hour-old one, in the trend too.
       point.revenueCollectedTiins = input.todayCollectedLiveTiins;
     }
     daily.push(point);
     if (key === window.todayKey) today = point;
     if (key >= window.monthStart && key < window.nextMonthStart) {
-      mtdCollected += point.revenueCollectedTiins;
+      if (hasMtd && key >= (collectedFrom as string)) {
+        mtdCollected += point.revenueCollectedTiins ?? 0;
+      }
       mtdScheduled += point.revenueScheduledTiins;
       mtdNoShowLoss += point.noShowLossTiins;
     }
@@ -127,24 +188,41 @@ export function buildFinancialSnapshot(input: {
   }
 
   // Forecast: MTD-collected scaled to the month's length on the Tashkent
-  // day of `todayKey`, the client card's formula.
-  const forecastMonthEndTiins = projectMonthEnd(
-    mtdCollected,
-    new Date(`${window.todayKey}T12:00:00+05:00`),
-  ).projectedTiins;
+  // day of `todayKey`, the client card's formula. Only from the 1st.
+  const forecastMonthEndTiins =
+    hasMtd && collectedFrom === window.monthStart
+      ? projectMonthEnd(mtdCollected, new Date(`${window.todayKey}T12:00:00+05:00`))
+          .projectedTiins
+      : null;
+
+  // Switched on today after midnight: today's figure is from that moment.
+  const since = input.trackedSince;
+  const todayCollectedSince =
+    since !== null &&
+    input.todayCollectedLiveTiins !== null &&
+    measuredFrom !== null &&
+    measuredFrom > window.todayKey &&
+    tashkentDateOf(since) === window.todayKey
+      ? since.toISOString()
+      : null;
 
   return {
     today,
     todayKey: window.todayKey,
     todayCollectedLiveTiins: input.todayCollectedLiveTiins,
-    paymentsTracked: input.paymentsTracked,
+    todayCollectedSince,
+    paymentsTracked: input.trackedSince !== null,
+    measuredFrom,
     mtd: {
-      revenueCollectedTiins: mtdCollected,
+      revenueCollectedTiins: hasMtd ? mtdCollected : null,
+      collectedFrom: hasMtd ? collectedFrom : null,
       revenueScheduledTiins: mtdScheduled,
       noShowLossTiins: mtdNoShowLoss,
     },
     forecastMonthEndTiins,
     daily,
+    trendFrom:
+      measuredFrom === null ? null : measuredFrom > window.from ? measuredFrom : window.from,
     range: { from: window.from, toExcl: window.toExcl },
     dataAsOf: refreshedAt === null ? null : new Date(refreshedAt).toISOString(),
     generatedAt: input.now.toISOString(),
@@ -186,12 +264,14 @@ export async function resolveFinancialPace(
     clinicId,
     prisma as unknown as typeof prismaClient,
   );
-  const paymentsTracked = trackedSince !== null;
   let todayCollectedLiveTiins: number | null = null;
-  if (paymentsTracked) {
+  if (trackedSince !== null) {
     const { dayStart, dayEnd } = tashkentDayBoundsForDateString(window.todayKey);
+    // On the day recording is switched on, count from the switch: the
+    // morning before it is not recorded (the card then says from when).
+    const from = trackedSince > dayStart ? trackedSince : dayStart;
     const agg = await prisma.payment.aggregate({
-      where: { clinicId, status: "PAID", paidAt: { gte: dayStart, lt: dayEnd } },
+      where: { clinicId, status: "PAID", paidAt: { gte: from, lt: dayEnd } },
       _sum: { amount: true },
     });
     todayCollectedLiveTiins = agg._sum.amount ?? 0;
@@ -217,7 +297,7 @@ export async function resolveFinancialPace(
     rows,
     window,
     todayCollectedLiveTiins,
-    paymentsTracked,
+    trackedSince,
     now,
   });
 }

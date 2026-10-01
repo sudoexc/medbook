@@ -107,6 +107,15 @@ export async function PATCH(request: Request): Promise<Response> {
           data.consecutiveFailures = 0;
           data.lastFailureReason = null;
         }
+        // Turning a paused or auto-disabled schedule back on starts it from
+        // the next slot (audit AN-18 review): its stored nextRunAt is the
+        // step after the last failure, maybe weeks ago, and would fire at
+        // once with that old period. Only on the off-to-on switch: the edit
+        // dialog resends enabled:true, which must not push back a slot that
+        // is due right now.
+        if (parsed.data.enabled === true && !existing.enabled) {
+          recomputeNext = true;
+        }
       }
 
       if (recomputeNext) {

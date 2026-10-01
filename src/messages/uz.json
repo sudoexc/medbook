@@ -4921,17 +4921,20 @@
     "kpi": {
       "todayCollected": "Bugun olingan",
       "todayCollectedHint": "Bugungi to‘lovlar, kiritilishi bilan ko‘rinadi",
+      "todayCollectedSinceHint": "To‘lovlar {time} dan, CRMda to‘lov hisobi yoqilgan paytdan",
       "todayScheduled": "Bugunga rejalashtirilgan",
       "todayScheduledHint": "Bugungi yozuvlar bo‘yicha jami summa",
       "todayNoShow": "Kelmaganlar yo‘qotishi",
       "todayNoShowHint": "Bugungi NO_SHOW tashriflar",
       "mtdProjected": "MTD · prognoz",
       "mtdProjectedHint": "{total} dan {day}-kun — chiziqli ekstrapolyatsiya",
-      "mtdProjectedSuffix": "Prognoz:"
+      "mtdProjectedSuffix": "Prognoz:",
+      "mtdPartialHint": "CRMda to‘lov hisobi {date} dan to‘liq kunlar bo‘yicha, prognoz tuzilmaydi"
     },
     "trend": {
       "title": "90 kunlik tushum dinamikasi",
       "subtitle": "Klinika kuniga haqiqatda olgan summa",
+      "since": "{date} dan: shu kundan CRMga barcha to‘lovlar kiritiladi",
       "empty": "Grafik tuzish uchun ma’lumot yetarli emas",
       "ariaLabel": "Oxirgi 90 kunlik kunlik tushum grafigi"
     },

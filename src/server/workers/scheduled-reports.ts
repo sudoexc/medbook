@@ -38,6 +38,7 @@ import ru from "@/messages/ru.json";
 import {
   computeNextRunAt,
   reportPeriodForRun,
+  reportRunAnchor,
   type ReportPeriod,
   type ScheduleCadence,
 } from "@/server/analytics/cadence";
@@ -275,8 +276,13 @@ export async function processSchedule(
           } catch {
             throw new Error("Saved report config is invalid");
           }
-          // The window the schedule is due for, from its own firing time.
-          const period = reportPeriodForRun(row.cadence, row.nextRunAt, tz);
+          // The window the schedule is due for: its own firing time, or the
+          // latest slot due when `nextRunAt` is more than a step stale.
+          const period = reportPeriodForRun(
+            row.cadence,
+            reportRunAnchor(row.cadence, row.nextRunAt, now, tz),
+            tz,
+          );
           const config = withReportPeriod(savedConfig, period);
           const reportResult = await runReport(
             reportClient,

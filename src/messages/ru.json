@@ -4921,17 +4921,20 @@
     "kpi": {
       "todayCollected": "Получено сегодня",
       "todayCollectedHint": "Оплаты за сегодня, видны сразу после внесения",
+      "todayCollectedSinceHint": "Оплаты с {time}, когда в CRM включили учёт оплат",
       "todayScheduled": "Запланировано сегодня",
       "todayScheduledHint": "Сумма по записям на сегодня",
       "todayNoShow": "Потери от неявок",
       "todayNoShowHint": "NO_SHOW визиты сегодня",
       "mtdProjected": "MTD · прогноз",
       "mtdProjectedHint": "День {day} из {total} — линейная экстраполяция",
-      "mtdProjectedSuffix": "Прогноз:"
+      "mtdProjectedSuffix": "Прогноз:",
+      "mtdPartialHint": "Учёт оплат в CRM полными днями с {date}, прогноз не строится"
     },
     "trend": {
       "title": "Динамика выручки за 90 дней",
       "subtitle": "Сумма, фактически полученная клиникой за день",
+      "since": "С {date}: с этого дня в CRM вносятся все оплаты",
       "empty": "Недостаточно данных для построения графика",
       "ariaLabel": "График дневной выручки за последние 90 дней"
     },

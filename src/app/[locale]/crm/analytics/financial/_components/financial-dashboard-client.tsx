@@ -11,7 +11,8 @@ import {
   FINANCIAL_TREND_DAYS,
   projectMonthEnd,
 } from "@/lib/analytics/dashboard-math";
-import { formatClinicDateTime, type Locale } from "@/lib/format";
+import { formatReportDay } from "@/lib/analytics/report-cells";
+import { formatClinicDateTime, formatDate, type Locale } from "@/lib/format";
 import type { FinancialPaceSnapshot } from "@/server/analytics/financial-pace-resolver";
 
 const REFRESH_MS = 60_000;
@@ -30,6 +31,9 @@ export interface FinancialDashboardClientProps {
  * opening); «Данные на» is the view's refresh time, not the poll's; «today»
  * and the month are Tashkent days; «Получено сегодня» is live. Without
  * payments recorded in the CRM the money collected says so instead of 0.
+ * Review: when recording began this month, month-to-date and the forecast
+ * are not shown as such (a part of the month scaled up is not a forecast),
+ * the trend starts on the first fully recorded day.
  *
  * The projected month-end uses the shared `projectMonthEnd` helper so the
  * formula matches the cron-driven snapshots used by W4 scheduled emails.
@@ -77,14 +81,29 @@ export function FinancialDashboardClient({
   const todayScheduled = snapshot.today?.revenueScheduledTiins ?? 0;
   const todayNoShow = snapshot.today?.noShowLossTiins ?? 0;
   const mtdCollected = snapshot.mtd.revenueCollectedTiins;
-  // The snapshot's own Tashkent day, so the card and the data agree.
+  // The snapshot's own Tashkent day, so the card and the data agree. Only
+  // its day of month is read here; the forecast is the snapshot's.
   const projection = projectMonthEnd(
-    mtdCollected,
+    0,
     new Date(`${snapshot.todayKey}T12:00:00+05:00`),
   );
+  const forecast = snapshot.forecastMonthEndTiins;
+  const measuredFrom = snapshot.measuredFrom
+    ? (formatReportDay(snapshot.measuredFrom) ?? snapshot.measuredFrom)
+    : null;
   const dataAsOf = snapshot.dataAsOf
     ? formatClinicDateTime(snapshot.dataAsOf, locale)
     : t("noData");
+  const noData = (
+    <span className="text-base font-medium text-muted-foreground">
+      {t("noData")}
+    </span>
+  );
+  const notTracked = (
+    <span className="text-base font-medium text-muted-foreground">
+      {t("paymentsNotTracked")}
+    </span>
+  );
 
   return (
     <PageContainer>
@@ -101,14 +120,20 @@ export function FinancialDashboardClient({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title={t("kpi.todayCollected")}
-          subtitle={paymentsTracked ? t("kpi.todayCollectedHint") : undefined}
+          subtitle={
+            !paymentsTracked
+              ? undefined
+              : snapshot.todayCollectedSince
+                ? t("kpi.todayCollectedSinceHint", {
+                    time: formatDate(snapshot.todayCollectedSince, locale, "time"),
+                  })
+                : t("kpi.todayCollectedHint")
+          }
           value={
             paymentsTracked ? (
               <MoneyText amount={todayCollected} currency="UZS" />
             ) : (
-              <span className="text-base font-medium text-muted-foreground">
-                {t("paymentsNotTracked")}
-              </span>
+              notTracked
             )
           }
         />
@@ -125,26 +150,31 @@ export function FinancialDashboardClient({
         />
         <KpiCard
           title={t("kpi.mtdProjected")}
-          subtitle={t("kpi.mtdProjectedHint", {
-            day: projection.dayOfMonth,
-            total: projection.daysInMonth,
-          })}
+          subtitle={
+            forecast !== null
+              ? t("kpi.mtdProjectedHint", {
+                  day: projection.dayOfMonth,
+                  total: projection.daysInMonth,
+                })
+              : paymentsTracked && measuredFrom
+                ? t("kpi.mtdPartialHint", { date: measuredFrom })
+                : undefined
+          }
           value={
-            paymentsTracked ? (
+            !paymentsTracked ? (
+              notTracked
+            ) : mtdCollected === null ? (
+              noData
+            ) : (
               <div className="flex flex-col">
                 <MoneyText amount={mtdCollected} currency="UZS" />
-                <span className="text-xs font-normal text-muted-foreground">
-                  {t("kpi.mtdProjectedSuffix")}{" "}
-                  <MoneyText
-                    amount={projection.projectedTiins}
-                    currency="UZS"
-                  />
-                </span>
+                {forecast !== null ? (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {t("kpi.mtdProjectedSuffix")}{" "}
+                    <MoneyText amount={forecast} currency="UZS" />
+                  </span>
+                ) : null}
               </div>
-            ) : (
-              <span className="text-base font-medium text-muted-foreground">
-                {t("paymentsNotTracked")}
-              </span>
             )
           }
         />
@@ -154,12 +184,19 @@ export function FinancialDashboardClient({
         <CardHeader>
           <CardTitle>{t("trend.title")}</CardTitle>
           <p className="text-xs text-muted-foreground">{t("trend.subtitle")}</p>
+          {snapshot.trendFrom && snapshot.trendFrom > snapshot.range.from ? (
+            <p className="text-xs text-muted-foreground">
+              {t("trend.since", {
+                date: formatReportDay(snapshot.trendFrom) ?? snapshot.trendFrom,
+              })}
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent>
-          {paymentsTracked ? (
+          {paymentsTracked && snapshot.trendFrom ? (
             <DailyPaceChart
               points={snapshot.daily}
-              from={snapshot.range.from}
+              from={snapshot.trendFrom}
               todayKey={snapshot.todayKey}
             />
           ) : (
@@ -222,15 +259,20 @@ function DailyPaceChart({
   todayKey,
 }: {
   points: FinancialPaceSnapshot["daily"];
-  /** First Tashkent day of the trend window. */
+  /** First Tashkent day of the trend: the window's, or the first recorded. */
   from: string;
   /** The snapshot's Tashkent today. */
   todayKey: string;
 }) {
   const t = useTranslations("analyticsFinancial.trend");
   // The window's past days only, so the snapshot's tail up to the month end
-  // doesn't stretch the X axis. Day keys compare as strings.
-  const filtered = points.filter((p) => p.day >= from && p.day <= todayKey);
+  // doesn't stretch the X axis. Day keys compare as strings. A day without
+  // all its payments recorded has no value, it is not drawn as zero.
+  const filtered = points.flatMap((p) =>
+    p.day >= from && p.day <= todayKey && p.revenueCollectedTiins !== null
+      ? [{ day: p.day, revenueCollectedTiins: p.revenueCollectedTiins }]
+      : [],
+  );
 
   if (filtered.length < 2) {
     return <p className="text-xs text-muted-foreground">{t("empty")}</p>;

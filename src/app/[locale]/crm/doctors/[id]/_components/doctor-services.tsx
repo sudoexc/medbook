@@ -104,11 +104,6 @@ export function DoctorServicesEditor({
     staleTime: 30_000,
   });
 
-  // Local editor state keyed by serviceId.
-  const [state, setState] = React.useState<Record<string, AssignmentState>>(
-    {},
-  );
-
   // Build baseline state whenever either query resolves. The baseline is
   // what the server currently knows; local edits diverge until Save.
   const baseline = React.useMemo<Record<string, AssignmentState>>(() => {
@@ -145,10 +140,20 @@ export function DoctorServicesEditor({
     return next;
   }, [servicesQuery.data, doctorServicesQuery.data]);
 
+  // Local editor state keyed by serviceId. Starts from the baseline: on a
+  // remount over cached queries the data is already here on the first
+  // render, and an empty start showed every box unticked with Save enabled.
+  const [state, setState] = React.useState<Record<string, AssignmentState>>(
+    () => baseline,
+  );
+
   // A refetch (window focus, stale time) used to copy the server state over
   // unsaved edits (DR-10). Adopt the new baseline only while the editor still
-  // shows the previous one untouched.
-  const prevBaselineRef = React.useRef(baseline);
+  // shows the previous one untouched. Null until the first sync, which always
+  // adopts (see adoptBaseline).
+  const prevBaselineRef = React.useRef<Record<string, AssignmentState> | null>(
+    null,
+  );
   React.useEffect(() => {
     const prev = prevBaselineRef.current;
     prevBaselineRef.current = baseline;

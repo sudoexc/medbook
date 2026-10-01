@@ -93,6 +93,27 @@ describe("DR-10: a refetch never overwrites unsaved edits", () => {
     expect(adoptBaseline({}, {}, server)).toBe(server);
   });
 
+  it("a remount over cached queries shows the doctor's services, not an empty editor", () => {
+    // Review of DR-10: opening the same doctor again within the cache time
+    // has the baseline on the first render. The editor used to start empty
+    // with that baseline as «previous», so «empty» read as an edit, stayed,
+    // and Save replaced his whole set with what was ticked on top of nothing.
+    const cached = {
+      consult: row({ priceInput: "300000" }),
+      eeg: row({ durationInput: "45" }),
+      mri: row({ assigned: false }),
+    };
+    // The component starts from the baseline and its first sync passes null.
+    const first = adoptBaseline(cached, null, cached);
+    expect(first).toBe(cached);
+    expect(assignmentsEqual(first, cached)).toBe(true); // nothing dirty, Save off
+    // Even an empty start is replaced by the first sync, never kept as an edit.
+    expect(adoptBaseline({}, null, cached)).toBe(cached);
+    // After it, the rule is the usual one: edits survive a refetch.
+    const edited = { ...cached, mri: row() };
+    expect(adoptBaseline(edited, cached, cached)).toBe(edited);
+  });
+
   it("a missing row reads as unassigned, and inputs of unassigned rows do not count", () => {
     expect(assignmentsEqual({}, { x: row({ assigned: false, priceInput: "5" }) })).toBe(true);
     expect(assignmentsEqual({}, { x: row() })).toBe(false);

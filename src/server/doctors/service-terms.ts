@@ -58,3 +58,59 @@ export async function doctorServicesDuration(
   for (const t of terms.values()) total += t.durationMin;
   return total;
 }
+
+export type DoctorMoveTerms = {
+  /** The visit's lines as they are now. */
+  lines: { serviceId: string; priceSnap: number }[];
+  /** Every service the visit is booked for: its lines plus the primary one. */
+  serviceIds: string[];
+  /** A PAID payment freezes the price (recomputeAppointmentPrice). */
+  paid: boolean;
+  from: Map<string, EffectiveServiceTerms>;
+  to: Map<string, EffectiveServiceTerms>;
+};
+
+/**
+ * What a visit about to move to another doctor is booked for, and the terms
+ * of those services with the doctor it leaves and the one it joins (review
+ * of DR-02). The PATCH reprices the lines and resizes the block from this
+ * (`linePricesForDoctor`, `durationAfterDoctorChange`).
+ */
+export async function loadDoctorMoveTerms(
+  client: PrismaLike,
+  args: {
+    appointmentId: string;
+    fromDoctorId: string;
+    toDoctorId: string;
+  },
+): Promise<DoctorMoveTerms> {
+  const appt = await client.appointment.findUnique({
+    where: { id: args.appointmentId },
+    select: {
+      serviceId: true,
+      services: { select: { serviceId: true, priceSnap: true } },
+      payments: { where: { status: "PAID" }, select: { id: true } },
+    },
+  });
+  const lines = (appt?.services ?? []).map((l) => ({
+    serviceId: l.serviceId,
+    priceSnap: l.priceSnap,
+  }));
+  const serviceIds = [
+    ...new Set([
+      ...lines.map((l) => l.serviceId),
+      ...(appt?.serviceId ? [appt.serviceId] : []),
+    ]),
+  ];
+  const [from, to] = await Promise.all([
+    loadDoctorServiceTerms(client, { doctorId: args.fromDoctorId, serviceIds }),
+    loadDoctorServiceTerms(client, { doctorId: args.toDoctorId, serviceIds }),
+  ]);
+  return {
+    lines,
+    serviceIds,
+    paid: (appt?.payments.length ?? 0) > 0,
+    from,
+    to,
+  };
+}

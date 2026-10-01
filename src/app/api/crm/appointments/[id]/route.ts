@@ -61,7 +61,14 @@ import {
 } from "@/server/visit-notes/revisions";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
-import { loadDoctorServiceTerms } from "@/server/doctors/service-terms";
+import {
+  loadDoctorMoveTerms,
+  loadDoctorServiceTerms,
+} from "@/server/doctors/service-terms";
+import {
+  durationAfterDoctorChange,
+  linePricesForDoctor,
+} from "@/lib/doctor-service-terms";
 
 /** Who may record a risk-today outcome: the roles of its endpoint (and
  *  SUPER_ADMIN, whom the handler lets through every role list). */
@@ -663,6 +670,9 @@ export const PATCH = createApiHandler(
       }
       nextCabinetId = newDoc.cabinetId;
     }
+    // Set when the visit moves to another doctor (review of DR-02, below).
+    let doctorLinePrices: { serviceId: string; priceSnap: number }[] = [];
+    let doctorDurationMin: number | null = null;
 
     if (timeChanged) {
       const date = body.date ?? before.date;
@@ -693,6 +703,37 @@ export const PATCH = createApiHandler(
             from: before.status,
             action: "reschedule",
           });
+        }
+      }
+      // Review of DR-02: price and length depend on the doctor, and the
+      // calendar's drag to another doctor's column sends only date, time and
+      // doctorId. The visit kept the leaving doctor's line prices (the
+      // reprice below rebuilds the total from them) and his slot length, so
+      // his 300 000 consult moved to a 200 000 colleague stayed at 300 000.
+      // It now takes the new doctor's terms, as booking him would have, and
+      // the overlap check below runs on the block it will really occupy. A
+      // PATCH that also sends `services` prices its new lines with the new
+      // doctor already and owns the length, like `durationMin` does.
+      if (doctorId !== before.doctorId && body.services === undefined) {
+        const move = await loadDoctorMoveTerms(prisma, {
+          appointmentId: id,
+          fromDoctorId: before.doctorId,
+          toDoctorId: doctorId,
+        });
+        // A paid visit keeps its price on a move (the pricing engine's
+        // lock), so its lines stay too: lines that disagree with the total
+        // would resurface on the next explicit services edit.
+        if (!move.paid) {
+          doctorLinePrices = linePricesForDoctor(move.lines, move.to);
+        }
+        if (body.durationMin === undefined) {
+          doctorDurationMin = durationAfterDoctorChange({
+            durationMin: before.durationMin,
+            serviceIds: move.serviceIds,
+            from: move.from,
+            to: move.to,
+          });
+          endAt = computeEndDate(startAt, doctorDurationMin);
         }
       }
       // Two-lanes (TZ I4): a walk-in never reaches here with a move (refused
@@ -729,6 +770,9 @@ export const PATCH = createApiHandler(
     }
     if (body.doctorId !== undefined && body.doctorId !== before.doctorId) {
       data.cabinetId = nextCabinetId;
+    }
+    if (doctorDurationMin !== null && doctorDurationMin !== before.durationMin) {
+      data.durationMin = doctorDurationMin;
     }
 
     // Rescheduling an arrived (WAITING) row onto a different Tashkent day
@@ -873,6 +917,14 @@ export const PATCH = createApiHandler(
           )
         : prisma.$transaction(fn);
     const patchOutcome = await orActiveVisitConflict(runPatchTx(async (tx) => {
+      // The new doctor's line prices go in before the reprice below reads
+      // the lines (timeChanged is set by a doctor change).
+      for (const line of doctorLinePrices) {
+        await tx.appointmentService.updateMany({
+          where: { appointmentId: id, serviceId: line.serviceId },
+          data: { priceSnap: line.priceSnap },
+        });
+      }
       if (services !== undefined) {
         await tx.appointmentService.deleteMany({
           where: { appointmentId: id },

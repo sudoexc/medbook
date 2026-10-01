@@ -153,10 +153,17 @@ vi.mock("@/lib/appointment-transitions", async (importOriginal) => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     appointment: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
-        if (state.apt && state.apt.id === where.id) return state.apt;
-        return null;
-      }),
+      findUnique: vi.fn(
+        async ({ where, select }: { where: { id: string }; select?: { payments?: unknown } }) => {
+          if (!state.apt || state.apt.id !== where.id) return null;
+          // A doctor change reads the visit's lines and payments (review of
+          // DR-02): none here, so the visit keeps its price and length.
+          if (select?.payments) {
+            return { serviceId: null, services: [], payments: [] };
+          }
+          return state.apt;
+        },
+      ),
       findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => {
         if (state.apt && state.apt.id === where.id) return state.apt;
         throw new Error("not found");

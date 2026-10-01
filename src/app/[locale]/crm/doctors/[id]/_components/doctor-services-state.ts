@@ -58,12 +58,20 @@ export function assignmentsEqual(
 /**
  * The server state changed (refetch, save). Adopt it unless the admin has
  * edits on top of the previous server state; those stay.
+ *
+ * `previousBaseline` is null until the editor has shown any server state:
+ * the first sync always adopts. Passing the first render's baseline there
+ * instead broke a remount over cached queries (review of DR-10): the editor
+ * started empty, «empty» differed from the cached baseline, so it read as an
+ * edit and stayed empty, and the next Save replaced the doctor's whole set
+ * with whatever was ticked on top of nothing.
  */
 export function adoptBaseline(
   current: Record<string, AssignmentState>,
-  previousBaseline: Record<string, AssignmentState>,
+  previousBaseline: Record<string, AssignmentState> | null,
   nextBaseline: Record<string, AssignmentState>,
 ): Record<string, AssignmentState> {
+  if (previousBaseline === null) return nextBaseline;
   return assignmentsEqual(current, previousBaseline) ? nextBaseline : current;
 }
 

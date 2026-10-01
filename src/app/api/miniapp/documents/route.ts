@@ -23,7 +23,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { auditMiniApp } from "@/lib/audit";
+import { miniAppAuditData } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
@@ -37,13 +37,11 @@ import {
   resolveMiniAppContext,
 } from "@/server/miniapp/handler";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
-import {
-  getFamilyAllowedPatientIds,
-  resolveActivePatient,
-} from "@/server/miniapp/active-patient";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import {
   MINIAPP_UPLOADS_PER_HOUR,
   loadUploadUsage,
+  uploadAccountPatientIds,
   uploadQuotaRefusal,
   type UploadQuotaRefusal,
 } from "@/server/miniapp/upload-quota";
@@ -173,7 +171,8 @@ export async function POST(request: Request): Promise<Response> {
   const patientId = acting.patientId;
 
   // Limits (audit CD-04), all before the body is read. Per Telegram
-  // account: the owner and the relatives he uploads for share them.
+  // account: the owner and every relative he uploads for share them, an
+  // unlinked one included.
   const declared = Number(request.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > MAX_REQUEST_BYTES) {
     return err("FileTooLarge", 413, {
@@ -195,7 +194,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
   const accountIds = await runWithTenant({ kind: "SYSTEM" }, () =>
-    getFamilyAllowedPatientIds(ctx.clinicId, ctx.patientId),
+    uploadAccountPatientIds(prisma, ctx.clinicId, ctx.patientId),
   );
   const usage = await runWithTenant({ kind: "SYSTEM" }, () =>
     loadUploadUsage(prisma, ctx.clinicId, accountIds),
@@ -318,20 +317,25 @@ export async function POST(request: Request): Promise<Response> {
           documentType: row.type,
         },
       });
+      // The account's upload ledger (`uploadAccountPatientIds`): written
+      // with the document, so a stored file always counts against the
+      // account that sent it, even after the relative is unlinked.
+      await tx.auditLog.create({
+        data: miniAppAuditData(request, ctx, {
+          action: AUDIT_ACTION.MINIAPP_DOCUMENT_UPLOADED,
+          entityType: "Document",
+          entityId: row.id,
+          meta: {
+            clinicId: ctx.clinicId,
+            patientId,
+            actorPatientId: ctx.patientId,
+            sizeBytes: file.size,
+            mimeType: mime,
+            type,
+          },
+        }),
+      });
       return row;
-    });
-    await auditMiniApp(request, ctx, {
-      action: AUDIT_ACTION.MINIAPP_DOCUMENT_UPLOADED,
-      entityType: "Document",
-      entityId: created.id,
-      meta: {
-        clinicId: ctx.clinicId,
-        patientId,
-        actorPatientId: ctx.patientId,
-        sizeBytes: file.size,
-        mimeType: mime,
-        type,
-      },
     });
     return ok({ document: created }, 201);
   });

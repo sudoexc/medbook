@@ -79,22 +79,34 @@ export async function auditMiniApp(
   input: AuditInput,
 ): Promise<void> {
   try {
-    await prisma.auditLog.create({
-      data: {
-        clinicId: actor.clinicId,
-        action: input.action,
-        entityType: input.entityType,
-        entityId: input.entityId ?? null,
-        meta: (input.meta ?? null) as never,
-        actorId: null,
-        actorRole: "PATIENT",
-        actorLabel: `patient:${actor.patientId}`,
-        surface: "MINIAPP",
-        ip: clientIpForAudit(request),
-        userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
-      },
-    });
+    await prisma.auditLog.create({ data: miniAppAuditData(request, actor, input) });
   } catch (err) {
     console.error("[audit:miniapp]", err);
   }
+}
+
+/**
+ * The row `auditMiniApp` writes, for a route that must write it inside its
+ * own transaction: the Mini App upload's row is the account's upload ledger
+ * (audit CD-04, `upload-quota.ts`), so it may not be lost the way a
+ * fire-and-forget row can.
+ */
+export function miniAppAuditData(
+  request: Request,
+  actor: MiniAppAuditActor,
+  input: AuditInput,
+) {
+  return {
+    clinicId: actor.clinicId,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId ?? null,
+    meta: (input.meta ?? null) as never,
+    actorId: null,
+    actorRole: "PATIENT",
+    actorLabel: `patient:${actor.patientId}`,
+    surface: "MINIAPP",
+    ip: clientIpForAudit(request),
+    userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
+  };
 }

@@ -50,6 +50,10 @@ import {
   type PhoneOwnerSummary,
 } from "@/server/patient/phone-owner";
 import { refreshPatientSegment } from "@/server/patient/segments";
+import {
+  doctorServiceDurationMin,
+  doctorServicePrice,
+} from "@/server/services/doctor-service-price";
 
 /**
  * The caller's answer to «is this the person the number belongs to?»
@@ -60,7 +64,16 @@ export type { PhoneOwnerAnswer, PhoneOwnerSummary };
 
 /** Existing patient by id, or details to find-or-create by phone. */
 export type WalkinPatientInput =
-  | { id: string }
+  | {
+      id: string;
+      /**
+       * The card holds its number only as a Mini App claim, and the person
+       * standing at the kiosk just picked it as theirs: the number becomes
+       * its verified identity, as «Да, это я» did through
+       * `decidePhoneOwner` (audit PH-01, P1D-02).
+       */
+      confirmPhoneClaim?: boolean;
+    }
   | {
       fullName: string;
       phone: string;
@@ -74,8 +87,16 @@ export type RegisterWalkinInput = {
   patient: WalkinPatientInput;
   /** Staff `User.id` for the CRM front desk; `null` for the anonymous kiosk. */
   createdById?: string | null;
-  /** Visit length in minutes; defaults to 30. */
+  /** Visit length in minutes; defaults to the service's length, else 30. */
   durationMin?: number;
+  /**
+   * The service the patient chose (the kiosk's «Выберите услугу», audit
+   * Q-06). It must be an active service this doctor offers; the visit then
+   * carries it as its primary service and line, priced at this doctor's
+   * price for it. Without one the visit is priced as a consultation
+   * (`Doctor.pricePerVisit`), as before.
+   */
+  serviceId?: string | null;
   /**
    * Refuse a doctor who does not work now (`doctor_off_duty`, audit Q-08).
    * The anonymous kiosk sets it: a patient must not take a ticket for a
@@ -114,7 +135,9 @@ export type RegisterWalkinResult =
         | "doctor_not_found"
         | "doctor_off_duty"
         | "bad_phone"
-        | "patient_not_found";
+        | "patient_not_found"
+        // The chosen service was switched off or is not this doctor's.
+        | "service_not_offered";
     }
   | {
       ok: false;
@@ -249,6 +272,29 @@ export async function registerWalkin(
     if (!onDuty.has(doctor.id)) return { ok: false, reason: "doctor_off_duty" };
   }
 
+  // The chosen service, checked before any patient card is touched.
+  let service: { id: string; price: number; durationMin: number } | null = null;
+  if (input.serviceId) {
+    const link = await prisma.serviceOnDoctor.findFirst({
+      where: {
+        doctorId: doctor.id,
+        serviceId: input.serviceId,
+        service: { clinicId: input.clinicId, isActive: true },
+      },
+      select: {
+        priceOverride: true,
+        durationMinOverride: true,
+        service: { select: { id: true, priceBase: true, durationMin: true } },
+      },
+    });
+    if (!link) return { ok: false, reason: "service_not_offered" };
+    service = {
+      id: link.service.id,
+      price: doctorServicePrice(link, link.service),
+      durationMin: doctorServiceDurationMin(link, link.service),
+    };
+  }
+
   // Resolve the patient: an explicit id (CRM picked an existing record) or a
   // find-or-create by phone (kiosk, or CRM "new patient" form).
   let patient: { id: string; fullName: string } | null;
@@ -258,6 +304,9 @@ export async function registerWalkin(
       select: { id: true, fullName: true },
     });
     if (!patient) return { ok: false, reason: "patient_not_found" };
+    if (input.patient.confirmPhoneClaim) {
+      await verifyPhoneInPerson(prisma, input.clinicId, patient.id, "walkin");
+    }
   } else {
     const resolved = await resolvePatientByPhone(input.clinicId, input.patient);
     if (!resolved.ok) return resolved;
@@ -271,7 +320,10 @@ export async function registerWalkin(
   // Today in clinic time — the duplicate check must not reach yesterday's
   // queue (prod runs UTC, so a raw date comparison would skew by 5 hours).
   const { dayStart, dayEnd } = tashkentDayBounds(start);
-  const durationMin = input.durationMin ?? 30;
+  const durationMin = input.durationMin ?? (service?.durationMin || 30);
+  // A chosen service prices the visit at what the kiosk showed; otherwise
+  // the doctor's consultation price, as before.
+  const price = service ? service.price : (doctor.pricePerVisit ?? null);
   const end = new Date(start.getTime() + durationMin * 60_000);
   const time = tashkentComponents(start).time;
 
@@ -345,11 +397,25 @@ export async function registerWalkin(
         channel,
         ticketCode,
         createdById: input.createdById ?? null,
-        priceBase: doctor.pricePerVisit ?? null,
-        priceFinal: doctor.pricePerVisit ?? null,
+        ...(service ? { serviceId: service.id, priceService: service.price } : {}),
+        priceBase: price,
+        priceFinal: price,
       } as never,
       select: { id: true },
     });
+    // The same line the booking kernel writes for a booked service, so the
+    // visit card and the cash desk list it like any other.
+    if (service) {
+      await tx.appointmentService.create({
+        data: {
+          clinicId: input.clinicId,
+          appointmentId: c.id,
+          serviceId: service.id,
+          priceSnap: service.price,
+          quantity: 1,
+        },
+      });
+    }
     return {
       queueOrder: order,
       ticketSeq,

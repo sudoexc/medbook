@@ -14,12 +14,16 @@
  * (`?onBehalfOf=`, family link checked, audit MA-18): the list used to
  * show the owner's documents under his mother's name, and her conclusion
  * links opened nothing.
+ *
+ * Uploads are bounded per Telegram account (audit CD-04, see
+ * `upload-quota.ts`): 429 `upload_rate_limited` past 20 an hour,
+ * `upload_daily_quota` past 200 MB a day, `upload_total_quota` past 1 GB.
  */
 import { randomUUID } from "node:crypto";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
+import { auditMiniApp } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
@@ -33,7 +37,17 @@ import {
   resolveMiniAppContext,
 } from "@/server/miniapp/handler";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
-import { resolveActivePatient } from "@/server/miniapp/active-patient";
+import {
+  getFamilyAllowedPatientIds,
+  resolveActivePatient,
+} from "@/server/miniapp/active-patient";
+import {
+  MINIAPP_UPLOADS_PER_HOUR,
+  loadUploadUsage,
+  uploadQuotaRefusal,
+  type UploadQuotaRefusal,
+} from "@/server/miniapp/upload-quota";
+import { rateLimit } from "@/lib/rate-limit";
 import { uploadObject } from "@/server/storage/minio";
 
 // 10 MB cap — covers a high-res phone photo (typical 3-5 MB) with room for
@@ -41,7 +55,23 @@ import { uploadObject } from "@/server/storage/minio";
 // almost always an accidental upload of a video/full document we don't want
 // crowding our storage.
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+// Room for the multipart envelope and a title around one maximal file. A
+// body declared larger is refused before it is read: `formData()` would
+// buffer all of it (nginx lets 25 MB through for staff documents).
+const MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 512 * 1024;
 
+function quotaRefused(refusal: UploadQuotaRefusal): Response {
+  return Response.json(
+    { error: "TooManyRequests", ...refusal },
+    {
+      status: 429,
+      headers:
+        refusal.reason === "upload_daily_quota"
+          ? { "Retry-After": String(refusal.retryAfterSec) }
+          : undefined,
+    },
+  );
+}
 
 const ALLOWED_DOCUMENT_TYPES = [
   "REFERRAL",
@@ -142,6 +172,37 @@ export async function POST(request: Request): Promise<Response> {
   if (!acting.ok) return err(acting.reason, 403);
   const patientId = acting.patientId;
 
+  // Limits (audit CD-04), all before the body is read. Per Telegram
+  // account: the owner and the relatives he uploads for share them.
+  const declared = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > MAX_REQUEST_BYTES) {
+    return err("FileTooLarge", 413, {
+      reason: "file_too_large",
+      maxBytes: MAX_UPLOAD_BYTES,
+    });
+  }
+  if (
+    !rateLimit(
+      `miniapp-upload:${ctx.clinicId}:${ctx.patientId}`,
+      MINIAPP_UPLOADS_PER_HOUR,
+      60 * 60 * 1000,
+      "miniapp-upload",
+    )
+  ) {
+    return Response.json(
+      { error: "TooManyRequests", reason: "upload_rate_limited" },
+      { status: 429, headers: { "Retry-After": "3600" } },
+    );
+  }
+  const accountIds = await runWithTenant({ kind: "SYSTEM" }, () =>
+    getFamilyAllowedPatientIds(ctx.clinicId, ctx.patientId),
+  );
+  const usage = await runWithTenant({ kind: "SYSTEM" }, () =>
+    loadUploadUsage(prisma, ctx.clinicId, accountIds),
+  );
+  const atLimit = uploadQuotaRefusal(usage, 1);
+  if (atLimit) return quotaRefused(atLimit);
+
   let form: FormData;
   try {
     form = await request.formData();
@@ -177,6 +238,8 @@ export async function POST(request: Request): Promise<Response> {
       maxBytes: MAX_UPLOAD_BYTES,
     });
   }
+  const overQuota = uploadQuotaRefusal(usage, file.size);
+  if (overQuota) return quotaRefused(overQuota);
 
   // Typed by its bytes: a patient's «photo» that is really an SVG with a
   // script would otherwise be served back from our origin to the reception
@@ -257,7 +320,7 @@ export async function POST(request: Request): Promise<Response> {
       });
       return row;
     });
-    await audit(request, {
+    await auditMiniApp(request, ctx, {
       action: AUDIT_ACTION.MINIAPP_DOCUMENT_UPLOADED,
       entityType: "Document",
       entityId: created.id,

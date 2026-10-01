@@ -13,7 +13,7 @@ import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { markAwaitingReply } from "@/server/conversations/reply-state";
-import { audit } from "@/lib/audit";
+import { auditMiniApp } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { runWithTenant } from "@/lib/tenant-context";
 import { err, ok } from "@/server/http";
@@ -154,7 +154,7 @@ export async function POST(request: Request): Promise<Response> {
       return msg;
     });
 
-    await audit(request, {
+    await auditMiniApp(request, ctx, {
       action: AUDIT_ACTION.MINIAPP_MESSAGE_SENT,
       entityType: "Message",
       entityId: created.id,

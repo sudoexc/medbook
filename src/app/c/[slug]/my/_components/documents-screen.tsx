@@ -24,6 +24,7 @@ import { useDocuments, useUploadDocument } from "../_hooks/use-documents";
 import { useActiveContext } from "../_hooks/use-active-context";
 import { myHref } from "../_lib/booking-context";
 import { resolveScreenState } from "../_lib/screen-state";
+import { uploadErrorText } from "../_lib/upload-errors";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { formatDate } from "@/lib/format";
@@ -67,10 +68,7 @@ export function DocumentsScreen() {
         tg.showAlert(t.documents.uploadSuccess);
       } catch (e) {
         tg.haptic.notification("error");
-        const err = e as Error & { status?: number; data?: { reason?: string } };
-        if (err.status === 413) tg.showAlert(t.documents.uploadErrorTooLarge);
-        else if (err.status === 415) tg.showAlert(t.documents.uploadErrorMime);
-        else tg.showAlert(t.documents.uploadErrorGeneric);
+        tg.showAlert(uploadErrorText(e, t.documents));
       }
     },
     [upload, tg, t.documents, state.status],

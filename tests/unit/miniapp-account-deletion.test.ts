@@ -45,7 +45,10 @@ vi.mock("@/server/miniapp/handler", () => {
 vi.mock("@/server/miniapp/idempotency", () => ({
   withIdempotency: (_r: Request, _s: unknown, fn: () => Promise<Response>) => fn(),
 }));
-vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
+vi.mock("@/lib/audit", () => ({
+  audit: vi.fn(async () => undefined),
+  auditMiniApp: vi.fn(async () => undefined),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     patient: {

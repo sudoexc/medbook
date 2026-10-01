@@ -19,7 +19,7 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
+import { auditMiniApp } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { err, notFound, ok } from "@/server/http";
 import { createMiniAppHandler } from "@/server/miniapp/handler";
@@ -103,7 +103,7 @@ export const POST = createMiniAppHandler(
       },
     });
 
-    await audit(request, {
+    await auditMiniApp(request, ctx, {
       action: AUDIT_ACTION.MEDICATION_REMINDER_RESPONDED,
       entityType: "MedicationReminderSend",
       entityId: updated.id,

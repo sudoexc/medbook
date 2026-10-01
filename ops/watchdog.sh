@@ -16,6 +16,12 @@
 # State machine: alerts fire on TRANSITIONS only (ok→bad, bad→ok), so a long
 # outage produces two messages, not one every five minutes.
 #
+# It also watches the disk (audit CD-04): Postgres, MinIO and the neighbours'
+# sites share it, and a full disk takes all of them down at once. Past
+# WATCHDOG_DISK_MAX_PCT (default 85) used on WATCHDOG_DISK_PATH (default /)
+# it alerts once, and once more when space is back; its own state file, so
+# a disk alert and a health alert never swallow each other.
+#
 # Cron:
 #   */5 * * * * cd /opt/neurofax && ./ops/watchdog.sh >> /var/log/medbook-watchdog.log 2>&1
 #
@@ -32,6 +38,9 @@ fi
 : "${WATCHDOG_TIMEOUT:=20}"
 : "${WATCHDOG_STATE:=/var/lib/medbook-watchdog.state}"
 : "${WATCHDOG_TG_CHAT_ID:=}"
+: "${WATCHDOG_DISK_PATH:=/}"
+: "${WATCHDOG_DISK_MAX_PCT:=85}"
+: "${WATCHDOG_DISK_STATE:=/var/lib/medbook-watchdog-disk.state}"
 
 log() { echo "[watchdog] $(date -u +%FT%TZ) $*"; }
 
@@ -81,5 +90,29 @@ else
     notify "✅ NeuroFax снова работает
 $(date -u +'%F %T') UTC"
     echo "ok" > "$WATCHDOG_STATE"
+  fi
+fi
+
+# --- Disk ---
+DISK_PCT=$(df -P "$WATCHDOG_DISK_PATH" 2>/dev/null | awk 'NR==2 { gsub("%", "", $5); print $5 }')
+DISK_PREV=$(cat "$WATCHDOG_DISK_STATE" 2>/dev/null || echo "ok")
+if [[ ! "$DISK_PCT" =~ ^[0-9]+$ ]]; then
+  log "disk: cannot read usage of ${WATCHDOG_DISK_PATH}"
+elif (( DISK_PCT >= WATCHDOG_DISK_MAX_PCT )); then
+  log "DISK ${DISK_PCT}% used on ${WATCHDOG_DISK_PATH}"
+  if [[ "$DISK_PREV" != "bad" ]]; then
+    notify "🟠 NeuroFax: диск заполнен на ${DISK_PCT}% (${WATCHDOG_DISK_PATH})
+Порог ${WATCHDOG_DISK_MAX_PCT}%. На этом диске Postgres, MinIO и соседние сайты.
+$(date -u +'%F %T') UTC
+
+Проверить: ssh root@167.233.142.75 'df -h; docker system df'"
+    echo "bad" > "$WATCHDOG_DISK_STATE"
+  fi
+else
+  log "disk ${DISK_PCT}%"
+  if [[ "$DISK_PREV" == "bad" ]]; then
+    notify "✅ NeuroFax: место на диске освободилось (${DISK_PCT}%)
+$(date -u +'%F %T') UTC"
+    echo "ok" > "$WATCHDOG_DISK_STATE"
   fi
 fi

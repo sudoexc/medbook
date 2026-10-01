@@ -307,6 +307,9 @@ export const uzDict = {
     uploadErrorTooLarge: "Fayl juda katta (maks. 10 MB)",
     uploadErrorMime: "Faqat foto va PDF qabul qilinadi",
     uploadErrorGeneric: "Faylni yuklab bo‘lmadi",
+    uploadErrorRateLimited: "Bir soatda juda ko‘p yuklash. Keyinroq urinib ko‘ring.",
+    uploadErrorDailyQuota: "Kunlik yuklash chegarasiga yetildi (200 MB). Ertaga urinib ko‘ring.",
+    uploadErrorTotalQuota: "Hujjatlar uchun umumiy chegaraga yetildi (1 GB). Qolgan hujjatlarni klinikaga olib keling.",
     types: {
       CONCLUSION: "Xulosa",
       REFERRAL: "Yo‘llanma",

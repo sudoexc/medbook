@@ -307,6 +307,9 @@ export const ruDict = {
     uploadErrorTooLarge: "Файл слишком большой (макс. 10 МБ)",
     uploadErrorMime: "Поддерживаются фото и PDF",
     uploadErrorGeneric: "Не удалось загрузить файл",
+    uploadErrorRateLimited: "Слишком много загрузок за час. Попробуйте позже.",
+    uploadErrorDailyQuota: "Достигнут дневной лимит загрузок (200 МБ). Попробуйте завтра.",
+    uploadErrorTotalQuota: "Достигнут общий лимит документов (1 ГБ). Принесите остальные документы в клинику.",
     types: {
       CONCLUSION: "Заключение",
       REFERRAL: "Направление",

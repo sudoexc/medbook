@@ -5,6 +5,22 @@ import Image from "next/image";
 import { Phone, ArrowRight, ArrowLeft, Check, Printer, MapPin, Clock, User, UserPlus, Globe, Stethoscope } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import { usePublicClinicSlug } from "@/hooks/use-public-clinic-slug";
+import { useKioskDoctors } from "@/hooks/use-kiosk-doctors";
+import {
+  lookupPeople,
+  personBookingHint,
+  stepAfterLookup,
+  stepForPerson,
+  ticketPrintSrc,
+  walkinRequestBody,
+  type KioskDoctor,
+  type KioskLookup,
+  type KioskPerson,
+  type KioskPrintJob,
+  type KioskService,
+  type KioskTodayBooking,
+  type KioskUpcomingBooking,
+} from "@/lib/kiosk-flow";
 
 // ─── Translations ────────────────────────────────────────────────
 const t = {
@@ -29,7 +45,6 @@ const t = {
     fioPlaceholder: "Фамилия Имя Отчество",
     selectDoctor: "Выберите врача",
     cabinet: "Кабинет",
-    inQueue: "в очереди",
     confirmTitle: "Подтвердите запись",
     patient: "Пациент",
     phone: "Телефон",
@@ -60,6 +75,13 @@ const t = {
     yesItsMe: "Да, это я",
     notMe: "Нет, это не я",
     enterYourName: "Введите ваше ФИО, мы запишем вас отдельно:",
+    whoTitle: "Кто пришёл на приём?",
+    whoDesc: "На этот номер записаны несколько человек. Выберите себя:",
+    someoneElse: "Другой человек",
+    bookedToday: "Запись сегодня:",
+    bookedLater: "Запись:",
+    viaTelegram: "через Telegram-бот",
+    serviceUnavailable: "Эта услуга сейчас недоступна у врача. Выберите другую услугу или обратитесь в регистратуру.",
   },
   uz: {
     notPairedTitle: "Kiosk ulanmagan",
@@ -82,7 +104,6 @@ const t = {
     fioPlaceholder: "Familiya Ism Sharif",
     selectDoctor: "Shifokorni tanlang",
     cabinet: "Kabinet",
-    inQueue: "navbatda",
     confirmTitle: "Yozilishni tasdiqlang",
     patient: "Bemor",
     phone: "Telefon",
@@ -113,40 +134,23 @@ const t = {
     yesItsMe: "Ha, bu men",
     notMe: "Yo'q, bu men emasman",
     enterYourName: "F.I.Sh. kiriting, sizni alohida ro'yxatga olamiz:",
+    whoTitle: "Kim qabulga keldi?",
+    whoDesc: "Bu raqamga bir nechta kishi yozilgan. O'zingizni tanlang:",
+    someoneElse: "Boshqa odam",
+    bookedToday: "Bugungi yozilish:",
+    bookedLater: "Yozilish:",
+    viaTelegram: "Telegram-bot orqali",
+    serviceUnavailable: "Bu xizmat hozir shifokorda mavjud emas. Boshqa xizmatni tanlang yoki qabulxonaga murojaat qiling.",
   },
 };
 
 type Lang = "ru" | "uz";
 
-interface Doctor {
-  id: string;
-  nameRu: string;
-  nameUz?: string;
-  cabinet: string | number | null;
-  color?: string | null;
-  waiting: number;
-  services: { nameRu: string; nameUz: string; price: number }[];
-}
+type Doctor = KioskDoctor;
+type PreBooked = KioskTodayBooking;
+type UpcomingBooking = KioskUpcomingBooking;
 
-interface PreBooked {
-  id: string;
-  doctorName: string;
-  cabinet: number;
-  service: string | null;
-  time: string;
-  ticketNumber: string | null;
-}
-
-interface UpcomingBooking {
-  id: string;
-  doctorName: string;
-  cabinet: number;
-  service: string | null;
-  date: string; // YYYY-MM-DD
-  time: string; // HH:mm
-}
-
-type Step = "welcome" | "phone" | "is-this-you" | "checkin" | "upcoming" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
+type Step = "welcome" | "phone" | "is-this-you" | "who" | "checkin" | "upcoming" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
 
 // Status tints shared with the /tv board — keep the two public surfaces visually
 // identical. Green = active/confirmed, amber = waiting/first-visit.
@@ -237,16 +241,22 @@ export default function KioskPage() {
   // the question then names the Telegram booking, so someone whose number
   // a stranger typed into the bot recognises it is not them.
   const [foundUnverified, setFoundUnverified] = useState(false);
+  // Everyone the number stands for (audit P1D-02): the owner, and relatives
+  // with a booking on it. More than one, and the kiosk asks «Кто пришёл?».
+  const [people, setPeople] = useState<KioskPerson[]>([]);
   const [preBooked, setPreBooked] = useState<PreBooked[]>([]);
   const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [clinicName, setClinicName] = useState("");
+  // Live list (audit Q-07): the board stream and a slow poll keep the
+  // queue lengths fresh, and the doctor step reloads it on entry.
+  const { doctors, clinicName, refresh: refreshDoctors } = useKioskDoctors(slug);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
-  const [selectedService, setSelectedService] = useState<string | null>(null);
-  // The signed ticket token, not the appointment id: the print stub opens in
-  // a new tab that carries no kiosk header, and a bare id prints nothing
-  // there without a staff session (audit INF-10).
-  const [ticketToken, setTicketToken] = useState<string | null>(null);
+  // The service itself, not its name (audit Q-06): its id goes with the
+  // walk-in, which stores it with this doctor's price.
+  const [selectedService, setSelectedService] = useState<KioskService | null>(null);
+  // The stub prints in a hidden frame on this page (audit Q-09): a new tab
+  // stayed on the screen with the previous patient's ticket. A job loads
+  // the frame once; «Печать талона» issues a new one.
+  const [printJob, setPrintJob] = useState<KioskPrintJob | null>(null);
   const [ticketNumber, setTicketNumber] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -254,41 +264,6 @@ export default function KioskPage() {
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const L = t[lang];
-
-  // Fetch today's doctors from the slug-scoped board (schedule-filtered → only
-  // doctors actually working today) and merge service/price details from the
-  // kiosk doctor route (which the board doesn't carry).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [boardRes, detailsRes] = await Promise.all([
-          fetch(`/api/c/${slug}/queue/board`, { cache: "no-store" }),
-          fetch("/api/kiosk/doctors"),
-        ]);
-        if (cancelled || !boardRes.ok) return;
-        const board: { clinic?: { nameRu: string }; doctors: { id: string; nameRu: string; nameUz: string; cabinet: string | null; color: string | null; waiting: { id: string }[] }[] } = await boardRes.json();
-        const details: { id: string; nameRu: string; nameUz: string; cabinet: number; services: { nameRu: string; nameUz: string; price: number }[] }[] = detailsRes.ok ? await detailsRes.json() : [];
-        if (cancelled) return;
-        if (board.clinic?.nameRu) setClinicName(board.clinic.nameRu);
-        const map = new Map(details.map((d) => [d.id, d]));
-        setDoctors(
-          board.doctors.map((d) => ({
-            id: d.id,
-            nameRu: d.nameRu,
-            nameUz: d.nameUz || d.nameRu,
-            cabinet: d.cabinet,
-            color: d.color,
-            waiting: d.waiting.length,
-            services: map.get(d.id)?.services || [],
-          }))
-        );
-      } catch {
-        // Silent: kiosk auto-resets on idle
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [slug]);
 
   // Auto-reset after 30 seconds on done screen
   useEffect(() => {
@@ -310,6 +285,12 @@ export default function KioskPage() {
     if (step === "phone") setTimeout(() => inputRef.current?.focus(), 100);
   }, [step]);
 
+  // The patient is about to choose by queue length: show today's numbers,
+  // not the ones from whenever the list last loaded.
+  useEffect(() => {
+    if (step === "select-doctor") refreshDoctors();
+  }, [step, refreshDoctors]);
+
   function resetAll() {
     setStep("welcome");
     setPhone("");
@@ -317,13 +298,28 @@ export default function KioskPage() {
     setFoundPatientId(null);
     setNotOwner(false);
     setFoundUnverified(false);
+    setPeople([]);
     setPreBooked([]);
     setUpcomingBookings([]);
     setSelectedDoctor(null);
     setSelectedService(null);
-    setTicketToken(null);
+    setPrintJob(null);
     setTicketNumber("");
     setError("");
+  }
+
+  /** Print (or reprint) the stub for this ticket, in this page. */
+  function printTicket(token: string) {
+    setPrintJob((prev) => ({ token, lang, seq: (prev?.seq ?? 0) + 1 }));
+  }
+
+  /** The person at the tablet is this card: show their bookings. */
+  function takePerson(person: KioskPerson) {
+    setFoundPatientId(person.id);
+    setFoundUnverified(person.unverified);
+    setPatientName(person.fullName);
+    setPreBooked(person.appointments);
+    setUpcomingBookings(person.upcoming);
   }
 
   async function handlePhoneSubmit() {
@@ -333,24 +329,26 @@ export default function KioskPage() {
 
     try {
       const checkinRes = await kioskFetch(`/api/kiosk/checkin?phone=${encodeURIComponent(phone)}`);
-      const checkinData = await checkinRes.json();
+      const checkinData: KioskLookup = await checkinRes.json();
 
       setNotOwner(false);
-      if (checkinData.patient) {
-        setFoundPatientId(checkinData.patient.id);
-        setFoundUnverified(checkinData.patient.unverified === true);
-        setPatientName(checkinData.patient.fullName);
-        setPreBooked(checkinData.appointments || []);
-        setUpcomingBookings(checkinData.upcoming || []);
+      const found = lookupPeople(checkinData);
+      setPeople(found);
+      const next = stepAfterLookup(found);
+      if (next === "is-this-you") {
         // A number is shared in families: ask before showing her bookings
         // or queueing anyone under her card.
-        setStep("is-this-you");
+        takePerson(found[0]!);
       } else {
+        // Nobody yet, or several cards to choose from: nobody is taken
+        // until the person says who they are.
         setFoundPatientId(null);
         setFoundUnverified(false);
         setPatientName("");
-        setStep("enter-name");
+        setPreBooked([]);
+        setUpcomingBookings([]);
       }
+      setStep(next);
     } catch {
       setError(L.error);
     } finally {
@@ -358,18 +356,24 @@ export default function KioskPage() {
     }
   }
 
+  function goToPersonStep(person: KioskPerson) {
+    const next = stepForPerson(person);
+    // Booked for today: check in. Booked for another day: say so instead of
+    // falling through to doctor selection. Neither: a new ticket.
+    if (next === "checkin") setUpcomingBookings([]);
+    if (next === "upcoming") setPreBooked([]);
+    setStep(next);
+  }
+
   function handleItsMe() {
-    if (preBooked.length > 0) {
-      setUpcomingBookings([]);
-      setStep("checkin");
-    } else if (upcomingBookings.length > 0) {
-      // Booked, but for a future day — show info instead of falling
-      // through to doctor selection.
-      setPreBooked([]);
-      setStep("upcoming");
-    } else {
-      setStep("select-doctor");
-    }
+    const person = people.find((p) => p.id === foundPatientId);
+    if (person) goToPersonStep(person);
+    else setStep("select-doctor");
+  }
+
+  function handlePickPerson(person: KioskPerson) {
+    takePerson(person);
+    goToPersonStep(person);
   }
 
   function handleNotMe() {
@@ -396,22 +400,23 @@ export default function KioskPage() {
       }
       const data: {
         ticketToken: string;
+        printToken?: string;
         ticketNumber: string;
         doctor: { id: string; nameRu: string; nameUz: string | null };
         cabinet: string | null;
       } = await res.json();
-      setTicketToken(data.ticketToken);
       setTicketNumber(data.ticketNumber);
       setSelectedDoctor({
         id: data.doctor.id,
         nameRu: data.doctor.nameRu,
-        nameUz: data.doctor.nameUz ?? undefined,
+        nameUz: data.doctor.nameUz ?? data.doctor.nameRu,
         cabinet: data.cabinet ?? appointment.cabinet,
-        waiting: 0,
+        color: null,
+        ahead: 0,
         services: [],
       });
       setStep("done");
-      setTimeout(() => window.open(`/ticket/${data.ticketToken}?lang=${lang}`, "_blank"), 500);
+      printTicket(data.printToken ?? data.ticketToken);
     } catch {
       setError(L.error);
     } finally {
@@ -421,6 +426,7 @@ export default function KioskPage() {
 
   function handleSelectDoctor(doc: Doctor) {
     setSelectedDoctor(doc);
+    setSelectedService(null);
     if (doc.services.length > 0) {
       setStep("select-service");
     } else {
@@ -428,8 +434,8 @@ export default function KioskPage() {
     }
   }
 
-  function handleSelectService(serviceName: string | null) {
-    setSelectedService(serviceName);
+  function handleSelectService(service: KioskService | null) {
+    setSelectedService(service);
     setStep("confirm");
   }
 
@@ -441,31 +447,37 @@ export default function KioskPage() {
     setError("");
 
     try {
-      // Single transaction-safe walk-in: finds-or-creates the patient by phone,
-      // allocates the queue slot, and mints a ticketCode in one call.
+      // Single transaction-safe walk-in: finds-or-creates the patient by phone
+      // (or takes the card picked here), allocates the queue slot, and mints
+      // a ticketCode in one call.
       const res = await kioskFetch(`/api/c/${slug}/queue/walkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName,
-          phone,
-          doctorId: selectedDoctor.id,
-          lang: lang.toUpperCase(),
-          // The answer to «Это вы?»: the owner confirmed, or someone else
-          // using the number. Absent for a number nobody owns yet.
-          phoneOwner: foundPatientId ? "same" : notOwner ? "other" : undefined,
-        }),
+        body: JSON.stringify(
+          walkinRequestBody({
+            fullName,
+            phone,
+            doctorId: selectedDoctor.id,
+            lang,
+            // The card picked on «Это вы?» / «Кто пришёл?»; null for a number
+            // nobody owns yet or after «это не я».
+            pickedPatientId: foundPatientId,
+            notOwner,
+            service: selectedService,
+          }),
+        ),
       });
 
       if (res.ok) {
-        const data: { ticketToken: string; ticketNumber: string } = await res.json();
-        setTicketToken(data.ticketToken);
+        const data: { ticketToken: string; printToken?: string; ticketNumber: string } =
+          await res.json();
         setTicketNumber(data.ticketNumber);
         setStep("done");
-        setTimeout(() => window.open(`/ticket/${data.ticketToken}?lang=${lang}`, "_blank"), 500);
+        printTicket(data.printToken ?? data.ticketToken);
       } else {
         // Q-08 — the doctor went off duty between the list and the press
-        // (leave, end of schedule): say so instead of a bare error.
+        // (leave, end of schedule): say so instead of a bare error. Same
+        // for a service switched off meanwhile (Q-06).
         const reason =
           res.status === 409
             ? await res
@@ -473,7 +485,13 @@ export default function KioskPage() {
                 .then((b: { reason?: string }) => b.reason ?? null)
                 .catch(() => null)
             : null;
-        setError(reason === "doctor_off_duty" ? L.doctorOffDuty : L.recordError);
+        setError(
+          reason === "doctor_off_duty"
+            ? L.doctorOffDuty
+            : reason === "service_not_offered"
+              ? L.serviceUnavailable
+              : L.recordError,
+        );
       }
     } catch {
       setError(L.error);
@@ -489,6 +507,9 @@ export default function KioskPage() {
 
   const now = new Date();
   const docName = (doc: Doctor) => lang === "uz" && doc.nameUz ? doc.nameUz : doc.nameRu;
+  const serviceName = (svc: KioskService) => (lang === "uz" ? svc.nameUz || svc.nameRu : svc.nameRu);
+  // «Перед вами» from the live list, not from the moment the doctor was tapped.
+  const liveAhead = (doc: Doctor) => doctors.find((d) => d.id === doc.id)?.ahead ?? doc.ahead;
 
   // Not paired: nothing to do here until the ADMIN opens the kiosk link.
   if (kioskToken === undefined) {
@@ -673,6 +694,56 @@ export default function KioskPage() {
             </div>
           )}
 
+          {/* WHO — a family on one number (audit P1D-02) */}
+          {step === "who" && (
+            <div className="text-center">
+              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
+                <ArrowLeft className="h-5 w-5" /> {L.back}
+              </button>
+
+              <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-[var(--public-panel)] mb-6">
+                <User className="h-10 w-10" style={{ color: "var(--public-accent)" }} />
+              </div>
+              <h1 className="text-3xl font-bold mb-2">{L.whoTitle}</h1>
+              <p className="text-lg text-[var(--public-fg-muted)] mb-6">{L.whoDesc}</p>
+
+              <div className="grid gap-3 max-w-md mx-auto mb-4">
+                {people.map((person) => {
+                  const hint = personBookingHint(person);
+                  return (
+                    <button
+                      key={person.id}
+                      onClick={() => handlePickPerson(person)}
+                      className="w-full flex items-center justify-between gap-4 rounded-2xl border border-[var(--public-border)] bg-[var(--public-panel)] px-6 py-4 text-left transition-all active:scale-[0.99] hover:bg-[var(--public-panel-strong)] hover:border-[var(--public-border-strong)]"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xl font-bold truncate">{person.fullName}</p>
+                        {hint && (
+                          <p className="text-sm mt-0.5" style={{ color: hint.kind === "today" ? "var(--public-active)" : "var(--public-fg-muted)" }}>
+                            {hint.kind === "today"
+                              ? `${L.bookedToday} ${hint.time}`
+                              : `${L.bookedLater} ${hint.date} ${hint.time}`}
+                          </p>
+                        )}
+                        {person.unverified && (
+                          <p className="text-xs text-[var(--public-fg-faint)] mt-0.5">{L.viaTelegram}</p>
+                        )}
+                      </div>
+                      <ArrowRight className="h-6 w-6 shrink-0 text-[var(--public-fg-faint)]" />
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={handleNotMe}
+                className="w-full max-w-md mx-auto flex items-center justify-center gap-2 rounded-2xl border border-[var(--public-border-strong)] py-4 text-lg hover:bg-[var(--public-panel)] transition-colors"
+              >
+                <UserPlus className="h-5 w-5" /> {L.someoneElse}
+              </button>
+            </div>
+          )}
+
           {/* CHECK-IN STEP */}
           {step === "checkin" && (
             <div>
@@ -845,7 +916,7 @@ export default function KioskPage() {
               <button onClick={() => {
                 if (preBooked.length > 0) setStep("checkin");
                 else if (upcomingBookings.length > 0) setStep("upcoming");
-                else if (foundPatientId) setStep("is-this-you");
+                else if (foundPatientId) setStep(people.length > 1 ? "who" : "is-this-you");
                 else setStep(patientName ? "enter-name" : "phone");
               }} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
@@ -880,7 +951,7 @@ export default function KioskPage() {
                           <p className="text-lg font-bold">{docName(doc)}</p>
                           <div className="flex items-center gap-3 text-sm text-[var(--public-fg-muted)] mt-0.5">
                             <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {L.cabinet} {doc.cabinet}</span>
-                            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {doc.waiting} {L.inQueue}</span>
+                            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {L.beforeYou} {doc.ahead} {L.people}</span>
                           </div>
                         </div>
                       </div>
@@ -911,18 +982,17 @@ export default function KioskPage() {
 
               <div className="space-y-2 mb-6">
                 {selectedDoctor.services.map((svc) => {
-                  const name = lang === "uz" ? svc.nameUz : svc.nameRu;
+                  const name = serviceName(svc);
                   return (
                     <button
-                      key={name}
-                      onClick={() => handleSelectService(name)}
+                      key={svc.id}
+                      onClick={() => handleSelectService(svc)}
                       className="w-full flex items-center justify-between rounded-2xl border border-[var(--public-border)] bg-[var(--public-panel)] px-5 py-4 text-left transition-all active:scale-[0.99] hover:bg-[var(--public-panel-strong)] hover:border-[var(--public-border-strong)]"
                     >
                       <span className="text-lg font-medium">{name}</span>
                       <span className="font-bold font-mono" style={{ color: "var(--public-accent)" }}>
                         {/* svc.price is whole UZS (legacy /api/kiosk/doctors shape).
-                            formatMoney expects tiins, so multiply by 100. The route
-                            file is marked TODO(phase-1) for full rewrite. */}
+                            formatMoney expects tiins, so multiply by 100. */}
                         {formatMoney(svc.price * 100, "UZS", lang)}
                       </span>
                     </button>
@@ -967,14 +1037,16 @@ export default function KioskPage() {
                   <span className="text-2xl font-bold">{selectedDoctor.cabinet}</span>
                 </div>
                 {selectedService && (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-4">
                     <span className="text-[var(--public-fg-muted)]">{L.service}:</span>
-                    <span className="font-medium" style={{ color: "var(--public-accent)" }}>{selectedService}</span>
+                    <span className="font-medium text-right" style={{ color: "var(--public-accent)" }}>
+                      {serviceName(selectedService)} · {formatMoney(selectedService.price * 100, "UZS", lang)}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-[var(--public-fg-muted)]">{L.beforeYou}:</span>
-                  <span className="font-bold">{selectedDoctor.waiting} {L.people}</span>
+                  <span className="font-bold">{liveAhead(selectedDoctor)} {L.people}</span>
                 </div>
               </div>
 
@@ -1013,9 +1085,9 @@ export default function KioskPage() {
               </div>
 
               <div className="flex flex-col gap-3 max-w-xs mx-auto">
-                {ticketToken && (
+                {printJob && (
                   <button
-                    onClick={() => window.open(`/ticket/${ticketToken}?lang=${lang}`, "_blank")}
+                    onClick={() => printTicket(printJob.token)}
                     className="flex items-center justify-center gap-2 rounded-2xl bg-[var(--public-panel)] border border-[var(--public-border)] py-4 text-lg font-semibold hover:bg-[var(--public-panel-strong)] transition-colors"
                   >
                     <Printer className="h-5 w-5" />
@@ -1028,6 +1100,19 @@ export default function KioskPage() {
               </div>
 
               <p className="text-xs text-[var(--public-fg-faint)] mt-6">{L.resetIn}</p>
+              {/* The stub loads here and prints itself (AutoPrint): nothing
+                  opens over the kiosk, and the reset to the welcome screen
+                  takes the ticket away with it (audit Q-09). */}
+              {printJob && (
+                <iframe
+                  key={printJob.seq}
+                  src={ticketPrintSrc(printJob)}
+                  title={L.printTicket}
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  style={{ position: "absolute", width: 0, height: 0, border: 0, visibility: "hidden" }}
+                />
+              )}
             </div>
           )}
         </div>

@@ -19,7 +19,7 @@
  */
 import { z } from "zod";
 
-import { audit } from "@/lib/audit";
+import { auditMiniApp } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
@@ -149,7 +149,7 @@ export const POST = createMiniAppHandler({ bodySchema: Body }, async ({ body, ct
   });
   if (marketingOptOutChanged) {
     try {
-      await audit(request, {
+      await auditMiniApp(request, ctx, {
         action: AUDIT_ACTION.MARKETING_OPT_OUT_CHANGED,
         entityType: "Patient",
         entityId: updated.id,

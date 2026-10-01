@@ -38,7 +38,7 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
+import { auditMiniApp } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { runWithTenant } from "@/lib/tenant-context";
 import type { LowNpsReceivedPayload } from "@/lib/actions/types";
@@ -319,7 +319,7 @@ export const POST = createMiniAppHandler(
         );
         actionEmittedId = emit.id;
 
-        await audit(request, {
+        await auditMiniApp(request, ctx, {
           action: AUDIT_ACTION.LOW_NPS_RECEIVED,
           entityType: "Action",
           entityId: emit.id,

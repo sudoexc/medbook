@@ -51,3 +51,50 @@ export async function audit(request: Request, input: AuditInput): Promise<void> 
     console.error("[audit]", err);
   }
 }
+
+/** The Mini App patient an audited action came from. */
+export interface MiniAppAuditActor {
+  clinicId: string;
+  /** The Telegram-authenticated patient (the family owner, never the relative). */
+  patientId: string;
+}
+
+/**
+ * Audit row for an action a patient took in the Telegram Mini App (audit
+ * G1-03).
+ *
+ * `audit()` finds the clinic in a TENANT context or a staff session. The
+ * Mini App has neither: its routes run as SYSTEM and the Telegram WebView
+ * carries no NextAuth cookie. So every Mini App row was written with
+ * `clinicId = NULL` and no actor, and the clinic's journal (which filters by
+ * clinicId) never showed a patient's deletion or export request, upload or
+ * consent change. Here both come from the Mini App context, and the actor
+ * reads like the outbox rows of the same surface: role PATIENT, label
+ * `patient:<id>`, surface MINIAPP. No session is consulted, so a staff
+ * cookie in the same browser cannot sign a patient's action.
+ */
+export async function auditMiniApp(
+  request: Request,
+  actor: MiniAppAuditActor,
+  input: AuditInput,
+): Promise<void> {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        clinicId: actor.clinicId,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId ?? null,
+        meta: (input.meta ?? null) as never,
+        actorId: null,
+        actorRole: "PATIENT",
+        actorLabel: `patient:${actor.patientId}`,
+        surface: "MINIAPP",
+        ip: clientIpForAudit(request),
+        userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
+      },
+    });
+  } catch (err) {
+    console.error("[audit:miniapp]", err);
+  }
+}

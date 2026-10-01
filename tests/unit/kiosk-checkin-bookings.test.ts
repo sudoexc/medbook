@@ -41,6 +41,9 @@ const state = vi.hoisted(() => ({
   events: [] as Array<{ type: string; payload: Record<string, unknown> }>,
   allocations: 0,
   owners: [] as Array<{ id: string; fullName: string; birthDate: Date | null }>,
+  // P1D-02: relatives on the number (contact sharers, Mini App family).
+  sharers: [] as Array<{ id: string; fullName: string; birthDate: Date | null }>,
+  family: [] as Array<{ linkedPatient: { id: string; fullName: string; deletedAt: Date | null } }>,
 }));
 
 const MOTHER = { id: "p1", fullName: "Каримова Дилноза", birthDate: null };
@@ -68,6 +71,7 @@ vi.mock("@/server/kiosk/device", () => ({
 vi.mock("@/server/patient/phone-identity", () => ({
   findVerifiedPhoneOwners: vi.fn(async () => state.owners),
   findPhoneClaim: vi.fn(async () => null),
+  findContactSharers: vi.fn(async () => state.sharers),
 }));
 
 vi.mock("@/server/realtime/publish", () => ({
@@ -102,6 +106,7 @@ const txMock = {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    patientFamily: { findMany: vi.fn(async () => state.family) },
     appointment: {
       findFirst: vi.fn(async () => (state.row ? { ...state.row } : null)),
       findMany: vi.fn(async (args: Record<string, unknown>) => {
@@ -163,6 +168,8 @@ beforeEach(() => {
   state.events = [];
   state.allocations = 0;
   state.owners = [MOTHER];
+  state.sharers = [];
+  state.family = [];
 });
 
 describe("GET /api/kiosk/checkin — which bookings the kiosk offers", () => {

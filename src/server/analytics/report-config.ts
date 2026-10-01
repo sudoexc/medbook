@@ -9,7 +9,10 @@
  */
 import { z } from "zod";
 
-import { tashkentDayBounds } from "@/lib/booking-validation";
+import {
+  tashkentDayBounds,
+  tashkentDayBoundsForDateString,
+} from "@/lib/booking-validation";
 
 import { DIMENSION_KEYS, type DimensionKey } from "./dimensions";
 import { MEASURE_KEYS, type MeasureKey } from "./measures";
@@ -79,6 +82,8 @@ export const ReportConfigSchema = z
         message: "duplicate_measures",
       }),
     filters: FiltersSchema.default({}),
+    // `by` names a selected dimension or measure (catalog key or alias); the
+    // query-builder ignores anything else rather than trusting the string.
     ordering: z
       .object({
         by: z.string().min(1),
@@ -145,22 +150,37 @@ export function resolveLimit(config: ReportConfig): number {
   return Math.max(1, Math.min(REPORT_LIMIT_MAX, Math.trunc(v)));
 }
 
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
  * Default 30-day window when the saved config omits date bounds. Keeps
  * the runner total-time bounded even when an admin saves a "no-filter"
  * report. The runner always passes explicit dates to the query-builder.
+ *
+ * The builder's «С даты» / «По дату» pickers save calendar days
+ * (YYYY-MM-DD). Those are the clinic's (Tashkent) days and both are
+ * inclusive: «По дату 30.09» runs to the end of 30.09 (audit AN-09). They
+ * used to go through `new Date("2026-09-30")`, i.e. UTC midnight, so the
+ * report stopped at 05:00 Tashkent time on the day BEFORE the picked end
+ * day and started five hours late. Full ISO instants (API callers) still
+ * pass through untouched, `dateTo` exclusive.
  */
 export function resolveDateRange(
   config: ReportConfig,
   now: Date = new Date(),
 ): { dateFrom: Date; dateTo: Date } {
   const f = config.filters ?? {};
-  // Explicit config values are ISO instants and pass through untouched;
-  // the *default* upper bound is tomorrow-at-midnight **Tashkent** so the
+  // The *default* upper bound is tomorrow-at-midnight **Tashkent** so the
   // window covers the clinic's "today", not the UTC server's.
-  const to = f.dateTo ? new Date(f.dateTo) : tashkentDayBounds(now).dayEnd;
+  const to = f.dateTo
+    ? YMD.test(f.dateTo)
+      ? tashkentDayBoundsForDateString(f.dateTo).dayEnd
+      : new Date(f.dateTo)
+    : tashkentDayBounds(now).dayEnd;
   const from = f.dateFrom
-    ? new Date(f.dateFrom)
+    ? YMD.test(f.dateFrom)
+      ? tashkentDayBoundsForDateString(f.dateFrom).dayStart
+      : new Date(f.dateFrom)
     : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
   return { dateFrom: from, dateTo: to };
 }

@@ -12,8 +12,12 @@
  * Why numbers stay unformatted: the spec demands raw numerics for currency
  * cells (`123456.78` not `123 456,78 UZS`) so Excel treats them as numbers
  * the user can SUM/AVG over. The pretty rendering happens in the on-screen
- * table; CSV is data, not display.
+ * table; CSV is data, not display. Days are the exception (audit AN-09):
+ * the `date` dimension used to land as `2026-09-22T00:00:00.000Z`; it is
+ * written ДД.ММ.ГГГГ, which Excel in the clinic's locale reads as a date.
  */
+
+import { formatReportDay } from "@/lib/analytics/report-cells";
 
 export interface CsvColumn {
   /** Internal column key — e.g. the dimension/measure alias. */
@@ -21,7 +25,7 @@ export interface CsvColumn {
   /** Header label written into the first row (already-localised). */
   label: string;
   /** Hint for cell rendering. */
-  unit?: "count" | "tiins" | "ratio" | "text";
+  unit?: "count" | "tiins" | "ratio" | "text" | "date";
 }
 
 export type CsvRow = Record<string, unknown>;
@@ -59,6 +63,7 @@ function tiinsToSoumString(tiins: bigint | number): string {
 
 function formatCell(value: unknown, unit: CsvColumn["unit"]): string {
   if (value === null || value === undefined) return "";
+  if (unit === "date") return formatReportDay(value) ?? String(value);
   if (typeof value === "bigint") {
     if (unit === "tiins") return tiinsToSoumString(value);
     return value.toString();

@@ -13,8 +13,9 @@ import { DoctorPerformanceClient } from "./_components/doctor-performance-client
 /**
  * /crm/analytics/doctors — Phase 18 Wave 2.
  *
- * Default window is the trailing 30 days; the toolbar lets the admin widen
- * to 90 days, year-to-date, or pick a custom range. We hand the client both
+ * Default window is the trailing 30 days (Tashkent days, today included);
+ * the toolbar lets the admin widen to 90 days, year-to-date, or pick a
+ * custom range. We hand the client both
  * the aggregated rows for the default window AND a per-month sparkline
  * series (last 6 months) so each row gets a tiny SVG trend line without an
  * extra HTTP round-trip.
@@ -52,11 +53,12 @@ export default async function DoctorPerformancePage({
 
   const [perf, sparkRaw, doctors] = await runWithTenant(tenant, async () => {
     const [perf, doctors] = await Promise.all([
-      resolveDoctorPerformance(prisma, session.user.clinicId as string, {
-        monthFrom: range.from,
-        monthTo: range.to,
-        limit: 200,
-      }),
+      resolveDoctorPerformance(
+        prisma,
+        session.user.clinicId as string,
+        { from: range.from, to: range.to, limit: 200 },
+        now,
+      ),
       prisma.doctor.findMany({
         where: { clinicId: session.user.clinicId as string, isActive: true },
         select: { id: true, nameRu: true, nameUz: true },

@@ -4779,6 +4779,7 @@
     "summary": {
       "totalCount": "Jami {count} ta",
       "averageLtv": "O‘rtacha LTV",
+      "noData": "ma’lumot yo‘q",
       "viewAllDoctors": "Barchasini ko‘rsatish ({count})",
       "viewAllServices": "Barcha xizmatlar ({count})",
       "totalAll": "Jami {count}",
@@ -4875,6 +4876,10 @@
     "subtitle": "Tushum, kelmaganlar va NPS bo‘yicha umumiy reyting",
     "empty": "Tanlangan davr uchun ma’lumot yo‘q",
     "emptyHint": "Yozuvlar paydo bo‘lganda reyting avtomatik yangilanadi.",
+    "rangeIncomplete": "Davrning boshlanish va tugash sanasini tanlang",
+    "loading": "Tanlangan davr ma’lumotlari yuklanmoqda…",
+    "loadFailed": "Tanlangan davr ma’lumotlarini yuklab bo‘lmadi",
+    "retry": "Qayta urinish",
     "metaHint": "Yangilangan {generatedAt}",
     "sparkAria": "{name} shifokor tushumi dinamikasi",
     "col": {
@@ -4969,6 +4974,8 @@
       "avg_ticket_tiins": "O‘rtacha chek",
       "ltv_tiins": "Bemor LTV"
     },
+    "columnMoney": "{label}, so‘m",
+    "sourceUnknown": "Ko‘rsatilmagan",
     "status": {
       "BOOKED": "Bron qilindi",
       "CONFIRMED": "Tasdiqlangan",
@@ -4997,6 +5004,10 @@
       "filterBranches": "Filiallar",
       "filterDoctors": "Shifokorlar",
       "filterStatuses": "Tashrif statuslari",
+      "orderLabel": "Saralash",
+      "orderDefault": "O‘lchamlar bo‘yicha",
+      "orderDesc": "Kamayish tartibida",
+      "orderAsc": "O‘sish tartibida",
       "noBranches": "Faol filiallar yo‘q",
       "noDoctors": "Faol shifokorlar yo‘q",
       "runButton": "Ishga tushirish",

@@ -22,18 +22,20 @@ import {
 } from "@/lib/analytics/dashboard-math";
 
 describe("resolveDoctorPerfRange", () => {
-  const NOW = new Date(Date.UTC(2026, 4, 7, 9, 30)); // 2026-05-07 09:30 UTC
+  // 2026-05-07 09:30 UTC = 14:30 on 07.05 in Tashkent (UTC+5).
+  const NOW = new Date(Date.UTC(2026, 4, 7, 9, 30));
+  const tashkentMidnight = (ymd: string) => new Date(`${ymd}T00:00:00+05:00`);
 
-  it("30d → trailing 30 day window ending tomorrow-midnight", () => {
+  it("30d → the 30 Tashkent days ending today, today included", () => {
     const r = resolveDoctorPerfRange("30d", NOW);
     expect(r.kind).toBe("30d");
+    expect(r.from).toEqual(tashkentMidnight("2026-04-08"));
+    // to is exclusive: the midnight that starts tomorrow in Tashkent.
+    expect(r.to).toEqual(tashkentMidnight("2026-05-08"));
     const days = Math.round(
       (r.to.getTime() - r.from.getTime()) / (24 * 3600 * 1000),
     );
     expect(days).toBe(30);
-    // to is exclusive — tomorrow at midnight
-    expect(r.to.getUTCHours()).toBe(0);
-    expect(r.to.getUTCDate()).toBe(8);
   });
 
   it("90d → trailing 90 day window", () => {
@@ -45,25 +47,32 @@ describe("resolveDoctorPerfRange", () => {
     expect(r.kind).toBe("90d");
   });
 
-  it("ytd → Jan 1 of current year through tomorrow-midnight", () => {
+  it("ytd → Jan 1 of the clinic's year through tomorrow-midnight", () => {
     const r = resolveDoctorPerfRange("ytd", NOW);
-    expect(r.from.getUTCMonth()).toBe(0);
-    expect(r.from.getUTCDate()).toBe(1);
-    expect(r.from.getUTCFullYear()).toBe(2026);
+    expect(r.from).toEqual(tashkentMidnight("2026-01-01"));
+    expect(r.to).toEqual(tashkentMidnight("2026-05-08"));
     expect(r.kind).toBe("ytd");
   });
 
-  it("custom with valid bounds bumps `to` to exclusive upper", () => {
+  it("custom: both picked days are inclusive Tashkent days", () => {
     const r = resolveDoctorPerfRange("custom", NOW, {
       from: "2026-01-01",
       to: "2026-01-31",
     });
     expect(r.kind).toBe("custom");
-    expect(r.from.getUTCDate()).toBe(1);
-    expect(r.from.getUTCMonth()).toBe(0);
-    // inclusive 2026-01-31 → exclusive 2026-02-01
-    expect(r.to.getUTCDate()).toBe(1);
-    expect(r.to.getUTCMonth()).toBe(1);
+    expect(r.from).toEqual(tashkentMidnight("2026-01-01"));
+    // inclusive 31.01 → exclusive 01.02 midnight Tashkent
+    expect(r.to).toEqual(tashkentMidnight("2026-02-01"));
+  });
+
+  it("custom: a single day (from = to) is a valid range", () => {
+    const r = resolveDoctorPerfRange("custom", NOW, {
+      from: "2026-03-15",
+      to: "2026-03-15",
+    });
+    expect(r.kind).toBe("custom");
+    expect(r.from).toEqual(tashkentMidnight("2026-03-15"));
+    expect(r.to).toEqual(tashkentMidnight("2026-03-16"));
   });
 
   it("custom with invalid bounds falls back to 30d", () => {
@@ -74,7 +83,7 @@ describe("resolveDoctorPerfRange", () => {
     expect(r.kind).toBe("30d");
   });
 
-  it("custom with from >= to falls back to 30d", () => {
+  it("custom with from > to falls back to 30d", () => {
     const r = resolveDoctorPerfRange("custom", NOW, {
       from: "2026-05-01",
       to: "2026-04-01",

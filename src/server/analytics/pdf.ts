@@ -27,13 +27,13 @@ import path from "node:path";
 
 import PDFDocument from "pdfkit";
 
-import { tashkentComponents } from "@/lib/booking-validation";
+import { formatReportDay } from "@/lib/analytics/report-cells";
 
 export interface PdfReportColumn {
   key: string;
   label: string;
   kind?: "dimension" | "measure";
-  unit?: "count" | "tiins" | "ratio" | "text";
+  unit?: "count" | "tiins" | "ratio" | "text" | "date";
 }
 
 export interface PdfFilterSummary {
@@ -104,24 +104,30 @@ function formatGeneratedAtRu(d: Date): string {
   return `${day} ${RU_MONTHS_GENITIVE[month - 1]} ${year}, ${hour}:${minute} UZS`;
 }
 
-function formatTiinsAsUzs(value: bigint | number): string {
+/**
+ * Whole сум, grouped by thousands. No unit in the cell: the column header
+ * already says «, сум» (report-runner.ts); cells used to read «… UZS» under
+ * a header that said «(tiins)» (audit AN-09).
+ */
+function formatTiinsAsSoum(value: bigint | number): string {
   const minor = typeof value === "bigint" ? Number(value) : value;
-  if (!Number.isFinite(minor)) return "0 UZS";
+  if (!Number.isFinite(minor)) return "0";
   const whole = Math.trunc(minor / 100);
   const sign = whole < 0 ? "-" : "";
   const abs = Math.abs(whole).toString();
   const grouped = abs.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${sign}${grouped} UZS`;
+  return `${sign}${grouped}`;
 }
 
 function formatCellText(value: unknown, unit: PdfReportColumn["unit"]): string {
   if (value === null || value === undefined) return "—";
+  if (unit === "date") return formatReportDay(value) ?? String(value);
   if (typeof value === "bigint") {
-    if (unit === "tiins") return formatTiinsAsUzs(value);
+    if (unit === "tiins") return formatTiinsAsSoum(value);
     return value.toString();
   }
   if (typeof value === "number") {
-    if (unit === "tiins") return formatTiinsAsUzs(value);
+    if (unit === "tiins") return formatTiinsAsSoum(value);
     if (unit === "ratio") return `${(value * 100).toFixed(1)}%`;
     if (Number.isInteger(value)) return value.toLocaleString("ru-RU");
     return value.toString();
@@ -129,13 +135,13 @@ function formatCellText(value: unknown, unit: PdfReportColumn["unit"]): string {
   if (typeof value === "string") {
     if (unit === "tiins") {
       const n = Number(value);
-      if (Number.isFinite(n)) return formatTiinsAsUzs(n);
+      if (Number.isFinite(n)) return formatTiinsAsSoum(n);
     }
     return value;
   }
   if (value instanceof Date) {
     // Tashkent civil date — report cells must match the clinic's day.
-    return tashkentComponents(value).date;
+    return formatReportDay(value) ?? value.toISOString();
   }
   if (typeof value === "boolean") return value ? "Да" : "Нет";
   return String(value);
@@ -145,8 +151,12 @@ function buildFilterLines(filters: PdfFilterSummary | undefined): string[] {
   if (!filters) return [];
   const lines: string[] = [];
   if (filters.dateFrom || filters.dateTo) {
-    const from = filters.dateFrom ? filters.dateFrom.slice(0, 10) : "—";
-    const to = filters.dateTo ? filters.dateTo.slice(0, 10) : "—";
+    const from = filters.dateFrom
+      ? formatReportDay(filters.dateFrom) ?? filters.dateFrom.slice(0, 10)
+      : "—";
+    const to = filters.dateTo
+      ? formatReportDay(filters.dateTo) ?? filters.dateTo.slice(0, 10)
+      : "—";
     lines.push(`Период: ${from} — ${to}`);
   }
   if (filters.branches && filters.branches.length > 0) {

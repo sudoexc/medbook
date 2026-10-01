@@ -12,10 +12,17 @@ export interface AnalyticsResponse {
   from: string;
   to: string;
   doctorOnly: boolean;
+  /**
+   * Whether the clinic records payments in the CRM (Clinic.
+   * paymentsTrackedSince). False: the money tiles say so instead of showing
+   * the few payments someone happened to enter.
+   */
+  paymentsTracked: boolean;
   revenueDaily: Array<{ date: string; amount: number }>;
   appointmentsByStatus: Array<{ status: string; count: number }>;
   noShowDaily: Array<{
     date: string;
+    /** Resolved visits of the day (COMPLETED + NO_SHOW): the denominator. */
     total: number;
     noShow: number;
     rate: number;
@@ -35,6 +42,12 @@ export interface AnalyticsResponse {
   }>;
   sources: Array<{ source: string; count: number }>;
   ltvBuckets: Array<{ bucket: string; count: number }>;
+  /**
+   * Average Patient.ltv over the clinic's patients, from the server
+   * (src/server/analytics/ltv-summary.ts); null when nobody has paid
+   * anything. Not sent to a doctor: patient LTV includes colleagues' visits.
+   */
+  ltv: { averageTiins: number | null; patients: number };
   /** Booked against scheduled minutes (src/server/analytics/clinic-load.ts). */
   clinicLoad: {
     daily: Array<{

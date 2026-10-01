@@ -1,7 +1,9 @@
 /**
  * POST /api/crm/analytics/reports/run — Phase 18 Wave 3.
  *
- * Body: `{ config: ReportConfig, savedReportId?: string, name?: string }`.
+ * Body: `{ config: ReportConfig, savedReportId?: string, name?: string,
+ * locale?: "ru" | "uz" }`. `locale` is the page's language: headers and
+ * names come back in it (report-runner.ts, audit AN-09).
  * Response: `{ rows, columns, generatedAt, rowCount, truncated }` JSON, OR a
  * CSV stream when `?format=csv` is set.
  *
@@ -48,6 +50,7 @@ export async function POST(request: Request): Promise<Response> {
     config?: unknown;
     savedReportId?: unknown;
     name?: unknown;
+    locale?: unknown;
   };
   let configData;
   try {
@@ -60,6 +63,7 @@ export async function POST(request: Request): Promise<Response> {
   const savedReportId =
     typeof wrapper.savedReportId === "string" ? wrapper.savedReportId : null;
   const reportName = typeof wrapper.name === "string" ? wrapper.name : null;
+  const locale = wrapper.locale === "uz" ? "uz" : "ru";
 
   const url = new URL(request.url);
   const formatParam = url.searchParams.get("format");
@@ -79,6 +83,8 @@ export async function POST(request: Request): Promise<Response> {
         prisma as unknown as ReportRunnerClient,
         ctx.clinicId as string,
         configData,
+        new Date(),
+        { locale },
       ),
     );
 
@@ -126,6 +132,7 @@ export async function POST(request: Request): Promise<Response> {
         generatedAt: new Date(result.generatedAt),
         columns: result.columns,
         rows: result.rows,
+        locale,
         filters: {
           dateFrom: configData.filters?.dateFrom ?? null,
           dateTo: configData.filters?.dateTo ?? null,

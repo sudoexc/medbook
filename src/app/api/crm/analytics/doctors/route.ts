@@ -1,12 +1,15 @@
 /**
  * GET /api/crm/analytics/doctors — ranked doctor performance.
  *
- * Reads from `mv_doctor_performance` (see migration). Returns one row per
- * doctor, aggregated across the requested month range.
+ * Returns one row per doctor, aggregated over the exact requested window
+ * (`doctor-performance-resolver.ts`). The window is no longer truncated to
+ * whole months (audit AN-03).
  *
  * Query params:
- *   ?monthFrom=YYYY-MM-DD  inclusive month-truncated lower bound
- *   ?monthTo=YYYY-MM-DD    exclusive month-truncated upper bound
+ *   ?from=<ISO instant>    inclusive lower bound (a Tashkent midnight from
+ *                          `resolveDoctorPerfRange`)
+ *   ?to=<ISO instant>      exclusive upper bound
+ *   ?monthFrom / ?monthTo  older names of the same two bounds
  *   ?sortBy=               revenueTiins | visitsCount | noShowCount | npsAvg
  *   ?limit=                1..500 (default 50)
  *
@@ -33,8 +36,12 @@ export const GET = createApiListHandler(
       return err("ClinicNotSelected", 400);
     }
     const url = new URL(request.url);
-    const monthFrom = parseDate(url.searchParams.get("monthFrom"));
-    const monthTo = parseDate(url.searchParams.get("monthTo"));
+    const from = parseDate(
+      url.searchParams.get("from") ?? url.searchParams.get("monthFrom"),
+    );
+    const to = parseDate(
+      url.searchParams.get("to") ?? url.searchParams.get("monthTo"),
+    );
     const sortByRaw = url.searchParams.get("sortBy");
     const sortBy =
       sortByRaw === "visitsCount" ||
@@ -50,8 +57,8 @@ export const GET = createApiListHandler(
       prisma,
       ctx.clinicId,
       {
-        monthFrom: monthFrom ?? undefined,
-        monthTo: monthTo ?? undefined,
+        from: from ?? undefined,
+        to: to ?? undefined,
         sortBy,
         limit,
       },

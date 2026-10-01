@@ -14,7 +14,11 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
-import { intlLocale } from "@/lib/format";
+import { formatClinicDateTime } from "@/lib/format";
+import {
+  formatReportCell,
+  type ReportCellUnit,
+} from "@/lib/analytics/report-cells";
 
 import type { ReportConfig } from "@/server/analytics/report-config";
 
@@ -22,9 +26,10 @@ import { SchedulesSection } from "./schedules-section";
 
 interface ReportColumnDescriptor {
   key: string;
+  /** Localized on the server (report-runner.ts). */
   label: string;
   kind: "dimension" | "measure";
-  unit?: "count" | "tiins" | "ratio" | "text";
+  unit?: ReportCellUnit;
 }
 
 interface ReportRunResponse {
@@ -46,42 +51,12 @@ export interface ReportViewClientProps {
   };
 }
 
-function formatTiins(tiins: number, tag: string): string {
-  return new Intl.NumberFormat(tag).format(Math.round(tiins / 100));
-}
-
-function formatCellForTable(
-  v: unknown,
-  unit: ReportColumnDescriptor["unit"],
-  tag: string,
-): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "string") {
-    if (unit === "tiins") {
-      const n = Number(v);
-      if (Number.isFinite(n)) return formatTiins(n, tag);
-    }
-    return v;
-  }
-  if (typeof v === "number") {
-    if (unit === "tiins") return formatTiins(v, tag);
-    if (unit === "ratio") return `${(v * 100).toFixed(1)}%`;
-    return v.toLocaleString(tag);
-  }
-  if (typeof v === "bigint") {
-    if (unit === "tiins") return formatTiins(Number(v), tag);
-    return v.toString();
-  }
-  return String(v);
-}
-
 export function ReportViewClient({
   locale,
   report,
 }: ReportViewClientProps): React.JSX.Element {
   const t = useTranslations("analyticsReports.view");
   const router = useRouter();
-  const dateTag = intlLocale(locale);
   const [loading, setLoading] = React.useState(true);
   const [result, setResult] = React.useState<ReportRunResponse | null>(null);
   const [deleting, setDeleting] = React.useState(false);
@@ -90,9 +65,10 @@ export function ReportViewClient({
   const run = React.useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/crm/analytics/reports/${report.id}/run`, {
-        method: "POST",
-      });
+      const r = await fetch(
+        `/api/crm/analytics/reports/${report.id}/run?locale=${locale}`,
+        { method: "POST" },
+      );
       if (!r.ok) {
         let msg = t("toastRunFailed");
         try {
@@ -109,7 +85,7 @@ export function ReportViewClient({
     } finally {
       setLoading(false);
     }
-  }, [report.id, t]);
+  }, [report.id, locale, t]);
 
   React.useEffect(() => {
     void run();
@@ -117,7 +93,7 @@ export function ReportViewClient({
 
   const onExport = async (fmt: "csv" | "pdf") => {
     const r = await fetch(
-      `/api/crm/analytics/reports/${report.id}/run?format=${fmt}`,
+      `/api/crm/analytics/reports/${report.id}/run?format=${fmt}&locale=${locale}`,
       { method: "POST" },
     );
     if (!r.ok) {
@@ -224,7 +200,7 @@ export function ReportViewClient({
             </span>
             <span>
               {t("generatedAt", {
-                ts: new Date(result.generatedAt).toLocaleString(dateTag),
+                ts: formatClinicDateTime(result.generatedAt, locale),
               })}
             </span>
           </div>
@@ -259,7 +235,7 @@ export function ReportViewClient({
                               : "px-3 py-1.5"
                           }
                         >
-                          {formatCellForTable(row[c.key], c.unit, dateTag)}
+                          {formatReportCell(row[c.key], c.unit, locale)}
                         </td>
                       ))}
                     </tr>

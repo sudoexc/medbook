@@ -14,11 +14,14 @@
  * doctor sees the full set; the dashboard hides what isn't relevant). The
  * heavy aggregations are bounded by the time window so doctor scope doesn't
  * win us much, but we keep the role list aligned with the existing route
- * to avoid surprising the frontend.
+ * to avoid surprising the frontend. The doctor slice is fail-closed like the
+ * parent route (`doctor-scope.ts`, audit AN-06): a doctor login with no
+ * Doctor row gets 403 instead of every colleague's no-show and wait-time
+ * figures.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { ok } from "@/server/http";
+import { err, ok } from "@/server/http";
 import { getTenant } from "@/lib/tenant-context";
 import {
   addDays,
@@ -31,6 +34,7 @@ import {
   computeTgFunnel,
 } from "@/server/analytics/funnels";
 import { ensureFeature } from "@/server/platform/feature-guard";
+import { resolveAnalyticsScope } from "@/server/analytics/doctor-scope";
 
 const FUNNEL_LOOKAHEAD_DAYS = 7;
 
@@ -54,15 +58,13 @@ export const GET = createApiListHandler(
     // own slice for no-show + wait-time. Funnel KPIs (TG/Call) are
     // clinic-wide either way — they describe top-of-funnel acquisition,
     // not the doctor's individual practice.
-    const userId =
-      ctx?.kind === "TENANT" && ctx.role === "DOCTOR" ? ctx.userId : null;
-    const doctorFilter = userId
-      ? await prisma.doctor.findFirst({
-          where: { userId },
-          select: { id: true },
-        })
-      : null;
-    const doctorId = doctorFilter?.id ?? null;
+    const scope = await resolveAnalyticsScope(ctx);
+    if (scope.kind === "denied") {
+      return err("DoctorProfileMissing", 403, {
+        reason: "no_doctor_row_for_user",
+      });
+    }
+    const doctorId = scope.kind === "doctor" ? scope.doctorId : null;
 
     // ── 1. TG funnel ────────────────────────────────────────────────────
     // Conversations in window with at least one IN-direction message.

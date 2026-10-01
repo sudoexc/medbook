@@ -45,6 +45,10 @@ export interface AnalyticsTopRowsProps {
     ltv: string;
     apptUnit: string;
     avgLtvLabel: string;
+    /** «Оплаты не ведутся в CRM»: the clinic does not record payments. */
+    noPayments: string;
+    /** «нет данных»: nothing recorded to compute the figure from. */
+    noData: string;
     totalCount: (count: number) => string;
     totalAll: (count: number) => string;
     viewAllDoctors: (count: number) => string;
@@ -149,6 +153,15 @@ function KpiCardShell({
   );
 }
 
+/** A figure that cannot be shown honestly: says why, in muted text. */
+function MissingFigure({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[13px] font-medium text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
 function DeltaChip({
   label,
   positive,
@@ -238,6 +251,20 @@ export function AnalyticsTopRows({
   // a week, «+33 %» on a flat revenue. Null: nothing to compare, no chip.
   const revenueDelta = data.deltas?.revenuePct ?? null;
 
+  // Money tiles show money only when the clinic records payments, and only
+  // when there is something recorded in the window (AN-07): «0 сум» with a
+  // growth chip would read as a real result.
+  const paymentsTracked = data.paymentsTracked !== false;
+  const hasPayments = React.useMemo(
+    () => data.revenueDaily.some((p) => p.amount > 0),
+    [data.revenueDaily],
+  );
+  const moneyMissing = !paymentsTracked
+    ? labels.noPayments
+    : !hasPayments
+      ? labels.noData
+      : null;
+
   const totalAppointments = React.useMemo(
     () => data.appointmentsByStatus.reduce((a, s) => a + s.count, 0),
     [data.appointmentsByStatus],
@@ -262,25 +289,15 @@ export function AnalyticsTopRows({
     [data.sources],
   );
 
-  const ltvAverage = React.useMemo(() => {
-    if (data.ltvBuckets.length === 0) return 0;
-    const midpoints: Record<string, number> = {
-      "0-300k": 150_000_00,
-      "300k-600k": 450_000_00,
-      "600k-1M": 800_000_00,
-      "1M-2M": 1_500_000_00,
-      "2M-3M": 2_500_000_00,
-      "3M+": 3_500_000_00,
-    };
-    let sum = 0;
-    let count = 0;
-    for (const b of data.ltvBuckets) {
-      const mid = midpoints[b.bucket] ?? 1_500_000_00;
-      sum += mid * b.count;
-      count += b.count;
-    }
-    return count > 0 ? sum / count : 0;
-  }, [data.ltvBuckets]);
+  // AN-05 — the average comes from the server (AVG of Patient.ltv). It used
+  // to be averaged here over bucket midpoints whose keys never matched the
+  // API's buckets, so it always read 1 500 000 сум.
+  const ltvAverage = data.ltv?.averageTiins ?? null;
+  const ltvMissing = !paymentsTracked
+    ? labels.noPayments
+    : ltvAverage === null
+      ? labels.noData
+      : null;
 
   const topDoctorRows = React.useMemo(() => {
     const max = Math.max(1, ...data.topDoctors.map((d) => d.revenue));
@@ -321,7 +338,7 @@ export function AnalyticsTopRows({
         <KpiCardShell
           title={labels.revenue}
           delta={
-            revenueDelta !== null ? (
+            revenueDelta !== null && moneyMissing === null ? (
               <DeltaChip
                 label={pctSigned(revenueDelta)}
                 positive={revenueDelta >= 0}
@@ -329,13 +346,18 @@ export function AnalyticsTopRows({
             ) : undefined
           }
           primary={
-            <MoneyText
-              amount={totalRevenue}
-              currency="UZS"
-              className="text-[20px] font-bold tabular-nums"
-            />
+            moneyMissing !== null ? (
+              <MissingFigure>{moneyMissing}</MissingFigure>
+            ) : (
+              <MoneyText
+                amount={totalRevenue}
+                currency="UZS"
+                className="text-[20px] font-bold tabular-nums"
+              />
+            )
           }
           body={
+            moneyMissing !== null ? undefined : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={data.revenueDaily}
@@ -357,6 +379,7 @@ export function AnalyticsTopRows({
                 />
               </LineChart>
             </ResponsiveContainer>
+            )
           }
         />
 
@@ -435,7 +458,11 @@ export function AnalyticsTopRows({
           title={labels.topDoctors}
           height="h-auto"
           body={
-            topDoctorRows.length === 0 ? (
+            !paymentsTracked ? (
+              <div className="text-[12px] text-muted-foreground">
+                {labels.noPayments}
+              </div>
+            ) : topDoctorRows.length === 0 ? (
               <div className="text-[12px] text-muted-foreground">—</div>
             ) : (
               <HorizontalBarList rows={topDoctorRows} highlightFirst />
@@ -548,15 +575,20 @@ export function AnalyticsTopRows({
         <KpiCardShell
           title={labels.ltv}
           primary={
-            <MoneyText
-              amount={ltvAverage}
-              currency="UZS"
-              className="text-[18px] font-bold tabular-nums"
-            />
+            ltvMissing !== null || ltvAverage === null ? (
+              <MissingFigure>{ltvMissing ?? labels.noData}</MissingFigure>
+            ) : (
+              <MoneyText
+                amount={ltvAverage}
+                currency="UZS"
+                className="text-[18px] font-bold tabular-nums"
+              />
+            )
           }
           secondary={labels.avgLtvLabel}
           height="h-28"
           body={
+            ltvMissing !== null || data.ltvBuckets.length === 0 ? undefined : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={data.ltvBuckets}
@@ -578,6 +610,7 @@ export function AnalyticsTopRows({
                 <Bar dataKey="count" fill={c.chart4} radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )
           }
         />
       </div>

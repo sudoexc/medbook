@@ -20,9 +20,16 @@
  * an INNER JOIN with `p."deletedAt" IS NULL` so anonymized rows never appear
  * as identifiable entries. The query-builder owns this filter so callers
  * don't have to repeat it.
+ *
+ * Names, not ids (audit AN-09): a dimension with a `labelSql` projects the
+ * name in the interface language and groups by id AND name. Ordering: the
+ * saved `ordering` used to be accepted and ignored; it is applied now, but
+ * only to a column the report selects (resolved against the catalog keys
+ * and aliases, never interpolated from input), with the dimensions as tie
+ * breakers so the order is stable.
  */
 
-import type { DimensionKey } from "./dimensions";
+import type { DimensionKey, ReportLocale } from "./dimensions";
 import { DIMENSIONS, isDimensionKey } from "./dimensions";
 import type { MeasureKey } from "./measures";
 import { MEASURES, isMeasureKey } from "./measures";
@@ -38,6 +45,12 @@ export interface QueryBuilderFilters {
   status?: string[];
 }
 
+export interface QueryBuilderOrdering {
+  /** A selected dimension/measure, by catalog key or by column alias. */
+  by: string;
+  direction: "asc" | "desc";
+}
+
 export interface QueryBuilderInput {
   /** clinicId from the AsyncLocalStorage tenant context. */
   clinicId: string;
@@ -46,6 +59,10 @@ export interface QueryBuilderInput {
   filters: QueryBuilderFilters;
   /** Optional row cap. Defaults to 10_000 — generous but bounded. */
   limit?: number;
+  /** Language of the names shown for doctors, branches, specialties. */
+  locale?: ReportLocale;
+  /** Sort column; ignored unless it is one of the selected columns. */
+  ordering?: QueryBuilderOrdering;
 }
 
 export interface QueryBuilderResult {
@@ -68,6 +85,7 @@ export function buildAnalyticsQuery(
 ): QueryBuilderResult {
   const { clinicId, dimensions, measures, filters } = input;
   const limit = input.limit ?? DEFAULT_LIMIT;
+  const locale: ReportLocale = input.locale === "uz" ? "uz" : "ru";
 
   if (dimensions.length === 0 && measures.length === 0) {
     throw new Error("Query must request at least one dimension or measure");
@@ -113,12 +131,19 @@ export function buildAnalyticsQuery(
   const groupBys: string[] = [];
   const columns: string[] = [];
 
+  // Default order: by what each dimension shows (the name, the day).
+  const dimensionOrder: string[] = [];
+
   for (const dKey of dimensions) {
     const def = DIMENSIONS[dKey];
-    selectParts.push(`${def.sql} AS "${def.alias}"`);
+    const shown = def.labelSql ? def.labelSql[locale] : def.sql;
+    selectParts.push(`${shown} AS "${def.alias}"`);
     // GROUP BY by the SQL expression rather than the alias to dodge
-    // dialect quirks around aliased ordinals.
+    // dialect quirks around aliased ordinals. The id stays in the group so
+    // two doctors with the same name are two rows.
     groupBys.push(def.sql);
+    if (shown !== def.sql) groupBys.push(shown);
+    dimensionOrder.push(shown);
     columns.push(def.alias);
   }
   for (const mKey of measures) {
@@ -127,17 +152,50 @@ export function buildAnalyticsQuery(
     columns.push(def.alias);
   }
 
+  const orderBy = buildOrderBy(input.ordering, dimensions, measures, dimensionOrder);
+
   const sql = `
 SELECT
   ${selectParts.join(",\n  ")}
 FROM "Appointment" a
 JOIN "Patient" p ON p."id" = a."patientId"
 JOIN "Doctor"  d ON d."id" = a."doctorId"
+LEFT JOIN "Branch" b ON b."id" = a."branchId"
 WHERE ${where.join("\n  AND ")}
 ${groupBys.length > 0 ? `GROUP BY ${groupBys.join(", ")}` : ""}
-${groupBys.length > 0 ? `ORDER BY ${groupBys.join(", ")}` : ""}
+${orderBy.length > 0 ? `ORDER BY ${orderBy.join(", ")}` : ""}
 LIMIT ${Math.max(1, Math.min(limit, 100_000))}
 `.trim();
 
   return { sql, values, columns };
+}
+
+/**
+ * The ORDER BY list: the requested column first (by its output alias, which
+ * Postgres resolves to the projected column), then the dimensions. A request
+ * for a column the report does not select is ignored, never interpolated.
+ */
+function buildOrderBy(
+  ordering: QueryBuilderOrdering | undefined,
+  dimensions: ReadonlyArray<DimensionKey>,
+  measures: ReadonlyArray<MeasureKey>,
+  dimensionOrder: ReadonlyArray<string>,
+): string[] {
+  const out: string[] = [];
+  if (ordering) {
+    const dir = ordering.direction === "asc" ? "ASC" : "DESC";
+    const dim = dimensions.find(
+      (k) => k === ordering.by || DIMENSIONS[k].alias === ordering.by,
+    );
+    const measure = measures.find(
+      (k) => k === ordering.by || MEASURES[k].alias === ordering.by,
+    );
+    const alias = dim
+      ? DIMENSIONS[dim].alias
+      : measure
+        ? MEASURES[measure].alias
+        : null;
+    if (alias) out.push(`"${alias}" ${dir} NULLS LAST`);
+  }
+  return [...out, ...dimensionOrder];
 }

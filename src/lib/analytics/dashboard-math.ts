@@ -6,70 +6,120 @@
  * browser bundle. All functions are pure and DB-less.
  */
 
+import {
+  addTashkentDays,
+  tashkentDateOf,
+  tashkentDayWindow,
+} from "@/lib/tashkent-time";
+
 /** Doctor-performance preset windows shown in the toolbar. */
 export type DoctorPerfRangeKind = "30d" | "90d" | "ytd" | "custom";
 
 export interface DoctorPerfRange {
-  /** Inclusive lower bound, midnight UTC. */
+  /** Inclusive lower bound, midnight of a Tashkent day. */
   from: Date;
-  /** Exclusive upper bound, midnight UTC. */
+  /** Exclusive upper bound, midnight of the Tashkent day after the last one. */
   to: Date;
   kind: DoctorPerfRangeKind;
 }
 
-function utcMidnight(d: Date): Date {
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
-  );
+/** Midnight (Tashkent) starting the civil day `ymd`. */
+function tashkentMidnight(ymd: string): Date {
+  return tashkentDayWindow(ymd).from;
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A picker value as a Tashkent civil day. `<input type="date">` hands us
+ * YYYY-MM-DD, which is the clinic's day as is; an instant (an older caller)
+ * is folded onto the Tashkent day it falls on.
+ */
+function pickerDay(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (YMD.test(value)) {
+    return Number.isNaN(Date.parse(`${value}T00:00:00+05:00`)) ? null : value;
+  }
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? null : tashkentDateOf(at);
 }
 
 /**
- * Resolve a doctor-performance toolbar selection into a [from, to) range.
+ * Resolve a doctor-performance toolbar selection into a [from, to) range of
+ * whole Tashkent days, today included (audit AN-03).
  *
- * `30d` and `90d` are sliding trailing windows (n full days back). `ytd` is
- * Jan 1 of the current year through tomorrow-midnight. `custom` requires
- * both `from` and `to`; the returned `to` is bumped by 1 day to make it
- * exclusive (the toolbar exposes inclusive dates to the user).
+ * `30d` and `90d` are trailing windows of n days ending today. `ytd` runs from
+ * Jan 1 of the clinic's current year. `custom` takes the two picker days, both
+ * inclusive: a single day (from = to) is a valid range. The bounds used to be
+ * UTC midnights, so between 00:00 and 05:00 in Tashkent «today» was still
+ * yesterday, and a picked end day was cut at 05:00 local time.
  */
 export function resolveDoctorPerfRange(
   kind: DoctorPerfRangeKind,
   now: Date,
   custom?: { from?: string | null; to?: string | null } | null,
 ): DoctorPerfRange {
-  const todayMidnight = utcMidnight(now);
-  const tomorrowMidnight = new Date(todayMidnight.getTime() + 24 * 3600 * 1000);
+  const today = tashkentDateOf(now);
+  const tomorrowMidnight = tashkentMidnight(addTashkentDays(today, 1));
 
   if (kind === "30d") {
-    const from = new Date(todayMidnight.getTime() - 29 * 24 * 3600 * 1000);
-    return { from, to: tomorrowMidnight, kind };
+    return {
+      from: tashkentMidnight(addTashkentDays(today, -29)),
+      to: tomorrowMidnight,
+      kind,
+    };
   }
   if (kind === "90d") {
-    const from = new Date(todayMidnight.getTime() - 89 * 24 * 3600 * 1000);
-    return { from, to: tomorrowMidnight, kind };
+    return {
+      from: tashkentMidnight(addTashkentDays(today, -89)),
+      to: tomorrowMidnight,
+      kind,
+    };
   }
   if (kind === "ytd") {
-    const from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
-    return { from, to: tomorrowMidnight, kind };
+    return {
+      from: tashkentMidnight(`${today.slice(0, 4)}-01-01`),
+      to: tomorrowMidnight,
+      kind,
+    };
   }
 
   // custom — fall through to 30d if the bounds are missing/malformed.
-  const f = custom?.from ? new Date(custom.from) : null;
-  const t = custom?.to ? new Date(custom.to) : null;
-  if (
-    !f ||
-    !t ||
-    Number.isNaN(f.getTime()) ||
-    Number.isNaN(t.getTime()) ||
-    f >= t
-  ) {
+  const f = pickerDay(custom?.from);
+  const t = pickerDay(custom?.to);
+  if (!f || !t || f > t) {
     return resolveDoctorPerfRange("30d", now);
   }
   return {
-    from: utcMidnight(f),
-    // Inclusive `to` from the picker → exclusive upper bound for the query.
-    to: new Date(utcMidnight(t).getTime() + 24 * 3600 * 1000),
+    from: tashkentMidnight(f),
+    // Inclusive end day from the picker → exclusive upper bound for the query.
+    to: tashkentMidnight(addTashkentDays(t, 1)),
     kind: "custom",
   };
+}
+
+/**
+ * Query string for `/api/crm/analytics/doctors` for a toolbar selection, or
+ * null while a custom range is incomplete or inverted: nothing should be
+ * fetched (and nothing shown under the «Период» label) until both days make
+ * sense. Part of the query key, so every selection loads its own rows.
+ */
+export function doctorPerfQueryString(
+  kind: DoctorPerfRangeKind,
+  now: Date,
+  custom?: { from?: string | null; to?: string | null } | null,
+): string | null {
+  if (kind === "custom") {
+    const f = pickerDay(custom?.from);
+    const t = pickerDay(custom?.to);
+    if (!f || !t || f > t) return null;
+  }
+  const range = resolveDoctorPerfRange(kind, now, custom);
+  return new URLSearchParams({
+    from: range.from.toISOString(),
+    to: range.to.toISOString(),
+    limit: "200",
+  }).toString();
 }
 
 /** Cohort heatmap default range — trailing 12 months including current. */

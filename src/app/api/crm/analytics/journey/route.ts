@@ -11,7 +11,8 @@
  * Period: ?period=week|month|quarter or ?from=&to= (resolveAnalyticsRange).
  * RBAC mirrors /api/crm/analytics: ADMIN sees the clinic, a DOCTOR only
  * their own visits. A DOCTOR login with no Doctor row gets an empty strip
- * rather than the whole clinic's numbers.
+ * rather than the whole clinic's numbers; the Doctor row is found whatever
+ * branch is active (`doctor-scope.ts`, audit AN-06).
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -22,6 +23,7 @@ import {
   loadPatientJourney,
 } from "@/server/analytics/patient-journey";
 import { paymentsRecordedSince } from "@/server/patient/finance";
+import { resolveAnalyticsScope } from "@/server/analytics/doctor-scope";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR"] },
@@ -30,17 +32,11 @@ export const GET = createApiListHandler(
     const { from, to, period } = resolveAnalyticsRange(url);
     const window = { period, from: from.toISOString(), to: to.toISOString() };
 
-    let doctorId: string | null = null;
-    if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
-      const doctor = await prisma.doctor.findFirst({
-        where: { userId: ctx.userId },
-        select: { id: true },
-      });
-      if (!doctor) {
-        return ok({ ...window, doctorOnly: true, journey: EMPTY_JOURNEY });
-      }
-      doctorId = doctor.id;
+    const scope = await resolveAnalyticsScope(ctx);
+    if (scope.kind === "denied") {
+      return ok({ ...window, doctorOnly: true, journey: EMPTY_JOURNEY });
     }
+    const doctorId = scope.kind === "doctor" ? scope.doctorId : null;
 
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     const paymentsTracked = clinicId

@@ -37,9 +37,11 @@ describe("buildAnalyticsQuery", () => {
       filters: { dateFrom: FROM, dateTo: TO },
     });
 
-    expect(q.sql).toMatch(/a\."doctorId"\s+AS "doctorId"/);
+    // AN-09: the doctor column shows the name, grouped by id and name.
+    expect(q.sql).toMatch(/d\."nameRu"\s+AS "doctor"/);
+    expect(q.sql).toMatch(/GROUP BY a\."doctorId", d\."nameRu"/);
     expect(q.sql).toMatch(/AS "countVisits"/);
-    expect(q.columns).toEqual(["doctorId", "countVisits"]);
+    expect(q.columns).toEqual(["doctor", "countVisits"]);
   });
 
   it("appends branchIds, doctorIds, and status filters as ANY(...)", () => {
@@ -124,7 +126,7 @@ describe("buildAnalyticsQuery", () => {
     });
     // All six column aliases project.
     expect(q.columns).toEqual([
-      "doctorId",
+      "doctor",
       "date",
       "countVisits",
       "revenueTiins",

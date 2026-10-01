@@ -8,7 +8,9 @@
  *
  * Money is in tiins (×100 of soum). Sum in tiins; the API layer or the UI
  * divides by 100 only when rendering — matching the rest of the codebase
- * (`Payment.amount`, `Appointment.priceFinal`, etc.).
+ * (`Payment.amount`, `Appointment.priceFinal`, etc.). Every renderer shows
+ * сум, so no header may say «tiins» (audit AN-09): headers come from i18n
+ * (`analyticsReports.measures.*` plus the «, сум» suffix, report-runner.ts).
  */
 
 export type MeasureKey =
@@ -23,6 +25,7 @@ export interface MeasureDef {
   /** Aggregate SQL expression. Should always cast to `numeric` or `bigint`. */
   sql: string;
   alias: string;
+  /** Developer-facing name; the UI header comes from i18n. */
   label: string;
   /** Output unit hint for the W3 UI. */
   unit: "count" | "tiins" | "ratio";
@@ -52,7 +55,7 @@ export const MEASURES: Record<MeasureKey, MeasureDef> = {
     key: "revenue_tiins",
     sql: `SUM(CASE WHEN a."status" = 'COMPLETED' THEN ${REVENUE_PER_APPT_SQL} ELSE 0 END)::bigint`,
     alias: "revenueTiins",
-    label: "Revenue (tiins)",
+    label: "Revenue",
     unit: "tiins",
   },
   no_show_rate: {
@@ -82,19 +85,29 @@ export const MEASURES: Record<MeasureKey, MeasureDef> = {
       END
     `,
     alias: "avgTicketTiins",
-    label: "Avg. ticket (tiins)",
+    label: "Avg. ticket",
     unit: "tiins",
   },
   ltv_tiins: {
     key: "ltv_tiins",
-    // LTV = sum of all completed-appointment revenue per patient. We use
-    // the running denormalized `Patient.ltv` column because (a) it's already
-    // maintained by the booking/payment pipeline, (b) re-computing it from
-    // Appointment scans the whole history per group. We sum it across the
-    // group's distinct patients.
-    sql: `SUM(DISTINCT p."ltv")::bigint`,
+    // LTV = the patient's PAID payments (`Patient.ltv`, kept by the payment
+    // pipeline, `recalcLtv`). Re-computing it from Appointment would scan
+    // the whole history per group. We sum it across the group's distinct
+    // patients.
+    //
+    // It used to be `SUM(DISTINCT p."ltv")` (audit AN-10): DISTINCT applies
+    // to the value, not the patient, so twenty patients who each paid one
+    // 150 000 сум consultation summed to 150 000. The group's patient ids
+    // are collected with ARRAY_AGG(DISTINCT …) (an aggregate of the outer,
+    // grouped query, so it is evaluated per group) and their LTVs summed
+    // once each.
+    sql: `(
+      SELECT COALESCE(SUM(lp."ltv"), 0)
+      FROM "Patient" lp
+      WHERE lp."id" = ANY(ARRAY_AGG(DISTINCT a."patientId"))
+    )::bigint`,
     alias: "ltvTiins",
-    label: "LTV (tiins)",
+    label: "Patients' LTV",
     unit: "tiins",
   },
 };

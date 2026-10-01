@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslations, useLocale } from "next-intl";
 
 import { EmptyState } from "@/components/atoms/empty-state";
@@ -19,7 +20,7 @@ import {
 import {
   bandOf,
   computeQuartileBand,
-  resolveDoctorPerfRange,
+  doctorPerfQueryString,
   type DoctorPerfRangeKind,
 } from "@/lib/analytics/dashboard-math";
 import { formatClinicDateTime, type Locale } from "@/lib/format";
@@ -104,12 +105,9 @@ export function DoctorPerformanceClient({
   const tCommon = useTranslations("common");
   const locale = useLocale();
 
-  const [rows, setRows] = React.useState(initialRows);
-  const [generatedAtState, setGeneratedAtState] = React.useState(generatedAt);
   const [rangeKind, setRangeKind] = React.useState<DoctorPerfRangeKind>("30d");
   const [customFrom, setCustomFrom] = React.useState("");
   const [customTo, setCustomTo] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
   const [sortKey, setSortKey] = React.useState<SortKey>("revenueTiins");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
   const [openDoctorId, setOpenDoctorId] = React.useState<string | null>(null);
@@ -122,45 +120,46 @@ export function DoctorPerformanceClient({
     return map;
   }, [doctors, locale]);
 
-  // Re-fetch on toolbar change. Server already paid for the first paint;
-  // subsequent ranges go through the W1 API route.
-  const fetchRange = React.useCallback(
-    async (kind: DoctorPerfRangeKind, from?: string, to?: string) => {
-      const range = resolveDoctorPerfRange(
-        kind,
-        new Date(),
-        kind === "custom" ? { from, to } : null,
-      );
-      const params = new URLSearchParams({
-        monthFrom: range.from.toISOString(),
-        monthTo: range.to.toISOString(),
-        limit: "200",
-      });
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/crm/analytics/doctors?${params.toString()}`, {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(`doctor-perf ${res.status}`);
-        const json = (await res.json()) as {
-          data: { rows: DoctorPerformanceRow[]; generatedAt: string };
-        };
-        setRows(json.data.rows);
-        setGeneratedAtState(json.data.generatedAt);
-      } catch {
-        // Stay on the previous payload — better than blanking the table.
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
+  // Every selection is its own query (audit AN-04). The effect used to skip
+  // «30 дней» as «already loaded», so 30д → С начала года → 30д left the
+  // year's rows under the «30 дней» button; a failed fetch also kept the
+  // previous range's rows. Now the range is the query key: the page's
+  // server-rendered rows seed only the 30-day key, any other key loads its
+  // own rows, and a selection whose rows are not here shows none of another
+  // range's. Null while a custom range is incomplete or inverted.
+  const queryString = React.useMemo(
+    () =>
+      doctorPerfQueryString(rangeKind, new Date(), {
+        from: customFrom,
+        to: customTo,
+      }),
+    [rangeKind, customFrom, customTo],
   );
-
-  React.useEffect(() => {
-    if (rangeKind === "custom" && (!customFrom || !customTo)) return;
-    if (rangeKind === "30d") return; // already loaded
-    void fetchRange(rangeKind, customFrom, customTo);
-  }, [rangeKind, customFrom, customTo, fetchRange]);
+  const perf = useQuery({
+    queryKey: ["analytics-doctor-performance", queryString],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/analytics/doctors?${queryString}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`doctor-perf ${res.status}`);
+      const json = (await res.json()) as {
+        data: { rows: DoctorPerformanceRow[]; generatedAt: string };
+      };
+      return { rows: json.data.rows, generatedAt: json.data.generatedAt };
+    },
+    enabled: queryString !== null,
+    initialData:
+      rangeKind === "30d" ? { rows: initialRows, generatedAt } : undefined,
+    staleTime: 60_000,
+  });
+  const rows = React.useMemo(
+    () => (queryString === null ? [] : perf.data?.rows ?? []),
+    [queryString, perf.data],
+  );
+  const loading = perf.isFetching;
+  // Data in the cache is always this selection's (the key is the range), so
+  // it stays on screen even if a background refetch fails.
+  const showPlaceholder = queryString === null || perf.data === undefined;
 
   const derived = React.useMemo(
     () =>
@@ -221,7 +220,22 @@ export function DoctorPerformanceClient({
         }
       />
 
-      {sorted.length === 0 ? (
+      {showPlaceholder ? (
+        queryString === null ? (
+          <EmptyState title={t("rangeIncomplete")} />
+        ) : perf.isError ? (
+          <EmptyState
+            title={t("loadFailed")}
+            action={
+              <Button size="sm" variant="outline" onClick={() => perf.refetch()}>
+                {t("retry")}
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState title={t("loading")} />
+        )
+      ) : sorted.length === 0 ? (
         <EmptyState title={t("empty")} description={t("emptyHint")} />
       ) : (
         <div className="rounded-lg border border-border bg-card overflow-x-auto">
@@ -341,11 +355,16 @@ export function DoctorPerformanceClient({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        {t("metaHint", {
-          generatedAt: formatClinicDateTime(generatedAtState, locale as Locale),
-        })}
-      </p>
+      {perf.data && !showPlaceholder ? (
+        <p className="text-xs text-muted-foreground">
+          {t("metaHint", {
+            generatedAt: formatClinicDateTime(
+              perf.data.generatedAt,
+              locale as Locale,
+            ),
+          })}
+        </p>
+      ) : null}
 
       {openDoctor ? (
         <DoctorDrillDownDrawer
@@ -500,6 +519,7 @@ function RangeToolbar({
           <input
             type="date"
             value={customFrom}
+            max={customTo || undefined}
             onChange={(e) => onCustomFromChange(e.target.value)}
             className="rounded-md border border-input bg-background px-2 py-1 text-foreground"
           />
@@ -507,6 +527,7 @@ function RangeToolbar({
           <input
             type="date"
             value={customTo}
+            min={customFrom || undefined}
             onChange={(e) => onCustomToChange(e.target.value)}
             className="rounded-md border border-input bg-background px-2 py-1 text-foreground"
           />

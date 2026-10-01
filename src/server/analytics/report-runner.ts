@@ -9,10 +9,24 @@
  *     when the LIMIT is hit.
  *   - column descriptors keyed by the dimension/measure aliases, so the
  *     CSV layer doesn't have to re-derive labels.
+ *
+ * Audit AN-09: everything the reader sees is in the interface language.
+ * Headers come from `analyticsReports.dimensions.*` / `.measures.*` (they
+ * used to be the catalog's English «Doctor», «Revenue (tiins)» while the
+ * cells were already in сум); money headers carry «, сум»; doctor, branch
+ * and specialty cells are names (query-builder.ts); segment and source
+ * cells are their i18n names instead of enum codes. The interactive pages
+ * pass the page locale, the scheduled worker uses Russian.
  */
+import { createTranslator } from "next-intl";
+
+import ru from "@/messages/ru.json";
+import uz from "@/messages/uz.json";
+
 import {
   DIMENSIONS,
   type DimensionKey,
+  type ReportLocale,
 } from "./dimensions";
 import {
   MEASURES,
@@ -31,7 +45,12 @@ export interface ReportColumn {
   label: string;
   /** "dimension" | "measure". Helps the UI render alignment / sort. */
   kind: "dimension" | "measure";
-  unit?: MeasureDef["unit"] | "text";
+  unit?: MeasureDef["unit"] | "text" | "date";
+}
+
+export interface RunReportOptions {
+  /** Language of headers and names; defaults to Russian. */
+  locale?: ReportLocale;
 }
 
 export interface RunReportResult {
@@ -63,34 +82,123 @@ export class ReportTimeoutError extends Error {
   }
 }
 
+function messagesFor(locale: ReportLocale) {
+  return locale === "uz" ? uz : ru;
+}
+
 /**
  * Build the column descriptor list in select order so the CSV / table
- * stay aligned with what the SQL projects.
+ * stay aligned with what the SQL projects. Labels are localized.
  */
 export function buildReportColumns(
   dims: ReadonlyArray<DimensionKey>,
   measures: ReadonlyArray<MeasureKey>,
+  locale: ReportLocale = "ru",
 ): ReportColumn[] {
+  const t = createTranslator({
+    locale,
+    messages: messagesFor(locale),
+    namespace: "analyticsReports",
+  });
   const cols: ReportColumn[] = [];
   for (const k of dims) {
     const def = DIMENSIONS[k];
     cols.push({
       key: def.alias,
-      label: def.label,
+      label: t(`dimensions.${k}`),
       kind: "dimension",
-      unit: "text",
+      unit: def.unit,
     });
   }
   for (const k of measures) {
     const def = MEASURES[k];
+    const name = t(`measures.${k}`);
     cols.push({
       key: def.alias,
-      label: def.label,
+      label: def.unit === "tiins" ? t("columnMoney", { label: name }) : name,
       kind: "measure",
       unit: def.unit,
     });
   }
   return cols;
+}
+
+/** Patient.segment enum → `patients.segment.*` key. */
+const SEGMENT_KEYS = {
+  NEW: "new",
+  ACTIVE: "active",
+  DORMANT: "dormant",
+  VIP: "vip",
+  CHURN: "churn",
+} as const;
+
+/** Appointment.channel enum → `appointments.channel.*` key. */
+const CHANNEL_KEYS = {
+  WALKIN: "walkin",
+  PHONE: "phone",
+  TELEGRAM: "telegram",
+  WEBSITE: "website",
+  KIOSK: "kiosk",
+} as const;
+
+/** Patient.source (LeadSource) values the channel list lacks → `patients.source.*`. */
+const LEAD_SOURCE_KEYS = {
+  INSTAGRAM: "instagram",
+  CALL: "call",
+  REFERRAL: "referral",
+  ADS: "ads",
+  OTHER: "other",
+} as const;
+
+/** `map[code]`, own keys only (a cell is data, never «toString»). */
+function codeKey<M extends Record<string, string>>(
+  map: M,
+  code: string,
+): M[keyof M] | null {
+  return Object.hasOwn(map, code) ? (map[code as keyof M] as M[keyof M]) : null;
+}
+
+/**
+ * Swap the segment and source enum codes for their names. The `source`
+ * dimension is the visit's channel, else the patient's lead source, else
+ * 'unknown' (dimensions.ts). An unexpected code passes through as is.
+ */
+export function localizeReportRows(
+  rows: ReadonlyArray<Record<string, unknown>>,
+  dims: ReadonlyArray<DimensionKey>,
+  locale: ReportLocale = "ru",
+): Array<Record<string, unknown>> {
+  const hasSegment = dims.includes("patient_segment");
+  const hasSource = dims.includes("source");
+  if (!hasSegment && !hasSource) return [...rows];
+  const messages = messagesFor(locale);
+  const tSegment = createTranslator({ locale, messages, namespace: "patients.segment" });
+  const tChannel = createTranslator({ locale, messages, namespace: "appointments.channel" });
+  const tLead = createTranslator({ locale, messages, namespace: "patients.source" });
+  const tReports = createTranslator({ locale, messages, namespace: "analyticsReports" });
+
+  const segmentName = (v: unknown): unknown => {
+    if (typeof v !== "string") return v;
+    const key = codeKey(SEGMENT_KEYS, v);
+    return key ? tSegment(key) : v;
+  };
+  const sourceName = (v: unknown): unknown => {
+    if (typeof v !== "string") return v;
+    if (v === "unknown") return tReports("sourceUnknown");
+    const channel = codeKey(CHANNEL_KEYS, v);
+    if (channel) return tChannel(channel);
+    const lead = codeKey(LEAD_SOURCE_KEYS, v);
+    return lead ? tLead(lead) : v;
+  };
+
+  const segmentAlias = DIMENSIONS.patient_segment.alias;
+  const sourceAlias = DIMENSIONS.source.alias;
+  return rows.map((row) => {
+    const out: Record<string, unknown> = { ...row };
+    if (hasSegment) out[segmentAlias] = segmentName(row[segmentAlias]);
+    if (hasSource) out[sourceAlias] = sourceName(row[sourceAlias]);
+    return out;
+  });
 }
 
 function isStatementTimeout(err: unknown): boolean {
@@ -110,13 +218,17 @@ export async function runReport(
   clinicId: string,
   config: ReportConfig,
   now: Date = new Date(),
+  opts: RunReportOptions = {},
 ): Promise<RunReportResult> {
+  const locale: ReportLocale = opts.locale === "uz" ? "uz" : "ru";
   const { dateFrom, dateTo } = resolveDateRange(config, now);
   const limit = resolveLimit(config);
   const built = buildAnalyticsQuery({
     clinicId,
     dimensions: [...config.dimensions],
     measures: [...config.measures],
+    locale,
+    ordering: config.ordering,
     filters: {
       dateFrom,
       dateTo,
@@ -149,9 +261,9 @@ export async function runReport(
   }
 
   const runMs = Date.now() - startedAt;
-  const columns = buildReportColumns(config.dimensions, config.measures);
+  const columns = buildReportColumns(config.dimensions, config.measures, locale);
   return {
-    rows,
+    rows: localizeReportRows(rows, config.dimensions, locale),
     columns,
     rowCount: rows.length,
     truncated: rows.length === limit,

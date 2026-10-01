@@ -22,11 +22,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
+import { formatClinicDateTime } from "@/lib/format";
 import {
-  formatClinicDateTime,
-  intlLocale,
-  type Locale,
-} from "@/lib/format";
+  formatReportCell,
+  type ReportCellUnit,
+} from "@/lib/analytics/report-cells";
 
 import {
   DIMENSION_KEYS,
@@ -66,9 +66,10 @@ export interface ReportBuilderClientProps {
 
 interface ReportColumnDescriptor {
   key: string;
+  /** Localized on the server (report-runner.ts). */
   label: string;
   kind: "dimension" | "measure";
-  unit?: "count" | "tiins" | "ratio" | "text";
+  unit?: ReportCellUnit;
 }
 
 interface ReportRunResponse {
@@ -91,39 +92,7 @@ function moveItem<T>(arr: ReadonlyArray<T>, idx: number, dir: -1 | 1): T[] {
   return next;
 }
 
-function formatCellForTable(
-  v: unknown,
-  unit: ReportColumnDescriptor["unit"],
-  locale: Locale,
-): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "string") {
-    if (unit === "tiins") {
-      const n = Number(v);
-      if (Number.isFinite(n)) return formatTiins(n, locale);
-      return v;
-    }
-    return v;
-  }
-  if (typeof v === "number") {
-    if (unit === "tiins") return formatTiins(v, locale);
-    if (unit === "ratio") return `${(v * 100).toFixed(1)}%`;
-    return v.toLocaleString(intlLocale(locale));
-  }
-  if (typeof v === "bigint") {
-    if (unit === "tiins") return formatTiins(Number(v), locale);
-    return v.toString();
-  }
-  return String(v);
-}
-
-function formatTiins(tiins: number, locale: Locale): string {
-  const soum = tiins / 100;
-  return new Intl.NumberFormat(intlLocale(locale), {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(soum));
-}
+type OrderingDirection = "asc" | "desc";
 
 
 export function ReportBuilderClient({
@@ -169,6 +138,14 @@ export function ReportBuilderClient({
       ? [...initialReport.config.filters.status]
       : [],
   );
+  // Sort column (a selected dimension or measure key); "" is the default
+  // order by the dimensions. The runner used to ignore `ordering` (AN-09).
+  const [orderBy, setOrderBy] = React.useState<string>(
+    initialReport?.config.ordering?.by ?? "",
+  );
+  const [orderDir, setOrderDir] = React.useState<OrderingDirection>(
+    initialReport?.config.ordering?.direction ?? "desc",
+  );
 
   const [running, setRunning] = React.useState(false);
   const [result, setResult] = React.useState<ReportRunResponse | null>(null);
@@ -206,6 +183,12 @@ export function ReportBuilderClient({
       statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s],
     );
 
+  // A sort column that was removed from the report no longer applies.
+  const orderingActive =
+    orderBy !== "" &&
+    ((dims as string[]).includes(orderBy) ||
+      (measures as string[]).includes(orderBy));
+
   const buildConfig = React.useCallback((): ReportConfig | null => {
     if (dims.length === 0 || measures.length === 0) return null;
     return {
@@ -219,8 +202,22 @@ export function ReportBuilderClient({
         doctorIds: doctorIds.length > 0 ? doctorIds : undefined,
         status: statuses.length > 0 ? statuses : undefined,
       },
+      ordering: orderingActive
+        ? { by: orderBy, direction: orderDir }
+        : undefined,
     };
-  }, [dims, measures, dateFrom, dateTo, branchIds, doctorIds, statuses]);
+  }, [
+    dims,
+    measures,
+    dateFrom,
+    dateTo,
+    branchIds,
+    doctorIds,
+    statuses,
+    orderingActive,
+    orderBy,
+    orderDir,
+  ]);
 
   const runDisabled = dims.length === 0 || measures.length === 0 || running;
   const saveDisabled =
@@ -238,7 +235,7 @@ export function ReportBuilderClient({
       const r = await fetch("/api/crm/analytics/reports/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ config, name: name || undefined }),
+        body: JSON.stringify({ config, name: name || undefined, locale }),
       });
       if (!r.ok) {
         const text = await r.text();
@@ -313,7 +310,7 @@ export function ReportBuilderClient({
       const r = await fetch("/api/crm/analytics/reports/run?format=csv", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ config, name: name || undefined }),
+        body: JSON.stringify({ config, name: name || undefined, locale }),
       });
       if (!r.ok) {
         toast.error(t("toastExportFailed"));
@@ -589,6 +586,42 @@ export function ReportBuilderClient({
             })}
           </div>
         </div>
+        <div className="mt-3">
+          <Label htmlFor="rb-order-by">{t("orderLabel")}</Label>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <select
+              id="rb-order-by"
+              value={orderingActive ? orderBy : ""}
+              onChange={(e) => setOrderBy(e.target.value)}
+              className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+            >
+              <option value="">{t("orderDefault")}</option>
+              {measures.map((k) => (
+                <option key={k} value={k}>
+                  {tMeasure(k)}
+                </option>
+              ))}
+              {dims.map((k) => (
+                <option key={k} value={k}>
+                  {tDim(k)}
+                </option>
+              ))}
+            </select>
+            {orderingActive ? (
+              <select
+                aria-label={t("orderLabel")}
+                value={orderDir}
+                onChange={(e) =>
+                  setOrderDir(e.target.value === "asc" ? "asc" : "desc")
+                }
+                className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+              >
+                <option value="desc">{t("orderDesc")}</option>
+                <option value="asc">{t("orderAsc")}</option>
+              </select>
+            ) : null}
+          </div>
+        </div>
       </section>
 
       <section className="mt-4 flex items-center gap-3">
@@ -649,7 +682,7 @@ export function ReportBuilderClient({
                               : "px-3 py-1.5"
                           }
                         >
-                          {formatCellForTable(row[c.key], c.unit, locale)}
+                          {formatReportCell(row[c.key], c.unit, locale)}
                         </td>
                       ))}
                     </tr>

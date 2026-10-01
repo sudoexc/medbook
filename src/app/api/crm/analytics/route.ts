@@ -9,6 +9,8 @@
  *   - topServices: [{ serviceId, name, count }]      (bar, top 10)
  *   - sources: [{ source, count }]                   (pie)
  *   - ltvBuckets: [{ bucket, count }]                (histogram)
+ *   - ltv: { averageTiins, patients }                (LTV tile, AN-05)
+ *   - paymentsTracked                                (money tiles, see below)
  *   - clinicLoad: { daily, bookedMin, workingMin, loadPct, previous }
  *                                                     (line, UX-03)
  *   - deltas: { revenuePct, noShowPp, loadPp }       (chips, UX-03)
@@ -18,12 +20,27 @@
  * compare with. The dashboard used to split the window in halves in the
  * browser, which made a flat week read «+33 %».
  *
+ * Money is only shown once the clinic records every payment in the CRM
+ * (Clinic.paymentsTrackedSince, `paymentsRecordedSince`). Until then the few
+ * payments someone happened to enter would pass for the clinic's revenue,
+ * so `paymentsTracked: false` makes the money tiles say so, and the revenue
+ * delta is null whenever either window has no recorded payments or starts
+ * before recording did (AN-07): a growth chip needs two comparable windows.
+ *
+ * No-show rate is NO_SHOW over resolved visits (COMPLETED + NO_SHOW), for
+ * the daily line and the chip alike. Cancelled visits and today's patients
+ * who have not come yet are not a «showed up» outcome, and counting them in
+ * the denominator made the rate read lower than it is (AN-07).
+ *
  * Period:
  *   ?period=week|month|quarter  (alias for fixed windows)
  *   ?from=YYYY-MM-DD&to=YYYY-MM-DD  (explicit range, overrides period)
  *
  * DOCTOR role sees only their own slice (appointments + revenue filtered
- * by `doctor.userId === session.user.id`). ADMIN sees everything.
+ * by `doctor.userId === session.user.id`). ADMIN sees everything. The slice
+ * is fail-closed (`doctor-scope.ts`, AN-06): a doctor login with no Doctor
+ * row gets 403, never the clinic, and the clinic-wide sections (the LTV
+ * distribution, patient sources) are narrowed or left out for a doctor.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -36,11 +53,15 @@ import {
   ymdKey,
 } from "@/server/analytics/range";
 import {
+  isResolvedVisit,
   previousWindow,
   rateDeltaPp,
-  relativeDeltaPct,
+  revenueDeltaPct,
 } from "@/server/analytics/period-compare";
+import { averageLtv } from "@/server/analytics/ltv-summary";
 import { loadClinicLoad } from "@/server/analytics/clinic-load";
+import { resolveAnalyticsScope } from "@/server/analytics/doctor-scope";
+import { paymentsRecordedSince } from "@/server/patient/finance";
 
 export { resolveAnalyticsRange };
 export type { AnalyticsPeriod };
@@ -52,17 +73,22 @@ export const GET = createApiListHandler(
     const { from, to, period } = resolveAnalyticsRange(url);
 
     const ctx = getTenant();
-    const userId =
-      ctx?.kind === "TENANT" && ctx.role === "DOCTOR" ? ctx.userId : null;
+    // clinicId is interpolated into the raw LTV query below (the Prisma
+    // tenant extension doesn't apply to $queryRawUnsafe), so a request with
+    // no clinic stops here.
+    if (!ctx || ctx.kind !== "TENANT") {
+      return err("ClinicNotSelected", 400);
+    }
 
-    // For DOCTOR scope, fetch the doctor row tied to this user once.
-    const doctorFilter = userId
-      ? await prisma.doctor.findFirst({
-          where: { userId },
-          select: { id: true },
-        })
-      : null;
-    const doctorId = doctorFilter?.id ?? null;
+    const scope = await resolveAnalyticsScope(ctx);
+    if (scope.kind === "denied") {
+      return err("DoctorProfileMissing", 403, {
+        reason: "no_doctor_row_for_user",
+      });
+    }
+    const doctorId = scope.kind === "doctor" ? scope.doctorId : null;
+    const trackedSince = await paymentsRecordedSince(ctx.clinicId);
+    const paymentsTracked = trackedSince !== null;
 
     // ----- 1. Revenue daily -------------------------------------------------
     const payments = await prisma.payment.findMany({
@@ -106,6 +132,8 @@ export const GET = createApiListHandler(
       select: { date: true, status: true },
     });
     const statusTotals = new Map<string, number>();
+    // `total` per day = resolved visits (COMPLETED + NO_SHOW), the no-show
+    // rate's denominator; see the header.
     const totalMap = new Map<string, number>();
     const nsMap = new Map<string, number>();
     for (const d of eachDay(from, to)) {
@@ -114,6 +142,7 @@ export const GET = createApiListHandler(
     }
     for (const a of dailyAppts) {
       statusTotals.set(a.status, (statusTotals.get(a.status) ?? 0) + 1);
+      if (!isResolvedVisit(a.status)) continue;
       const k = ymdKey(a.date);
       totalMap.set(k, (totalMap.get(k) ?? 0) + 1);
       if (a.status === "NO_SHOW") {
@@ -158,19 +187,23 @@ export const GET = createApiListHandler(
       loadClinicLoad(prisma, { from, to, previous: prev, doctorId }),
     ]);
     const revenueTotal = revenueDaily.reduce((a, d) => a + d.amount, 0);
-    const apptTotal = dailyAppts.length;
     const noShowTotal = statusTotals.get("NO_SHOW") ?? 0;
-    let prevApptTotal = 0;
+    const resolvedTotal = (statusTotals.get("COMPLETED") ?? 0) + noShowTotal;
+    let prevResolved = 0;
     let prevNoShow = 0;
     for (const g of prevByStatus as Array<{ status: string; _count: { _all: number } }>) {
-      prevApptTotal += g._count._all;
+      if (isResolvedVisit(g.status)) prevResolved += g._count._all;
       if (g.status === "NO_SHOW") prevNoShow += g._count._all;
     }
     const deltas = {
-      revenuePct: relativeDeltaPct(revenueTotal, prevPayments._sum.amount ?? 0),
+      revenuePct: revenueDeltaPct({
+        trackedSince,
+        current: { amount: revenueTotal, payments: payments.length },
+        previous: { amount: prevPayments._sum.amount ?? 0, from: prev.from },
+      }),
       noShowPp: rateDeltaPp(
-        { part: noShowTotal, whole: apptTotal },
-        { part: prevNoShow, whole: prevApptTotal },
+        { part: noShowTotal, whole: resolvedTotal },
+        { part: prevNoShow, whole: prevResolved },
       ),
       loadPp: rateDeltaPp(
         { part: clinicLoad.bookedMin, whole: clinicLoad.workingMin },
@@ -267,10 +300,12 @@ export const GET = createApiListHandler(
     });
 
     // ----- 6. Patient sources breakdown (new patients in range) -----------
+    // A doctor sees the sources of their own patients only.
     const sourceGroups = await prisma.patient.groupBy({
       by: ["source"],
       where: {
         createdAt: { gte: from, lt: to },
+        ...(doctorId ? { appointments: { some: { doctorId } } } : {}),
       },
       _count: { _all: true },
     });
@@ -290,39 +325,69 @@ export const GET = createApiListHandler(
     // six counts. Raw SQL because Prisma can't express CASE-conditional
     // aggregates without an extension.
     //
+    // The average LTV is computed here too (AN-05). The browser used to
+    // average bucket midpoints keyed "0-300k", "300k-600k"… while the buckets
+    // are "0", "<500k"…, so every lookup fell back to 1 500 000 and the tile
+    // read «1 500 000 сум» for any clinic. Null when no patient has paid
+    // anything: an average of nothing is not zero.
+    //
+    // Patient LTV is the patient's payments to the whole clinic, colleagues'
+    // visits included, so a doctor gets neither section.
+    //
     // clinicId is interpolated via parameter to keep tenant scope strict
     // (the Prisma tenant extension doesn't apply to $queryRawUnsafe).
-    if (!ctx || ctx.kind !== "TENANT") {
-      return err("ClinicNotSelected", 400);
-    }
-    const [ltvAgg] = await prisma.$queryRawUnsafe<
-      Array<{ b0: bigint; b1: bigint; b2: bigint; b3: bigint; b4: bigint; b5: bigint }>
-    >(
-      `SELECT
-         COUNT(*) FILTER (WHERE "ltv" = 0)                                        AS "b0",
-         COUNT(*) FILTER (WHERE "ltv" >  0          AND "ltv" <=    50000000)     AS "b1",
-         COUNT(*) FILTER (WHERE "ltv" >  50000000   AND "ltv" <=   100000000)     AS "b2",
-         COUNT(*) FILTER (WHERE "ltv" > 100000000   AND "ltv" <=   300000000)     AS "b3",
-         COUNT(*) FILTER (WHERE "ltv" > 300000000   AND "ltv" <=  1000000000)     AS "b4",
-         COUNT(*) FILTER (WHERE "ltv" > 1000000000)                               AS "b5"
-       FROM "Patient"
-       WHERE "clinicId" = $1`,
-      ctx.clinicId,
+    const ltvAgg = doctorId
+      ? null
+      : (
+          await prisma.$queryRawUnsafe<
+            Array<{
+              b0: bigint;
+              b1: bigint;
+              b2: bigint;
+              b3: bigint;
+              b4: bigint;
+              b5: bigint;
+              patients: bigint;
+              ltvSum: bigint | null;
+            }>
+          >(
+            `SELECT
+               COUNT(*) FILTER (WHERE "ltv" = 0)                                        AS "b0",
+               COUNT(*) FILTER (WHERE "ltv" >  0          AND "ltv" <=    50000000)     AS "b1",
+               COUNT(*) FILTER (WHERE "ltv" >  50000000   AND "ltv" <=   100000000)     AS "b2",
+               COUNT(*) FILTER (WHERE "ltv" > 100000000   AND "ltv" <=   300000000)     AS "b3",
+               COUNT(*) FILTER (WHERE "ltv" > 300000000   AND "ltv" <=  1000000000)     AS "b4",
+               COUNT(*) FILTER (WHERE "ltv" > 1000000000)                               AS "b5",
+               COUNT(*)                                                                 AS "patients",
+               SUM("ltv")::bigint                                                       AS "ltvSum"
+             FROM "Patient"
+             WHERE "clinicId" = $1
+               AND "deletedAt" IS NULL`,
+            ctx.clinicId,
+          )
+        )[0] ?? null;
+    const ltvBuckets = ltvAgg
+      ? [
+          { bucket: "0", count: Number(ltvAgg.b0 ?? 0) },
+          { bucket: "<500k", count: Number(ltvAgg.b1 ?? 0) },
+          { bucket: "500k-1m", count: Number(ltvAgg.b2 ?? 0) },
+          { bucket: "1m-3m", count: Number(ltvAgg.b3 ?? 0) },
+          { bucket: "3m-10m", count: Number(ltvAgg.b4 ?? 0) },
+          { bucket: "10m+", count: Number(ltvAgg.b5 ?? 0) },
+        ]
+      : [];
+    const ltv = averageLtv(
+      ltvAgg
+        ? { patients: Number(ltvAgg.patients ?? 0), ltvSum: Number(ltvAgg.ltvSum ?? 0) }
+        : null,
     );
-    const ltvBuckets = [
-      { bucket: "0", count: Number(ltvAgg?.b0 ?? 0) },
-      { bucket: "<500k", count: Number(ltvAgg?.b1 ?? 0) },
-      { bucket: "500k-1m", count: Number(ltvAgg?.b2 ?? 0) },
-      { bucket: "1m-3m", count: Number(ltvAgg?.b3 ?? 0) },
-      { bucket: "3m-10m", count: Number(ltvAgg?.b4 ?? 0) },
-      { bucket: "10m+", count: Number(ltvAgg?.b5 ?? 0) },
-    ];
 
     return ok({
       period,
       from: from.toISOString(),
       to: to.toISOString(),
       doctorOnly: Boolean(doctorId),
+      paymentsTracked,
       revenueDaily,
       appointmentsByStatus,
       noShowDaily,
@@ -330,6 +395,7 @@ export const GET = createApiListHandler(
       topServices,
       sources,
       ltvBuckets,
+      ltv,
       clinicLoad,
       deltas,
     });

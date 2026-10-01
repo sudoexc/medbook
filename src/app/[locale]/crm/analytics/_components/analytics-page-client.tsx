@@ -129,19 +129,22 @@ export function AnalyticsPageClient() {
   const funnels = qFunnels.data;
   const journey = qJourney.data;
 
+  // The window the numbers were actually computed for: the server's
+  // Tashkent-day bounds (`resolveAnalyticsRange`), `to` exclusive, so the
+  // last day shown is the one before it. It used to be recomputed here in
+  // the browser's own time zone, which could disagree with the data.
   const periodRange = React.useMemo(() => {
-    const end = new Date();
-    const start = new Date(end);
-    if (period === "week") start.setDate(start.getDate() - 6);
-    else if (period === "month") start.setDate(start.getDate() - 29);
-    else start.setDate(start.getDate() - 89);
     const fmt = new Intl.DateTimeFormat(locale === "uz" ? "uz-Latn-UZ" : "ru-RU", {
       day: "2-digit",
       month: "short",
       year: "numeric",
+      timeZone: "Asia/Tashkent",
     });
+    if (!data) return { start: "", end: "" };
+    const start = new Date(data.from);
+    const end = new Date(new Date(data.to).getTime() - 1);
     return { start: fmt.format(start), end: fmt.format(end) };
-  }, [period, locale]);
+  }, [data, locale]);
 
   const onDownload = React.useCallback(() => {
     if (!data) {
@@ -172,21 +175,26 @@ export function AnalyticsPageClient() {
         ? Math.round((noShowAgg.noShow / noShowAgg.total) * 1000) / 10
         : 0;
 
+    // Money is exported only when the clinic records payments in the CRM;
+    // otherwise the cells stay empty rather than read as a real «0».
+    const moneyTracked = data.paymentsTracked !== false;
     const rows: string[][] = [
       ["section", "key", "value"],
       ["meta", "period", period],
       ["meta", "range_start", periodRange.start],
       ["meta", "range_end", periodRange.end],
       ["meta", "generated_at", new Date().toISOString()],
-      ["kpi", "revenue_total", String(totalRevenue)],
+      ["kpi", "revenue_total", moneyTracked ? String(totalRevenue) : ""],
       ["kpi", "appointments_total", String(totalAppointments)],
       ["kpi", "no_show_pct", String(noShowPct)],
     ];
     for (const s of data.appointmentsByStatus) {
       rows.push(["appointmentsByStatus", s.status, String(s.count)]);
     }
-    for (const d of data.topDoctors) {
-      rows.push(["topDoctors", d.name, String(d.revenue)]);
+    if (moneyTracked) {
+      for (const d of data.topDoctors) {
+        rows.push(["topDoctors", d.name, String(d.revenue)]);
+      }
     }
     for (const s of data.topServices) {
       rows.push(["topServices", s.name, String(s.count)]);
@@ -299,6 +307,8 @@ export function AnalyticsPageClient() {
               ltv: t("sections.ltv"),
               apptUnit: tAxis("appointments"),
               avgLtvLabel: tSummary("averageLtv"),
+              noPayments: tJourney("noPayments"),
+              noData: tSummary("noData"),
               totalCount: (count) => tSummary("totalCount", { count }),
               totalAll: (count) => tSummary("totalAll", { count }),
               viewAllDoctors: (count) =>

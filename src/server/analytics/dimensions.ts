@@ -15,7 +15,16 @@
  * Soft-deleted patients (Patient.deletedAt IS NOT NULL) are filtered out by
  * the query-builder's WHERE clause; dimensions don't have to repeat that
  * filter individually.
+ *
+ * Audit AN-09: a report «by doctor» used to print `cm3x9…` in the Doctor
+ * column, and «by branch» the branch cuid, in the table, the CSV and the
+ * PDF alike. A dimension now groups by its key (`sql`, the id) and shows a
+ * name (`labelSql`, per interface language), so two doctors who share a
+ * name still get a row each. Column headers come from i18n
+ * (`analyticsReports.dimensions.*`, see report-runner.ts), not `label`.
  */
+
+export type ReportLocale = "ru" | "uz";
 
 export type DimensionKey =
   | "date"
@@ -35,7 +44,15 @@ export interface DimensionDef {
   sql: string;
   /** Public column alias in the resulting JSON. */
   alias: string;
-  /** Human-readable label (used by W3 UI; W1 only declares it). */
+  /**
+   * What the column shows instead of the grouping key, per interface
+   * language (same FROM shape, `b` is the LEFT JOINed Branch). Grouped
+   * together with `sql`. Absent: the key itself is shown.
+   */
+  labelSql?: Record<ReportLocale, string>;
+  /** Cell rendering hint: `date` cells print as ДД.ММ.ГГГГ. */
+  unit: "text" | "date";
+  /** Developer-facing name; the UI header comes from i18n. */
   label: string;
 }
 
@@ -64,38 +81,59 @@ export const DIMENSIONS: Record<DimensionKey, DimensionDef> = {
     // whenever the DB session runs in UTC (the prod default).
     sql: `date_trunc('day', (a."date" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')::date`,
     alias: "date",
+    unit: "date",
     label: "Day",
   },
   doctor: {
     key: "doctor",
     sql: `a."doctorId"`,
-    alias: "doctorId",
+    alias: "doctor",
+    labelSql: {
+      ru: `d."nameRu"`,
+      uz: `COALESCE(NULLIF(d."nameUz", ''), d."nameRu")`,
+    },
+    unit: "text",
     label: "Doctor",
   },
   branch: {
     key: "branch",
     sql: `a."branchId"`,
-    alias: "branchId",
+    alias: "branch",
+    // NULL (an appointment with no branch) renders as an empty cell.
+    labelSql: {
+      ru: `b."nameRu"`,
+      uz: `COALESCE(NULLIF(b."nameUz", ''), b."nameRu")`,
+    },
+    unit: "text",
     label: "Branch",
   },
   specialty: {
     key: "specialty",
-    // Stored RU/UZ-localized; analytics groups by RU as canonical (UI can map
-    // when rendering). Specialty field never holds PII so safe to project.
+    // Grouped by the RU text as canonical, shown in the interface language.
+    // Specialty field never holds PII so safe to project.
     sql: `d."specializationRu"`,
     alias: "specialty",
+    labelSql: {
+      ru: `d."specializationRu"`,
+      uz: `COALESCE(NULLIF(d."specializationUz", ''), d."specializationRu")`,
+    },
+    unit: "text",
     label: "Specialty",
   },
   patient_segment: {
     key: "patient_segment",
+    // Enum code; report-runner.ts swaps it for its i18n name.
     sql: PATIENT_SEGMENT_SQL,
     alias: "patientSegment",
+    unit: "text",
     label: "Patient segment",
   },
   source: {
     key: "source",
+    // Enum code; report-runner.ts swaps it for its i18n name.
     sql: SOURCE_SQL,
     alias: "source",
+    unit: "text",
     label: "Source",
   },
 };

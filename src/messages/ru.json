@@ -4779,6 +4779,7 @@
     "summary": {
       "totalCount": "{count} всего",
       "averageLtv": "Средний LTV",
+      "noData": "нет данных",
       "viewAllDoctors": "Показать всех ({count})",
       "viewAllServices": "Показать все услуги ({count})",
       "totalAll": "Всего {count}",
@@ -4875,6 +4876,10 @@
     "subtitle": "Сводный рейтинг по выручке, неявкам и NPS",
     "empty": "Нет данных за выбранный период",
     "emptyHint": "Когда появятся записи, рейтинг обновится автоматически.",
+    "rangeIncomplete": "Выберите начальную и конечную дату периода",
+    "loading": "Загружаем данные за выбранный период…",
+    "loadFailed": "Не удалось загрузить данные за выбранный период",
+    "retry": "Повторить",
     "metaHint": "Обновлено {generatedAt}",
     "sparkAria": "Динамика выручки врача {name}",
     "col": {
@@ -4969,6 +4974,8 @@
       "avg_ticket_tiins": "Средний чек",
       "ltv_tiins": "LTV пациентов"
     },
+    "columnMoney": "{label}, сум",
+    "sourceUnknown": "Не указан",
     "status": {
       "BOOKED": "Забронировано",
       "CONFIRMED": "Подтверждено",
@@ -4997,6 +5004,10 @@
       "filterBranches": "Филиалы",
       "filterDoctors": "Врачи",
       "filterStatuses": "Статусы визитов",
+      "orderLabel": "Сортировка",
+      "orderDefault": "По измерениям",
+      "orderDesc": "По убыванию",
+      "orderAsc": "По возрастанию",
       "noBranches": "Нет активных филиалов",
       "noDoctors": "Нет активных врачей",
       "runButton": "Запустить",

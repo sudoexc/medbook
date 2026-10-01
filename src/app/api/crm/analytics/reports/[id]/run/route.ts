@@ -6,7 +6,8 @@
  * /reports/run endpoint uses, bumps `lastRunAt`, and audits the run with
  * the saved id in `meta`.
  *
- * Supports `?format=csv` like the transient runner.
+ * Supports `?format=csv` like the transient runner, and `?locale=ru|uz`
+ * for the language of headers and names (audit AN-09).
  */
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -49,6 +50,7 @@ export async function POST(request: Request): Promise<Response> {
   const formatParam = url.searchParams.get("format");
   const wantsCsv = formatParam === "csv";
   const wantsPdf = formatParam === "pdf";
+  const locale = url.searchParams.get("locale") === "uz" ? "uz" : "ru";
 
   try {
     return await runWithTenant(ctx, async () => {
@@ -70,6 +72,8 @@ export async function POST(request: Request): Promise<Response> {
         prisma as unknown as ReportRunnerClient,
         ctx.clinicId as string,
         config,
+        new Date(),
+        { locale },
       );
 
       // lastRunAt bump is a separate update so the run path is unaffected by
@@ -124,6 +128,7 @@ export async function POST(request: Request): Promise<Response> {
           generatedAt: new Date(result.generatedAt),
           columns: result.columns,
           rows: result.rows,
+          locale,
           filters: {
             dateFrom: config.filters?.dateFrom ?? null,
             dateTo: config.filters?.dateTo ?? null,

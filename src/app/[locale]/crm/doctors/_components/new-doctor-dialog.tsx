@@ -30,17 +30,7 @@ import {
   CABINETS_WITH_OCCUPANTS_KEY,
   CabinetSelectField,
 } from "./cabinet-select-field";
-
-const COLOR_SWATCHES = [
-  "#3DD5C0", // primary teal
-  "#3B82F6", // info blue
-  "#F59E0B", // warning amber
-  "#10B981", // success green
-  "#EF4444", // destructive red
-  "#8B5CF6", // violet
-  "#EC4899", // pink
-  "#64748B", // slate
-] as const;
+import { COLOR_SWATCHES } from "./doctor-colors";
 
 const DURATION_MIN = 5;
 const DURATION_MAX = 480;

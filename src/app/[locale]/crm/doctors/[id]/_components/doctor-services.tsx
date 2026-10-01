@@ -10,7 +10,11 @@ import {
 import { SaveIcon, RotateCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { sumToTiyin, tiyinToSum } from "@/lib/money-input";
+import { tiyinToSum } from "@/lib/money-input";
+import {
+  DOCTOR_SERVICE_DURATION_MAX,
+  DOCTOR_SERVICE_DURATION_MIN,
+} from "@/lib/doctor-service-terms";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,6 +23,14 @@ import { Label } from "@/components/ui/label";
 import { formatMoney, type Locale } from "@/lib/format";
 
 import { doctorKey } from "../_hooks/use-doctor";
+import {
+  adoptBaseline,
+  assignmentsEqual,
+  buildAssignments,
+  rowProblem,
+  type AssignmentPayload,
+  type AssignmentState,
+} from "./doctor-services-state";
 
 type ServiceRow = {
   id: string;
@@ -35,13 +47,6 @@ type DoctorServiceRow = {
   service: ServiceRow;
   priceOverride: number | null;
   durationMinOverride: number | null;
-};
-
-type AssignmentState = {
-  assigned: boolean;
-  /** User-facing strings so empty input is distinguishable from 0. */
-  priceInput: string;
-  durationInput: string;
 };
 
 // `n` is priceBase in tiins (×100); formatMoney handles minor-unit conversion
@@ -67,6 +72,7 @@ export function DoctorServicesEditor({
   className,
 }: DoctorServicesEditorProps) {
   const t = useTranslations("crmDoctors.services");
+  const tToast = useTranslations("crmToasts.doctor");
   const locale = useLocale();
   const qc = useQueryClient();
 
@@ -139,42 +145,39 @@ export function DoctorServicesEditor({
     return next;
   }, [servicesQuery.data, doctorServicesQuery.data]);
 
+  // A refetch (window focus, stale time) used to copy the server state over
+  // unsaved edits (DR-10). Adopt the new baseline only while the editor still
+  // shows the previous one untouched.
+  const prevBaselineRef = React.useRef(baseline);
   React.useEffect(() => {
-    setState(baseline);
+    const prev = prevBaselineRef.current;
+    prevBaselineRef.current = baseline;
+    setState((cur) => adoptBaseline(cur, prev, baseline));
   }, [baseline]);
 
-  const dirty = React.useMemo(() => {
-    const keys = new Set([
-      ...Object.keys(state),
-      ...Object.keys(baseline),
-    ]);
-    for (const k of keys) {
-      const a = state[k];
-      const b = baseline[k];
-      if (!a || !b) return true;
-      if (a.assigned !== b.assigned) return true;
-      if (a.assigned) {
-        if (a.priceInput !== b.priceInput) return true;
-        if (a.durationInput !== b.durationInput) return true;
-      }
+  const dirty = React.useMemo(
+    () => !assignmentsEqual(state, baseline),
+    [state, baseline],
+  );
+
+  // Rows that cannot be saved as typed. Save stays disabled until they are
+  // fixed: skipping them would unlink the service (the PUT replaces the set).
+  const problems = React.useMemo(() => {
+    const out: Record<string, ReturnType<typeof rowProblem>> = {};
+    for (const [id, row] of Object.entries(state)) {
+      const p = rowProblem(row);
+      if (p) out[id] = p;
     }
-    return false;
-  }, [state, baseline]);
+    return out;
+  }, [state]);
+  const hasProblems = Object.keys(problems).length > 0;
 
   const selectedCount = React.useMemo(
     () => Object.values(state).filter((s) => s.assigned).length,
     [state],
   );
 
-  const saveMutation = useMutation<
-    void,
-    Error,
-    Array<{
-      serviceId: string;
-      priceOverride: number | null;
-      durationMinOverride: number | null;
-    }>
-  >({
+  const saveMutation = useMutation<void, Error, AssignmentPayload[]>({
     mutationFn: async (assignments) => {
       const res = await fetch(`/api/crm/doctors/${doctorId}/services`, {
         method: "PUT",
@@ -185,7 +188,17 @@ export function DoctorServicesEditor({
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as {
           error?: string;
+          reason?: string;
+          orphanedServices?: { nameRu: string; nameUz: string }[];
         } | null;
+        // The service would be left with no doctor at all (DR-07): name it.
+        if (j?.reason === "service_orphaned") {
+          const names = (j.orphanedServices ?? [])
+            .map((s) => (locale === "uz" ? s.nameUz : s.nameRu))
+            .filter(Boolean)
+            .join(", ");
+          throw new Error(t("orphanedServices", { services: names }));
+        }
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
     },
@@ -195,7 +208,7 @@ export function DoctorServicesEditor({
       toast.success(t("saved"));
     },
     onError: (e) => {
-      toast.error(`${t("saveFailed")}: ${e.message}`);
+      toast.error(e.message || tToast("saveFailed"), { duration: 10_000 });
     },
   });
 
@@ -237,30 +250,12 @@ export function DoctorServicesEditor({
   const handleReset = () => setState(baseline);
 
   const handleSave = () => {
-    const assignments: Array<{
-      serviceId: string;
-      priceOverride: number | null;
-      durationMinOverride: number | null;
-    }> = [];
-    for (const [serviceId, s] of Object.entries(state)) {
-      if (!s.assigned) continue;
-      // The input shows сумы; the override is stored in tiyin.
-      const typed = s.priceInput === "" ? null : Number(s.priceInput);
-      if (typed !== null && !Number.isFinite(typed)) continue;
-      const price = typed === null ? null : sumToTiyin(typed);
-      const duration =
-        s.durationInput === "" ? null : Number(s.durationInput);
-      if (duration !== null && !Number.isFinite(duration)) continue;
-      // Server enforces 5..600. Skip silently if user typed something
-      // pathological — they'll see no diff and re-edit.
-      if (duration !== null && (duration < 5 || duration > 600)) continue;
-      assignments.push({
-        serviceId,
-        priceOverride: price,
-        durationMinOverride: duration,
-      });
+    const built = buildAssignments(state);
+    if (!built.ok) {
+      toast.error(t("invalidRows"));
+      return;
     }
-    saveMutation.mutate(assignments);
+    saveMutation.mutate(built.assignments);
   };
 
   const isLoading = servicesQuery.isLoading || doctorServicesQuery.isLoading;
@@ -298,7 +293,7 @@ export function DoctorServicesEditor({
             <Button
               size="sm"
               onClick={handleSave}
-              disabled={!dirty || saveMutation.isPending}
+              disabled={!dirty || hasProblems || saveMutation.isPending}
             >
               <SaveIcon className="size-4" />
               {saveMutation.isPending ? t("saving") : t("save")}
@@ -331,6 +326,7 @@ export function DoctorServicesEditor({
             const inputId = `svc-${s.id}`;
             const priceId = `price-${s.id}`;
             const durationId = `dur-${s.id}`;
+            const problem = problems[s.id];
             return (
               <li
                 key={s.id}
@@ -379,6 +375,7 @@ export function DoctorServicesEditor({
                       disabled={
                         !canEdit || !checked || saveMutation.isPending
                       }
+                      aria-invalid={problem?.price || undefined}
                       className="h-8 w-[120px]"
                     />
                   </div>
@@ -401,9 +398,20 @@ export function DoctorServicesEditor({
                       disabled={
                         !canEdit || !checked || saveMutation.isPending
                       }
+                      aria-invalid={problem?.duration || undefined}
                       className="h-8 w-[80px]"
                     />
                   </div>
+                  {problem ? (
+                    <p className="w-full text-xs text-destructive">
+                      {problem.duration
+                        ? t("durationRange", {
+                            min: DOCTOR_SERVICE_DURATION_MIN,
+                            max: DOCTOR_SERVICE_DURATION_MAX,
+                          })
+                        : t("priceInvalid")}
+                    </p>
+                  ) : null}
                 </div>
               </li>
             );

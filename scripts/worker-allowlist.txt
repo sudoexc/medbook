@@ -27,6 +27,7 @@ fix-an01-fx-rate-convention.ts
 fix-an02-link-payments-to-visits.ts
 fix-cd02-drug-photo-urls.ts
 fix-ct03-registry-brand-homes.ts
+fix-dr11-appointment-cabinets.ts
 fix-g4-06-reference-dosing-instructions.ts
 fix-g4-12-phenazepam-atc.ts
 fix-p4-register-compositions.ts

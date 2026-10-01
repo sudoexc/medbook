@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 /**
  * Notification channel enum.
  *
@@ -61,7 +63,7 @@ export const UpdateTemplateSchema = CreateTemplateSchema.partial();
 export const QueryTemplateSchema = z.object({
   channel: NotificationChannelEnum.optional(),
   category: NotificationCategoryEnum.optional(),
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBool(),
   q: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });

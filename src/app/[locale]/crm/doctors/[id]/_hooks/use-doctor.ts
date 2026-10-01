@@ -85,6 +85,7 @@ export type DoctorServicePatch = {
 };
 
 export type DoctorUpdateInput = Partial<{
+  slug: string;
   nameRu: string;
   nameUz: string;
   specializationRu: string;

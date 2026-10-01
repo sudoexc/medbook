@@ -119,10 +119,17 @@ export function useReplaceDoctorSchedule(doctorId: string) {
   });
 }
 
+/** Visits already booked inside a new time-off window (audit DR-06). */
+export type TimeOffAffected = {
+  count: number;
+  firstAt: string | null;
+  lastAt: string | null;
+};
+
 export function useCreateTimeOff(doctorId: string) {
   const qc = useQueryClient();
   return useMutation<
-    { id: string },
+    { id: string; affectedAppointments?: TimeOffAffected },
     Error,
     { startAt: string; endAt: string; reason: string | null }
   >({
@@ -139,7 +146,10 @@ export function useCreateTimeOff(doctorId: string) {
         } | null;
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
-      return (await res.json()) as { id: string };
+      return (await res.json()) as {
+        id: string;
+        affectedAppointments?: TimeOffAffected;
+      };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: doctorKey(doctorId) });

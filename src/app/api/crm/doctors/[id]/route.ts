@@ -3,10 +3,16 @@
  *
  * Cabinet binding (Phase 11):
  *   PATCH validates a changed cabinetId against the same rules as POST
- *   (cabinet must be in the clinic, active, and not occupied by anyone else).
+ *   (cabinet must be in the clinic, active, and not occupied by anyone else)
+ *   and moves the doctor's remaining visits to the new room in the same
+ *   transaction (audit DR-11, `@/server/doctors/cabinet-move`).
  *   When a `services` array is supplied, the route replaces ALL existing
  *   ServiceOnDoctor rows for this doctor in a single transaction so the
- *   doctor's catalog never half-applies.
+ *   doctor's catalog never half-applies; dropping a service only this
+ *   doctor performs is refused like a deactivation is (audit DR-07).
+ *
+ *   GET answers each role with the columns it may see (audit DR-09,
+ *   `@/server/doctors/doctor-view`).
  *
  *   DELETE refuses (409) when soft-deleting this doctor would leave any of
  *   their services with zero remaining active doctors — services without a
@@ -31,7 +37,12 @@ import {
   countDoctorDeleteBlockers,
   countStrandedAppointments,
   findServicesOrphanedByDeactivating,
+  findServicesOrphanedByUnlinking,
 } from "@/server/doctors/deactivation";
+import { doctorAudience, doctorSelectFor } from "@/server/doctors/doctor-view";
+import { moveFutureAppointmentsToCabinet } from "@/server/doctors/cabinet-move";
+import { isSlotOverlapViolation } from "@/server/appointments/overlap-violation";
+import { publishEventSafe } from "@/server/realtime/publish";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -40,18 +51,37 @@ function idFromUrl(request: Request): string {
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const id = idFromUrl(request);
-    const row = await prisma.doctor.findUnique({
-      where: { id },
-      include: {
-        cabinet: true,
-        services: { include: { service: true } },
-        schedules: true,
-        timeOffs: { where: { endAt: { gte: new Date() } } },
-      },
-    });
+    const audience = doctorAudience(ctx);
+    const select = doctorSelectFor(audience);
+    const relations = {
+      services: { include: { service: true } },
+      schedules: true,
+      timeOffs: { where: { endAt: { gte: new Date() } } },
+    } as const;
+    const row = select
+      ? await prisma.doctor.findUnique({
+          where: { id },
+          select: { ...select, ...relations },
+        })
+      : await prisma.doctor.findUnique({
+          where: { id },
+          include: { cabinet: true, ...relations },
+        });
     if (!row) return notFound();
+    // Why a doctor is away («больничный») is for the admin and the doctor
+    // himself; everyone else sees the window only.
+    const ownProfile =
+      audience === "doctor" &&
+      ctx.kind === "TENANT" &&
+      (row as { userId?: string | null }).userId === ctx.userId;
+    if (audience !== "admin" && !ownProfile) {
+      return ok({
+        ...row,
+        timeOffs: row.timeOffs.map((t) => ({ ...t, reason: null })),
+      });
+    }
     return ok(row);
   }
 );
@@ -164,8 +194,27 @@ export const PATCH = createApiHandler(
       | undefined;
     delete data.services;
 
+    // Replacing the catalog must not strand a service either (DR-07). A
+    // deactivation in the same call was already checked above.
+    if (services && data.isActive !== false) {
+      const orphaned = await findServicesOrphanedByUnlinking(
+        id,
+        services.map((s) => s.serviceId),
+      );
+      if (orphaned.length > 0) {
+        return err("ServiceOrphaned", 409, {
+          reason: "service_orphaned",
+          orphanedServiceIds: orphaned.map((s) => s.id),
+          orphanedServices: orphaned,
+        });
+      }
+    }
+
+    const cabinetChanged =
+      typeof data.cabinetId === "string" && data.cabinetId !== before.cabinetId;
+
     try {
-      const after = await prisma.$transaction(async (tx) => {
+      const txResult = await prisma.$transaction(async (tx) => {
         const updated = await tx.doctor.update({
           where: { id },
           data: data as never,
@@ -184,8 +233,24 @@ export const PATCH = createApiHandler(
             });
           }
         }
-        return updated;
+        const movedAppointments = cabinetChanged
+          ? await moveFutureAppointmentsToCabinet(tx, {
+              doctorId: id,
+              cabinetId: data.cabinetId as string,
+            })
+          : 0;
+        return { updated, movedAppointments };
       });
+      const after = txResult.updated;
+      const movedAppointments = txResult.movedAppointments;
+      if (movedAppointments > 0) {
+        // Reception's queue, the doctor's day and the TV boards read the
+        // cabinet off the visits: wake them so they show the new room.
+        publishEventSafe(before.clinicId, {
+          type: "queue.updated",
+          payload: { doctorId: id },
+        });
+      }
 
       const d = diff(
         before as unknown as Record<string, unknown>,
@@ -206,10 +271,16 @@ export const PATCH = createApiHandler(
           ...d,
           servicesReplaced: Boolean(services),
           ...(strandedAppointments > 0 ? { strandedAppointments } : {}),
+          ...(movedAppointments > 0 ? { movedAppointments } : {}),
         },
       });
-      return ok({ ...after, strandedAppointments });
+      return ok({ ...after, strandedAppointments, movedAppointments });
     } catch (e) {
+      // A visit already sits in the new room at the time of one of this
+      // doctor's visits: nothing moved (the transaction rolled back).
+      if (isSlotOverlapViolation(e)) {
+        return err("CabinetBusy", 409, { reason: "cabinet_schedule_conflict" });
+      }
       const msg = (e as Error).message || "";
       if (msg.includes("Unique") && msg.includes("cabinetId")) {
         return err("CabinetTaken", 409, { reason: "cabinet_taken" });

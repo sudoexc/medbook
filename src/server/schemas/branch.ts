@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 /**
  * Phase 9c — Branch CRUD schemas.
  *
@@ -30,7 +32,7 @@ export const UpdateBranchSchema = CreateBranchSchema.partial().extend({
 });
 
 export const QueryBranchSchema = z.object({
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBool(),
   limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 

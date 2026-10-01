@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { APPOINTMENTS_LIST_MAX_LIMIT } from "@/lib/appointments/fetch-all-pages";
+import { queryBool } from "./query-bool";
 
 export const AppointmentStatusEnum = z.enum([
   "BOOKED",
@@ -99,7 +100,7 @@ export const QueryAppointmentSchema = z.object({
   cabinetId: z.string().optional(),
   status: AppointmentStatusEnum.optional(),
   channel: ChannelTypeEnum.optional(),
-  unpaid: z.coerce.boolean().optional(),
+  unpaid: queryBool(),
   q: z.string().optional(),
   cursor: z.string().optional(),
   // Clients that need a whole range page through `nextCursor`

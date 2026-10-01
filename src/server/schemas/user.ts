@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 export const RoleEnum = z.enum([
   "SUPER_ADMIN",
   "ADMIN",
@@ -44,7 +46,7 @@ export const UpdateUserSchema = z
 
 export const QueryUserSchema = z.object({
   role: RoleEnum.optional(),
-  active: z.coerce.boolean().optional(),
+  active: queryBool(),
   q: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(1000).default(50),

@@ -5,14 +5,18 @@
  * render base price and duration without a second fetch.
  *
  * PUT is idempotent: the body's `assignments` array replaces the entire
- * set atomically inside a transaction (deleteMany → createMany).
+ * set atomically inside a transaction (deleteMany → createMany). Dropping a
+ * service this active doctor alone performs is refused with 409
+ * `service_orphaned` naming it (audit DR-07): reception would otherwise
+ * pick the service and find nobody to book it with.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { invalidateSitePrices } from "@/lib/site-prices";
-import { ok, notFound } from "@/server/http";
+import { ok, err, notFound } from "@/server/http";
 import { UpdateDoctorServicesSchema } from "@/server/schemas/doctor-services";
+import { findServicesOrphanedByUnlinking } from "@/server/doctors/deactivation";
 
 function doctorIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -95,6 +99,15 @@ export const PUT = createApiHandler(
       if (found.length !== serviceIds.length) {
         return notFound();
       }
+    }
+
+    const orphaned = await findServicesOrphanedByUnlinking(doctorId, serviceIds);
+    if (orphaned.length > 0) {
+      return err("ServiceOrphaned", 409, {
+        reason: "service_orphaned",
+        orphanedServiceIds: orphaned.map((s) => s.id),
+        orphanedServices: orphaned,
+      });
     }
 
     await prisma.$transaction([

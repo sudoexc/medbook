@@ -73,6 +73,7 @@ import {
   type CaseAttachOutcome,
 } from "@/server/cases/attach";
 import { refreshPatientSegment } from "@/server/patient/segments";
+import { loadDoctorServiceTerms } from "@/server/doctors/service-terms";
 
 /**
  * The final price a new booking is stored with (audit AP-08).
@@ -269,21 +270,21 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
   let priceBase: number | null = null;
   let priceService: number | null = null;
   let derivedDurationMin = 0;
+  // This doctor's price per service (audit DR-02): the line snapshots below
+  // read it too, so a head doctor's override is what the visit is billed at.
+  let priceMap = new Map<string, number>();
   if (allServiceIds.size > 0) {
-    const services = await prisma.service.findMany({
-      where: {
-        id: { in: Array.from(allServiceIds) },
-        clinicId: input.clinicId,
-        isActive: true,
-      },
-      select: { id: true, priceBase: true, durationMin: true },
+    const terms = await loadDoctorServiceTerms(prisma, {
+      doctorId: input.doctorId,
+      serviceIds: Array.from(allServiceIds),
+      where: { clinicId: input.clinicId, isActive: true },
     });
-    if (services.length !== allServiceIds.size) {
+    if (terms.size !== allServiceIds.size) {
       return { ok: false, reason: "service_not_found" };
     }
-    const priceMap = new Map(services.map((s) => [s.id, s.priceBase]));
-    const durMap = new Map(services.map((s) => [s.id, s.durationMin]));
-    // Base price: sum of catalog `priceBase` for every referenced service.
+    priceMap = new Map([...terms].map(([id, t]) => [id, t.price]));
+    const durMap = new Map([...terms].map(([id, t]) => [id, t.durationMin]));
+    // Base price: sum of the doctor's price for every referenced service.
     priceBase = Array.from(allServiceIds).reduce(
       (a, sid) => a + (priceMap.get(sid) ?? 0),
       0,
@@ -430,12 +431,6 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
         });
 
         if (serviceLines.length > 0) {
-          const priceMap = new Map<string, number>();
-          const svcRows = await tx.service.findMany({
-            where: { id: { in: serviceLines.map((s) => s.serviceId) } },
-            select: { id: true, priceBase: true },
-          });
-          for (const s of svcRows) priceMap.set(s.id, s.priceBase);
           await tx.appointmentService.createMany({
             data: serviceLines.map((s) => ({
               clinicId: input.clinicId,

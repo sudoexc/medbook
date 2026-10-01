@@ -22,6 +22,7 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   OVERLAY_OVERRIDES_MAX_JSON,
   isOverridableEntityType,
+  minimizeOverrides,
   sanitizeOverrides,
 } from "@/server/catalog/clinic-overlay";
 import { err, ok } from "@/server/http";
@@ -95,21 +96,6 @@ export const POST = createApiHandler(
         reason: "entity_type_not_overridable",
       });
     }
-    const sanitized =
-      body.overrides != null && isOverridableEntityType(body.entityType)
-        ? sanitizeOverrides(body.entityType, body.overrides)
-        : null;
-    // `overrides` present in the body (even null/{}) = caller manages the
-    // patch; undefined = legacy hide-only call, leave the column untouched.
-    const touchOverrides = body.overrides !== undefined;
-    const overridesData = touchOverrides
-      ? {
-          overridesJson: sanitized
-            ? (sanitized as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
-        }
-      : {};
-
     const existing = await prisma.clinicCatalogOverlay.findUnique({
       where: {
         clinicId_entityType_entityCode: {
@@ -119,6 +105,50 @@ export const POST = createApiHandler(
         },
       },
     });
+
+    let sanitized =
+      body.overrides != null && isOverridableEntityType(body.entityType)
+        ? sanitizeOverrides(body.entityType, body.overrides)
+        : null;
+    // `overrides` present in the body (even null/{}) = caller manages the
+    // patch; undefined = legacy hide-only call, leave the column untouched.
+    const touchOverrides = body.overrides !== undefined;
+    if (touchOverrides && body.entityType === "DRUG") {
+      // Store only what differs from the global drug (audit CT-10): the form
+      // posts every field, and an unchanged one must keep following the
+      // catalog instead of being pinned (or, for dosing, blanked).
+      if (sanitized) {
+        const globalDrug = await prisma.drug.findFirst({
+          where: { id: body.entityCode, clinicId: null },
+          select: {
+            nameRu: true,
+            nameUz: true,
+            defaultDosing: true,
+            contraindications: true,
+            sideEffects: true,
+            rxOnly: true,
+          },
+        });
+        if (globalDrug) {
+          sanitized = minimizeOverrides("DRUG", sanitized, globalDrug);
+        }
+      }
+      // The clinic's packaging photo rides in the same JSON but has its own
+      // upload route; editing (or resetting) the text must not drop it.
+      const keptPhoto = (
+        sanitizeOverrides("DRUG", existing?.overridesJson) ?? {}
+      ).photoUrl;
+      if (keptPhoto !== undefined && sanitized?.photoUrl === undefined) {
+        sanitized = { ...(sanitized ?? {}), photoUrl: keptPhoto };
+      }
+    }
+    const overridesData = touchOverrides
+      ? {
+          overridesJson: sanitized
+            ? (sanitized as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+        }
+      : {};
 
     if (existing) {
       const updated = await prisma.clinicCatalogOverlay.update({
@@ -144,13 +174,19 @@ export const POST = createApiHandler(
       return ok({ overlay: updated });
     }
 
+    // Nothing differs from the catalog and nothing to hide: no row to store.
+    if (touchOverrides && sanitized == null && body.hideGlobal === undefined) {
+      return ok({ overlay: null });
+    }
+
     const created = await prisma.clinicCatalogOverlay.create({
       data: {
         clinicId: ctx.clinicId,
         entityType: body.entityType,
         entityCode: body.entityCode,
-        // A pure override-create must not hide the row it patches.
-        hideGlobal: body.hideGlobal ?? sanitized == null,
+        // A pure override-create must not hide the row it patches, even
+        // when the patch turned out to equal the catalog.
+        hideGlobal: body.hideGlobal ?? !touchOverrides,
         ...overridesData,
         createdById: ctx.userId,
       },

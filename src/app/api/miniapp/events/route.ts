@@ -139,6 +139,12 @@ export function shouldDeliverToMiniApp(
   // this set, so gating here drops nothing the mini-app acts on; it only stops
   // shipping staff metadata down the wire.
   if (!MINIAPP_DELIVERABLE_TYPES.has(envelope.type)) return false;
+  // A doctor's availability changed (weekly schedule, time off): the one
+  // clinic-wide event a patient needs, so an open slot picker stops offering
+  // the days the doctor is away (audit DR-06). It never names a patient and
+  // its payload is ids, counts and the window, so no patient check applies.
+  // Without this branch it was in the allowlist yet always dropped below.
+  if (envelope.type === "doctor.scheduleChanged") return true;
   if (
     envelope.tenantScope.patientId &&
     allowed.patientIds.has(envelope.tenantScope.patientId)

@@ -2,7 +2,9 @@
  * GET /api/miniapp/doctors?clinicSlug=…&serviceId=…
  *
  * List active doctors for the clinic, optionally narrowed to those that
- * offer a given service (via ServiceOnDoctor).
+ * offer a given service (via ServiceOnDoctor). Each service carries THIS
+ * doctor's price (`priceOverride` over the catalog, audit DR-02): the price
+ * the booking will be billed at, not the catalog's.
  */
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
@@ -34,6 +36,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       color: true,
       services: {
         select: {
+          priceOverride: true,
           service: {
             select: {
               id: true,
@@ -46,5 +49,15 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
     },
     orderBy: [{ nameRu: "asc" }],
   });
-  return ok({ doctors });
+  return ok({
+    doctors: doctors.map((d) => ({
+      ...d,
+      services: d.services.map((l) => ({
+        service: {
+          ...l.service,
+          priceBase: l.priceOverride ?? l.service.priceBase,
+        },
+      })),
+    })),
+  });
 });

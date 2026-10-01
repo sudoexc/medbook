@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 /** Service.priceBase is a Postgres int4, in tiyin: ≈21.4 mln сум. */
 const PRICE_MAX_TIYIN = 2_147_483_647;
 
@@ -35,7 +37,7 @@ export const CreateServiceSchema = z.object({
 export const UpdateServiceSchema = CreateServiceSchema.partial();
 
 export const QueryServiceSchema = z.object({
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBool(),
   category: z.string().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),

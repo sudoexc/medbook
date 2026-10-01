@@ -61,6 +61,7 @@ import {
 } from "@/server/visit-notes/revisions";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
+import { loadDoctorServiceTerms } from "@/server/doctors/service-terms";
 
 /** Who may record a risk-today outcome: the roles of its endpoint (and
  *  SUPER_ADMIN, whom the handler lets through every role list). */
@@ -877,11 +878,13 @@ export const PATCH = createApiHandler(
           where: { appointmentId: id },
         });
         if (services.length > 0) {
-          const svcRows = await tx.service.findMany({
-            where: { id: { in: services.map((s) => s.serviceId) } },
-            select: { id: true, priceBase: true },
+          // Priced as the visit's doctor charges (audit DR-02), the same rule
+          // the booking kernel snapshots at create time.
+          const terms = await loadDoctorServiceTerms(tx, {
+            doctorId: body.doctorId ?? before.doctorId,
+            serviceIds: services.map((s) => s.serviceId),
           });
-          const priceMap = new Map(svcRows.map((s) => [s.id, s.priceBase]));
+          const priceMap = new Map([...terms].map(([sid, t]) => [sid, t.price]));
           await tx.appointmentService.createMany({
             data: services.map((s) => ({
               appointmentId: id,

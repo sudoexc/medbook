@@ -55,11 +55,16 @@ const DrugFormsSchema = z
   .max(8)
   .default([]);
 
-/** Mirrors Drug.defaultDosing JSON: { adult?, pediatric?, renal? }. */
+/**
+ * Mirrors Drug.defaultDosing JSON: { adult?, pediatric?, elderly?, renal? }.
+ * `elderly` was missing, so zod stripped it and an edit of a clinic drug
+ * silently dropped its dosing line for older patients (audit CT-10).
+ */
 const DefaultDosingSchema = z
   .object({
     adult: z.string().trim().max(1_000).optional(),
     pediatric: z.string().trim().max(1_000).optional(),
+    elderly: z.string().trim().max(1_000).optional(),
     renal: z.string().trim().max(1_000).optional(),
   })
   .nullable()

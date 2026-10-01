@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 export const ConversationChannelEnum = z.enum([
   "SMS",
   "TG",
@@ -48,12 +50,12 @@ export const QueryConversationSchema = z.object({
    * inbox lands prefiltered to the patient's threads.
    */
   patientId: z.string().optional(),
-  unread: z.coerce.boolean().optional(),
+  unread: queryBool(),
   /**
    * «Неотвеченные» (audit G6-03): a patient message no staff reply followed
    * (`awaitingReplySince`), unlike `unread`, which opening the chat clears.
    */
-  unanswered: z.coerce.boolean().optional(),
+  unanswered: queryBool(),
   q: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),

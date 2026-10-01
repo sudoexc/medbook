@@ -2647,6 +2647,8 @@
       "cabinetCancel": "Bekor qilish",
       "cabinetSaved": "Xona yangilandi",
       "cabinetTaken": "Bu xona allaqachon boshqa shifokorga biriktirilgan",
+      "cabinetSavedMoved": "Kabinet yangilandi. Shifokor yozuvlari yangi kabinetga ko'chirildi: {count}",
+      "cabinetScheduleConflict": "Kabinet o'zgartirilmadi: yangi kabinetda shu shifokor qabullari bilan bir vaqtda boshqa qabullar bor. Ularni ko'chiring va qayta urinib ko'ring.",
       "cabinetEmpty": "Mavjud xonalar yo'q",
       "cabinetLoadError": "Xonalarni yuklab bo'lmadi",
       "deactivate": "Faolsizlantirish",
@@ -2654,6 +2656,13 @@
       "deactivateConfirm": "Shifokor faolsizlantirilsinmi? U jadval, kalendar va yozuv shaklidan yo'qoladi. Qabullar tarixi saqlanadi.",
       "deactivated": "Shifokor faolsizlantirildi",
       "activated": "Shifokor yana ishda",
+      "edit": "Tahrirlash",
+      "editDialogTitle": "Shifokor ma'lumotlari",
+      "editDialogHint": "Ism, mutaxassislik va narx yozilishda, saytda va hisobotlarda ko'rinadi. Kabinet, xizmatlar, talon harfi va login alohida o'zgartiriladi.",
+      "editSlugHint": "Saytdagi shifokor sahifasi manzili. Lotin harflari, raqamlar va defislar.",
+      "editFieldInvalid": "Qiymatni tekshiring: ruxsat etilmagan belgilar yoki format",
+      "editSaved": "Shifokor ma'lumotlari saqlandi",
+      "editFailed": "Shifokor ma'lumotlarini saqlab bo'lmadi",
       "purge": "Butunlay o'chirish",
       "purgeConfirm": "Shifokor tiklab bo'lmaydigan tarzda o'chiriladi. Tasdiqlash uchun uning familiyasini «{surname}» kiriting:",
       "purgeSurnameMismatch": "Familiya mos kelmadi, o'chirish bekor qilindi",
@@ -2751,7 +2760,9 @@
       "deleteConfirm": "Ushbu davrni o'chirilsinmi?",
       "deleteConfirmTitle": "Davr o'chirilsinmi?",
       "deleteConfirmDesc": "Ushbu ta'til davri qaytarib bo'lmaydigan tarzda o'chiriladi.",
-      "errorEndBeforeStart": "Tugash sanasi boshlanish sanasidan keyin bo'lishi kerak"
+      "errorEndBeforeStart": "Tugash sanasi boshlanish sanasidan keyin bo'lishi kerak",
+      "affectedAppointments": "Bu davrda shifokorda allaqachon yozuvlar bor: {count}. Ularni ko'chiring, aks holda bemorlar yo'q shifokorga kelishadi.",
+      "affectedOpen": "Yozuvlarni ochish"
     },
     "patients": {
       "title": "Shifokor bemorlari",
@@ -2791,7 +2802,11 @@
       "empty": "Klinikada aktiv xizmatlar yo'q",
       "loadError": "Xizmatlarni yuklab bo'lmadi",
       "currencySum": "so'm",
-      "minShort": "daq"
+      "minShort": "daq",
+      "orphanedServices": "Shifokorsiz qoladigan xizmatlar: {services}. Avval ularga boshqa shifokorni tayinlang.",
+      "invalidRows": "Belgilangan maydonlarni tuzating va qayta saqlang",
+      "durationRange": "Davomiyligi {min} daqiqadan {max} daqiqagacha",
+      "priceInvalid": "Narx juda katta"
     },
     "weekdays": {
       "mon": "Dushanba",
@@ -3921,6 +3936,7 @@
       "doctorsRequiredHint": "Kamida bitta shifokorni tanlang — shifokorsiz xizmat saqlanmaydi.",
       "doctorsSelected": "Tanlangan: {count}",
       "doctorsEmpty": "Klinikada faol shifokorlar yo'q",
+      "activateNoDoctor": "Xizmatni yoqib bo'lmaydi: uni birorta ham faol shifokor ko'rsatmaydi. Shifokor kartasida uni tayinlang va qayta yoqing.",
       "cols": {
         "code": "Kod",
         "name": "Nomi",
@@ -4545,6 +4561,7 @@
           "sideEffects": "Nojo'ya ta'sirlar",
           "dosingAdult": "Doza: kattalar",
           "dosingPediatric": "Doza: bolalar",
+          "dosingElderly": "Doza: keksalar",
           "dosingRenal": "Doza: buyrak yetishmovchiligi",
           "rxOnly": "Faqat retsept bo'yicha"
         }

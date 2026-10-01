@@ -10,6 +10,7 @@ import {
   DEFAULT_SLOT_STEP_MIN,
   findAvailableSlots,
 } from "@/server/services/appointments";
+import { doctorServicesDuration } from "@/server/doctors/service-terms";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -36,15 +37,13 @@ export const GET = createApiListHandler(
       });
     }
 
-    // Appointment block = sum of selected services; with none selected it
-    // falls back to the 20-min grid step inside findAvailableSlots.
+    // Appointment block = sum of selected services AS THIS DOCTOR does them
+    // (his duration override wins, audit DR-02), so the grid offers the same
+    // block the booking will reserve; with none selected it falls back to
+    // the 20-min grid step inside findAvailableSlots.
     let blockMin: number | undefined;
     if (serviceIds.length > 0) {
-      const svcs = await prisma.service.findMany({
-        where: { id: { in: serviceIds } },
-        select: { durationMin: true },
-      });
-      const total = svcs.reduce((acc, s) => acc + s.durationMin, 0);
+      const total = await doctorServicesDuration(prisma, { doctorId, serviceIds });
       if (total > 0) blockMin = total;
     }
 

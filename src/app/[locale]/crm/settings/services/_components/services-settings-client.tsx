@@ -33,7 +33,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import { settingsFetch } from "../../_hooks/use-settings-api";
+import { SettingsApiError, settingsFetch } from "../../_hooks/use-settings-api";
 
 type ServiceRow = {
   id: string;
@@ -76,7 +76,14 @@ export function ServicesSettingsClient() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings", "services"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      // Switching a service on with nobody to perform it is refused (DR-07).
+      if (e instanceof SettingsApiError && e.reason === "service_orphaned") {
+        toast.error(t("services.activateNoDoctor"), { duration: 10_000 });
+        return;
+      }
+      toast.error(e.message);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -160,8 +167,8 @@ export function ServicesSettingsClient() {
                 <ServiceRowEditor
                   key={s.id}
                   row={s}
-                  onPatch={(data) =>
-                    patchMutation.mutate({ id: s.id, data })
+                  onPatch={(data, revert) =>
+                    patchMutation.mutate({ id: s.id, data }, { onError: revert })
                   }
                   onDelete={() => setPendingDelete(s)}
                 />
@@ -235,7 +242,8 @@ function ServiceRowEditor({
   onDelete,
 }: {
   row: ServiceRow;
-  onPatch: (data: Partial<ServiceRow>) => void;
+  /** `revert` puts the row back to the saved values when the server refuses. */
+  onPatch: (data: Partial<ServiceRow>, revert: () => void) => void;
   onDelete: () => void;
 }) {
   const t = useTranslations("settings");
@@ -244,7 +252,7 @@ function ServiceRowEditor({
 
   const commit = (patch: Partial<ServiceRow>) => {
     setLocal({ ...local, ...patch });
-    onPatch(patch);
+    onPatch(patch, () => setLocal(row));
   };
 
   return (

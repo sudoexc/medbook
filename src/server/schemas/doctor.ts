@@ -1,16 +1,28 @@
 import { z } from "zod";
 
+import {
+  DOCTOR_SERVICE_DURATION_MAX,
+  DOCTOR_SERVICE_DURATION_MIN,
+} from "@/lib/doctor-service-terms";
 import { TICKET_PREFIX_RE } from "@/server/services/ticket-number";
+import { queryBool } from "./query-bool";
 
 /**
  * One ServiceOnDoctor row in the create/update doctor payload.
- * `priceOverride` and `durationMinOverride` are nullable: omitting them
- * (or sending null) means "fall back to Service.priceBase / durationMin".
+ * `priceOverride` (tiyin) and `durationMinOverride` (minutes) are nullable:
+ * omitting them (or sending null) means "fall back to Service.priceBase /
+ * durationMin". Same bounds as the services editor's own schema.
  */
 export const DoctorServiceLinkSchema = z.object({
   serviceId: z.string().min(1),
   priceOverride: z.number().int().min(0).optional().nullable(),
-  durationMinOverride: z.number().int().min(5).max(480).optional().nullable(),
+  durationMinOverride: z
+    .number()
+    .int()
+    .min(DOCTOR_SERVICE_DURATION_MIN)
+    .max(DOCTOR_SERVICE_DURATION_MAX)
+    .optional()
+    .nullable(),
 });
 
 /**
@@ -91,7 +103,7 @@ export const CreateDoctorSchema = z.object({
 export const UpdateDoctorSchema = CreateDoctorSchema.partial();
 
 export const QueryDoctorSchema = z.object({
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBool(),
   specialization: z.string().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),

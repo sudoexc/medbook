@@ -15,6 +15,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, parseQuery } from "@/server/http";
 import { CreateDoctorSchema, QueryDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
+import { doctorAudience, doctorSelectFor } from "@/server/doctors/doctor-view";
 import {
   isTicketPrefixConflict,
   nextFreeTicketPrefix,
@@ -22,7 +23,7 @@ import {
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const parsed = parseQuery(request, QueryDoctorSchema);
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
@@ -43,9 +44,11 @@ export const GET = createApiListHandler(
       ];
     }
 
+    // Salary percent, login id and TV token are for the admin only (DR-09).
+    const select = doctorSelectFor(doctorAudience(ctx));
     const rows = await prisma.doctor.findMany({
       where,
-      include: { cabinet: true },
+      ...(select ? { select } : { include: { cabinet: true } }),
       orderBy: { nameRu: "asc" },
       take: q.limit + 1,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),

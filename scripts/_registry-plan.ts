@@ -197,6 +197,30 @@ export function normName(s: string): string {
 }
 
 /**
+ * The curated brands (prisma/_drug-catalog*.ts) a drug row does not carry
+ * yet, compared with `normName`, each once, in source order. What
+ * prisma/seed-drugs.ts adds (audit G4-10): it used to delete every brand of
+ * each curated drug and re-insert the source list, wiping the ~1800 trade
+ * names this import had hung on those same rows («МЕЗАКАР® SR», «ЭНАП®»), so
+ * doctors stopped finding them and the allergy checks stopped matching. A
+ * brand row is never removed by a seed now; a wrong one is a data fix.
+ */
+export function curatedBrandsToAdd(
+  existing: readonly string[],
+  curated: readonly string[],
+): string[] {
+  const have = new Set(existing.map(normName));
+  const out: string[] = [];
+  for (const name of curated) {
+    const key = normName(name);
+    if (!key || have.has(key)) continue;
+    have.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+/**
  * The substances a name lists, order-free: «Леводопа + карбидопа» and
  * «карбидопа + леводопа» give one key. Brackets stay: in the register they
  * tell products apart («… (для детей)» is not «… (для взрослых)»).

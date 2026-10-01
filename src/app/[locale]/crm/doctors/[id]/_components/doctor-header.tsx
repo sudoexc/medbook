@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   CalendarPlusIcon,
   DoorOpenIcon,
+  PencilIcon,
   StarIcon,
   StethoscopeIcon,
   TicketIcon,
@@ -23,6 +24,7 @@ import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-curr
 
 import { usePatchDoctor, type DoctorDetail } from "../_hooks/use-doctor";
 import { CabinetPickerDialog } from "./cabinet-picker-dialog";
+import { EditDoctorDialog } from "./edit-doctor-dialog";
 import { TicketPrefixDialog } from "./ticket-prefix-dialog";
 
 function parseRating(r: DoctorDetail["rating"]): number | null {
@@ -51,6 +53,7 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
       : null;
   const [cabinetOpen, setCabinetOpen] = React.useState(false);
   const [prefixOpen, setPrefixOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
   const patch = usePatchDoctor(doctor.id);
 
   return (
@@ -142,6 +145,14 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setEditOpen(true)}
+              >
+                <PencilIcon className="size-4" />
+                {t("profile.edit")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setCabinetOpen(true)}
               >
                 <DoorOpenIcon className="size-4" />
@@ -210,6 +221,11 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
             onOpenChange={setPrefixOpen}
             doctorId={doctor.id}
             current={doctor.ticketPrefix}
+          />
+          <EditDoctorDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            doctor={doctor}
           />
         </>
       ) : null}

@@ -325,7 +325,9 @@ describe("Q-05: the other CRM paths refuse the same way", () => {
     expect(h.updates).toEqual([]);
   });
 
-  it("generic PATCH with a raw queueStatus IN_PROGRESS for tomorrow: 409 not_today", async () => {
+  // Audit AP-03 tightened this path further: a bare `queueStatus` (without
+  // the same `status`) is no longer accepted at all, on any day.
+  it("generic PATCH with a raw queueStatus IN_PROGRESS for tomorrow: refused, nothing written", async () => {
     state.appts.set("t1", tomorrow("t1"));
     vi.resetModules();
     const { PATCH } = await import("@/app/api/crm/appointments/[id]/route");
@@ -336,8 +338,9 @@ describe("Q-05: the other CRM paths refuse the same way", () => {
       }),
     );
 
-    expect(res.status).toBe(409);
-    expect(((await res.json()) as Row).reason).toBe("not_today");
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain("queue_status_requires_status");
+    expect(h.updates).toEqual([]);
   });
 
   it("the doctor's «Вызвать» on tomorrow's visit: 409 not_today, no push", async () => {

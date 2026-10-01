@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { intlLocale } from "@/lib/format";
 import {
   CheckCircle2Icon,
+  CopyIcon,
   CreditCardIcon,
   PhoneIcon,
   PlugZapIcon,
@@ -29,18 +30,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
-import { PasswordReentryDialog } from "../../_components/password-reentry-dialog";
 import { TgConnectWizard } from "./tg-connect-wizard";
 
 type ProviderKind =
@@ -50,47 +41,6 @@ type ProviderKind =
   | "UZUM"
   | "OPENAI"
   | "OTHER";
-
-type ConfigFieldType = "text" | "url" | "select" | "number";
-
-type ConfigFieldDef = {
-  key: string;
-  type: ConfigFieldType;
-  required?: boolean;
-  placeholder?: string;
-  /** i18n key under `settings.integrations.cfg`. */
-  i18n: string;
-  /** Select options (value = stored value, i18n key under settings.integrations.cfg.<i18n>.opts). */
-  options?: string[];
-};
-
-/**
- * Per-provider field schemas. These replace the legacy free-form JSON
- * textarea — each known kind exposes typed inputs that map to the JSON
- * keys actually consumed by adapters (see server/notifications/adapters).
- *
- * Adding a new variant: extend VARIANTS[kind] + CONFIG_FIELDS[kind], then
- * mirror the i18n keys in ru.json / uz.json.
- */
-const VARIANTS: Partial<Record<ProviderKind, string[]>> = {
-  PAYME: ["payme", "click", "uzum"],
-  OTHER: ["sip", "custom"],
-};
-
-const CONFIG_FIELDS: Record<ProviderKind, ConfigFieldDef[]> = {
-  PAYME: [
-    { key: "merchantId", type: "text", required: true, i18n: "merchantId" },
-    { key: "mode", type: "select", options: ["test", "prod"], i18n: "mode" },
-  ],
-  CLICK: [],
-  UZUM: [],
-  TELEGRAM: [],
-  OPENAI: [{ key: "model", type: "text", i18n: "openaiModel" }],
-  OTHER: [
-    { key: "server", type: "text", i18n: "telServer" },
-    { key: "username", type: "text", i18n: "telUsername" },
-  ],
-};
 
 type ProviderConn = {
   id: string;
@@ -127,10 +77,12 @@ export function IntegrationsClient() {
   const connsQuery = useQuery({
     queryKey: ["settings", "integrations"],
     queryFn: () =>
-      settingsFetch<{ rows: ProviderConn[] }>("/api/crm/integrations"),
+      settingsFetch<{ rows: ProviderConn[]; sipWebhookUrl: string | null }>(
+        "/api/crm/integrations",
+      ),
   });
 
-  const [editKind, setEditKind] = React.useState<ProviderKind | null>(null);
+  const [telephonyOpen, setTelephonyOpen] = React.useState(false);
   const [tgWizardOpen, setTgWizardOpen] = React.useState(false);
 
   const tgStatusQuery = useQuery({
@@ -154,14 +106,11 @@ export function IntegrationsClient() {
   });
   const telephonyConnected = telephonyQuery.data?.connected === true;
 
-  const connsByKind = React.useMemo(() => {
-    const byKind: Partial<Record<ProviderKind, ProviderConn>> = {};
-    for (const r of connsQuery.data?.rows ?? []) {
-      // Take first (latest) active per kind.
-      if (!byKind[r.kind]) byKind[r.kind] = r;
-    }
-    return byKind;
-  }, [connsQuery.data]);
+  // The row the SIP webhook authenticates against (kind OTHER, label "sip").
+  const sipConn =
+    (connsQuery.data?.rows ?? []).find(
+      (r) => r.kind === "OTHER" && r.label === "sip",
+    ) ?? null;
 
   return (
     <PageContainer>
@@ -176,13 +125,12 @@ export function IntegrationsClient() {
           icon={<SendIcon className="size-5" />}
           title={t("integrations.cards.tg.title")}
           description={t("integrations.cards.tg.description")}
-          conn={connsByKind.TELEGRAM ?? null}
+          conn={null}
           configured={tgConfigured}
-          onSetup={() => {
-            if (tgConfigured) setEditKind("TELEGRAM");
-            else setTgWizardOpen(true);
-          }}
-          ctaKey={tgConfigured ? "setup" : "tgConnect"}
+          // The bot is the wizard's job, connected or not: a token typed
+          // anywhere else changed nothing (audit ST-05).
+          onSetup={() => setTgWizardOpen(true)}
+          ctaKey={tgConfigured ? "tgReconnect" : "tgConnect"}
           extra={
             tgConfigured ? (
               <>
@@ -202,18 +150,16 @@ export function IntegrationsClient() {
           }
         />
 
+        {/* No online payment integration exists: nothing reads Payme, Click
+            or Uzum keys, so there is nothing to set up (audit ST-05). */}
         <IntegrationCard
           kind="PAYME"
           icon={<CreditCardIcon className="size-5" />}
           title={t("integrations.cards.payment.title")}
           description={t("integrations.cards.payment.description")}
-          conn={
-            connsByKind.PAYME ??
-            connsByKind.CLICK ??
-            connsByKind.UZUM ??
-            null
-          }
-          onSetup={() => setEditKind("PAYME")}
+          conn={null}
+          stateOverride="unavailable"
+          hint={t("integrations.paymentUnavailableHint")}
         />
 
         <IntegrationCard
@@ -221,25 +167,25 @@ export function IntegrationsClient() {
           icon={<PhoneIcon className="size-5" />}
           title={t("integrations.cards.telephony.title")}
           description={t("integrations.cards.telephony.description")}
-          conn={connsByKind.OTHER ?? null}
+          conn={sipConn}
           stateOverride={telephonyConnected ? "ok" : "notConnected"}
           hint={
             telephonyConnected
               ? undefined
               : t("integrations.telephonyNotConnectedHint")
           }
-          onSetup={() => setEditKind("OTHER")}
+          onSetup={() => setTelephonyOpen(true)}
         />
       </div>
 
-      {editKind ? (
-        <ProviderEditDialog
-          kind={editKind}
-          existing={connsByKind[editKind] ?? null}
-          onClose={() => setEditKind(null)}
+      {telephonyOpen ? (
+        <TelephonyWebhookDialog
+          conn={sipConn}
+          webhookUrl={connsQuery.data?.sipWebhookUrl ?? null}
+          onClose={() => setTelephonyOpen(false)}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ["settings", "integrations"] });
-            setEditKind(null);
+            qc.invalidateQueries({ queryKey: ["telephony", "status"] });
           }}
         />
       ) : null}
@@ -279,17 +225,19 @@ function IntegrationCard({
   configured?: boolean;
   /**
    * A verdict from the server that beats the saved row: telephony is
-   * «Подключено» only once calls arrived, whatever was saved (UX-08).
+   * «Подключено» only once calls arrived, whatever was saved (UX-08), and
+   * an integration that does not exist yet is «Недоступно» (ST-05).
    */
-  stateOverride?: "ok" | "notConnected";
+  stateOverride?: "ok" | "notConnected" | "unavailable";
   /** A line under the description explaining the state. */
   hint?: string;
-  onSetup: () => void;
-  ctaKey?: "setup" | "tgConnect";
+  /** No handler → no setup button (nothing can be set up). */
+  onSetup?: () => void;
+  ctaKey?: "setup" | "tgConnect" | "tgReconnect";
   extra?: React.ReactNode;
 }) {
   const t = useTranslations("settings");
-  const state: "ok" | "warning" | "missing" | "notConnected" =
+  const state: "ok" | "warning" | "missing" | "notConnected" | "unavailable" =
     stateOverride ??
     (configured
       ? "ok"
@@ -328,19 +276,27 @@ function IntegrationCard({
             <PlugZapIcon className="size-3" />
             {state === "notConnected"
               ? t("integrations.state.notConnected")
-              : t("integrations.state.missing")}
+              : state === "unavailable"
+                ? t("integrations.state.unavailable")
+                : t("integrations.state.missing")}
           </span>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={onSetup} variant="outline" size="sm">
-          <PlugZapIcon className="size-4" />
-          {ctaKey === "tgConnect"
-            ? t("integrations.tgConnect")
-            : t("integrations.setup")}
-        </Button>
-        {extra}
-      </div>
+      {onSetup || extra ? (
+        <div className="flex flex-wrap gap-2">
+          {onSetup ? (
+            <Button onClick={onSetup} variant="outline" size="sm">
+              <PlugZapIcon className="size-4" />
+              {ctaKey === "tgConnect"
+                ? t("integrations.tgConnect")
+                : ctaKey === "tgReconnect"
+                  ? t("integrations.tgReconnect")
+                  : t("integrations.setup")}
+            </Button>
+          ) : null}
+          {extra}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -404,212 +360,110 @@ function TgDisconnectButton({
   );
 }
 
-function ProviderEditDialog({
-  kind,
-  existing,
+/**
+ * Telephony: the address and the secret a PBX needs to post call events to
+ * `/api/calls/sip/event` (audit ST-05). The old dialog saved a server, a
+ * login and a password nothing read, and never the `webhookSecret` the
+ * webhook checks, so every event was refused. The card turns «Подключено»
+ * only once a call really arrives (UX-08).
+ */
+function TelephonyWebhookDialog({
+  conn,
+  webhookUrl,
   onClose,
   onSaved,
 }: {
-  kind: ProviderKind;
-  existing: ProviderConn | null;
+  conn: ProviderConn | null;
+  webhookUrl: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const t = useTranslations("settings");
-  const fields = CONFIG_FIELDS[kind];
-  const variants = VARIANTS[kind];
-
-  // Hydrate config values from the existing row's JSON. Unknown keys are
-  // preserved and re-merged on save, so the dialog never silently drops
-  // data that doesn't have a typed field yet.
-  const initialConfig = React.useMemo<Record<string, unknown>>(
-    () => (existing?.config as Record<string, unknown> | null) ?? {},
-    [existing],
-  );
-
-  const [config, setConfig] = React.useState<Record<string, unknown>>(initialConfig);
-  const [label, setLabel] = React.useState<string>(
-    existing?.label ?? variants?.[0] ?? "",
-  );
-  const [secret, setSecret] = React.useState("");
-  const [active, setActive] = React.useState(existing?.active ?? true);
-  const [pwOpen, setPwOpen] = React.useState(false);
-
-  const setField = (key: string, value: string) =>
-    setConfig((prev) => ({ ...prev, [key]: value }));
-
-  const missingRequired = fields.some(
-    (f) => f.required && !String(config[f.key] ?? "").trim(),
-  );
+  const raw = conn?.active ? conn.config?.webhookSecret : null;
+  const secret = typeof raw === "string" && raw.length > 0 ? raw : null;
 
   const mut = useMutation({
-    mutationFn: (currentPassword: string | undefined) => {
-      // Strip empty strings so the stored JSON stays clean, but preserve
-      // any unknown keys that came in from `existing.config`.
-      const cleaned: Record<string, unknown> = { ...config };
-      for (const f of fields) {
-        const v = cleaned[f.key];
-        if (typeof v === "string" && v.trim() === "") delete cleaned[f.key];
-      }
-      const body: Record<string, unknown> = {
-        kind,
-        label: label || null,
-        active,
-        config: cleaned,
-      };
-      if (secret) {
-        body.secret = secret;
-        body.currentPassword = currentPassword;
-      }
-      return settingsFetch<ProviderConn>("/api/crm/integrations", {
+    mutationFn: (rotate: boolean) =>
+      settingsFetch<ProviderConn>("/api/crm/integrations", {
         method: "POST",
-        body: JSON.stringify(body),
-      });
-    },
+        body: JSON.stringify({
+          kind: "OTHER",
+          label: "sip",
+          active: true,
+          rotateWebhookSecret: rotate,
+        }),
+      }),
     onSuccess: () => {
-      toast.success(t("common.saved"));
+      toast.success(t("integrations.telephony.saved"));
       onSaved();
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const needsPassword = secret.length > 0;
+  const copy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(t("integrations.telephony.copied"));
+    } catch {
+      toast.error(t("integrations.telephony.copyFailed"));
+    }
+  };
+
+  const row = (label: string, value: string) => (
+    <div>
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <div className="mt-1 flex items-center gap-2">
+        <Input value={value} readOnly className="font-mono text-xs" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => void copy(value)}
+          aria-label={t("integrations.telephony.copy")}
+        >
+          <CopyIcon className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
-    <>
-      <Dialog open onOpenChange={(v: boolean) => !v && onClose()}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {t("integrations.editTitle", { kind })}
-            </DialogTitle>
-            <DialogDescription>
-              {t("integrations.editHint")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {variants ? (
-              <div>
-                <Label>{t("integrations.fields.variant")}</Label>
-                <Select value={label || variants[0]} onValueChange={setLabel}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {variants.map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {t(`integrations.variants.${v}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-
-            <div>
-              <Label>{t("integrations.fields.secret")}</Label>
-              <Input
-                type="password"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-                placeholder={
-                  existing?.hasSecret
-                    ? t("integrations.fields.secretKeepBlank")
-                    : ""
-                }
-                autoComplete="off"
-              />
-              {existing?.hasSecret ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("integrations.fields.currentSecretIndicator", {
-                    mask: existing.secretMasked ?? "••••",
-                  })}
-                </p>
-              ) : null}
-            </div>
-
-            {fields.map((f) => {
-              const value = String(config[f.key] ?? "");
-              if (f.type === "select") {
-                return (
-                  <div key={f.key}>
-                    <Label>{t(`integrations.cfg.${f.i18n}.label`)}</Label>
-                    <Select
-                      value={value || (f.options?.[0] ?? "")}
-                      onValueChange={(v) => setField(f.key, v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {f.options?.map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {t(`integrations.cfg.${f.i18n}.opts.${opt}`)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                );
-              }
-              return (
-                <div key={f.key}>
-                  <Label>
-                    {t(`integrations.cfg.${f.i18n}.label`)}
-                    {f.required ? (
-                      <span className="text-destructive"> *</span>
-                    ) : null}
-                  </Label>
-                  <Input
-                    type={f.type === "url" ? "url" : f.type === "number" ? "number" : "text"}
-                    value={value}
-                    onChange={(e) => setField(f.key, e.target.value)}
-                    placeholder={t(`integrations.cfg.${f.i18n}.placeholder`)}
-                    inputMode={f.type === "url" ? "url" : undefined}
-                  />
-                </div>
-              );
-            })}
-
-            <div className="flex items-center gap-2 pt-1">
-              <Switch
-                checked={active}
-                onCheckedChange={setActive}
-                id="prov-active"
-              />
-              <Label htmlFor="prov-active">
-                {active
-                  ? t("integrations.active")
-                  : t("integrations.inactive")}
-              </Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={onClose}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                if (needsPassword) setPwOpen(true);
-                else mut.mutate(undefined);
-              }}
-              disabled={mut.isPending || missingRequired}
-            >
-              {mut.isPending ? t("common.saving") : t("common.save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <PasswordReentryDialog
-        open={pwOpen}
-        onOpenChange={setPwOpen}
-        onConfirm={async (password) => {
-          await mut.mutateAsync(password);
-          setPwOpen(false);
-        }}
-      />
-    </>
+    <Dialog open onOpenChange={(v: boolean) => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("integrations.telephony.title")}</DialogTitle>
+          <DialogDescription>{t("integrations.telephony.hint")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          {webhookUrl ? row(t("integrations.telephony.url"), webhookUrl) : null}
+          {secret ? (
+            <>
+              {row(t("integrations.telephony.header"), "x-sip-secret")}
+              {row(t("integrations.telephony.secret"), secret)}
+              <p className="text-xs text-muted-foreground">
+                {t("integrations.telephony.rotateHint")}
+              </p>
+            </>
+          ) : (
+            <p className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
+              {t("integrations.telephony.noSecret")}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            {t("common.close")}
+          </Button>
+          <Button onClick={() => mut.mutate(Boolean(secret))} disabled={mut.isPending}>
+            {mut.isPending
+              ? t("common.saving")
+              : secret
+                ? t("integrations.telephony.rotate")
+                : t("integrations.telephony.generate")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

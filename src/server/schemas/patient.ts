@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+import { isTashkentDateString } from "@/lib/tashkent-time";
+import { TashkentDaySchema } from "@/server/schemas/common";
+
+/** A list period bound: a Tashkent calendar day or an ISO instant. */
+const PeriodBoundSchema = z
+  .string()
+  .refine((s) => isTashkentDateString(s) || !Number.isNaN(Date.parse(s)), {
+    message: "expected YYYY-MM-DD or an ISO date-time",
+  });
+
 export const GenderEnum = z.enum(["MALE", "FEMALE"]);
 export const LangEnum = z.enum(["RU", "UZ"]);
 export const CommunicationChannelEnum = z.enum([
@@ -61,8 +71,14 @@ export const QueryPatientSchema = z.object({
   balance: z
     .enum(["debt", "zero", "credit"])
     .optional(),
-  registeredFrom: z.coerce.date().optional(),
-  registeredTo: z.coerce.date().optional(),
+  // A Tashkent day (YYYY-MM-DD, the whole day) or a full ISO instant; see
+  // `buildPatientListWhere`. `z.coerce.date()` turned «2026-09-15» into UTC
+  // midnight and dropped the last day (audit PT-18).
+  registeredFrom: PeriodBoundSchema.optional(),
+  registeredTo: PeriodBoundSchema.optional(),
+  // «Дата посещения»: Tashkent days, both included (audit PT-18).
+  visitedFrom: TashkentDaySchema.optional(),
+  visitedTo: TashkentDaySchema.optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   sort: z

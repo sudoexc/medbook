@@ -11,7 +11,8 @@
  *
  * Resolution order:
  *   1. `bodyOverride` (when provided) — must belong to the active clinic.
- *   2. `ctx.branchId` (cookie) — already validated when the cookie was set.
+ *   2. `ctx.branchId` (cookie) — the API handler drops it on every request
+ *      unless it is an active branch of the clinic (audit ST-06).
  *   3. The clinic's `isDefault=true` branch — there's always one (seed +
  *      backfill enforce this).
  *   4. `null` — the branch column stays nullable, so writes still succeed.

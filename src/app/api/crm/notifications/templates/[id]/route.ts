@@ -6,7 +6,11 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { err, ok, notFound, diff } from "@/server/http";
-import { sanitizeTriggerConfig } from "@/server/notifications/rules";
+import {
+  sanitizeTriggerConfig,
+  templateChannelRefusal,
+  verbatimPlaceholderLeak,
+} from "@/server/notifications/rules";
 import { retireSlotRivals } from "@/server/notifications/template-slot";
 import { UpdateTemplateSchema } from "@/server/schemas/notification";
 
@@ -33,11 +37,28 @@ export const PATCH = createApiHandler(
       where: { id },
     });
     if (!before) return notFound();
-    // No EMAIL adapter exists (audit TG-25); a legacy EMAIL row may still be
-    // edited, but nothing is switched to EMAIL.
-    if (body.channel === "EMAIL" && before.channel !== "EMAIL") {
-      return err("ChannelNotAvailable", 400, { channel: "EMAIL" });
+    // The bot's greeting is sent verbatim: a placeholder would reach the
+    // patient as «{{patient.firstName}}» (audit ST-08). Checked on the texts
+    // this edit sends, or on both when it renames a template to that key.
+    const nextKey = body.key ?? before.key;
+    const leak = verbatimPlaceholderLeak(
+      nextKey,
+      body.key && body.key !== before.key
+        ? [body.bodyRu ?? before.bodyRu, body.bodyUz ?? before.bodyUz]
+        : [body.bodyRu, body.bodyUz],
+    );
+    if (leak) {
+      return err("UnknownPlaceholder", 400, { unknown: leak, allowed: [] });
     }
+    // No email delivery exists (audit UX-10): an EMAIL template stays off.
+    const refusal = templateChannelRefusal(
+      {
+        channel: body.channel ?? before.channel,
+        isActive: body.isActive ?? before.isActive,
+      },
+      before,
+    );
+    if (refusal) return err("ChannelNotSupported", 400, { reason: refusal });
     const data: Record<string, unknown> = { ...body };
     if (body.triggerConfig !== undefined) {
       const trigger = body.trigger ?? before.trigger;

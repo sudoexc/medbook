@@ -69,6 +69,15 @@ import {
   revivesBooking,
 } from "@/server/appointments/revert-restore";
 import { checkInResetOnMove } from "@/lib/appointments/self-check-in";
+import { canEditPrice, priceFieldsIn } from "@/lib/appointments/price-edit";
+import {
+  loadDoctorMoveTerms,
+  loadDoctorServiceTerms,
+} from "@/server/doctors/service-terms";
+import {
+  durationAfterDoctorChange,
+  linePricesForDoctor,
+} from "@/lib/doctor-service-terms";
 
 /** Who may record a risk-today outcome: the roles of its endpoint (and
  *  SUPER_ADMIN, whom the handler lets through every role list). */
@@ -202,6 +211,18 @@ export const PATCH = createApiHandler(
       before.doctor.userId !== ctx.userId
     ) {
       return forbidden();
+    }
+
+    // Audit AP-03 — overriding the price (final price, discount, a line's
+    // price) is the front desk's and the administrator's call; a doctor's
+    // own PATCH could zero his visit's bill. The patient and the case are
+    // refused by the schema (400); a queue move without a status too.
+    const priceFields = priceFieldsIn(body);
+    if (priceFields.length > 0 && ctx.kind === "TENANT" && !canEditPrice(ctx.role)) {
+      return err("Forbidden", 403, {
+        reason: "role_cannot_edit_price",
+        fields: priceFields,
+      });
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -717,6 +738,9 @@ export const PATCH = createApiHandler(
       }
       nextCabinetId = newDoc.cabinetId;
     }
+    // Set when the visit moves to another doctor (review of DR-02, below).
+    let doctorLinePrices: { serviceId: string; priceSnap: number }[] = [];
+    let doctorDurationMin: number | null = null;
 
     if (timeChanged) {
       const date = body.date ?? before.date;
@@ -747,6 +771,37 @@ export const PATCH = createApiHandler(
             from: before.status,
             action: "reschedule",
           });
+        }
+      }
+      // Review of DR-02: price and length depend on the doctor, and the
+      // calendar's drag to another doctor's column sends only date, time and
+      // doctorId. The visit kept the leaving doctor's line prices (the
+      // reprice below rebuilds the total from them) and his slot length, so
+      // his 300 000 consult moved to a 200 000 colleague stayed at 300 000.
+      // It now takes the new doctor's terms, as booking him would have, and
+      // the overlap check below runs on the block it will really occupy. A
+      // PATCH that also sends `services` prices its new lines with the new
+      // doctor already and owns the length, like `durationMin` does.
+      if (doctorId !== before.doctorId && body.services === undefined) {
+        const move = await loadDoctorMoveTerms(prisma, {
+          appointmentId: id,
+          fromDoctorId: before.doctorId,
+          toDoctorId: doctorId,
+        });
+        // A paid visit keeps its price on a move (the pricing engine's
+        // lock), so its lines stay too: lines that disagree with the total
+        // would resurface on the next explicit services edit.
+        if (!move.paid) {
+          doctorLinePrices = linePricesForDoctor(move.lines, move.to);
+        }
+        if (body.durationMin === undefined) {
+          doctorDurationMin = durationAfterDoctorChange({
+            durationMin: before.durationMin,
+            serviceIds: move.serviceIds,
+            from: move.from,
+            to: move.to,
+          });
+          endAt = computeEndDate(startAt, doctorDurationMin);
         }
       }
       // Two-lanes (TZ I4): a walk-in never reaches here with a move (refused
@@ -783,6 +838,9 @@ export const PATCH = createApiHandler(
     }
     if (body.doctorId !== undefined && body.doctorId !== before.doctorId) {
       data.cabinetId = nextCabinetId;
+    }
+    if (doctorDurationMin !== null && doctorDurationMin !== before.durationMin) {
+      data.durationMin = doctorDurationMin;
     }
 
     // Rescheduling an arrived (WAITING) row onto a different Tashkent day
@@ -886,14 +944,14 @@ export const PATCH = createApiHandler(
     delete (data as { services?: unknown }).services;
 
     // Recompute pricing whenever any input that could affect free-repeat
-    // changed: date moved, the service set was edited, the medical-case
-    // attachment shifted, or visit-level discount fields were touched. We
-    // call the helper inside the same tx so the row never observes a
-    // transient inconsistent state.
+    // changed: date moved, the service set was edited, or visit-level
+    // discount fields were touched. We call the helper inside the same tx so
+    // the row never observes a transient inconsistent state. (The case
+    // attachment changes only through attach/detach since AP-03, which
+    // reprice on their own.)
     const recomputeNeeded =
       timeChanged ||
       services !== undefined ||
-      body.medicalCaseId !== undefined ||
       body.serviceId !== undefined ||
       discountChanged;
     // A change to the visit's own services is staff asking to bill something
@@ -914,16 +972,10 @@ export const PATCH = createApiHandler(
       (body.status === "CANCELLED" || body.status === "NO_SHOW") &&
       before.status !== body.status;
     // Date changes can flip the chronological order of the case, so every
-    // sibling needs re-pricing too. Same for moving an appointment between
-    // cases via PATCH (the dedicated attach/detach routes handle that case
-    // for themselves; this branch covers callers who use PATCH directly).
-    const caseChanged =
-      body.medicalCaseId !== undefined &&
-      body.medicalCaseId !== before.medicalCaseId;
+    // sibling needs re-pricing too.
     const siblingRepriceNeeded =
       statusKillsVisit ||
-      (timeChanged && before.medicalCaseId !== null) ||
-      caseChanged;
+      (timeChanged && before.medicalCaseId !== null);
 
     const patchCorrelationId = newCorrelationId();
     const runPatchTx = <T,>(fn: (tx: TxClient) => Promise<T>): Promise<T> =>
@@ -934,16 +986,26 @@ export const PATCH = createApiHandler(
           )
         : prisma.$transaction(fn);
     const patchOutcome = await orActiveVisitConflict(runPatchTx(async (tx) => {
+      // The new doctor's line prices go in before the reprice below reads
+      // the lines (timeChanged is set by a doctor change).
+      for (const line of doctorLinePrices) {
+        await tx.appointmentService.updateMany({
+          where: { appointmentId: id, serviceId: line.serviceId },
+          data: { priceSnap: line.priceSnap },
+        });
+      }
       if (services !== undefined) {
         await tx.appointmentService.deleteMany({
           where: { appointmentId: id },
         });
         if (services.length > 0) {
-          const svcRows = await tx.service.findMany({
-            where: { id: { in: services.map((s) => s.serviceId) } },
-            select: { id: true, priceBase: true },
+          // Priced as the visit's doctor charges (audit DR-02), the same rule
+          // the booking kernel snapshots at create time.
+          const terms = await loadDoctorServiceTerms(tx, {
+            doctorId: body.doctorId ?? before.doctorId,
+            serviceIds: services.map((s) => s.serviceId),
           });
-          const priceMap = new Map(svcRows.map((s) => [s.id, s.priceBase]));
+          const priceMap = new Map([...terms].map(([sid, t]) => [sid, t.price]));
           await tx.appointmentService.createMany({
             data: services.map((s) => ({
               appointmentId: id,
@@ -975,17 +1037,9 @@ export const PATCH = createApiHandler(
         ? await recomputeAppointmentPrice(tx, id, { servicesEdited })
         : null;
       // Now repropagate to every sibling whose "first vs repeat" answer
-      // could have flipped from this single change. Cover both old and new
-      // cases when the appointment moved between cases.
-      if (siblingRepriceNeeded) {
-        const targetCases = new Set<string>();
-        if (updated.medicalCaseId) targetCases.add(updated.medicalCaseId);
-        if (caseChanged && before.medicalCaseId) {
-          targetCases.add(before.medicalCaseId);
-        }
-        for (const cid of targetCases) {
-          await recomputeCaseAppointments(tx, cid);
-        }
+      // could have flipped from this single change.
+      if (siblingRepriceNeeded && updated.medicalCaseId) {
+        await recomputeCaseAppointments(tx, updated.medicalCaseId);
       }
       // Re-read so the response reflects price fields that recompute may
       // have rewritten.
@@ -1063,6 +1117,28 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    // Audit AP-03 — a hand-set price gets its own row, findable without
+    // reading every update diff: who overrode what, from what, to what.
+    if (priceFields.length > 0) {
+      await audit(request, {
+        action: AUDIT_ACTION.APPOINTMENT_PRICE_OVERRIDE,
+        entityType: "Appointment",
+        entityId: id,
+        meta: {
+          fields: priceFields,
+          before: {
+            priceFinal: before.priceFinal,
+            discountPct: before.discountPct,
+            discountAmount: before.discountAmount,
+          },
+          after: {
+            priceFinal: after.priceFinal,
+            discountPct: after.discountPct,
+            discountAmount: after.discountAmount,
+          },
+        },
+      });
+    }
     // Phase 11 — high-signal reschedule audit. Emit a dedicated
     // APPOINTMENT_RESCHEDULED row whenever any of the slot-defining fields
     // (start time, end time, doctor, cabinet) actually changed. Status-only

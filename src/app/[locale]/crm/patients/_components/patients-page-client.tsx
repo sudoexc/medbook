@@ -138,6 +138,8 @@ export function PatientsPageClient() {
     Boolean(state.ageMax) ||
     Boolean(state.registeredFrom) ||
     Boolean(state.registeredTo) ||
+    Boolean(state.visitedFrom) ||
+    Boolean(state.visitedTo) ||
     state.balance === "debt";
 
   const activeTab: PatientsTabKey = state.segment

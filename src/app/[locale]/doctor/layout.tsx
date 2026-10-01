@@ -11,6 +11,7 @@ import { DoctorSidebar } from "./_components/doctor-sidebar";
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts";
 import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch";
 import { DoctorTopbar } from "./_components/doctor-topbar";
+import { DoctorCardMissing } from "./_components/doctor-card-missing";
 
 // Doctor cabinet is LIVE — unpaused on prod (DOCTOR_CABINET_ENABLED=1). All
 // unpause blockers are closed: P0.1 fake data removed (visit screens read real
@@ -68,7 +69,9 @@ export default async function DoctorLayout({
   );
 
   if (!doctor) {
-    redirect(`/${locale}/crm?error=doctor_profile_missing`);
+    // No redirect: /crm sends a DOCTOR straight back here, and the pair
+    // looped until the browser gave up (audit ST-04). Say what is missing.
+    return <DoctorCardMissing />;
   }
 
   return (

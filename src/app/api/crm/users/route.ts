@@ -16,14 +16,11 @@ import {
   CreateUserSchema,
   QueryUserSchema,
 } from "@/server/schemas/user";
+import { redactStaffUser } from "@/server/users/staff-user";
+import { runClinicWide } from "@/server/branches/branch-rules";
 
-function redactUser<T extends { passwordHash?: string | null }>(
-  u: T
-): Omit<T, "passwordHash"> {
-  const { passwordHash: _pw, ...rest } = u;
-  void _pw;
-  return rest;
-}
+// Secrets (password hash, TOTP material) never leave the server.
+const redactUser = redactStaffUser;
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN"] },
@@ -62,8 +59,27 @@ export const GET = createApiListHandler(
       const next = rows.pop();
       nextCursor = next?.id ?? null;
     }
+    // The schedule card each doctor login holds, so the edit dialog can show
+    // it and ask for one when it is missing (audit ST-04).
+    // Clinic-wide: a selected branch must not hide a doctor's card.
+    const cards =
+      rows.length > 0
+        ? await runClinicWide(ctx, () =>
+            prisma.doctor.findMany({
+              where: { userId: { in: rows.map((r) => r.id) } },
+              select: { id: true, userId: true, nameRu: true },
+            }),
+          )
+        : [];
+    const cardByUser = new Map(cards.map((c) => [c.userId, c]));
     return ok({
-      rows: rows.map(redactUser),
+      rows: rows.map((r) => {
+        const card = cardByUser.get(r.id);
+        return {
+          ...redactUser(r),
+          doctorCard: card ? { id: card.id, nameRu: card.nameRu } : null,
+        };
+      }),
       nextCursor,
       total,
     });
@@ -85,7 +101,14 @@ export const POST = createApiHandler(
       where: { email: body.email },
     });
     if (existing) {
-      return err("conflict", 409, { reason: "email_taken" });
+      // Email is unique across the installation, so a deactivated colleague
+      // keeps it. Say so: the way back is to switch that account on again
+      // (audit ST-04), not a second login.
+      const inactiveHere =
+        existing.clinicId === ctx.clinicId && !existing.active;
+      return err("conflict", 409, {
+        reason: inactiveHere ? "email_taken_inactive" : "email_taken",
+      });
     }
 
     if (body.role === "DOCTOR") {

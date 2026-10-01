@@ -16,6 +16,12 @@ vi.mock("@/lib/prisma", () => ({
       if (!dbState.ok) throw new Error(dbState.errorMessage);
       return [{ "?column?": 1 }];
     }),
+    // The workers check reads the tables the worker drains (audit INF-01).
+    eventOutbox: {
+      findFirst: vi.fn(async () => null),
+      count: vi.fn(async () => 0),
+    },
+    notificationSend: { findFirst: vi.fn(async () => null) },
   },
 }));
 
@@ -37,7 +43,8 @@ afterEach(() => {
 });
 
 async function loadHandler() {
-  // Re-import per test so env changes take effect + we pick up the mock.
+  // Re-import per test so env changes take effect + we pick up the mock
+  // (a fresh module also drops the workers check's 10 s cache).
   vi.resetModules();
   const mod = await import("@/app/api/health/route");
   return mod.GET;
@@ -53,8 +60,10 @@ describe("/api/health — public probe", () => {
     expect(body.checks.db.status).toBe("ok");
     expect(body.checks.redis.status).toBe("not_configured");
     expect(body.checks.minio.status).toBe("not_configured");
-    expect(body.checks.workers.status).toBe("ok");
-    expect(Array.isArray(body.checks.workers.queues)).toBe(true);
+    // No Redis: no heartbeat channel between the processes, said as such
+    // instead of a hard-coded "ok" (audit INF-01).
+    expect(body.checks.workers.status).toBe("not_configured");
+    expect(body.checks.workers.outbox).toEqual({ oldestPendingSec: null, dead24h: 0 });
     expect(typeof body.uptime).toBe("number");
     expect(typeof body.version).toBe("string");
     expect(typeof body.generatedAt).toBe("string");
@@ -69,7 +78,9 @@ describe("/api/health — public probe", () => {
     const body = await res.json();
     expect(body.status).toBe("down");
     expect(body.checks.db.status).toBe("down");
-    expect(body.checks.db.error).toContain("connection refused");
+    // A public probe never echoes the error text (audit INF-01): it went to
+    // the server log instead.
+    expect(JSON.stringify(body)).not.toContain("connection refused");
   });
 
   it("sets no-store cache headers", async () => {

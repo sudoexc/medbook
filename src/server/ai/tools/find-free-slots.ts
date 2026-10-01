@@ -291,6 +291,7 @@ export const findFreeSlotsTool: Tool<FindFreeSlotsInput> = {
       ok: true,
       data: { slots: free },
       summary,
+      names: free.map((s) => s.doctorName),
       chips: free.map((s) => ({
         kind: "slot" as const,
         label: `${s.doctorName} · ${s.date} ${String(s.hour).padStart(2, "0")}:00`,

@@ -26,7 +26,8 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
 import { checkUpload } from "@/server/storage/safe-file";
-import { isStubMode, uploadObject } from "@/server/storage/minio";
+import { Prisma } from "@/generated/prisma/client";
+import { deleteObject, isStubMode, uploadObject } from "@/server/storage/minio";
 import { sanitizeOverrides } from "@/server/catalog/clinic-overlay";
 import { staffKeyHref } from "@/lib/storage-ref";
 
@@ -43,39 +44,53 @@ function idFromUrl(request: Request): string {
   return parts[parts.length - 2] ?? "";
 }
 
-/** Merge a photo into this clinic's overlay for a global catalog row. */
+/**
+ * Merge a photo into this clinic's overlay for a global catalog row.
+ *
+ * Most global drugs have no overlay yet, so the first photo creates one, and
+ * that create used to omit the required `createdById` (hidden by an
+ * `as never` cast): every first upload for the shared catalog failed with a
+ * 500 after the file was already stored (audit CT-13). The overlay's
+ * `hideGlobal` also defaults to true, so a create that only set the author
+ * would have hidden the drug from every doctor of the clinic. The upsert on
+ * the unique key sets both explicitly and cannot race a parallel upload into
+ * a duplicate-key error.
+ */
 async function setOverlayPhoto(
-  clinicId: string,
-  drugId: string,
+  args: { clinicId: string; userId: string; drugId: string },
   photoUrl: string | null,
 ): Promise<void> {
-  const existing = await prisma.clinicCatalogOverlay.findFirst({
-    where: { clinicId, entityType: "DRUG", entityCode: drugId },
-    select: { id: true, overridesJson: true },
+  const key = {
+    clinicId: args.clinicId,
+    entityType: "DRUG" as const,
+    entityCode: args.drugId,
+  };
+  const existing = await prisma.clinicCatalogOverlay.findUnique({
+    where: { clinicId_entityType_entityCode: key },
+    select: { overridesJson: true },
   });
-  const current =
-    (sanitizeOverrides("DRUG", existing?.overridesJson) as Record<
-      string,
-      unknown
-    > | null) ?? {};
-  const next = { ...current };
+  // Removing a photo the clinic never had: nothing to store.
+  if (!existing && !photoUrl) return;
+  const next: Record<string, unknown> = {
+    ...(sanitizeOverrides("DRUG", existing?.overridesJson) ?? {}),
+  };
   if (photoUrl) next.photoUrl = photoUrl;
   else delete next.photoUrl;
+  const overridesJson =
+    Object.keys(next).length > 0
+      ? (next as Prisma.InputJsonValue)
+      : Prisma.JsonNull;
 
-  if (existing) {
-    await prisma.clinicCatalogOverlay.update({
-      where: { id: existing.id },
-      data: { overridesJson: next as never },
-    });
-    return;
-  }
-  await prisma.clinicCatalogOverlay.create({
-    data: {
-      clinicId,
-      entityType: "DRUG",
-      entityCode: drugId,
-      overridesJson: next as never,
-    } as never,
+  await prisma.clinicCatalogOverlay.upsert({
+    where: { clinicId_entityType_entityCode: key },
+    create: {
+      ...key,
+      // A photo must never hide the drug it illustrates.
+      hideGlobal: false,
+      overridesJson,
+      createdById: args.userId,
+    },
+    update: { overridesJson, updatedById: args.userId },
   });
 }
 
@@ -118,6 +133,9 @@ export const POST = createApiHandler(
 
     const filename = `${randomUUID()}.${ext}`;
     let photoUrl: string;
+    // Undoes the stored file when the database write below fails, so a
+    // refused save leaves no orphan behind in the bucket (CT-13).
+    let discardStored: () => Promise<void>;
     if (isStubMode()) {
       const dir = path.join(
         process.cwd(),
@@ -127,8 +145,10 @@ export const POST = createApiHandler(
         ctx.clinicId,
       );
       await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(path.join(dir, filename), buf);
+      const file = path.join(dir, filename);
+      await fs.writeFile(file, buf);
       photoUrl = `/uploads/drugs/${ctx.clinicId}/${filename}`;
+      discardStored = () => fs.rm(file, { force: true });
     } else {
       const key = `drugs/${ctx.clinicId}/${id}/${filename}`;
       await uploadObject(undefined, key, buf, photoMime);
@@ -137,12 +157,27 @@ export const POST = createApiHandler(
       // rendered as a broken image (audit CD-02). Rows saved the old way are
       // rewritten by scripts/fix-cd02-drug-photo-urls.ts.
       photoUrl = staffKeyHref(key);
+      discardStored = () => deleteObject(undefined, key);
     }
 
-    if (drug.clinicId) {
-      await prisma.drug.update({ where: { id }, data: { photoUrl } });
-    } else {
-      await setOverlayPhoto(ctx.clinicId, id, photoUrl);
+    try {
+      if (drug.clinicId) {
+        await prisma.drug.update({ where: { id }, data: { photoUrl } });
+      } else {
+        await setOverlayPhoto(
+          { clinicId: ctx.clinicId, userId: ctx.userId, drugId: id },
+          photoUrl,
+        );
+      }
+    } catch (e) {
+      await discardStored().catch((cleanupErr: unknown) => {
+        console.warn(
+          `[drug-photo] could not remove the orphaned upload: ${
+            cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+          }`,
+        );
+      });
+      throw e;
     }
 
     await audit(request, {
@@ -172,7 +207,10 @@ export const DELETE = createApiHandler(
     if (drug.clinicId) {
       await prisma.drug.update({ where: { id }, data: { photoUrl: null } });
     } else {
-      await setOverlayPhoto(ctx.clinicId, id, null);
+      await setOverlayPhoto(
+        { clinicId: ctx.clinicId, userId: ctx.userId, drugId: id },
+        null,
+      );
     }
 
     await audit(request, {

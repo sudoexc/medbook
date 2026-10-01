@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import {
   ArrowLeftIcon,
@@ -12,6 +13,7 @@ import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
+import { notePatientView } from "@/server/audit/patient-view";
 
 import { VisitNoteReadOnly } from "./_components/visit-note-readonly";
 import { PrintVisitButton } from "./_components/print-visit-button";
@@ -114,6 +116,22 @@ export default async function VisitDetailPage({
   );
 
   if (!data) notFound();
+
+  // The doctor reading a past visit is a chart read for «Просмотры
+  // карточек» (audit G1-06); fire-and-forget, the page never waits on it.
+  notePatientView(
+    prisma,
+    { headers: await headers() },
+    {
+      kind: "TENANT",
+      clinicId: session.user.clinicId,
+      userId: session.user.id,
+      role: "DOCTOR",
+    },
+    data.note.patientId,
+    "doctor.visit",
+    data.note.id,
+  );
 
   const t = await getTranslations("doctor.visits");
 

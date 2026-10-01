@@ -8,7 +8,8 @@
  * Validation:
  *   - Reject unknown placeholders against ALLOWED_KEYS_BY_TRIGGER for the
  *     row's logical trigger (computed server-side from `trigger` enum +
- *     existing triggerConfig.offsetMin).
+ *     existing triggerConfig.offsetMin); a verbatim template (the bot's
+ *     greeting) allows none.
  *   - Reject empty bodies (server-side guard mirroring UI).
  *   - Sanitize triggerConfig (clamp offsetMin, normalize channels).
  */
@@ -20,9 +21,9 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
 import { validate } from "@/server/notifications/template";
 import {
-  allowedKeysFor,
-  logicalTriggerKey,
+  allowedKeysForTemplate,
   sanitizeTriggerConfig,
+  templateChannelRefusal,
 } from "@/server/notifications/rules";
 import { retireSlotRivals } from "@/server/notifications/template-slot";
 
@@ -56,12 +57,8 @@ export const PATCH = createApiHandler(
     });
     if (!before) return notFound();
 
-    const logical = logicalTriggerKey(
-      before.trigger,
-      before.triggerConfig,
-      before.key,
-    );
-    const allowed = allowedKeysFor(logical);
+    // The greeting is sent verbatim: no placeholders (audit ST-08).
+    const allowed = allowedKeysForTemplate(before);
 
     const data: Record<string, unknown> = {};
 
@@ -124,6 +121,17 @@ export const PATCH = createApiHandler(
     if (Object.keys(data).length === 0) {
       return err("EmptyPatch", 400);
     }
+
+    // No email delivery exists (audit UX-10): an EMAIL template is not
+    // switched on here either.
+    const refusal = templateChannelRefusal(
+      {
+        channel: (data.channel as string | undefined) ?? before.channel,
+        isActive: (data.isActive as boolean | undefined) ?? before.isActive,
+      },
+      before,
+    );
+    if (refusal) return err("ChannelNotSupported", 400, { reason: refusal });
 
     const { after, retired } = await prisma.$transaction(async (tx) => {
       const after = await tx.notificationTemplate.update({

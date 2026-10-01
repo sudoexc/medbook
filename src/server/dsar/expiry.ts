@@ -35,3 +35,14 @@ export function isExportExpired(expiresAt: Date, now: Date): boolean {
 export function isDeletionDue(scheduledFor: Date, now: Date): boolean {
   return scheduledFor.getTime() <= now.getTime();
 }
+
+/**
+ * Where DSAR bundles are stored (audit PT-09). The default used to be a
+ * separate «exports» bucket that neither the code nor the compose files
+ * ever create, so on a server without MINIO_EXPORTS_BUCKET every export
+ * failed at upload. The bundles now go to the app's own private bucket
+ * (`undefined` = MINIO_BUCKET) under `exports/<clinicId>/`, a prefix the
+ * staff file proxy does not serve; MINIO_EXPORTS_BUCKET still overrides.
+ */
+export const DSAR_EXPORTS_BUCKET: string | undefined =
+  process.env.MINIO_EXPORTS_BUCKET || undefined;

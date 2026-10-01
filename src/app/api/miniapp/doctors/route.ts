@@ -11,6 +11,10 @@
  * App booking with him is made for (`resolveOnlineService`): the admin's
  * pick, else his only active service, else null, and the wizard then shows
  * the doctor as «запишитесь по телефону» instead of guessing.
+ *
+ * Each service carries THIS doctor's price (`priceOverride` over the
+ * catalog, audit DR-02): the price the booking will be billed at, not the
+ * catalog's.
  */
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
@@ -48,6 +52,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       services: {
         where: { service: { isActive: true } },
         select: {
+          priceOverride: true,
           service: {
             select: {
               id: true,
@@ -69,6 +74,12 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
         d.services.map((l) => ({ serviceId: l.service.id, isActive: true })),
       ),
     ),
+    services: d.services.map((l) => ({
+      service: {
+        ...l.service,
+        priceBase: l.priceOverride ?? l.service.priceBase,
+      },
+    })),
   }));
   return ok({ doctors });
 });

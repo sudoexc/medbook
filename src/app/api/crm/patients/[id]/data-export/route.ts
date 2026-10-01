@@ -4,11 +4,15 @@
  * POST /api/crm/patients/[id]/data-export
  *
  * Lets an ADMIN trigger a DSAR export on a patient's behalf (e.g. the
- * patient calls the receptionist asking for their data). Mirrors the
- * Mini App endpoint but delivers to the admin user's TG chat (if known)
- * — the admin then forwards the file to the patient through whatever
- * legitimate channel they're using. Falls back to "no chat → admin
- * downloads via signed URL" when the admin has no TG bound.
+ * patient calls the receptionist asking for their data). Delivers to the
+ * admin's own Telegram chat when they have one bound (or to the patient's,
+ * on request); either way the bundle is downloadable in «Настройки →
+ * Запросы DSAR».
+ *
+ * The passphrase is made here and returned ONCE in the response, for the
+ * card to show (audit PT-09): it used to be generated in the worker and
+ * kept only as a bcrypt hash, so an admin without a bound Telegram got a
+ * READY archive nobody could ever open. The worker receives it sealed.
  */
 import { z } from "zod";
 
@@ -20,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, err, notFound } from "@/server/http";
 import { exportExpiresAt } from "@/server/dsar/expiry";
 import { enqueueExportJob } from "@/server/workers/data-export";
+import { generatePassphrase } from "@/server/dsar/zip";
 
 const BodySchema = z
   .object({
@@ -60,6 +65,18 @@ export const POST = createApiHandler(
       telegramChatId = adminUser?.telegramId ?? null;
     }
 
+    // One export of a card at a time (the card's toast already says so).
+    const running = await prisma.dataExportJob.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId,
+        status: { in: ["PENDING", "PROCESSING"] },
+      },
+      select: { id: true },
+    });
+    if (running) return err("already_active", 409, { jobId: running.id });
+
+    const passphrase = generatePassphrase();
     const job = await prisma.dataExportJob.create({
       data: {
         clinicId: ctx.clinicId,
@@ -84,8 +101,14 @@ export const POST = createApiHandler(
       },
     });
 
-    await enqueueExportJob(job.id);
+    await enqueueExportJob(job.id, { passphrase });
 
-    return ok({ jobId: job.id, status: job.status });
+    return ok({
+      jobId: job.id,
+      status: job.status,
+      // Shown once by the card; never stored in clear, never shown again.
+      passphrase,
+      deliversToTelegram: telegramChatId !== null,
+    });
   },
 );

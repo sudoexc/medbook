@@ -19,10 +19,10 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
 
 import { err, notFound } from "@/server/http";
+import { DSAR_EXPORTS_BUCKET } from "@/server/dsar/expiry";
 import { fetchObject } from "@/server/storage/minio";
 import { safeFileHeaders } from "@/server/storage/safe-file";
 
-const EXPORTS_BUCKET = process.env.MINIO_EXPORTS_BUCKET || "exports";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN"] },
@@ -50,7 +50,7 @@ export const GET = createApiListHandler(
 
     let fetched: Awaited<ReturnType<typeof fetchObject>>;
     try {
-      fetched = await fetchObject(EXPORTS_BUCKET, job.storageKey);
+      fetched = await fetchObject(DSAR_EXPORTS_BUCKET, job.storageKey);
     } catch (e: unknown) {
       const code = (e as NodeJS.ErrnoException)?.code;
       if (code === "ENOENT") return notFound();

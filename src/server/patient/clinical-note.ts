@@ -10,11 +10,8 @@
  * with who last saved it and when. `Patient.notes` stays the staff note.
  */
 import type { prisma } from "@/lib/prisma";
-import {
-  decryptField,
-  encryptField,
-  isEncryptedField,
-} from "@/server/crypto/field-cipher";
+import { encryptField } from "@/server/crypto/field-cipher";
+import { decryptOrReport } from "@/server/crypto/decrypt-failure";
 
 type Db = Pick<typeof prisma, "patientClinicalNote" | "user">;
 
@@ -29,9 +26,23 @@ export type ClinicalNote = {
 
 const EMPTY: ClinicalNote = { text: "", updatedAt: null, updatedBy: null };
 
-/** The stored body as text (legacy plaintext passes through). */
-export function readClinicalNoteBody(body: string): string {
-  return isEncryptedField(body) ? (decryptField(body) ?? "") : body;
+/**
+ * The stored body as text (legacy plaintext passes through). A body that
+ * will not decrypt reads as empty and is reported, it does not fail the
+ * card (audit G1-08).
+ */
+export function readClinicalNoteBody(
+  body: string,
+  ref?: { patientId?: string; clinicId?: string },
+): string {
+  return (
+    decryptOrReport(body, {
+      entityType: "PatientClinicalNote",
+      entityId: ref?.patientId ?? null,
+      clinicId: ref?.clinicId ?? null,
+      field: "body",
+    }) ?? ""
+  );
 }
 
 async function authorOf(
@@ -57,7 +68,7 @@ export async function readClinicalNote(
   });
   if (!row) return EMPTY;
   return {
-    text: readClinicalNoteBody(row.body),
+    text: readClinicalNoteBody(row.body, { patientId }),
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: await authorOf(db, row.updatedById),
   };

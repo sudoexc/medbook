@@ -11,6 +11,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { vi } from "vitest";
 
+// These tests exercise the provider plumbing; AI is paused in this build
+// and the proxy refuses while it is (audit AC-12, tests/unit/p5-ai-gate.test.ts).
+vi.mock("@/lib/ai-enabled", () => ({ AI_ENABLED: true }));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     lLMUsage: { create: vi.fn() },

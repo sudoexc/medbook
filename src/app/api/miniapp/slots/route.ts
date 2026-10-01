@@ -2,7 +2,7 @@
  * GET /api/miniapp/slots?clinicSlug=…&doctorId=…&date=YYYY-MM-DD&serviceIds=…
  *
  * Return available "HH:mm" slot strings for the given doctor on the given
- * date. Duration is derived from the sum of service durations (default 30m).
+ * date. Duration is the sum of the doctor's service durations (default 30m).
  *
  * The slot math reuses `findAvailableSlots` from the CRM booking service so
  * the Mini App and the receptionist dialog see the same availability grid.
@@ -14,6 +14,7 @@ import {
   DEFAULT_SLOT_STEP_MIN,
   findAvailableSlots,
 } from "@/server/services/appointments";
+import { doctorServicesDuration } from "@/server/doctors/service-terms";
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const url = new URL(request.url);
@@ -35,13 +36,15 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   });
   if (!doctor) return err("doctor_not_found", 404);
 
+  // The doctor's own duration per service (audit DR-02): the same block the
+  // booking kernel will reserve, so an offered slot is one he can take.
   let blockMin: number | undefined;
   if (serviceIds.length > 0) {
-    const svcs = await prisma.service.findMany({
-      where: { id: { in: serviceIds }, clinicId: ctx.clinicId },
-      select: { durationMin: true },
+    const total = await doctorServicesDuration(prisma, {
+      doctorId,
+      serviceIds,
+      where: { clinicId: ctx.clinicId },
     });
-    const total = svcs.reduce((acc, s) => acc + s.durationMin, 0);
     if (total > 0) blockMin = total;
   }
   const slots = await findAvailableSlots({ doctorId, date, slotMin: blockMin });

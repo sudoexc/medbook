@@ -124,8 +124,16 @@ vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/prisma", () => {
   const prisma = {
     appointment: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
-        state.apt && state.apt.id === where.id ? state.apt : null,
+      findUnique: vi.fn(
+        async ({ where, select }: { where: { id: string }; select?: { payments?: unknown } }) => {
+          if (!state.apt || state.apt.id !== where.id) return null;
+          // A doctor change reads the visit's lines and payments (review of
+          // DR-02): none here, so the visit keeps its price and length.
+          if (select?.payments) {
+            return { serviceId: null, services: [], payments: [] };
+          }
+          return state.apt;
+        },
       ),
       findUniqueOrThrow: vi.fn(async () => state.apt),
       findMany: vi.fn(async () => (state.apt ? [state.apt] : [])),

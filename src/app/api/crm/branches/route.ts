@@ -47,6 +47,12 @@ export const POST = createApiHandler(
       return err("Forbidden", 403);
     }
 
+    // A switched-off default leaves new doctors and cabinets without a
+    // branch (audit ST-06).
+    if (body.isDefault === true && body.isActive === false) {
+      return err("BranchRule", 422, { reason: "inactive_default" });
+    }
+
     // Resolve a default timezone: clinic.timezone wins when caller leaves
     // the field blank. We need a clinic-wide read of Clinic, which is in
     // MODELS_WITHOUT_TENANT — the extension passes through.

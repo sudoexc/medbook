@@ -17,6 +17,7 @@
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
 import { deleteObject } from "@/server/storage/minio";
@@ -56,7 +57,7 @@ function lockedResponse(lock: DocumentLock): Response {
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const id = idFromUrl(request);
     const row = await prisma.document.findUnique({
       where: { id },
@@ -67,6 +68,8 @@ export const GET = createApiListHandler(
       },
     });
     if (!row) return notFound();
+    // A patient's document opened: a chart read (audit G1-06).
+    notePatientView(prisma, request, ctx, row.patientId, "document.file", row.id);
     return ok(withStaffFileUrl(row));
   }
 );

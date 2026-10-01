@@ -12,7 +12,33 @@
  *
  * The anonymized row scrubs: fullName, phone, phoneNormalized,
  * passport, address, telegramId, telegramUsername, photoUrl, notes,
- * summaryCache, marketingOptOutSource, all PII free-text fields.
+ * summaryCache, birthDate (with the name it pinned the person down),
+ * the phone / Telegram verification stamps, all PII free-text fields.
+ *
+ * What else a DSAR erasure covers (audit PT-07, carried out by
+ * `src/server/workers/data-deletion.ts`):
+ *   - erased: site requests and leads (`Lead`, `OnlineRequest`, by card,
+ *     and by the card's own number when no card owns the row: a family
+ *     shares one number), sent notification texts and recipients
+ *     (`NotificationSend`), communication log bodies, call summaries,
+ *     recordings and the patient's number on calls, chat messages and the
+ *     inbox preview, review comments, the clinical note, the doctors'
+ *     reminders about the patient, appointment notes, SOAP drafts, and
+ *     every stored FILE of the patient: documents (uploads, scans and
+ *     rendered PDFs, rows and objects), chat attachments (objects and
+ *     links) and the issued conclusion PDFs of visit-note revisions. A
+ *     file carries the name on its pages, so no file survives.
+ *   - kept, by policy: the structured medical record (visit notes and
+ *     their revisions' content, diagnoses, prescriptions, allergies, lab
+ *     orders and results, sick leaves, referrals, appointments, payments).
+ *     Medical documentation has a legal retention duty that outlives a
+ *     personal-data request; it stays on the anonymised card, which has no
+ *     name, phone, passport, birth date or Telegram any more, and is hidden
+ *     from every list and search. A PDF needed later is rendered again,
+ *     under the anonymised name.
+ *   - never: a hard delete of the card. HARD_DELETE requests are carried
+ *     out as this anonymization: deleting the card would cascade the
+ *     medical records away or fail on their foreign keys.
  *
  * `phoneNormalized` is special: the schema has `@@unique([clinicId,
  * phoneNormalized])`. We can't set everyone's normalized phone to the
@@ -32,6 +58,10 @@ export type AnonymizationResult = {
   fullName: string;
   phone: string;
   phoneNormalized: string;
+  phoneVerifiedAt: null;
+  birthDate: null;
+  telegramLinkedAt: null;
+  tgBlockedAt: null;
   passport: null;
   address: null;
   telegramId: null;
@@ -69,6 +99,10 @@ export function buildAnonymizationPayload(
     fullName: ANONYMIZED_FULL_NAME,
     phone: "",
     phoneNormalized: `deleted:${jobId}`,
+    phoneVerifiedAt: null,
+    birthDate: null,
+    telegramLinkedAt: null,
+    tgBlockedAt: null,
     passport: null,
     address: null,
     telegramId: null,

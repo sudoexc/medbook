@@ -76,18 +76,19 @@ export type Catalog = {
 
 export const EMPTY_CATALOG: Catalog = {};
 
+// Last resort only: `readWelcomeConfig` already falls back to a greeting
+// with the clinic's own name. No clinic is named here (audit ST-08: every
+// clinic used to introduce itself as Neurofax).
 const WELCOME_TEXT = [
-  "👋 Здравствуйте! Это клиника Neurofax.",
+  "👋 Здравствуйте!",
   "",
-  "Если у вас есть вопросы — просто напишите сюда, регистратура свяжется с вами.",
+  "Если у вас есть вопросы, просто напишите сюда, регистратура свяжется с вами.",
   "",
   "Для записи на приём нажмите кнопку ниже.",
   "",
-  "—",
+  "👋 Assalomu alaykum!",
   "",
-  "👋 Assalomu alaykum! Bu Neurofax klinikasi.",
-  "",
-  "Savollar bo'lsa — shu yerga yozing, ro'yxatxona javob beradi.",
+  "Savollaringiz bo'lsa, shu yerga yozing, ro'yxatxona siz bilan bog'lanadi.",
   "",
   "Qabulga yozilish uchun pastdagi tugmani bosing.",
 ].join("\n");

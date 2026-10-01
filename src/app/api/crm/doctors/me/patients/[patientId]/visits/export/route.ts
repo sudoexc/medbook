@@ -21,6 +21,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { tashkentComponents } from "@/lib/booking-validation";
 import { audit } from "@/lib/audit";
 import { err, notFound } from "@/server/http";
@@ -100,6 +101,8 @@ export const GET = createApiListHandler(
     if (!hasRelationship) {
       return err("Forbidden", 403, { reason: "no_appointments_with_doctor" });
     }
+    // The doctor reading the chart is in «Просмотры карточек» (audit G1-06).
+    notePatientView(prisma, request, ctx, patientId, "export", "visits.csv");
 
     const rows = await prisma.appointment.findMany({
       where: {

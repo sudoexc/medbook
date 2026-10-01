@@ -6,7 +6,11 @@
  * real clinic data where slugs are surnames. Edit `PRESETS_BY_SLUG` in
  * `_preset-data.ts` to change the bundles.
  *
- * Run: `npx tsx prisma/seed-presets.ts`
+ * One clinic per run (audit G4-09): `CLINIC_SLUG` is required. It used to
+ * walk the doctors of every clinic on the server, so seeding a new clinic
+ * also handed the bundle to any doctor elsewhere who had cleared his chips.
+ *
+ * Run: `CLINIC_SLUG=<slug> npx tsx prisma/seed-presets.ts`
  *
  * For production where the standalone Next image has no tsx, generate raw
  * SQL via `prisma/seed-presets-sql.ts` instead.
@@ -26,6 +30,16 @@ const MATCHES: { pattern: string; bundle: keyof typeof PRESETS_BY_SLUG }[] = [
 ];
 
 async function main() {
+  const slug = process.env.CLINIC_SLUG?.trim();
+  if (!slug) {
+    console.error(
+      "CLINIC_SLUG=<slug> is required: the seed fills one clinic's doctors, never every clinic's.",
+    );
+    process.exit(1);
+  }
+  const clinic = await prisma.clinic.findUnique({ where: { slug }, select: { id: true } });
+  if (!clinic) throw new Error(`clinic '${slug}' not found`);
+
   let total = 0;
   for (const { pattern, bundle } of MATCHES) {
     const presets = PRESETS_BY_SLUG[bundle];
@@ -33,6 +47,7 @@ async function main() {
 
     const doctors = await prisma.doctor.findMany({
       where: {
+        clinicId: clinic.id,
         OR: [
           { specializationRu: { contains: pattern.replace(/%/g, ""), mode: "insensitive" } },
           { slug: bundle },

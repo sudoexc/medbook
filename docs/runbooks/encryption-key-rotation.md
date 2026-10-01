@@ -161,9 +161,17 @@ If we have reason to believe `FIELD_ENCRYPTION_KEY_V<n>` has leaked
    with the key can read PHI from a stolen dump.**
 2. Generate `FIELD_ENCRYPTION_KEY_V<n+1>` and follow the rotation steps above
    on the same calendar day.
-3. After rotation, **also rotate every other secret that lived next to the
-   compromised key**: `AUTH_SECRET`, `APP_SECRET`, MinIO credentials,
-   Telegram bot token. They share the same blast radius.
+3. After rotation, **review every other secret that lived next to the
+   compromised key** (same `.env`, same blast radius), each with its own
+   procedure, never by simply typing a new value:
+   - MinIO credentials and the Telegram bot token are replaced at their
+     source (MinIO console; BotFather `/revoke`, then the new token through
+     «Сменить бота» in the clinic settings).
+   - `AUTH_SECRET` and `APP_SECRET` are **not** field-encryption keys: they
+     have no version tag and no re-encryption script, so changing them in
+     place breaks 2FA sign-in, the clinic bot and the Mini App for everyone
+     at once (audit G2-04). Follow
+     [AUTH_SECRET and APP_SECRET](#auth_secret-and-app_secret) below.
 4. File an incident note in `/admin/audit` (manual entry via the audit API)
    with the timestamp, the affected key version, and the rotation result.
 5. If law-enforcement notification is required (depends on jurisdiction +
@@ -195,11 +203,125 @@ Practical mitigations:
    missed a row. After 90 days of clean health-check reports you can drop it.
 
 If the key truly is gone:
-- New writes still work (a new key gets generated as v1).
-- Old encrypted rows return ciphertext from the read path; the cipher-fields
-  hydrators will throw on decrypt and the API will surface the error. Plan
-  to scrub those rows (replace with a placeholder marker, or hard-delete them)
-  before users hit them.
+- Nothing is generated for you. In production the app **refuses to boot**
+  when no `FIELD_ENCRYPTION_KEY` / `FIELD_ENCRYPTION_KEY_V<n>` is set
+  (`field-cipher.ts` fails closed rather than encrypting under the public
+  dev key), and the backfill / rotation scripts refuse the dev fallback too.
+- Issue a new key under a **new version number**, one above the highest
+  version that ever existed (`v<n+1>`), never under the lost version's
+  label. Cells keep the prefix they were written with: a new key filed as
+  `FIELD_ENCRYPTION_KEY_V1` would make the old `v1:` cells fail the GCM tag
+  check with a confusing «wrong key» error, and the slot the old key belongs
+  to would be taken if the old key ever turns up again (a backup, the sealed
+  envelope). With the new key as `v<n+1>`, new writes go out as `v<n+1>:`,
+  and every unreadable cell is exactly the one carrying the lost prefix.
+- Reads of the unreadable cells do not crash the page: the read boundary
+  shows the field as empty and writes one `ENCRYPTION_DECRYPT_FAILED` audit
+  row per row, field and hour (`src/server/crypto/decrypt-failure.ts`).
+  `/admin/encryption-health` counts them under the lost version.
+- Do not run `rotate-encryption-key.ts` while the lost version's cells are
+  still in the table: it cannot decrypt them and reports each as an error.
+  Replace them first, column by column (the columns are the ones the health
+  page lists), for example for `Patient.passport` lost under `v1`:
+  ```sql
+  -- How many, before anything changes:
+  SELECT COUNT(*) FROM "Patient" WHERE "passport" LIKE 'v1:%';
+  -- The value is gone; NULL means «not recorded», which the card shows as empty:
+  UPDATE "Patient" SET "passport" = NULL WHERE "passport" LIKE 'v1:%';
+  ```
+  Free-text columns (`notes`, `soapDraft`) can be set to NULL the same way.
+  Tell the clinic which records lost which field (the counts above), so
+  staff re-enter what matters from paper.
+- Add the old key back as `FIELD_ENCRYPTION_KEY_V<lost>` if it is ever
+  found: any cell not yet replaced decrypts again with no other change.
+
+---
+
+## AUTH_SECRET and APP_SECRET
+
+Neither secret is part of the quarterly rotation above, and neither is
+changed «while we are at it» during a field-key rotation or an incident
+(audit G2-04). Each is a single key with no version tag: the moment a new
+value is set, it applies to every stored value and every link already
+handed out.
+
+| Secret | What it keys | What breaks the moment it changes |
+| ------ | ------------ | --------------------------------- |
+| `AUTH_SECRET` | NextAuth session JWTs. When `APP_SECRET` is **not** set, also everything in the next row (the app falls back to `AUTH_SECRET`). | Every staff session ends; everyone signs in again. If `APP_SECRET` is unset, everything in the next row breaks as well. |
+| `APP_SECRET` | AES-256-GCM of `User.totpSecret` / `pendingTotpSecret`, `Clinic.tgBotToken` and `ProviderConnection.secretCipher` (`src/server/crypto/secrets.ts`: one key, only `v1`, no previous-key fallback). HMAC of the admin clinic-override cookie, the 2FA-pending cookie and the public capability links (`src/server/crypto/app-hmac.ts`: queue ticket QR links, board row keys, document upload receipts, Mini App file, calendar and event-stream links). | Nobody with 2FA can sign in, SUPER_ADMIN included (`readTotpSecret` throws on the old seed at login). The clinic bot goes silent and the Mini App rejects every patient (`initData` is verified with the bot token, which no longer decrypts). Integration secrets stop decrypting. Tickets printed and Mini App links issued before the change stop opening. There is no re-encryption script: the old values come back only by putting the old `APP_SECRET` back. |
+
+### First: make sure `APP_SECRET` is set on its own
+
+```bash
+docker compose exec app sh -c 'test -n "$APP_SECRET" && echo set || echo MISSING'
+```
+
+`MISSING` means the app derives every key in the table from `AUTH_SECRET`,
+so changing `AUTH_SECRET` would break all of it. Pin it first: in the
+server's `.env` set `APP_SECRET` to the **current** `AUTH_SECRET` value, byte
+for byte, then `docker compose up -d app worker`, and check that a user with
+2FA can sign in and that the Mini App opens. Nothing changes for anyone (the
+derived keys are the same); from now on `AUTH_SECRET` can change on its own.
+
+### Changing `AUTH_SECRET` (a session or the `.env` may have leaked)
+
+1. Pin `APP_SECRET` as above, if it is not set yet.
+2. `openssl rand -base64 32` (32 random bytes).
+3. Pick a quiet moment (before the clinic opens or after the last visit) and
+   tell reception that everyone will be signed out.
+4. Replace `AUTH_SECRET` in the server's `.env`, then
+   `docker compose up -d app worker`.
+5. Everyone signs in again with password and 2FA. Patients notice nothing:
+   the bot and the Mini App do not use NextAuth.
+
+### `APP_SECRET`: never changed in place
+
+Rotation of `APP_SECRET` is not supported: `secrets.ts` knows one key and
+one version tag (`docs/architecture/SECURITY.md`, open risk 9). If it may have
+leaked, think about what it gives an attacker: forging the cookies and links
+in the table, and, together with a database dump, reading the bot token,
+the TOTP seeds and the integration secrets. Re-encrypting those values under
+a new key would not un-leak them, so the response is to **replace the values
+themselves**, and only then the key, in one planned window before the clinic
+opens:
+
+1. Tell reception: the bot is down for the window, tickets printed earlier
+   will not scan, and staff with 2FA set it up again at their next sign-in.
+2. Take stock (keep the numbers for the incident note):
+   ```sql
+   SELECT COUNT(*) FROM "User" WHERE "totpSecret" IS NOT NULL OR "pendingTotpSecret" IS NOT NULL;
+   SELECT "slug", "tgBotUsername" FROM "Clinic" WHERE "tgBotToken" IS NOT NULL;
+   SELECT "clinicId", "kind", "label" FROM "ProviderConnection";
+   ```
+3. Revoke every clinic bot token in BotFather (`/revoke`) and keep the new
+   tokens at hand.
+4. Clear what the new key could never decrypt, in one transaction (this is
+   exactly what «Сбросить 2FA» writes for one user, for all of them, plus
+   the bot tokens):
+   ```sql
+   BEGIN;
+   UPDATE "User" SET "totpSecret" = NULL, "totpEnabledAt" = NULL,
+     "recoveryCodesHash" = '{}', "pendingTotpSecret" = NULL,
+     "pendingTotpExpiresAt" = NULL
+   WHERE "totpSecret" IS NOT NULL OR "pendingTotpSecret" IS NOT NULL;
+   UPDATE "Clinic" SET "tgBotToken" = NULL WHERE "tgBotToken" IS NOT NULL;
+   COMMIT;
+   ```
+5. Set the new `APP_SECRET` (`openssl rand -base64 32`) in the server's
+   `.env`, then `docker compose up -d app worker`.
+6. Each clinic admin signs in (no 2FA prompt now), connects the bot again
+   with the new token (the Telegram card in the integrations settings
+   opens the connect wizard), and re-saves every
+   integration from step 2 with a fresh secret from the provider's side.
+   ADMIN and SUPER_ADMIN (and everyone in a clinic with «2FA для всех»)
+   are sent to 2FA enrolment right after signing in; other users who had
+   2FA turn it on again in their security settings.
+7. Check: a 2FA sign-in works, the bot answers `/start`, the Mini App opens,
+   a new ticket's QR opens.
+
+Never skip step 4 and change the key alone: the old ciphertexts stay in the
+table, every 2FA sign-in fails with an error instead of asking to enrol, and
+no admin can get in to reconnect the bot.
 
 ---
 

@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { ok, err, notFound, parseQuery } from "@/server/http";
 import { hydratePrescriptionForRead } from "@/server/prescription/cipher-fields";
 
@@ -79,6 +80,8 @@ export const GET = createApiListHandler(
       select: { id: true },
     });
     if (!hasRelationship) return notFound();
+    // The doctor reading the chart is in «Просмотры карточек» (audit G1-06).
+    notePatientView(prisma, request, ctx, patientId, "doctor.card", "prescriptions");
 
     const statusFilter =
       q.status === "all" ? {} : { status: { in: ["ACTIVE", "PAUSED"] } };

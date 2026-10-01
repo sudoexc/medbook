@@ -67,6 +67,8 @@ export type DoctorDetail = {
   pricePerVisit: number | null;
   salaryPercent: number;
   isActive: boolean;
+  /** Shown on the public site (audit LD-08). */
+  listedOnSite: boolean;
   cabinetId: string;
   cabinet: DoctorCabinet | null;
   /** Letter in front of this doctor's queue tickets («A-005»). */
@@ -85,6 +87,7 @@ export type DoctorServicePatch = {
 };
 
 export type DoctorUpdateInput = Partial<{
+  slug: string;
   nameRu: string;
   nameUz: string;
   specializationRu: string;
@@ -96,6 +99,7 @@ export type DoctorUpdateInput = Partial<{
   pricePerVisit: number | null;
   salaryPercent: number;
   isActive: boolean;
+  listedOnSite: boolean;
   cabinetId: string;
   ticketPrefix: string;
   services: DoctorServicePatch[];

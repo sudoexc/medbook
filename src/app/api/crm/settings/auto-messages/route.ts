@@ -9,8 +9,10 @@
  *   thankYou  — appointment.thank-you    (trigger, after COMPLETED)
  *
  * GET   → the three rows in widget order (auto-provisioned on first read).
- * PATCH → flip `isActive` (toggle) and/or edit `bodyRu` (message text). There
- *         is NO parallel sender — the existing materialise → NotificationSend
+ * PATCH → flip `isActive` (toggle) and/or edit the text: `text` is `bodyRu`,
+ *         `textUz` is `bodyUz` (audit ST-08: only `bodyRu` was written, so
+ *         patients who read Uzbek kept getting the old wording). There is NO
+ *         parallel sender — the existing materialise → NotificationSend
  *         pipeline (and the FSM, for welcome) reads these same rows.
  *
  * `welcome` is sent VERBATIM by the bot FSM and never runs through the
@@ -48,6 +50,7 @@ const PatchSchema = z.object({
         kind: z.enum(["welcome", "reminder", "thankYou"]),
         enabled: z.boolean().optional(),
         text: z.string().max(10_000).optional(),
+        textUz: z.string().max(10_000).optional(),
       }),
     )
     .min(1),
@@ -73,21 +76,26 @@ export const PATCH = createApiHandler(
     const patches: Patch[] = [];
     for (const m of body.messages) {
       const data: Record<string, unknown> = {};
-      if (typeof m.text === "string") {
-        if (m.text.trim().length === 0) {
-          return err("EmptyBody", 400, { kind: m.kind, field: "text" });
+      const allowed = allowedKeysForKind(m.kind);
+      for (const [field, column] of [
+        ["text", "bodyRu"],
+        ["textUz", "bodyUz"],
+      ] as const) {
+        const value = m[field];
+        if (typeof value !== "string") continue;
+        if (value.trim().length === 0) {
+          return err("EmptyBody", 400, { kind: m.kind, field });
         }
-        const allowed = allowedKeysForKind(m.kind);
-        const v = validate(m.text, allowed);
+        const v = validate(value, allowed);
         if (!v.ok) {
           return err("UnknownPlaceholder", 400, {
             kind: m.kind,
-            field: "text",
+            field,
             unknown: v.unknown,
             allowed,
           });
         }
-        data.bodyRu = m.text;
+        data[column] = value;
       }
       if (typeof m.enabled === "boolean") {
         data.isActive = m.enabled;
@@ -106,17 +114,21 @@ export const PATCH = createApiHandler(
         const where = { clinicId_key: { clinicId, key: p.key } };
         const before = await tx.notificationTemplate.findUnique({
           where,
-          select: { isActive: true, bodyRu: true },
+          select: { isActive: true, bodyRu: true, bodyUz: true },
         });
         if (!before) continue; // ensure ran above; defensive.
         const after = await tx.notificationTemplate.update({
           where,
           data: p.data as never,
-          select: { id: true, isActive: true, bodyRu: true },
+          select: { id: true, isActive: true, bodyRu: true, bodyUz: true },
         });
         // Off stops the whole event, on keeps one template for it (TG-22).
         const retired = await applyAutoMessageSwitch(tx, after.id, after.isActive);
-        const shown = { isActive: after.isActive, bodyRu: after.bodyRu };
+        const shown = {
+          isActive: after.isActive,
+          bodyRu: after.bodyRu,
+          bodyUz: after.bodyUz,
+        };
         out.push({
           kind: p.kind,
           key: p.key,

@@ -190,6 +190,8 @@ vi.mock("@/lib/prisma", () => {
           .map((id) => ({ id, priceBase: state.catalog.get(id)! })),
       ),
     },
+    // No per-doctor price here: the lines price at the catalog (DR-02).
+    serviceOnDoctor: { findMany: vi.fn(async () => []) },
     doctor: {
       findUnique: vi.fn(async () => ({ cabinetId: "cab_1", isActive: true })),
     },

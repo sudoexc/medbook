@@ -135,11 +135,18 @@ export async function POST(request: Request) {
   // server-side guard, not just a UI filter: a lead pinned to a deactivated
   // doctor sits in a queue nobody processes. The lead itself still lands
   // (doctor becomes null → reception routes it), the request isn't lost.
+  // Same for a doctor taken off the site (audit LD-08): a page opened before
+  // the switch still offers him, the clinic no longer does.
   let doctor: { nameRu: string; email: string | null } | null = null;
   if (parsed.data.doctorId) {
     const found = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.doctor.findFirst({
-        where: { id: parsed.data.doctorId, clinicId: clinic.id, isActive: true },
+        where: {
+          id: parsed.data.doctorId,
+          clinicId: clinic.id,
+          isActive: true,
+          listedOnSite: true,
+        },
         select: { nameRu: true, user: { select: { email: true } } },
       }),
     );

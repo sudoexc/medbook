@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 export const CreateCabinetSchema = z.object({
   number: z.string().min(1).max(20),
   floor: z.number().int().optional().nullable(),
@@ -18,7 +20,7 @@ export const CreateCabinetSchema = z.object({
 export const UpdateCabinetSchema = CreateCabinetSchema.partial();
 
 export const QueryCabinetSchema = z.object({
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBool(),
   limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 

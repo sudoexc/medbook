@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 export const QueryLabCatalogSchema = z.object({
   q: z.string().trim().optional(),
   biomaterial: z
@@ -19,7 +21,7 @@ export const QueryLabCatalogSchema = z.object({
     .optional(),
   /** ICD-10 prefix the calling visit is using — boosts matching tests. */
   forCode: z.string().trim().optional(),
-  active: z.coerce.boolean().optional(),
+  active: queryBool(),
   limit: z.coerce.number().int().min(1).max(200).default(80),
 });
 

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Hero } from "@/components/sections/hero";
 import { Visit } from "@/components/sections/visit";
 import { TelegramShowcase } from "@/components/sections/telegram-showcase";
@@ -9,10 +10,26 @@ import { Faq } from "@/components/sections/faq";
 import { getDoctors } from "@/lib/doctors";
 import { getSitePriceSheet } from "@/lib/site-prices";
 import { serializeJsonLd } from "@/lib/json-ld";
+import { siteOpenGraph } from "@/lib/site-meta";
+import { siteAlternates } from "@/lib/site-urls";
 import ruMessages from "@/messages/ru.json";
 import uzMessages from "@/messages/uz.json";
 
 const msgs: Record<string, typeof ruMessages> = { ru: ruMessages, uz: uzMessages };
+
+// The landing's own canonical, hreflang and og:url (audit LD-03):
+// https://neurofax.uz/ for ru and https://neurofax.uz/uz, never /ru.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return {
+    alternates: siteAlternates(locale, "/"),
+    openGraph: siteOpenGraph(locale, "/"),
+  };
+}
 
 export default async function Home({
   params,

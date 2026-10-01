@@ -167,21 +167,18 @@ export async function loadCaseFinance(
 }
 
 /**
- * The `id` condition for the patients list's `?balance=` filter, or null
- * for «no condition». Balances are computed for the whole clinic at once
- * (one grouped query over billed visits, one over PAID payments): the
- * clinic has a few thousand cards and very few payments.
+ * Every patient's balance in the clinic, in тийин, or null when the clinic
+ * does not record payments (then nobody owes anything and no balance is
+ * shown). Computed for the whole clinic at once (one grouped query over
+ * billed visits, one over PAID payments): the clinic has a few thousand
+ * cards and very few payments. Patients absent from the map are at 0.
  */
-export async function patientBalanceIdWhere(
+export async function clinicPatientBalances(
   clinicId: string,
-  bucket: BalanceBucket,
   db: Db = prisma,
-): Promise<{ in: string[] } | { notIn: string[] } | null> {
+): Promise<Map<string, number> | null> {
   const since = await paymentsRecordedSince(clinicId, db);
-  if (!since) {
-    // Payments are not tracked: everyone's balance is 0, nobody is a debtor.
-    return bucket === "zero" ? null : { in: [] };
-  }
+  if (!since) return null;
   const [billed, payments, rate] = await Promise.all([
     db.appointment.groupBy({
       by: ["patientId"],
@@ -210,6 +207,23 @@ export async function patientBalanceIdWhere(
     const owner = p.patientId ?? p.appointment?.patientId ?? null;
     if (!owner) continue;
     balance.set(owner, (balance.get(owner) ?? 0) + paidTiyinOf([p], rate));
+  }
+  return balance;
+}
+
+/**
+ * The `id` condition for the patients list's `?balance=` filter, or null
+ * for «no condition».
+ */
+export async function patientBalanceIdWhere(
+  clinicId: string,
+  bucket: BalanceBucket,
+  db: Db = prisma,
+): Promise<{ in: string[] } | { notIn: string[] } | null> {
+  const balance = await clinicPatientBalances(clinicId, db);
+  if (!balance) {
+    // Payments are not tracked: everyone's balance is 0, nobody is a debtor.
+    return bucket === "zero" ? null : { in: [] };
   }
 
   const debt: string[] = [];

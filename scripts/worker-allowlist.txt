@@ -29,6 +29,7 @@ fix-an02-link-payments-to-visits.ts
 fix-an17-stale-dormant-since.ts
 fix-cd02-drug-photo-urls.ts
 fix-ct03-registry-brand-homes.ts
+fix-dr11-appointment-cabinets.ts
 fix-g1-03-miniapp-audit-clinic.ts
 fix-g301-stale-check-ins.ts
 fix-g4-06-reference-dosing-instructions.ts
@@ -48,6 +49,7 @@ fix-tg22-duplicate-templates.ts
 fix-ux01-ai-mock-text.ts
 fix-vw02-stale-handouts.ts
 reminder-cadence-5d3d1d3h.ts
+_reminder-cadence-plan.ts
 
 # Deploy prechecks (DRY RUN by default, APPLY=1 writes)
 subscription-lifecycle-dryrun.ts

@@ -30,10 +30,20 @@
  * Eligibility logic + schedule parsing is centralised in
  * `src/lib/patient-experience/medication-schedule.ts` so the unit tests can
  * cover the hour-boundary cases without booting Prisma.
+ *
+ * Audit INF-09: the tick read `take: 500` rows with no order and no paging,
+ * and a course never left ACTIVE when its days ran out. Every signed visit
+ * adds courses, so once 500 finished ones piled up a new prescription could
+ * fall outside the batch and never be reminded, silently. The tick now walks
+ * every eligible row by id, page by page, and completes a course whose days
+ * have passed (COMPLETED, the status a resolved case gives it), so the pool
+ * it scans stays the courses actually running.
  */
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   dosesDueBetween,
+  isCourseFinished,
   parseSchedule,
 } from "@/lib/patient-experience/medication-schedule";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -63,6 +73,9 @@ const TICK_INTERVAL_MS = 5 * 60 * 1000;
  * («пора принять в 08:00» at noon) is not sent.
  */
 export const MEDICATION_CATCH_UP_MS = 90 * 60 * 1000;
+
+/** Rows per page of the tick's walk over the eligible prescriptions. */
+export const PAGE_SIZE = 500;
 
 type Channel = "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 
@@ -153,15 +166,16 @@ export function renderMedicationReminder(
 
 /**
  * Run a single tick. Returns counts so callers (tests, health checks) can
- * observe progress.
+ * observe progress: rows scanned, reminders created, courses completed.
  */
 export async function runMedicationReminderTick(
   now: Date = new Date(),
-): Promise<{ scanned: number; created: number }> {
+): Promise<{ scanned: number; created: number; completed: number }> {
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    // Pull every active prescription with reminders enabled, joined with the
-    // bits of patient + clinic we need for routing. `take: 500` per tick
-    // covers a clinic running 100+ active scripts comfortably.
+    // Every active prescription with reminders enabled, joined with the bits
+    // of patient + clinic we need for routing, walked page by page in id
+    // order (audit INF-09): a fixed `take` without order skipped whatever
+    // lay past it, the newest courses first.
     //
     // Phase 17 Wave 1 — exclude soft-deleted patients here so we never
     // even consider them. The marketing opt-out gate is enforced inline
@@ -172,89 +186,123 @@ export async function runMedicationReminderTick(
     // the case ends its courses, and this filter also covers a course left
     // ACTIVE on a case closed before that, or added to it afterwards.
     // Courses bridged from a signed visit have no case and are unaffected.
-    const rows = (await prisma.prescription.findMany({
-      where: {
-        status: "ACTIVE",
-        remindersEnabled: true,
-        clinic: { medicationRemindersEnabled: true },
-        patient: { deletedAt: null },
-        OR: [{ caseId: null }, { case: { status: "OPEN" } }],
-      },
-      select: {
-        id: true,
-        clinicId: true,
-        patientId: true,
-        drugName: true,
-        dosage: true,
-        schedule: true,
-        createdAt: true,
-        patient: {
-          select: {
-            fullName: true,
-            phone: true,
-            telegramId: true,
-            tgBlockedAt: true,
-            preferredChannel: true,
-            preferredLang: true,
-            marketingOptOut: true,
-            deletedAt: true,
-          },
-        },
-        clinic: {
-          select: {
-            id: true,
-            nameRu: true,
-            nameUz: true,
-            timezone: true,
-            medicationRemindersEnabled: true,
-          },
-        },
-      },
-      take: 500,
-    })) as ActivePrescription[];
-
-    if (rows.length === 0) return { scanned: 0, created: 0 };
+    const eligible: Prisma.PrescriptionWhereInput = {
+      status: "ACTIVE",
+      remindersEnabled: true,
+      clinic: { medicationRemindersEnabled: true },
+      patient: { deletedAt: null },
+      OR: [{ caseId: null }, { case: { status: "OPEN" } }],
+    };
 
     // The clinic's `medication.reminder` template, created from the default
-    // on first use (audit TG-15). An admin's edits and off switch are kept.
-    const clinicIds = Array.from(new Set(rows.map((r) => r.clinicId)));
+    // on first use (audit TG-15), once per clinic per tick. An admin's edits
+    // and off switch are kept.
     const tplByClinic = new Map<string, EnsuredTemplate | null>();
-    for (const clinicId of clinicIds) {
-      try {
-        tplByClinic.set(
-          clinicId,
-          await ensureClinicTemplate(clinicId, MEDICATION_REMINDER_TEMPLATE),
-        );
-      } catch (err) {
-        console.error(
-          `[medication-reminder] clinic ${clinicId}: could not create the medication.reminder template, in-app reminders only`,
-          err,
-        );
-        tplByClinic.set(clinicId, null);
-      }
-    }
+    const from = new Date(now.getTime() - MEDICATION_CATCH_UP_MS);
 
+    let scanned = 0;
     let created = 0;
+    let completed = 0;
+    let cursor: string | null = null;
 
-    for (const rx of rows) {
-      const sched = parseSchedule(rx.schedule, rx.createdAt);
-      if (!sched) continue;
+    for (;;) {
+      const rows = (await prisma.prescription.findMany({
+        where: cursor ? { ...eligible, id: { gt: cursor } } : eligible,
+        select: {
+          id: true,
+          clinicId: true,
+          patientId: true,
+          drugName: true,
+          dosage: true,
+          schedule: true,
+          createdAt: true,
+          patient: {
+            select: {
+              fullName: true,
+              phone: true,
+              telegramId: true,
+              tgBlockedAt: true,
+              preferredChannel: true,
+              preferredLang: true,
+              marketingOptOut: true,
+              deletedAt: true,
+            },
+          },
+          clinic: {
+            select: {
+              id: true,
+              nameRu: true,
+              nameUz: true,
+              timezone: true,
+              medicationRemindersEnabled: true,
+            },
+          },
+        },
+        orderBy: { id: "asc" },
+        take: PAGE_SIZE,
+      })) as ActivePrescription[];
+      if (rows.length === 0) break;
+      scanned += rows.length;
+      cursor = rows[rows.length - 1]!.id;
 
-      // Phase 17 Wave 1 — medication reminders are classified as marketing
-      // (the patient may opt out without losing critical care). The
-      // prescription itself stays active; we just stop pinging the patient.
-      const consent = isAllowedToReceive(rx.patient, "marketing");
-      if (!consent.allowed) continue;
-
-      const tz = rx.clinic.timezone || "Asia/Tashkent";
-      const tpl = tplByClinic.get(rx.clinicId) ?? null;
-      const from = new Date(now.getTime() - MEDICATION_CATCH_UP_MS);
-      for (const dueAt of dosesDueBetween(sched, from, now, tz)) {
-        if (await materializeDose(rx, tpl, dueAt, tz, now)) created += 1;
+      for (const clinicId of new Set(rows.map((r) => r.clinicId))) {
+        if (tplByClinic.has(clinicId)) continue;
+        try {
+          tplByClinic.set(
+            clinicId,
+            await ensureClinicTemplate(clinicId, MEDICATION_REMINDER_TEMPLATE),
+          );
+        } catch (err) {
+          console.error(
+            `[medication-reminder] clinic ${clinicId}: could not create the medication.reminder template, in-app reminders only`,
+            err,
+          );
+          tplByClinic.set(clinicId, null);
+        }
       }
+
+      const finished: string[] = [];
+      for (const rx of rows) {
+        const sched = parseSchedule(rx.schedule, rx.createdAt);
+        if (!sched) continue;
+
+        // Phase 17 Wave 1 — medication reminders are classified as marketing
+        // (the patient may opt out without losing critical care). The
+        // prescription itself stays active; we just stop pinging the patient.
+        const consent = isAllowedToReceive(rx.patient, "marketing");
+        if (consent.allowed) {
+          const tz = rx.clinic.timezone || "Asia/Tashkent";
+          const tpl = tplByClinic.get(rx.clinicId) ?? null;
+          for (const dueAt of dosesDueBetween(sched, from, now, tz)) {
+            if (await materializeDose(rx, tpl, dueAt, tz, now)) created += 1;
+          }
+        }
+
+        // The course has run its days (audit INF-09): it is over, whatever
+        // the patient's consent, and leaves the pool the next ticks scan.
+        // Its last dose, if still inside the catch-up window, went out above.
+        if (isCourseFinished(sched, now)) finished.push(rx.id);
+      }
+
+      if (finished.length > 0) {
+        // Guarded on ACTIVE: a course paused or ended by staff meanwhile keeps
+        // the status they gave it.
+        const res = await prisma.prescription.updateMany({
+          where: { id: { in: finished }, status: "ACTIVE" },
+          data: { status: "COMPLETED" },
+        });
+        completed += res.count;
+      }
+
+      if (rows.length < PAGE_SIZE) break;
     }
 
-    return { scanned: rows.length, created };
+    if (scanned > 0) {
+      console.info(
+        `[medication-reminder] scanned ${scanned}, reminders ${created}, courses completed ${completed}`,
+      );
+    }
+    return { scanned, created, completed };
   });
 }
 

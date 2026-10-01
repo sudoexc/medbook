@@ -10,6 +10,12 @@
  *
  * Returns the services that would be left with no provider — empty array
  * means deactivation is safe.
+ *
+ * The same invariant had two more side doors (audit DR-07): unticking a
+ * service in the doctor's services editor (PUT /doctors/[id]/services, or
+ * PATCH /doctors/[id] with `services`) and switching a retired service back
+ * on. `findServicesOrphanedByUnlinking` and `serviceHasActiveDoctor` close
+ * them with the same rule and the same 409 shape.
  */
 import { prisma } from "@/lib/prisma";
 
@@ -26,9 +32,52 @@ export async function findServicesOrphanedByDeactivating(
     where: { doctorId },
     select: { serviceId: true },
   });
-  if (myLinks.length === 0) return [];
+  return servicesLeftWithoutDoctor(
+    doctorId,
+    myLinks.map((l) => l.serviceId),
+  );
+}
 
-  const serviceIds = myLinks.map((l) => l.serviceId);
+/**
+ * The services this doctor is about to drop (his current links missing from
+ * `keepServiceIds`) that no other active doctor performs. An inactive
+ * doctor covers nothing, so unlinking his services orphans nothing.
+ */
+export async function findServicesOrphanedByUnlinking(
+  doctorId: string,
+  keepServiceIds: readonly string[],
+): Promise<OrphanedService[]> {
+  const doctor = await prisma.doctor.findUnique({
+    where: { id: doctorId },
+    select: { isActive: true },
+  });
+  if (!doctor?.isActive) return [];
+  const keep = new Set(keepServiceIds);
+  const myLinks = await prisma.serviceOnDoctor.findMany({
+    where: { doctorId },
+    select: { serviceId: true },
+  });
+  return servicesLeftWithoutDoctor(
+    doctorId,
+    myLinks.map((l) => l.serviceId).filter((sid) => !keep.has(sid)),
+  );
+}
+
+/** Does at least one active doctor perform this service? */
+export async function serviceHasActiveDoctor(serviceId: string): Promise<boolean> {
+  const link = await prisma.serviceOnDoctor.findFirst({
+    where: { serviceId, doctor: { isActive: true } },
+    select: { doctorId: true },
+  });
+  return link !== null;
+}
+
+/** Of `serviceIds`, the active ones nobody but `doctorId` (among active doctors) performs. */
+async function servicesLeftWithoutDoctor(
+  doctorId: string,
+  serviceIds: string[],
+): Promise<OrphanedService[]> {
+  if (serviceIds.length === 0) return [];
   const stillCovered = await prisma.serviceOnDoctor.findMany({
     where: {
       serviceId: { in: serviceIds },

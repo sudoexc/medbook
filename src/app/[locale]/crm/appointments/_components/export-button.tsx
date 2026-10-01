@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { DownloadIcon, Loader2Icon } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -10,32 +9,31 @@ import { useAsyncExport, useAsyncExportToasts } from "@/hooks/use-async-export";
 import { canExport } from "@/lib/export-roles";
 
 import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
+import {
+  appointmentExportFilters,
+  useAppointmentsFilters,
+} from "../_hooks/use-appointments-filters";
 
 /**
  * Appointment CSV export via the Phase 5 async worker. Poll → download.
+ * The file holds the rows of the list on screen: it used to send only the
+ * doctor, status and raw `from`/`to`, so «Сегодня» exported the whole base.
  */
 export function ExportButton() {
   const t = useTranslations("appointments");
-  const searchParams = useSearchParams();
+  // The list's own resolved filters (audit INF-02): «Сегодня» is today's
+  // Tashkent window, the tile is a status, the search box is the search.
+  const { state, apiFilters } = useAppointmentsFilters();
   const role = useCurrentRole();
   const { start, status, error } = useAsyncExport();
   // The API's answer, not the click, decides what the button says (AN-27).
   useAsyncExportToasts(status, error);
 
   const onClick = () => {
-    const filters: Record<string, unknown> = {};
-    const sp = searchParams;
-    if (sp) {
-      const doctorId = sp.get("doctorId") ?? sp.get("doctor");
-      const statusF = sp.get("status");
-      const dateFrom = sp.get("from");
-      const dateTo = sp.get("to");
-      if (doctorId) filters.doctorId = doctorId;
-      if (statusF) filters.status = statusF;
-      if (dateFrom) filters.dateFrom = dateFrom;
-      if (dateTo) filters.dateTo = dateTo;
-    }
-    void start({ kind: "appointments", filters });
+    void start({
+      kind: "appointments",
+      filters: appointmentExportFilters(state, apiFilters),
+    });
   };
 
   const running = status === "enqueued" || status === "running";

@@ -7,8 +7,9 @@
  * webhook flow handles the message (record incoming + leave silent).
  *
  * On a doctor voice message:
- *   1. Look up the doctor's most recent OPEN MedicalCase, scoped to the
- *      clinic. If none exists, reply "Нет активного случая" and exit.
+ *   1. Find the case of the visit the doctor has in progress (his one
+ *      IN_PROGRESS appointment, audit AC-13). No visit in progress, or one
+ *      without a case: reply "Нет начатого приёма" and exit.
  *   2. Resolve the file's TG-hosted URL via `getFile`. The URL is short-
  *      lived (~1h) so we don't persist it.
  *   3. Enqueue `voice-soap-process` with the URL + duration. The worker
@@ -81,24 +82,25 @@ export async function resolveDictatingDoctor(
 }
 
 /**
- * Find the doctor's latest OPEN case in this clinic. Returns null when the
- * doctor hasn't opened any.
+ * The case of the patient the doctor is seeing now: the case attached to his
+ * visit in progress (one at a time, Q-13). Null when no visit is in
+ * progress or it has no case.
+ *
+ * Audit AC-13: it used to be the doctor's most recently updated OPEN case,
+ * which is not necessarily the patient in the chair, so a dictation about
+ * patient A could land in patient B's record.
  */
-async function findActiveCaseId(
+export async function findActiveCaseId(
   clinicId: string,
   doctorId: string,
 ): Promise<string | null> {
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    const row = await prisma.medicalCase.findFirst({
-      where: {
-        clinicId,
-        primaryDoctorId: doctorId,
-        status: "OPEN",
-      },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true },
+    const visit = await prisma.appointment.findFirst({
+      where: { clinicId, doctorId, status: "IN_PROGRESS" },
+      orderBy: { startedAt: "desc" },
+      select: { medicalCaseId: true },
     });
-    return row?.id ?? null;
+    return visit?.medicalCaseId ?? null;
   });
 }
 

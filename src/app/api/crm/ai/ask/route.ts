@@ -20,6 +20,11 @@ import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
 import { askAssistant } from "@/server/ai/tool-loop";
 import { LLMRateLimitError } from "@/server/ai/llm";
+import {
+  aiDisabledResponse,
+  aiUnavailableResponse,
+  isAiEnabled,
+} from "@/server/ai/availability";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { clientIpForAudit } from "@/lib/client-ip";
 
@@ -34,6 +39,8 @@ export const POST = createApiHandler(
     bodySchema: BodySchema,
   },
   async ({ request, body, ctx }) => {
+    // AI paused (audit AC-12): nothing reaches the provider, no usage row.
+    if (!isAiEnabled()) return aiDisabledResponse();
     if (ctx.kind !== "TENANT") {
       return err("ClinicNotSelected", 400);
     }
@@ -78,6 +85,9 @@ export const POST = createApiHandler(
       if (e instanceof LLMRateLimitError) {
         return err("RateLimitExceeded", 429, { limit: e.limit });
       }
+      // No provider key in production: a clear 503, not a mock answer.
+      const unavailable = aiUnavailableResponse(e);
+      if (unavailable) return unavailable;
       console.error("[ai-ask]", e);
       return err("InternalError", 500);
     }

@@ -24,9 +24,25 @@ type AutoMessage = {
   kind: AutoMessageKind;
   key: string;
   enabled: boolean;
+  /** Russian text. */
   text: string;
+  /** Uzbek text: patients who read Uzbek get this one (audit ST-08). */
+  textUz: string;
   variables: string[];
 };
+
+/** A 400 from the save that names the offending placeholders. */
+class PlaceholderError extends Error {
+  constructor(readonly keys: string[]) {
+    super("UnknownPlaceholder");
+  }
+}
+
+function changed(d: AutoMessage, s: AutoMessage | undefined): boolean {
+  return (
+    !s || d.enabled !== s.enabled || d.text !== s.text || d.textUz !== s.textUz
+  );
+}
 
 const QUERY_KEY = ["auto-messages"] as const;
 
@@ -65,7 +81,12 @@ export function AutoMessagesDialog() {
 
   const save = useMutation({
     mutationFn: async (
-      messages: Array<{ kind: AutoMessageKind; enabled: boolean; text: string }>,
+      messages: Array<{
+        kind: AutoMessageKind;
+        enabled: boolean;
+        text: string;
+        textUz: string;
+      }>,
     ): Promise<AutoMessage[]> => {
       const res = await fetch("/api/crm/settings/auto-messages", {
         method: "PATCH",
@@ -73,7 +94,16 @@ export function AutoMessagesDialog() {
         credentials: "include",
         body: JSON.stringify({ messages }),
       });
-      if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+          unknown?: string[];
+        } | null;
+        if (payload?.error === "UnknownPlaceholder" && payload.unknown) {
+          throw new PlaceholderError(payload.unknown);
+        }
+        throw new Error(`Save failed: ${res.status}`);
+      }
       const json = (await res.json()) as { messages: AutoMessage[] };
       return json.messages;
     },
@@ -82,7 +112,15 @@ export function AutoMessagesDialog() {
       setDraft(messages);
       toast.success(t("saved"));
     },
-    onError: () => {
+    onError: (e: Error) => {
+      if (e instanceof PlaceholderError) {
+        toast.error(
+          t("placeholderError", {
+            keys: e.keys.map((k) => `{{${k}}}`).join(", "),
+          }),
+        );
+        return;
+      }
       toast.error(t("saveError"));
     },
   });
@@ -90,10 +128,7 @@ export function AutoMessagesDialog() {
   const serverState = query.data ?? null;
   const dirty =
     draft && serverState
-      ? draft.some((d, i) => {
-          const s = serverState[i];
-          return !s || d.enabled !== s.enabled || d.text !== s.text;
-        })
+      ? draft.some((d, i) => changed(d, serverState[i]))
       : false;
 
   const patch = (kind: AutoMessageKind, change: Partial<AutoMessage>) => {
@@ -104,17 +139,19 @@ export function AutoMessagesDialog() {
 
   const onSave = () => {
     if (!draft || !serverState) return;
-    const changed = draft
-      .filter((d, i) => {
-        const s = serverState[i];
-        return !s || d.enabled !== s.enabled || d.text !== s.text;
-      })
-      .map((d) => ({ kind: d.kind, enabled: d.enabled, text: d.text }));
-    if (changed.length === 0) {
+    const edits = draft
+      .filter((d, i) => changed(d, serverState[i]))
+      .map((d) => ({
+        kind: d.kind,
+        enabled: d.enabled,
+        text: d.text,
+        textUz: d.textUz,
+      }));
+    if (edits.length === 0) {
       setOpen(false);
       return;
     }
-    save.mutate(changed);
+    save.mutate(edits);
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -170,13 +207,30 @@ export function AutoMessagesDialog() {
                     aria-label={t(`items.${m.kind}.title`)}
                   />
                 </div>
-                <Textarea
-                  value={m.text}
-                  onChange={(e) => patch(m.kind, { text: e.target.value })}
-                  disabled={!m.enabled}
-                  rows={m.kind === "welcome" ? 6 : 3}
-                  className="text-[13px]"
-                />
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {t("langRu")}
+                  </span>
+                  <Textarea
+                    value={m.text}
+                    onChange={(e) => patch(m.kind, { text: e.target.value })}
+                    disabled={!m.enabled}
+                    rows={m.kind === "welcome" ? 5 : 3}
+                    className="text-[13px]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {t("langUz")}
+                  </span>
+                  <Textarea
+                    value={m.textUz}
+                    onChange={(e) => patch(m.kind, { textUz: e.target.value })}
+                    disabled={!m.enabled}
+                    rows={m.kind === "welcome" ? 5 : 3}
+                    className="text-[13px]"
+                  />
+                </label>
                 {m.variables.length > 0 ? (
                   <p className="text-[11px] text-muted-foreground">
                     {t("placeholdersHint", {

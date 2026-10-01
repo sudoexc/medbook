@@ -174,6 +174,24 @@ function tzDateToUtc(ymd: string, hhmm: string, tz: string): Date {
   return new Date(naive.getTime() - offsetMs);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The moment the course ends (`startsAt + days`), null when open-ended.
+ * Shared by the due check, the days-left counter and the reminder worker,
+ * which completes a course once this has passed (audit INF-09).
+ */
+export function courseEndsAt(schedule: ParsedSchedule): Date | null {
+  if (schedule.days === null) return null;
+  return new Date(schedule.startsAt.getTime() + schedule.days * DAY_MS);
+}
+
+/** The course has run its days: no dose of it is due any more. */
+export function isCourseFinished(schedule: ParsedSchedule, now: Date): boolean {
+  const end = courseEndsAt(schedule);
+  return end !== null && now.getTime() >= end.getTime();
+}
+
 /**
  * Is the prescription due during the tick window that contains `now`?
  *
@@ -206,11 +224,7 @@ export function dosesDueInWindow(
 ): Date[] {
   // Window guard.
   if (now.getTime() < schedule.startsAt.getTime()) return [];
-  if (schedule.days !== null) {
-    const endMs =
-      schedule.startsAt.getTime() + schedule.days * 24 * 60 * 60 * 1000;
-    if (now.getTime() >= endMs) return [];
-  }
+  if (isCourseFinished(schedule, now)) return [];
   const hhmm = localHHmm(now, tz);
   const hourPart = hhmm.slice(0, 2);
   const ymd = localYYYYMMDD(now, tz);
@@ -244,8 +258,7 @@ export function dosesDueBetween(
   if (to.getTime() <= from.getTime()) return [];
   const dayMs = 24 * 60 * 60 * 1000;
   const startMs = schedule.startsAt.getTime();
-  const endMs =
-    schedule.days === null ? null : startMs + schedule.days * dayMs;
+  const endMs = courseEndsAt(schedule)?.getTime() ?? null;
   const times = Array.from(new Set(schedule.times)).sort();
   const days = new Set<string>();
   for (let t = from.getTime(); t < to.getTime() + dayMs; t += dayMs) {

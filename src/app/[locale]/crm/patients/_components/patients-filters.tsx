@@ -94,9 +94,13 @@ export function PatientsFilters({
     Boolean(state.ageMax) ||
     Boolean(state.registeredFrom) ||
     Boolean(state.registeredTo) ||
+    Boolean(state.visitedFrom) ||
+    Boolean(state.visitedTo) ||
     state.balance === "debt";
 
-  const datesEmpty = !state.registeredFrom && !state.registeredTo;
+  // «Дата посещения» is the visit date (audit PT-18): it used to write the
+  // registration period under that label.
+  const datesEmpty = !state.visitedFrom && !state.visitedTo;
   const shownColumns = visibleColumns
     ? Object.values(visibleColumns).filter(Boolean).length
     : TOTAL_OPTIONAL_COLUMNS;
@@ -108,7 +112,9 @@ export function PatientsFilters({
         className,
       )}
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      {/* Five cells: «Сегменты» was a second control for the `segment`
+          «Статус» already sets (audit PT-18). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <FilterCell label={t("filters.labelSearch")}>
           <div className="relative">
             <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -164,9 +170,9 @@ export function PatientsFilters({
                   className="h-8 w-0 border-0 p-0 opacity-0 shadow-none focus-visible:ring-0"
                   value=""
                   onChange={(e) =>
-                    onChange("registeredFrom", e.target.value || undefined)
+                    onChange("visitedFrom", e.target.value || undefined)
                   }
-                  aria-label={t("filters.lastVisitFrom")}
+                  aria-label={t("filters.visitDateFrom")}
                 />
               </>
             ) : (
@@ -174,37 +180,25 @@ export function PatientsFilters({
                 <Input
                   type="date"
                   className="h-8 w-full min-w-0 flex-1 border-0 p-0 text-[12px] shadow-none focus-visible:ring-0"
-                  value={state.registeredFrom ?? ""}
+                  value={state.visitedFrom ?? ""}
                   onChange={(e) =>
-                    onChange("registeredFrom", e.target.value || undefined)
+                    onChange("visitedFrom", e.target.value || undefined)
                   }
-                  aria-label={t("filters.lastVisitFrom")}
+                  aria-label={t("filters.visitDateFrom")}
                 />
                 <span className="text-muted-foreground">—</span>
                 <Input
                   type="date"
                   className="h-8 w-full min-w-0 flex-1 border-0 p-0 text-[12px] shadow-none focus-visible:ring-0"
-                  value={state.registeredTo ?? ""}
+                  value={state.visitedTo ?? ""}
                   onChange={(e) =>
-                    onChange("registeredTo", e.target.value || undefined)
+                    onChange("visitedTo", e.target.value || undefined)
                   }
-                  aria-label={t("filters.lastVisitTo")}
+                  aria-label={t("filters.visitDateTo")}
                 />
               </>
             )}
           </div>
-        </FilterCell>
-
-        <FilterCell label={t("filters.labelSegments")}>
-          <FilterSelect
-            value={state.segment}
-            onValueChange={(v) => onChange("segment", v)}
-            placeholder={t("rail.viewAllSegments")}
-            items={SEGMENTS.map((s) => ({
-              value: s,
-              label: t(`segment.${s.toLowerCase()}` as never),
-            }))}
-          />
         </FilterCell>
 
         <FilterCell label={t("filters.labelTableSettings")}>

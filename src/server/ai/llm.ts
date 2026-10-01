@@ -29,6 +29,11 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 
+import {
+  AIProviderNotConfiguredError,
+  assertAiEnabled,
+  mockProviderAllowed,
+} from "./availability";
 import { redactWithKnownNames, unredact } from "./redact";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -246,7 +251,20 @@ type ProviderResult = {
 // Provider selection
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Pick the provider. The mock stands in for a missing key only outside
+ * production (audit AC-12): in a live clinic its «[mock-llm: …]» text came
+ * back as a real answer, so production gets `AIProviderNotConfiguredError`.
+ */
 function resolveProvider(): { provider: LLMProvider; model: string } {
+  const picked = pickProvider();
+  if (picked.provider === "mock" && !mockProviderAllowed()) {
+    throw new AIProviderNotConfiguredError("LLM provider");
+  }
+  return picked;
+}
+
+function pickProvider(): { provider: LLMProvider; model: string } {
   const envProvider = (process.env.LLM_PROVIDER ?? "anthropic") as LLMProvider;
   const model = process.env.LLM_DEFAULT_MODEL ?? DEFAULT_MODEL;
 
@@ -543,6 +561,9 @@ function buildPromptHash(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
+  // Refused before anything is redacted, sent or counted (audit AC-12): with
+  // AI paused no request leaves, and no LLMUsage row eats the daily limit.
+  assertAiEnabled();
   const { provider, model } = resolveProvider();
   const knownNames = req.knownNames ?? [];
   const startedAt = Date.now();

@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-export const dynamic = "force-static";
+import { siteOpenGraph } from "@/lib/site-meta";
+import { siteAlternates } from "@/lib/site-urls";
+
+// No `dynamic` override (audit LD-04): the page inherits the (site)
+// layout's force-dynamic. It used to say force-static, which won over the
+// layout, so the page was rendered once after a deploy and kept: the booking
+// form in the header listed the doctors of that moment until the next
+// deploy (or none at all if the database was not up yet), and the footer
+// year froze with it.
 
 export async function generateMetadata({
   params,
@@ -10,7 +18,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "legal.privacy" });
-  return { title: t("title") };
+  // Its own canonical and hreflang (audit LD-03): it used to inherit the
+  // landing's and tell search engines the landing was its canonical page.
+  return {
+    title: t("title"),
+    alternates: siteAlternates(locale, "/privacy"),
+    openGraph: siteOpenGraph(locale, "/privacy", { title: t("title") }),
+  };
 }
 
 export default async function PrivacyPage({

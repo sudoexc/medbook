@@ -8,7 +8,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, conflict, parseQuery } from "@/server/http";
-import { normalizePhone } from "@/lib/phone";
+import { appointmentSearchOr } from "@/server/appointments/list-where";
 import {
   CreateAppointmentSchema,
   QueryAppointmentSchema,
@@ -18,6 +18,7 @@ import { newCorrelationId } from "@/server/realtime/outbox";
 import { isOnClinicDay } from "@/lib/appointment-transitions";
 import { findStandingAutoNoShows } from "@/server/appointments/auto-no-show";
 import { ensureQuotaForApi } from "@/server/billing/plan-limits";
+import { canEditPrice, priceFieldsIn } from "@/lib/appointments/price-edit";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -43,24 +44,9 @@ export const GET = createApiListHandler(
         none: { status: "PAID" },
       };
     }
-    if (q.q && q.q.trim().length > 0) {
-      const term = q.q.trim();
-      const phoneDigits = term.replace(/\D/g, "");
-      const phoneNorm = normalizePhone(term);
-      const or: Array<Record<string, unknown>> = [
-        { patient: { fullName: { contains: term, mode: "insensitive" } } },
-        { patient: { phone: { contains: term } } },
-        { doctor: { nameRu: { contains: term, mode: "insensitive" } } },
-        { doctor: { nameUz: { contains: term, mode: "insensitive" } } },
-      ];
-      if (phoneDigits.length >= 3) {
-        or.push({ patient: { phoneNormalized: { contains: phoneDigits } } });
-        if (phoneNorm) {
-          or.push({ patient: { phoneNormalized: { contains: phoneNorm } } });
-        }
-      }
-      where.OR = or;
-    }
+    // Shared with the CSV export (audit INF-02).
+    const searchOr = appointmentSearchOr(q.q);
+    if (searchOr) where.OR = searchOr;
 
     // DOCTOR sees only their own records
     if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
@@ -220,6 +206,17 @@ export const POST = createApiHandler(
       doctorId = self.id;
     }
 
+    // Audit AP-03 — a typed price, discount or line price overrides the
+    // pricing engine: reception's and the administrator's call. The doctor's
+    // own booking dialog never sends one.
+    const priceFields = priceFieldsIn(body);
+    if (priceFields.length > 0 && !canEditPrice(ctx.role)) {
+      return err("Forbidden", 403, {
+        reason: "role_cannot_edit_price",
+        fields: priceFields,
+      });
+    }
+
     const actorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST";
     const actorUserId = ctx.userId || null;
 
@@ -290,6 +287,10 @@ export const POST = createApiHandler(
         case "on_behalf_of_not_linked":
           // Unreachable: only the Mini App passes a booking guard.
           return err("on_behalf_of_not_linked", 403);
+        case "patient_not_found":
+          return err("PatientInvalid", 422, { reason: "patient_not_found" });
+        case "case_not_found":
+          return err("CaseInvalid", 422, { reason: "case_not_found" });
       }
     }
 

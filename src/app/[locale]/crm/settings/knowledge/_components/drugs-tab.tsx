@@ -56,7 +56,12 @@ import {
 } from "./shared";
 
 type DrugForm = { form: string; strengths?: string[] };
-type DrugDosing = { adult?: string; pediatric?: string; renal?: string };
+type DrugDosing = {
+  adult?: string;
+  pediatric?: string;
+  elderly?: string;
+  renal?: string;
+};
 
 type DrugRow = {
   id: string;
@@ -343,6 +348,7 @@ function DrugDialog({
     sideEffects: listToText(row?.sideEffects),
     dosingAdult: dosingField(row?.defaultDosing, "adult"),
     dosingPediatric: dosingField(row?.defaultDosing, "pediatric"),
+    dosingElderly: dosingField(row?.defaultDosing, "elderly"),
     dosingRenal: dosingField(row?.defaultDosing, "renal"),
     rxOnly: row?.rxOnly ?? true,
   }));
@@ -354,6 +360,7 @@ function DrugDialog({
     const d: DrugDosing = {};
     if (form.dosingAdult.trim()) d.adult = form.dosingAdult.trim();
     if (form.dosingPediatric.trim()) d.pediatric = form.dosingPediatric.trim();
+    if (form.dosingElderly.trim()) d.elderly = form.dosingElderly.trim();
     if (form.dosingRenal.trim()) d.renal = form.dosingRenal.trim();
     return Object.keys(d).length > 0 ? d : null;
   };
@@ -400,6 +407,9 @@ function DrugDialog({
     },
   });
 
+  // The server keeps only what differs from the global drug and merges the
+  // dosing line by line, so posting the whole form never erases the global
+  // copy a field was left at (CT-10).
   const saveOverride = () =>
     overlayMutation.mutate(
       {
@@ -577,6 +587,13 @@ function DrugDialog({
                 rows={2}
                 value={form.dosingPediatric}
                 onChange={(e) => set("dosingPediatric", e.target.value)}
+              />
+            </Field>
+            <Field label={t("drugs.fields.dosingElderly")}>
+              <Textarea
+                rows={2}
+                value={form.dosingElderly}
+                onChange={(e) => set("dosingElderly", e.target.value)}
               />
             </Field>
             <Field label={t("drugs.fields.dosingRenal")}>

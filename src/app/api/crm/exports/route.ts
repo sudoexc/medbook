@@ -12,20 +12,46 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok } from "@/server/http";
 import { enqueueExport } from "@/server/workers/exports";
 import { EXPORT_ROLES } from "@/lib/export-roles";
+import { isTashkentDateString } from "@/lib/tashkent-time";
+import { TashkentDaySchema } from "@/server/schemas/common";
 
+/** A period bound: a Tashkent day or an ISO instant, nothing else. */
+const PeriodBound = z
+  .string()
+  .refine((v) => isTashkentDateString(v) || !Number.isNaN(Date.parse(v)), {
+    message: "expected YYYY-MM-DD or an ISO date-time",
+  });
+
+/**
+ * The screen's filters (audit PT-19, INF-02). Dates are validated here: an
+ * attribution marker that leaked into `from` (`?from=ai-rec`) used to reach
+ * the worker as `new Date("ai-rec")` and fail the export.
+ */
 const Schema = z.object({
   kind: z.enum(["patients", "appointments", "payments"]),
   filters: z
     .object({
-      q: z.string().optional(),
+      q: z.string().max(200).optional(),
       segment: z.string().optional(),
       gender: z.string().optional(),
       source: z.string().optional(),
       tag: z.string().optional(),
+      consent: z.enum(["yes", "no"]).optional(),
+      balance: z.enum(["debt", "zero", "credit"]).optional(),
+      registeredFrom: PeriodBound.optional(),
+      registeredTo: PeriodBound.optional(),
+      visitedFrom: TashkentDaySchema.optional(),
+      visitedTo: TashkentDaySchema.optional(),
+      ageMin: z.number().int().min(0).max(150).optional(),
+      ageMax: z.number().int().min(0).max(150).optional(),
       doctorId: z.string().optional(),
+      cabinetId: z.string().optional(),
+      channel: z.string().optional(),
       status: z.string().optional(),
-      dateFrom: z.string().optional(),
-      dateTo: z.string().optional(),
+      statuses: z.array(z.string()).max(10).optional(),
+      unpaid: z.boolean().optional(),
+      dateFrom: PeriodBound.optional(),
+      dateTo: PeriodBound.optional(),
       paidOnly: z.boolean().optional(),
     })
     .default({}),

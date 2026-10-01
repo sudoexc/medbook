@@ -614,6 +614,11 @@ async function findTemplateFor(
           channel: true,
           triggerConfig: true,
         },
+        // Two active templates on one band (a playbook copy next to the
+        // canonical seed) used to resolve in whatever order Postgres
+        // returned them, so the text a patient got could change between runs
+        // (audit G2-10). The shared pick order makes it the same every time
+        // and the same one the widget shows (TG-22).
         orderBy: TEMPLATE_PICK_ORDER,
       }),
     );

@@ -173,7 +173,7 @@ The DB probe failed. Check `docker compose ps postgres` and `docker compose logs
 
 ## 7. Secrets
 
-All clinic-level secrets (`ProviderConnection.secretCipher`) are AES-256-GCM encrypted with `APP_SECRET`. Rotating `APP_SECRET` will brick all stored secrets — re-entry via the SUPER_ADMIN UI is required for each clinic.
+All clinic-level secrets (`ProviderConnection.secretCipher`), the 2FA seeds and the clinic bot tokens are AES-256-GCM encrypted with a key derived from `APP_SECRET` (falling back to `AUTH_SECRET`). Never change either secret in place: what breaks and the safe procedure for each are in `docs/runbooks/encryption-key-rotation.md`, section «AUTH_SECRET and APP_SECRET» (audit G2-04).
 
 If a legacy clinic still has Phase-4 base64 secrets after upgrade:
 

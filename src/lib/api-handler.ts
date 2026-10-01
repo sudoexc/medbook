@@ -151,6 +151,17 @@ function readBranchIdFromRequest(request: Request): string | null {
 }
 
 /**
+ * Drop a cookie branch that no longer exists, belongs to another clinic or
+ * was switched off (audit ST-06): it pinned every read to an empty branch.
+ * No cookie, no lookup.
+ */
+async function dropStaleBranch(ctx: TenantContext): Promise<TenantContext> {
+  if (ctx.kind !== "TENANT" || !ctx.branchId) return ctx;
+  const { withLiveBranch } = await import("@/server/branches/active-branch-guard");
+  return withLiveBranch(ctx);
+}
+
+/**
  * `auth()` is also the server-side session check (audit SEC-05/SEC-06,
  * DC-02): the NextAuth `jwt` callback consults `session-guard.ts`, so a
  * revoked, idled-out, kicked or deactivated session arrives here as null (401),
@@ -216,8 +227,9 @@ async function parseBody<TBody>(
  * SUPER_ADMIN included (audit SEC-08): impersonation used to be skipped here
  * on the promise of a 2FA check at a «platform-login / grant layer» that never
  * existed, so a SUPER_ADMIN password alone read and changed any clinic's
- * medical data. An impersonating SUPER_ADMIN (and one without a clinic, on the
- * list handlers) now needs their OWN enrolment. Returns `null` to let the
+ * medical data. An impersonating SUPER_ADMIN now needs their OWN enrolment
+ * (one without a clinic never gets this far: both wrappers answer
+ * ClinicNotSelected first, audit PT-05). Returns `null` to let the
  * request proceed, or a 403 Response to block it.
  */
 async function enforceTotpEnrollment(
@@ -280,6 +292,7 @@ export function createApiHandler<TBody = unknown>(
       const status = (e as Error & { status?: number }).status ?? 403;
       return json({ error: "Forbidden" }, { status });
     }
+    ctx = await dropStaleBranch(ctx);
 
     if (ctx.kind === "SUPER_ADMIN") {
       return json(
@@ -367,6 +380,25 @@ export function createApiListHandler(
     } catch (e) {
       const status = (e as Error & { status?: number }).status ?? 403;
       return json({ error: "Forbidden" }, { status });
+    }
+    ctx = await dropStaleBranch(ctx);
+
+    // Same gate as createApiHandler (audit PT-05). Every route on this
+    // wrapper is under /api/crm and reads one clinic's data; a SUPER_ADMIN
+    // context carries no clinicId, so the Prisma tenant extension injected
+    // nothing and GET /api/crm/patients, /patients/export and the card read
+    // every clinic's patients with no impersonation grant, no reason and no
+    // PatientView row. Platform reads have their own wrappers
+    // (createPlatformListHandler); a SUPER_ADMIN enters a clinic first.
+    if (ctx.kind === "SUPER_ADMIN") {
+      return json(
+        {
+          error: "ClinicNotSelected",
+          message:
+            "SUPER_ADMIN must impersonate a clinic before reading tenant-scoped data.",
+        },
+        { status: 400 },
+      );
     }
 
     // GET-only handler — VIEW_ONLY does not need to block here (every method

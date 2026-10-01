@@ -5,7 +5,8 @@
  *
  * Loop (every `intervalMs`, default 200ms):
  *
- *   1. SELECT a small batch of `PENDING` rows whose retry window has elapsed
+ *   1. SELECT a small batch of `PENDING` rows (delivered at once on the first
+ *      attempt) and `FAILED` rows whose retry window has elapsed
  *      (`createdAt + 2^attempts * 1s < now()`), ordered by `createdAt`.
  *      Each row is locked with `FOR UPDATE SKIP LOCKED` so multiple pumpers
  *      can run in parallel without double-delivery.
@@ -30,6 +31,13 @@
  * `BATCH_SIZE * (1000 / intervalMs)` events/sec per pumper. When the PENDING
  * backlog grows past a threshold we surface an action-center alert (Phase G);
  * for Phase A we log a warning if the per-tick batch is fully saturated.
+ * `/api/health` reports the age of the oldest undelivered row (audit INF-01).
+ *
+ * Retention (audit INF-04): delivered rows only serve the SSE replay of a
+ * reconnecting client, which looks back minutes, and they carry patient data
+ * in the envelope. An hourly sweep deletes DELIVERED rows after 7 days and
+ * DEAD rows after 30 (time enough to triage them); the table no longer grows
+ * without bound under the 200 ms poll.
  */
 
 import type { Prisma } from "@/generated/prisma/client";
@@ -37,6 +45,9 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { prisma as prismaT } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+
+import { recordHeartbeat } from "@/server/observability/worker-heartbeat";
+import { getQueue } from "@/server/queue";
 
 import {
   EventEnvelopeSchema,
@@ -48,6 +59,21 @@ import { broadcastEnvelope } from "@/server/realtime/publish";
 const BATCH_SIZE = 100;
 const MAX_ATTEMPTS = 5;
 const DEFAULT_INTERVAL_MS = 200;
+// The batch's broadcasts and audit writes run inside the locking transaction.
+// Prisma's default 5 s timeout expired on a slow Redis: the rows rolled back
+// to PENDING and were broadcast again on the next tick (audit INF-04).
+const TX_TIMEOUT_MS = 30_000;
+
+export const RETENTION_QUEUE = "outbox:retention";
+export const RETENTION_JOB = "prune";
+const RETENTION_EVERY_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Delivered rows feed only the SSE replay, which looks back minutes. */
+export const DELIVERED_RETENTION_MS = 7 * DAY_MS;
+/** Dead letters stay long enough for someone to look at them. */
+export const DEAD_RETENTION_MS = 30 * DAY_MS;
+/** Rows per DELETE, so a first sweep over a large backlog never holds long locks. */
+const PRUNE_BATCH = 5_000;
 
 type OutboxRow = {
   id: string;
@@ -59,6 +85,13 @@ type OutboxRow = {
  * Pick eligible PENDING rows + lock them. Raw SQL because Prisma doesn't
  * expose `FOR UPDATE SKIP LOCKED`. The retry-window predicate uses Postgres
  * interval arithmetic so the worker doesn't need to compute it in JS.
+ *
+ * A row on its first attempt is due at once: the window `1 << 0` = 1 s held
+ * every live event (a confirmation, «пришёл», a signed visit) back at least
+ * a second (audit INF-04). The row is only visible after its transaction
+ * committed, so there is nothing to wait for. The backoff applies to retries.
+ * `(status, createdAt)` serves the scan; it used to read the whole table
+ * because every index started with `clinicId`.
  */
 // Same narrowing trick as `mintReferralRewardOnCompletion` — the extended
 // client's transaction callback parameter is a *subset* of the singleton
@@ -71,7 +104,10 @@ async function lockBatch(tx: Tx): Promise<OutboxRow[]> {
     SELECT id, envelope, attempts
     FROM "EventOutbox"
     WHERE status IN ('PENDING', 'FAILED')
-      AND ("createdAt" + ((1 << attempts) * INTERVAL '1 second')) <= NOW()
+      AND (
+        attempts = 0
+        OR ("createdAt" + ((1 << attempts) * INTERVAL '1 second')) <= NOW()
+      )
     ORDER BY "createdAt"
     LIMIT ${BATCH_SIZE}
     FOR UPDATE SKIP LOCKED
@@ -183,10 +219,68 @@ export async function pumpOnce(): Promise<{
           `[outbox-pumper] saturated tick (${BATCH_SIZE} rows) — backlog growing`,
         );
       }
-    });
+    }, { maxWait: 5_000, timeout: TX_TIMEOUT_MS });
   });
 
   return { delivered, failed, dead };
+}
+
+/**
+ * One retention sweep (audit INF-04). Deletes DELIVERED rows older than
+ * 7 days and DEAD rows older than 30, in batches. PENDING and FAILED rows
+ * are never touched: they are still to be delivered. Exported for tests.
+ */
+export async function pruneOutboxOnce(
+  now: Date = new Date(),
+): Promise<{ delivered: number; dead: number }> {
+  const deliveredBefore = new Date(now.getTime() - DELIVERED_RETENTION_MS);
+  const deadBefore = new Date(now.getTime() - DEAD_RETENTION_MS);
+  return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const sweep = async (status: "DELIVERED" | "DEAD", before: Date) => {
+      let total = 0;
+      for (;;) {
+        const n = await prisma.$executeRaw`
+          DELETE FROM "EventOutbox"
+          WHERE id IN (
+            SELECT id FROM "EventOutbox"
+            WHERE status = ${status}::"OutboxStatus" AND "createdAt" < ${before}
+            LIMIT ${PRUNE_BATCH}
+          )
+        `;
+        total += n;
+        if (n < PRUNE_BATCH) return total;
+      }
+    };
+    const delivered = await sweep("DELIVERED", deliveredBefore);
+    const dead = await sweep("DEAD", deadBefore);
+    return { delivered, dead };
+  });
+}
+
+/** Hourly retention sweep on the shared queue (heartbeat included). */
+export function startOutboxRetentionWorker(
+  intervalMs: number = RETENTION_EVERY_MS,
+): { stop: () => void } {
+  const queue = getQueue();
+  queue.registerWorker<Record<string, never>>(
+    RETENTION_QUEUE,
+    RETENTION_JOB,
+    async () => {
+      try {
+        const r = await pruneOutboxOnce();
+        if (r.delivered > 0 || r.dead > 0) {
+          console.info(
+            `[outbox-retention] pruned ${r.delivered} delivered, ${r.dead} dead`,
+          );
+        }
+      } catch (e) {
+        console.error("[outbox-retention] sweep failed", e);
+      }
+    },
+  );
+  const handle = queue.repeat(RETENTION_QUEUE, RETENTION_JOB, {} as never, intervalMs);
+  console.info("[worker] outbox-retention registered");
+  return handle;
 }
 
 /**
@@ -202,6 +296,11 @@ export function startOutboxPumperWorker(
     if (running) return; // skip overlapping ticks
     running = true;
     pumpOnce()
+      .then(() => {
+        // Liveness (audit INF-01): a pumper that stopped draining is what
+        // leaves every live screen stale; health watches this beat.
+        recordHeartbeat("outbox-pumper", intervalMs);
+      })
       .catch((e) => {
         const msg = e instanceof Error ? e.message : String(e);
         console.warn(`[outbox-pumper] tick failed: ${msg}`);

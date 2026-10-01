@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,7 +27,28 @@ import type { DoctorDetail } from "../_hooks/use-doctor";
 import {
   useCreateTimeOff,
   useDeleteTimeOff,
+  type TimeOffAffected,
 } from "../_hooks/use-doctor-schedule";
+
+/**
+ * The appointments list narrowed to this doctor and the visits inside the
+ * new leave, where reception reschedules them in bulk.
+ */
+export function affectedAppointmentsHref(
+  locale: string,
+  doctorId: string,
+  affected: TimeOffAffected,
+): string | null {
+  if (!affected.firstAt || !affected.lastAt) return null;
+  const sp = new URLSearchParams({
+    doctorId,
+    dateMode: "range",
+    from: affected.firstAt,
+    // Inclusive of the last visit's own start minute.
+    to: new Date(Date.parse(affected.lastAt) + 60_000).toISOString(),
+  });
+  return `/${locale}/crm/appointments?${sp.toString()}`;
+}
 
 function localDateTimeInputValue(iso: string): string {
   const d = new Date(iso);
@@ -56,6 +78,8 @@ export interface DoctorTimeOffProps {
 
 export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
   const t = useTranslations("crmDoctors.timeOff");
+  const locale = useLocale();
+  const router = useRouter();
 
   const [adding, setAdding] = React.useState(false);
   const [form, setForm] = React.useState(() => ({
@@ -86,8 +110,25 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
         reason: form.reason || null,
       },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           toast.success(t("saved"));
+          // Visits already booked inside the leave stay on the books and keep
+          // reminding patients: never silent (DR-06).
+          const affected = created.affectedAppointments;
+          if (affected && affected.count > 0) {
+            const href = affectedAppointmentsHref(locale, doctor.id, affected);
+            toast.warning(t("affectedAppointments", { count: affected.count }), {
+              duration: 15_000,
+              ...(href
+                ? {
+                    action: {
+                      label: t("affectedOpen"),
+                      onClick: () => router.push(href),
+                    },
+                  }
+                : {}),
+            });
+          }
           setAdding(false);
           setForm({
             startAt: defaultStart(),

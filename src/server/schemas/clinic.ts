@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 const CurrencyEnum = z.enum(["UZS", "USD"]);
 
 export const CreateClinicSchema = z.object({
@@ -37,7 +39,7 @@ export const CreateClinicSchema = z.object({
 export const UpdateClinicSchema = CreateClinicSchema.partial();
 
 export const QueryClinicSchema = z.object({
-  active: z.coerce.boolean().optional(),
+  active: queryBool(),
   q: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });

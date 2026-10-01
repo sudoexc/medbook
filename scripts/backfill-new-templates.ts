@@ -1,31 +1,30 @@
+/**
+ * Adds notification template keys introduced after a clinic was seeded:
+ * today only `case.repeat-due` (the free repeat visit reminder). Walks every
+ * clinic, creates a key only where the clinic has none, never changes an
+ * existing row (admin texts and switches stay as they are).
+ *
+ * It used to create `reminder.5h` too, an active «за 5 часов» reminder, in
+ * every clinic without that key, and NEW-CLINIC.md runs it at onboarding:
+ * a new clinic's patients got «за 5 часов» and «за 3 часа» almost back to
+ * back on top of the 5d / 3d / 1d / 3h cascade (audit G2-10). The cascade
+ * is seeded by seed-notification-templates.ts and kept by
+ * reminder-cadence-5d3d1d3h.ts; this script adds no reminder before a visit.
+ *
+ * DRY RUN by default; APPLY=1 writes.
+ *   docker compose run --rm -e APPLY=1 worker npx tsx scripts/backfill-new-templates.ts
+ */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+const APPLY = process.env.APPLY === "1";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
 const NEW_TEMPLATES = [
-  {
-    key: "reminder.5h",
-    nameRu: "Напоминание за 5 часов",
-    nameUz: "5 soat oldin eslatma",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_BEFORE" as const,
-    triggerConfig: { offsetMin: -300 },
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Напоминаем: сегодня в {{appointment.time}} у вас приём — {{appointment.doctor}}. Адрес: {{clinic.address}}. Тел: {{clinic.phone}}.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! Eslatma: bugun soat {{appointment.time}} da qabulga yoziluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}. Tel: {{clinic.phone}}.",
-    variables: [
-      "patient.firstName",
-      "appointment.time",
-      "appointment.doctor",
-      "clinic.address",
-      "clinic.phone",
-    ],
-  },
   {
     key: "case.repeat-due",
     nameRu: "Бесплатный повторный визит",
@@ -70,6 +69,11 @@ async function main() {
         continue;
       }
 
+      if (!APPLY) {
+        createdCount++;
+        console.log(`  [+]    ${clinic.slug} :: ${t.key} (dry run)`);
+        continue;
+      }
       await prisma.notificationTemplate.create({
         data: {
           clinicId: clinic.id,
@@ -91,7 +95,10 @@ async function main() {
     }
   }
 
-  console.log(`\nDone. Created: ${createdCount}, skipped: ${skippedCount}`);
+  console.log(
+    `\nDone. Created: ${createdCount}, skipped: ${skippedCount}` +
+      (APPLY ? "" : "\nDRY RUN, nothing written. APPLY=1 writes."),
+  );
   await prisma.$disconnect();
 }
 

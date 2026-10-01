@@ -43,7 +43,7 @@ export function CabinetPickerDialog({
     if (open) setSelectedId(currentCabinetId);
   }, [open, currentCabinetId]);
 
-  const save = useMutation<unknown, Error, string>({
+  const save = useMutation<{ movedAppointments?: number }, Error, string>({
     mutationFn: async (cabinetId) => {
       const res = await fetch(`/api/crm/doctors/${doctorId}`, {
         method: "PATCH",
@@ -59,18 +59,29 @@ export function CabinetPickerDialog({
         if (res.status === 409 && j?.reason === "cabinet_taken") {
           throw new Error(t("cabinetTaken"));
         }
+        // The new room already has a visit at the time of one of this
+        // doctor's visits; nothing was changed (DR-11).
+        if (res.status === 409 && j?.reason === "cabinet_schedule_conflict") {
+          throw new Error(t("cabinetScheduleConflict"));
+        }
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
+      return (await res.json()) as { movedAppointments?: number };
     },
-    onSuccess: () => {
-      toast.success(t("cabinetSaved"));
+    onSuccess: (data) => {
+      // His remaining visits moved with him: say how many, so reception
+      // knows the reminders and the queue now name the new room.
+      const moved = data.movedAppointments ?? 0;
+      toast.success(
+        moved > 0 ? t("cabinetSavedMoved", { count: moved }) : t("cabinetSaved"),
+      );
       qc.invalidateQueries({ queryKey: doctorKey(doctorId) });
       qc.invalidateQueries({ queryKey: CABINETS_WITH_OCCUPANTS_KEY });
       qc.invalidateQueries({ queryKey: ["doctors", "list"] });
       onOpenChange(false);
     },
     onError: (e) => {
-      toast.error(e.message);
+      toast.error(e.message, { duration: 10_000 });
     },
   });
 

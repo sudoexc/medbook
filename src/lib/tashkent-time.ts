@@ -73,6 +73,37 @@ export function tashkentDayWindow(dateStr: string): { from: Date; to: Date } {
 }
 
 /**
+ * Is `s` a real YYYY-MM-DD calendar day? The shape alone lets "2026-02-30"
+ * through, and `new Date` quietly rolls that over into March.
+ */
+export function isTashkentDateString(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const at = Date.parse(`${s}T12:00:00+05:00`);
+  return !Number.isNaN(at) && tashkentDateOf(at) === s;
+}
+
+/**
+ * A `createdAt` filter for an inclusive pair of Tashkent calendar days, the
+ * YYYY-MM-DD values an `<input type="date">` sends: `gte` the midnight that
+ * opens `from`, `lt` the midnight that closes `to`. Null when neither is set.
+ *
+ * `new Date("2026-09-23")` is UTC midnight, 05:00 in Tashkent. Used as `lte`
+ * it dropped the whole last day (a one-day filter «с 23.09 по 23.09» was
+ * always empty), and as `gte` it skipped the day's first five hours (audit
+ * ST-09, CM-16).
+ */
+export function tashkentDayRange(
+  from?: string | null,
+  to?: string | null,
+): { gte?: Date; lt?: Date } | null {
+  if (!from && !to) return null;
+  const range: { gte?: Date; lt?: Date } = {};
+  if (from) range.gte = tashkentDayWindow(from).from;
+  if (to) range.lt = tashkentDayWindow(addTashkentDays(to, 1)).from;
+  return range;
+}
+
+/**
  * Snap any ISO/Date to its 30-min slot key in Tashkent wall clock.
  */
 export function tashkentSlotKey(iso: string | Date): string {

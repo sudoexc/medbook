@@ -5,19 +5,8 @@ import type { Metadata } from "next";
 import { SITE_NAME, SITE_DOMAIN, CONTACT } from "@/lib/constants";
 import { LocaleHtmlLang } from "@/components/locale-html-lang";
 import { serializeJsonLd } from "@/lib/json-ld";
-
-const meta: Record<string, { title: string; description: string }> = {
-  ru: {
-    title: `${SITE_NAME} — Медицинский центр неврологии и кардиологии в Ташкенте`,
-    description:
-      "Медицинский центр NeuroFax — неврология, кардиология, УЗИ-диагностика в Ташкенте. Опытные специалисты, современное оборудование.",
-  },
-  uz: {
-    title: `${SITE_NAME} — Toshkentda nevrologiya va kardiologiya tibbiyot markazi`,
-    description:
-      "NeuroFax tibbiyot markazi — nevrologiya, kardiologiya, UZI diagnostikasi Toshkentda. Tajribali mutaxassislar, zamonaviy uskunalar.",
-  },
-};
+import { siteMeta, siteOpenGraph } from "@/lib/site-meta";
+import { siteUrl } from "@/lib/site-urls";
 
 export async function generateMetadata({
   params,
@@ -25,25 +14,17 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const m = meta[locale] || meta.ru;
-  const url = `https://${SITE_DOMAIN}/${locale}`;
+  const m = siteMeta(locale);
 
+  // No canonical / hreflang / og:url here (audit LD-03): every page under
+  // this layout inherited the landing's, so /privacy, /terms and the CRM
+  // pages declared https://neurofax.uz/ru (a 307 to "/") their canonical.
+  // Each public page sets its own through siteAlternates / siteOpenGraph.
   return {
     title: { default: m.title, template: `%s | ${SITE_NAME}` },
     description: m.description,
     metadataBase: new URL(`https://${SITE_DOMAIN}`),
-    alternates: {
-      canonical: url,
-      languages: { ru: `/ru`, uz: `/uz` },
-    },
-    openGraph: {
-      title: m.title,
-      description: m.description,
-      url,
-      siteName: SITE_NAME,
-      locale: locale === "uz" ? "uz_UZ" : "ru_RU",
-      type: "website",
-    },
+    openGraph: siteOpenGraph(locale),
     twitter: {
       card: "summary_large_image",
       title: m.title,
@@ -74,8 +55,8 @@ export default async function LocaleLayout({
     "@context": "https://schema.org",
     "@type": "MedicalBusiness",
     name: SITE_NAME,
-    url: `https://${SITE_DOMAIN}/${locale}`,
-    description: meta[locale]?.description || meta.ru.description,
+    url: siteUrl(locale, "/"),
+    description: siteMeta(locale).description,
     telephone: CONTACT.phone,
     medicalSpecialty: ["Neurology", "Cardiology", "Diagnostic Imaging", "Pediatric Neurology"],
     areaServed: {

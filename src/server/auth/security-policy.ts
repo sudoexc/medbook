@@ -23,6 +23,20 @@ export function isMandatory2faRole(role: Role): boolean {
 }
 
 /**
+ * May this user NOT turn TOTP off? True for the always-mandatory roles and
+ * for every role in a clinic with «2FA для всех» on. The security page hides
+ * the «Отключить» button on this verdict and the disable endpoint refuses on
+ * the same one; the endpoint used to check the role only, so a hand-made
+ * POST got around the clinic's policy (audit CM-15).
+ */
+export function isTotpMandatory(args: {
+  role: Role;
+  clinicRequire2faForAll: boolean;
+}): boolean {
+  return isMandatory2faRole(args.role) || args.clinicRequire2faForAll;
+}
+
+/**
  * Global kill-switch for two-factor authentication. When `DISABLE_2FA=1`
  * is set, the login authorize callback skips the TOTP/recovery gate, the
  * proxy stops forcing enrolment, and the pre-flight `totp-required`

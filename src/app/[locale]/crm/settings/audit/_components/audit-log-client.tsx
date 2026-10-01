@@ -16,6 +16,20 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
+import {
+  PATIENT_VIEW_CONTEXTS,
+  PATIENT_VIEW_CONTEXT_LABEL,
+  type PatientViewContext,
+} from "@/lib/patient-view-contexts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import { AuditPatientPicker, AuditStaffSelect } from "./audit-pickers";
 
 type AuditRow = {
   id: string;
@@ -66,14 +80,40 @@ type Tab = "events" | "patientViews";
  * tabs doesn't smear over the other tab's filters, and a URL with both sets
  * survives navigation.
  */
-const EVENTS_KEYS = ["entityType", "action", "actorId", "from", "to"] as const;
+const EVENTS_KEYS = [
+  "entityType",
+  "action",
+  "actorId",
+  "entityId",
+  "patientId",
+  "from",
+  "to",
+] as const;
 const PV_KEYS = ["patientId", "viewerUserId", "context", "from", "to"] as const;
 
-type EventsFilters = { entityType: string; action: string; actorId: string; from: string; to: string };
+type EventsFilters = {
+  entityType: string;
+  action: string;
+  actorId: string;
+  /** One object's rows, by its id (audit G1-10; the API had it, the UI not). */
+  entityId: string;
+  /** Rows about one patient: the card's and those whose meta names it. */
+  patientId: string;
+  from: string;
+  to: string;
+};
 type PVFilters = { patientId: string; viewerUserId: string; context: string; from: string; to: string };
 
 function emptyEventsFilters(): EventsFilters {
-  return { entityType: "", action: "", actorId: "", from: "", to: "" };
+  return {
+    entityType: "",
+    action: "",
+    actorId: "",
+    entityId: "",
+    patientId: "",
+    from: "",
+    to: "",
+  };
 }
 function emptyPVFilters(): PVFilters {
   return { patientId: "", viewerUserId: "", context: "", from: "", to: "" };
@@ -201,6 +241,8 @@ function EventsTab() {
     urlFilters.entityType,
     urlFilters.action,
     urlFilters.actorId,
+    urlFilters.entityId,
+    urlFilters.patientId,
     urlFilters.from,
     urlFilters.to,
   ]);
@@ -231,6 +273,8 @@ function EventsTab() {
       if (urlFilters.entityType) params.set("entityType", urlFilters.entityType);
       if (urlFilters.action) params.set("action", urlFilters.action);
       if (urlFilters.actorId) params.set("actorId", urlFilters.actorId);
+      if (urlFilters.entityId) params.set("entityId", urlFilters.entityId);
+      if (urlFilters.patientId) params.set("patientId", urlFilters.patientId);
       if (urlFilters.from) params.set("from", urlFilters.from);
       if (urlFilters.to) params.set("to", urlFilters.to);
       params.set("limit", "100");
@@ -245,12 +289,22 @@ function EventsTab() {
   );
 
   const parentRef = React.useRef<HTMLDivElement | null>(null);
+  // Rows are measured, not assumed (audit G1-10): a row with meta is twice
+  // the old fixed 72 px, and the next row was drawn over it.
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 72,
+    estimateSize: () => 64,
     overscan: 8,
   });
+  const [openMeta, setOpenMeta] = React.useState<ReadonlySet<string>>(new Set());
+  const toggleMeta = (id: string) =>
+    setOpenMeta((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   React.useEffect(() => {
     const el = parentRef.current;
@@ -270,7 +324,22 @@ function EventsTab() {
 
   return (
     <>
-      <div className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-5">
+      <div className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <Label htmlFor="a-patient">{t("audit.filters.patient")}</Label>
+          <AuditPatientPicker
+            id="a-patient"
+            value={draft.patientId}
+            onChange={(patientId) => setDraft({ ...draft, patientId })}
+          />
+        </div>
+        <div>
+          <Label htmlFor="a-actor">{t("audit.filters.staff")}</Label>
+          <AuditStaffSelect
+            value={draft.actorId}
+            onChange={(actorId) => setDraft({ ...draft, actorId })}
+          />
+        </div>
         <div>
           <Label htmlFor="a-entity">{t("audit.filters.entity")}</Label>
           <Input
@@ -281,21 +350,21 @@ function EventsTab() {
           />
         </div>
         <div>
+          <Label htmlFor="a-object">{t("audit.filters.object")}</Label>
+          <Input
+            id="a-object"
+            placeholder="id"
+            value={draft.entityId}
+            onChange={(e) => setDraft({ ...draft, entityId: e.target.value.trim() })}
+          />
+        </div>
+        <div>
           <Label htmlFor="a-action">{t("audit.filters.action")}</Label>
           <Input
             id="a-action"
             placeholder="user.update"
             value={draft.action}
             onChange={(e) => setDraft({ ...draft, action: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="a-actor">{t("audit.filters.actor")}</Label>
-          <Input
-            id="a-actor"
-            placeholder="userId"
-            value={draft.actorId}
-            onChange={(e) => setDraft({ ...draft, actorId: e.target.value })}
           />
         </div>
         <div>
@@ -326,6 +395,9 @@ function EventsTab() {
           <div className="p-6 text-sm text-muted-foreground">
             {t("common.loading")}
           </div>
+        ) : query.isError && rows.length === 0 ? (
+          // A failed request is not «nothing found» (audit G1-10).
+          <LoadError onRetry={() => void query.refetch()} />
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-10 text-sm text-muted-foreground">
             <ScrollIcon className="size-5" />
@@ -342,9 +414,12 @@ function EventsTab() {
             {virtualizer.getVirtualItems().map((vi) => {
               const row = rows[vi.index];
               if (!row) return null;
+              const metaOpen = openMeta.has(row.id);
               return (
                 <div
                   key={row.id}
+                  data-index={vi.index}
+                  ref={virtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -352,7 +427,7 @@ function EventsTab() {
                     width: "100%",
                     transform: `translateY(${vi.start}px)`,
                   }}
-                  className="border-b border-border px-3 py-2"
+                  className="border-b border-border bg-card px-3 py-2"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -375,13 +450,25 @@ function EventsTab() {
                         {row.ip ? ` · ${row.ip}` : ""}
                       </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {new Date(row.createdAt).toLocaleString(dateTag)}
+                      {row.meta ? (
+                        <button
+                          type="button"
+                          className="text-primary hover:underline"
+                          aria-expanded={metaOpen}
+                          onClick={() => toggleMeta(row.id)}
+                        >
+                          {metaOpen ? t("audit.metaHide") : t("audit.metaShow")}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
-                  {row.meta ? (
-                    <pre className="mt-1 max-h-24 overflow-auto rounded bg-muted/40 p-2 text-[11px] leading-tight text-muted-foreground">
-                      {JSON.stringify(row.meta, null, 2).slice(0, 1000)}
+                  {row.meta && metaOpen ? (
+                    // The whole meta, scrollable; it used to be cut at 1000
+                    // characters with no way to read the rest.
+                    <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2 text-[11px] leading-tight text-muted-foreground">
+                      {JSON.stringify(row.meta, null, 2)}
                     </pre>
                   ) : null}
                 </div>
@@ -390,6 +477,9 @@ function EventsTab() {
           </div>
         )}
       </div>
+      {query.isError && rows.length > 0 ? (
+        <LoadError onRetry={() => void query.fetchNextPage()} />
+      ) : null}
       {query.hasNextPage ? (
         <div className="flex justify-center">
           <Button
@@ -490,6 +580,7 @@ function PatientViewsTab() {
     estimateSize: () => 56,
     overscan: 8,
   });
+  // Measured like the events tab (audit G1-10).
 
   React.useEffect(() => {
     const el = parentRef.current;
@@ -508,57 +599,56 @@ function PatientViewsTab() {
   }, [query]);
 
   const contextLabel = (c: string) => {
-    switch (c) {
-      case "patient.detail":
-        return t("audit.patientView.contextPatientDetail");
-      case "appointment.drawer":
-        return t("audit.patientView.contextAppointmentDrawer");
-      case "case.detail":
-        return t("audit.patientView.contextCaseDetail");
-      case "export":
-        return t("audit.patientView.contextExport");
-      default:
-        return c;
-    }
+    const key = PATIENT_VIEW_CONTEXT_LABEL[c as PatientViewContext];
+    return key ? t(`audit.patientView.${key}` as never) : c;
   };
 
   return (
     <>
-      <div className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-5">
+      <div className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <Label htmlFor="pv-patient">
-            {t("audit.patientView.filterPatient")}
+            {t("audit.patientView.patient")}
           </Label>
-          <Input
+          <AuditPatientPicker
             id="pv-patient"
-            placeholder="patientId"
             value={draft.patientId}
-            onChange={(e) => setDraft({ ...draft, patientId: e.target.value })}
+            onChange={(patientId) => setDraft({ ...draft, patientId })}
           />
         </div>
         <div>
           <Label htmlFor="pv-viewer">
-            {t("audit.patientView.filterViewer")}
+            {t("audit.patientView.viewer")}
           </Label>
-          <Input
-            id="pv-viewer"
-            placeholder="userId"
+          <AuditStaffSelect
             value={draft.viewerUserId}
-            onChange={(e) =>
-              setDraft({ ...draft, viewerUserId: e.target.value })
-            }
+            onChange={(viewerUserId) => setDraft({ ...draft, viewerUserId })}
           />
         </div>
         <div>
           <Label htmlFor="pv-context">
             {t("audit.patientView.filterContext")}
           </Label>
-          <Input
-            id="pv-context"
-            placeholder="patient.detail | appointment.drawer | case.detail | export"
-            value={draft.context}
-            onChange={(e) => setDraft({ ...draft, context: e.target.value })}
-          />
+          <Select
+            value={draft.context || "__all"}
+            onValueChange={(v) =>
+              setDraft({ ...draft, context: v === "__all" ? "" : v })
+            }
+          >
+            <SelectTrigger id="pv-context" className="h-9 w-full">
+              <SelectValue placeholder={t("audit.patientView.contextAll")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">
+                {t("audit.patientView.contextAll")}
+              </SelectItem>
+              {PATIENT_VIEW_CONTEXTS.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {contextLabel(c)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <Label htmlFor="pv-from">{t("audit.filters.from")}</Label>
@@ -594,6 +684,8 @@ function PatientViewsTab() {
             <div className="p-6 text-sm text-muted-foreground">
               {t("common.loading")}
             </div>
+          ) : query.isError && rows.length === 0 ? (
+            <LoadError onRetry={() => void query.refetch()} />
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 p-10 text-sm text-muted-foreground">
               <ScrollIcon className="size-5" />
@@ -613,6 +705,8 @@ function PatientViewsTab() {
                 return (
                   <div
                     key={row.id}
+                    data-index={vi.index}
+                    ref={virtualizer.measureElement}
                     style={{
                       position: "absolute",
                       top: 0,
@@ -620,7 +714,7 @@ function PatientViewsTab() {
                       width: "100%",
                       transform: `translateY(${vi.start}px)`,
                     }}
-                    className="grid grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_140px_minmax(0,1fr)] gap-3 border-b border-border px-3 py-2 text-sm"
+                    className="grid grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_140px_minmax(0,1fr)] gap-3 border-b border-border bg-card px-3 py-2 text-sm"
                   >
                     <div className="text-xs text-muted-foreground">
                       {new Date(row.createdAt).toLocaleString(dateTag)}
@@ -668,6 +762,9 @@ function PatientViewsTab() {
           )}
         </div>
       </div>
+      {query.isError && rows.length > 0 ? (
+        <LoadError onRetry={() => void query.fetchNextPage()} />
+      ) : null}
       {query.hasNextPage ? (
         <div className="flex justify-center">
           <Button
@@ -682,5 +779,21 @@ function PatientViewsTab() {
         </div>
       ) : null}
     </>
+  );
+}
+
+/** A failed request, said as such, with a retry (audit G1-10). */
+function LoadError({ onRetry }: { onRetry: () => void }) {
+  const t = useTranslations("settings");
+  return (
+    <div
+      role="alert"
+      className="flex flex-col items-center gap-3 p-8 text-center text-sm text-destructive"
+    >
+      {t("audit.loadError")}
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        {t("audit.retry")}
+      </Button>
+    </div>
   );
 }

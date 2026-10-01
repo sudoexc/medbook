@@ -9,6 +9,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { ok, forbidden, notFound } from "@/server/http";
 import { findPreviousFinalizedVisit } from "@/server/visit-notes/previous-visit";
 
@@ -37,6 +38,10 @@ export const GET = createApiListHandler(
     }
 
     const previous = await findPreviousFinalizedVisit(note);
+    // The previous visit's conclusion is shown: a chart read (audit G1-06).
+    if (previous) {
+      notePatientView(prisma, request, ctx, note.patientId, "visit_note", `previous:${note.id}`);
+    }
     return ok({ previous });
   },
 );

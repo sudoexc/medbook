@@ -35,6 +35,12 @@
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 
+import {
+  AIProviderNotConfiguredError,
+  assertAiEnabled,
+  mockProviderAllowed,
+} from "./availability";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,7 +139,19 @@ function emitWarn(message: string): void {
   console.warn(message);
 }
 
+/**
+ * Pick the provider; in production never the mock (audit AC-13): its
+ * «Пациент жалуется на головную боль» became a case's SOAP draft.
+ */
 function resolveProvider(): TranscribeProvider {
+  const picked = pickProvider();
+  if (picked === "mock" && !mockProviderAllowed()) {
+    throw new AIProviderNotConfiguredError("Transcription provider");
+  }
+  return picked;
+}
+
+function pickProvider(): TranscribeProvider {
   const env = (process.env.WHISPER_PROVIDER ?? "openai") as TranscribeProvider;
   if (env === "openai" && !process.env.OPENAI_API_KEY) {
     emitWarn(
@@ -295,6 +313,8 @@ async function defaultRecordUsage(row: TranscribeUsageRow): Promise<void> {
 export async function transcribe(
   input: TranscribeInput,
 ): Promise<TranscribeResult> {
+  // Nothing is fetched, sent or counted while AI is off (audit AC-13).
+  assertAiEnabled();
   const provider = resolveProvider();
   const startedAt = Date.now();
   const durationSec =

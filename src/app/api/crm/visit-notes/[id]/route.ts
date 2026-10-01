@@ -9,6 +9,7 @@
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound, conflict } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
@@ -37,7 +38,8 @@ import {
   resolveFollowUpWrite,
 } from "@/lib/visit-follow-up";
 import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
-import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
+import { newCorrelationId } from "@/server/realtime/outbox";
+import { publishEphemeralEnvelope } from "@/server/realtime/publish";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
 /** The note's fields the reception's control-visit task is made of. */
@@ -89,6 +91,8 @@ export const GET = createApiListHandler(
       if (!doctor || doctor.id !== note.doctorId) return forbidden();
     }
 
+    // A conclusion read is a chart read (audit G1-06).
+    notePatientView(prisma, request, ctx, note.patientId, "visit_note", note.id);
     return ok(note);
   },
 );
@@ -357,6 +361,8 @@ export const PATCH = createApiHandler(
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
     let revisions: { before: number; after: number } | null = null;
+    // Announced after the commit, not stored (audit INF-04): see below.
+    let draftSaved: EventEnvelopeInput | null = null;
 
     const updated = await prisma.$transaction(async (tx) => {
       // Ф2 — structured prescriptions: replace-all, consistent with the
@@ -454,9 +460,12 @@ export const PATCH = createApiHandler(
       }
 
       // Skip the envelope when the autosave was a no-op — the editor sends a
-      // PATCH on every debounced keystroke even if nothing changed.
+      // PATCH on every debounced keystroke even if nothing changed. Not an
+      // outbox row (audit INF-04): one per autosave grew the table without
+      // bound and no surface listens or replays it; it is broadcast once the
+      // transaction committed.
       if (changedFields.length > 0) {
-        const envelope: EventEnvelopeInput = {
+        draftSaved = {
           type: "visit-note.draftSaved",
           correlationId,
           actor: {
@@ -481,10 +490,10 @@ export const PATCH = createApiHandler(
             changedFields,
           },
         };
-        await publishViaOutbox(tx, envelope);
       }
       return row;
     });
+    if (draftSaved) publishEphemeralEnvelope(draftSaved);
 
     await audit(request, {
       action: "visit_note.update",

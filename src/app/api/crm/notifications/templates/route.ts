@@ -6,7 +6,11 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { err, ok, parseQuery } from "@/server/http";
-import { sanitizeTriggerConfig } from "@/server/notifications/rules";
+import {
+  sanitizeTriggerConfig,
+  templateChannelRefusal,
+  verbatimPlaceholderLeak,
+} from "@/server/notifications/rules";
 import { retireSlotRivals } from "@/server/notifications/template-slot";
 import {
   CreateTemplateSchema,
@@ -44,8 +48,17 @@ export const GET = createApiListHandler(
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: CreateTemplateSchema },
   async ({ request, body, ctx }) => {
-    // No EMAIL adapter exists: such a template could only fail (audit TG-25).
-    if (body.channel === "EMAIL") return err("ChannelNotAvailable", 400, { channel: "EMAIL" });
+    // The bot's greeting is sent verbatim (audit ST-08).
+    const leak = verbatimPlaceholderLeak(body.key, [body.bodyRu, body.bodyUz]);
+    if (leak) {
+      return err("UnknownPlaceholder", 400, { unknown: leak, allowed: [] });
+    }
+    // No email delivery exists (audit UX-10): refused, not saved to fail.
+    const refusal = templateChannelRefusal(
+      { channel: body.channel, isActive: body.isActive ?? true },
+      null,
+    );
+    if (refusal) return err("ChannelNotSupported", 400, { reason: refusal });
     const createdById = ctx.kind === "TENANT" ? ctx.userId : null;
     const { created, retired } = await prisma.$transaction(async (tx) => {
       const created = await tx.notificationTemplate.create({

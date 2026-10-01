@@ -368,6 +368,8 @@
       "lastVisit": "Oxirgi tashrif",
       "lastVisitFrom": "Oxirgi tashrif (dan)",
       "lastVisitTo": "Oxirgi tashrif (gacha)",
+      "visitDateFrom": "Tashrif sanasi (dan)",
+      "visitDateTo": "Tashrif sanasi (gacha)",
       "hasDebt": "Qarzdor",
       "clear": "Tozalash",
       "labelSearch": "Qidirish",
@@ -1254,7 +1256,39 @@
       "exportSuccess": "Eksport navbatga qo'yildi — Telegram-bot arxiv va parolni yuboradi.",
       "exportAlreadyRequested": "Faol eksport allaqachon bajarilmoqda.",
       "exportNoTelegramChat": "Yetkazib berish uchun bog'langan Telegram-chat yo'q.",
-      "exportError": "Eksport yaratib bo'lmadi. Keyinroq urinib ko'ring."
+      "exportError": "Eksport yaratib bo'lmadi. Keyinroq urinib ko'ring.",
+      "privacy": {
+        "menuExport": "Bemor ma'lumotlarini eksport qilish",
+        "menuErasure": "Ma'lumotlarni o'chirish so'rovi",
+        "menuAudit": "Bemor bo'yicha jurnal",
+        "exportTitle": "Bemor ma'lumotlari eksporti",
+        "exportBody": "Bemorning so'rovi bo'yicha uning barcha ma'lumotlari bilan shifrlangan arxiv. Arxiv parolini yaratilgandan so'ng bir marta ko'rsatamiz.",
+        "exportStart": "Eksport yaratish",
+        "exportStarting": "Yaratilmoqda…",
+        "exportPasswordLabel": "Arxiv paroli",
+        "exportPasswordOnce": "Parol bir marta ko'rsatiladi va hech qayerda saqlanmaydi. Uni saqlang yoki bemorga arxivdan alohida bering.",
+        "exportWhereTelegram": "Arxiv tayyor bo'lganda Telegramingizga keladi. Uni Sozlamalar → DSAR so'rovlari bo'limidan ham yuklab olish mumkin.",
+        "exportWhereDsar": "Arxiv tayyor bo'lganda uni Sozlamalar → DSAR so'rovlari bo'limidan yuklab oling.",
+        "exportHowToOpen": "Arxiv uning ichidagi decrypt.sh skripti bilan ochiladi: u shu parolni so'raydi.",
+        "copy": "Nusxa olish",
+        "copied": "Parol nusxalandi",
+        "exportAlreadyActive": "Bu bemorning eksporti allaqachon tayyorlanmoqda.",
+        "exportError": "Eksport yaratib bo'lmadi. Keyinroq urinib ko'ring.",
+        "close": "Yopish",
+        "cancel": "Bekor qilish",
+        "erasureTitle": "Bemor ma'lumotlarini o'chirish so'rovi",
+        "erasureBody": "Agar administrator so'rovni Sozlamalar → DSAR so'rovlari bo'limida tasdiqlasa, karta so'rov yaratilganidan 90 kun o'tib anonimlashtiriladi. Ungacha so'rovni bekor qilish mumkin.",
+        "erasureErased": "O'chiriladi: F.I.Sh., telefon, pasport, manzil, tug'ilgan sana, Telegram, izohlar, yozishmalar, xabarnoma matnlari, arizalar va lidlar, qo'ng'iroq yozuvlari va bemorning barcha fayllari.",
+        "erasureKept": "Tibbiy hujjatlar to'g'risidagi qonunga ko'ra qoladi: tashriflar, xulosalar, tashxislar, tayinlovlar va tahlillar, bemor ismisiz.",
+        "erasureReasonLabel": "Asos (ixtiyoriy)",
+        "erasureReasonPlaceholder": "Masalan: bemorning yozma arizasi",
+        "erasureSubmit": "So'rov yaratish",
+        "erasureSubmitting": "Yaratilmoqda…",
+        "erasureSuccess": "So'rov yaratildi. Uni Sozlamalar → DSAR so'rovlari bo'limida tasdiqlang.",
+        "erasureAlreadyActive": "Bu bemor ma'lumotlarini o'chirish so'rovi allaqachon bor, u Sozlamalar → DSAR so'rovlari bo'limida.",
+        "erasureAlreadyErased": "Bu bemorning ma'lumotlari allaqachon o'chirilgan.",
+        "erasureError": "So'rov yaratib bo'lmadi. Keyinroq urinib ko'ring."
+      }
     },
     "hero": {
       "years": "{age} yosh",
@@ -1654,6 +1688,7 @@
       "error": "O'chirib bo'lmadi",
       "blockedTitle": "Kartani o'chirib bo'lmaydi: unda allaqachon ma'lumotlar bor",
       "blockedBody": "Faqat xato bilan yaratilgan bo'sh kartani o'chirish mumkin. Agar bemor o'z ma'lumotlarini o'chirishni so'rasa, bu «DSAR so'rovlari» bo'limi orqali amalga oshiriladi.",
+      "blockedRequestErasure": "Ma'lumotlarni o'chirish so'rovini yaratish",
       "blockedCount": "{label}: {count}",
       "blockedGroups": {
         "visits": "Tashriflar va xulosalar",
@@ -2738,6 +2773,8 @@
       "cabinetCancel": "Bekor qilish",
       "cabinetSaved": "Xona yangilandi",
       "cabinetTaken": "Bu xona allaqachon boshqa shifokorga biriktirilgan",
+      "cabinetSavedMoved": "Kabinet yangilandi. Shifokor yozuvlari yangi kabinetga ko'chirildi: {count}",
+      "cabinetScheduleConflict": "Kabinet o'zgartirilmadi: yangi kabinetda shu shifokor qabullari bilan bir vaqtda boshqa qabullar bor. Ularni ko'chiring va qayta urinib ko'ring.",
       "cabinetEmpty": "Mavjud xonalar yo'q",
       "cabinetLoadError": "Xonalarni yuklab bo'lmadi",
       "deactivate": "Faolsizlantirish",
@@ -2745,6 +2782,15 @@
       "deactivateConfirm": "Shifokor faolsizlantirilsinmi? U jadval, kalendar va yozuv shaklidan yo'qoladi. Qabullar tarixi saqlanadi.",
       "deactivated": "Shifokor faolsizlantirildi",
       "activated": "Shifokor yana ishda",
+      "edit": "Tahrirlash",
+      "editDialogTitle": "Shifokor ma'lumotlari",
+      "editDialogHint": "Ism, mutaxassislik va narx yozilishda, saytda va hisobotlarda ko'rinadi. Kabinet, xizmatlar, talon harfi va login alohida o'zgartiriladi.",
+      "editSlugHint": "Saytdagi shifokor sahifasi manzili. Lotin harflari, raqamlar va defislar.",
+      "listedOnSite": "Saytda ko'rsatish",
+      "listedOnSiteHint": "Shifokor saytdagi «Bizning mutaxassislar» bo'limida, yozilish shaklida va o'z sahifasida ko'rinadi. Shifokor klinikada endi ishlamasa, o'chiring: qabullar tarixi saqlanadi.",
+      "editFieldInvalid": "Qiymatni tekshiring: ruxsat etilmagan belgilar yoki format",
+      "editSaved": "Shifokor ma'lumotlari saqlandi",
+      "editFailed": "Shifokor ma'lumotlarini saqlab bo'lmadi",
       "purge": "Butunlay o'chirish",
       "purgeConfirm": "Shifokor tiklab bo'lmaydigan tarzda o'chiriladi. Tasdiqlash uchun uning familiyasini «{surname}» kiriting:",
       "purgeSurnameMismatch": "Familiya mos kelmadi, o'chirish bekor qilindi",
@@ -2842,7 +2888,9 @@
       "deleteConfirm": "Ushbu davrni o'chirilsinmi?",
       "deleteConfirmTitle": "Davr o'chirilsinmi?",
       "deleteConfirmDesc": "Ushbu ta'til davri qaytarib bo'lmaydigan tarzda o'chiriladi.",
-      "errorEndBeforeStart": "Tugash sanasi boshlanish sanasidan keyin bo'lishi kerak"
+      "errorEndBeforeStart": "Tugash sanasi boshlanish sanasidan keyin bo'lishi kerak",
+      "affectedAppointments": "Bu davrda shifokorda allaqachon yozuvlar bor: {count}. Ularni ko'chiring, aks holda bemorlar yo'q shifokorga kelishadi.",
+      "affectedOpen": "Yozuvlarni ochish"
     },
     "patients": {
       "title": "Shifokor bemorlari",
@@ -2882,7 +2930,11 @@
       "empty": "Klinikada aktiv xizmatlar yo'q",
       "loadError": "Xizmatlarni yuklab bo'lmadi",
       "currencySum": "so'm",
-      "minShort": "daq"
+      "minShort": "daq",
+      "orphanedServices": "Shifokorsiz qoladigan xizmatlar: {services}. Avval ularga boshqa shifokorni tayinlang.",
+      "invalidRows": "Belgilangan maydonlarni tuzating va qayta saqlang",
+      "durationRange": "Davomiyligi {min} daqiqadan {max} daqiqagacha",
+      "priceInvalid": "Narx juda katta"
     },
     "onlineService": {
       "title": "Onlayn yozilish",
@@ -3070,7 +3122,20 @@
       "deleteConfirmBody": "Shablon nofaol qilinadi va yuborishlar to'xtatiladi.",
       "cancel": "Bekor qilish",
       "testSend": "Test yuborish",
-      "testSent": "Test vazifasi navbatga qo'shildi",
+      "testSent": "Sizga Telegramda yuborildi",
+      "testSendHint": "Saqlangan shablon sizga klinika botidan Telegramda keladi",
+      "testFailed": "Testni yuborib bo'lmadi",
+      "testRefused": {
+        "channel_not_supported": "Test yuborish faqat Telegram shablonlari uchun mavjud.",
+        "bot_not_connected": "Klinikaning Telegram boti ulanmagan. Uni integratsiyalar sozlamalarida ulang.",
+        "no_staff_telegram": "Hisobingizda Telegram ID ko'rsatilmagan. Uni administrator qo'shadi: Sozlamalar, Foydalanuvchilar.",
+        "staff_not_started_bot": "Telegramda klinika botini oching, «Start» tugmasini bosing va qayta urinib ko'ring.",
+        "staff_blocked_bot": "Klinika boti Telegramda bloklangan. Uni blokdan chiqaring va qayta urinib ko'ring.",
+        "tg_timeout": "Telegram javob bermadi. Xabar yetib borgan bo'lishi mumkin, bot bilan chatni tekshiring.",
+        "tg_error": "Telegram xabarni qabul qilmadi. Keyinroq urinib ko'ring."
+      },
+      "channelEmailUnsupported": "Email (yuborilmaydi)",
+      "emailUnsupported": "Email hozircha yuborilmaydi. Shablonni Telegramga o'tkazing, aks holda u ishlamaydi.",
       "saveBeforeTest": "Avval shablonni saqlang",
       "samplePatientName": "Ivan Ivanov",
       "samplePatientFirst": "Ivan",
@@ -3290,6 +3355,9 @@
       "saveError": "Saqlab bo‘lmadi",
       "loadError": "Yuklab bo‘lmadi",
       "placeholdersHint": "Mavjud o‘rinbosarlar: {keys}",
+      "langRu": "Rus tilidagi matn",
+      "langUz": "O‘zbek tilidagi matn",
+      "placeholderError": "Bu o‘rinbosarlar bu yerda ishlamaydi: {keys}",
       "items": {
         "welcome": {
           "title": "Salomlashuv",
@@ -3972,6 +4040,8 @@
         "tgBotUsername": "TG bot (username)",
         "tgBotToken": "TG Bot Token",
         "tgWebhookSecret": "Webhook secret",
+        "tgBotTokenNew": "Yangi bot tokeni",
+        "tgBotNone": "Bot ulanmagan",
         "active": "Klinika faol",
         "configured": "saqlangan",
         "npsAlertThreshold": "NPS-ogohlantirish chegarasi",
@@ -3989,8 +4059,17 @@
         "letterheadHint": "PNG yoki JPEG, 512 KB gacha. Xulosalar sarlavhasida matn o'rniga chop etiladi.",
         "letterheadRemove": "Blankni olib tashlash"
       },
-      "secretsHint": "Tokenlar va maxfiy sozlamalarni o'zgartirish uchun joriy parolni kiriting. Bo'sh maydon — o'zgarmaydi.",
+      "secretsHint": "Botni yoki uning tokenini almashtirish uchun @BotFather bergan yangi tokenni kiriting. Biz uni Telegramda tekshiramiz, bot nomini o'sha yerdan olamiz va webhookni o'zimiz qayta o'rnatamiz. Bo'sh maydon hech narsani o'zgartirmaydi. Joriy parolingiz kerak bo'ladi.",
       "saveSecrets": "Maxfiy sozlamalarni saqlash",
+      "secretsSaved": "Bot yangilandi: @{username}",
+      "secretsErrors": {
+        "invalidToken": "Telegram tokenni qabul qilmadi. Uni @BotFather'dan to'liq nusxalang.",
+        "botInUse": "Bu bot boshqa klinikaga ulangan.",
+        "httpsRequired": "Webhook faqat HTTPS orqali ishlaydi. Server sozlamalarida sayt manzilini tekshiring.",
+        "webhookFailed": "Telegram webhookni qabul qilmadi. Token saqlanmadi, bot avvalgidek ishlayapti.",
+        "network": "Telegram bilan bog'lanib bo'lmadi. Token saqlanmadi.",
+        "rateLimited": "Urinishlar juda ko'p. 15 daqiqa kuting."
+      },
       "confirmSecretTitle": "Maxfiy sozlamalarni o'zgartirishni tasdiqlang",
       "confirmSecretDescription": "Yangi tokenlarni saqlash uchun joriy parolingizni kiriting."
     },
@@ -4039,12 +4118,28 @@
       "orphanCreateLogin": "Login yaratish",
       "resetTooShort": "Kamida 8 ta belgi — yoki yaratish uchun bo'sh qoldiring.",
       "emailEditHint": "Email o'zgartirilsa, tizimga kirish logini ham o'zgaradi.",
+      "telegramId": "Telegram ID",
+      "telegramIdHint": "Xodimning Telegramdagi raqamli ID si. Shablonlarning test yuborishlari shu yerga keladi; xodim klinika botida bir marta «Start» tugmasini bosadi.",
+      "telegramIdInvalid": "Telegram ID faqat raqamlardan iborat",
+      "cannotDeactivateSelf": "O'z akkauntingizni nofaol qilib bo'lmaydi.",
+      "emailTakenError": "Bu email boshqa akkauntda band.",
+      "emailTakenInactiveError": "Bu emailli xodim nofaol qilingan. Uni ro'yxatda oching, «Tahrirlash» ni bosing va qayta yoqing.",
+      "resetTotp": "2FA ni tiklash",
+      "resetTotpTitle": "Xodimning 2FA sini tiklaysizmi?",
+      "resetTotpDescription": "{name} endi ilovadagi kod yoki tiklash kodlari bilan kira olmaydi, uning barcha seanslari yakunlanadi. Keyingi kirishda parol yetarli bo'ladi, agar uning roli uchun 2FA majburiy bo'lsa, tizim darhol uni qayta ulashni so'raydi. Tasdiqlash uchun o'z parolingizni kiriting.",
+      "resetTotpDone": "2FA tiklandi",
+      "resetTotpSelf": "O'z 2FA ingizni «Xavfsizlik» bo'limida o'zgartiring.",
+      "twoFactor": {
+        "on": "Yoqilgan",
+        "off": "Yo'q"
+      },
       "cols": {
         "name": "Ism",
         "email": "Email",
         "role": "Rol",
         "phone": "Telefon",
         "status": "Holat",
+        "twoFactor": "2FA",
         "password": "Parol"
       },
       "roles": {
@@ -4078,6 +4173,7 @@
       "doctorsRequiredHint": "Kamida bitta shifokorni tanlang — shifokorsiz xizmat saqlanmaydi.",
       "doctorsSelected": "Tanlangan: {count}",
       "doctorsEmpty": "Klinikada faol shifokorlar yo'q",
+      "activateNoDoctor": "Xizmatni yoqib bo'lmaydi: uni birorta ham faol shifokor ko'rsatmaydi. Shifokor kartasida uni tayinlang va qayta yoqing.",
       "cols": {
         "code": "Kod",
         "name": "Nomi",
@@ -4102,6 +4198,11 @@
       "emptyHint": "Klinikada turli manzil va jadvalli bir nechta filial bo'lishi mumkin.",
       "created": "Filial yaratildi",
       "deactivated": "Filial o'chirildi",
+      "inUse": {
+        "title": "«{name}» filialini o'chirasizmi?",
+        "description": "Filialga hali bog'langan: shifokorlar {doctors}, kabinetlar {cabinets}, kelgusi yozuvlar {appointments}. Ular tanlangan filial ro'yxatlaridan yo'qoladi, unda ishlagan xodimlar esa butun klinikani ko'radi.",
+        "confirm": "O'chirish"
+      },
       "defaultBadge": "Asosiy",
       "fields": {
         "slug": "Slug (URL)",
@@ -4117,6 +4218,8 @@
       },
       "errors": {
         "slugTaken": "Bu slug allaqachon ushbu klinikada ishlatilgan",
+        "defaultBranch": "Asosiy filialni o'chirib bo'lmaydi. Avval boshqa filialni asosiy qiling.",
+        "inactiveDefault": "O'chirilgan filialni asosiy qilib bo'lmaydi.",
         "lastActive": "Oxirgi faol filialni o'chirib bo'lmaydi"
       },
       "hints": {
@@ -4229,7 +4332,7 @@
       },
       "knowledge": {
         "title": "Bilimlar bazasi",
-        "description": "Dorilar, yo'riqnomalar, protokollar va eslatmalar — yashirish, o'zgartirish yoki o'zinikini qo'shish."
+        "description": "Dorilar, yo'riqnomalar, protokollar va klinika tashxislari: yashirish, o'zgartirish yoki o'zinikini qo'shish."
       },
       "smsEmail": {
         "title": "SMS / Email",
@@ -4253,7 +4356,7 @@
       },
       "integrations": {
         "title": "Integratsiyalar",
-        "description": "SMS, Telegram, to'lovlar va telefoniya."
+        "description": "Telegram, to'lovlar va telefoniya."
       },
       "notifications": {
         "title": "Bildirishnoma shablonlari",
@@ -4281,12 +4384,23 @@
       "subtitle": "Klinikadagi barcha o'zgarishlar filtrlar bilan.",
       "empty": "Filtrga mos yozuvlar topilmadi.",
       "loadMore": "Yana yuklash",
+      "loadError": "Jurnalni yuklab bo'lmadi. Aloqani tekshirib, qayta urining.",
+      "retry": "Qayta urinish",
+      "metaShow": "Batafsil",
+      "metaHide": "Batafsilni yopish",
       "filters": {
         "entity": "Obyekt",
         "action": "Harakat",
         "actor": "Foydalanuvchi (id)",
         "from": "Dan",
-        "to": "Gacha"
+        "to": "Gacha",
+        "object": "Obyekt (id)",
+        "patient": "Bemor",
+        "patientPlaceholder": "F.I.Sh. yoki telefon",
+        "patientClear": "Bemorni tozalash",
+        "patientNone": "Hech kim topilmadi",
+        "staff": "Xodim",
+        "staffAll": "Barcha xodimlar"
       },
       "tabs": {
         "events": "Hodisalar",
@@ -4304,7 +4418,15 @@
         "contextPatientDetail": "Bemor kartasi",
         "contextAppointmentDrawer": "Yozuv",
         "contextCaseDetail": "Kasallik tarixi",
-        "contextExport": "Eksport"
+        "contextExport": "Eksport",
+        "contextVisitNote": "Xulosa",
+        "contextVisitNotePrint": "Xulosani chop etish",
+        "contextDocumentFile": "Hujjat",
+        "contextConversation": "Yozishma",
+        "contextDoctorCard": "Shifokor kabineti: karta",
+        "contextDoctorCurrent": "Shifokor kabineti: joriy bemor",
+        "contextDoctorVisit": "Shifokor kabineti: tashrif",
+        "contextAll": "Barcha kontekstlar"
       }
     },
     "dsar": {
@@ -4328,6 +4450,8 @@
       "errorMessage": "Xatolik",
       "reason": "Sabab",
       "notes": "Izohlar",
+      "attempts": "Urinishlar: {n}",
+      "exportsPasswordHint": "Arxiv paroli eksport bemor kartasidan yaratilganda bir marta ko'rsatiladi. Telegram orqali kelgan so'rovlar parolni o'z chatida oladi.",
       "exportStatus": {
         "PENDING": "Kutilmoqda",
         "PROCESSING": "Tayyorlanmoqda",
@@ -4341,7 +4465,8 @@
         "APPROVED": "Tasdiqlangan",
         "CANCELLED": "Bekor qilingan",
         "EXECUTED": "Bajarilgan",
-        "ANONYMIZED": "Anonimlashtirildi"
+        "ANONYMIZED": "Anonimlashtirildi",
+        "FAILED": "Bajarilmadi"
       },
       "mode": {
         "ANONYMIZE": "Anonimlashtirish",
@@ -4357,13 +4482,15 @@
         "dialogCancel": "Hozir emas",
         "confirmApproveTitle": "Bemor ma'lumotlarini o'chirishni tasdiqlaysizmi?",
         "confirmApproveBody": {
-          "ANONYMIZE": "Bu qaytarib bo'lmaydigan amal. Bemorning shaxsiy ma'lumotlari tasdiqlash bilan birga anonimlashtiriladi. Yozuvlar bilan bog'lanishlar hisobot uchun saqlanadi, lekin identifikatsiya maydonlari o'chiriladi.",
-          "HARD_DELETE": "Bu qaytarib bo'lmaydigan amal. Bemorning barcha ma'lumotlari, jumladan tashriflar tarixi va tibbiy yozuvlar to'liq o'chiriladi. Tiklab bo'lmaydi."
+          "ANONYMIZE": "Bu qaytarib bo'lmaydigan amal. Rejalashtirilgan sanada bemorning shaxsiy ma'lumotlari anonimlashtiriladi: F.I.Sh., telefon, pasport, tug'ilgan sana, Telegram, yozishmalar, arizalar, xabarnoma matnlari va barcha fayllar. Tibbiy yozuvlar qonunga ko'ra bemor ismisiz saqlanadi.",
+          "HARD_DELETE": "Kartani to'liq o'chirish bajarilmaydi: klinika tibbiy yozuvlarni saqlashi shart. So'rov anonimlashtirish sifatida bajariladi: bemorning shaxsiy ma'lumotlari va fayllari o'chiriladi, tibbiy yozuvlar bemor ismisiz qoladi."
         },
         "confirmApproveAction": "O'chirishni tasdiqlash",
         "confirmCancelTitle": "So'rovni bekor qilasizmi?",
         "confirmCancelBody": "So'rov bekor qilingan deb belgilanadi. Bemor ma'lumotlari o'zgartirishsiz saqlanadi. Faqat yangi so'rov bilan qaytarish mumkin.",
-        "confirmCancelAction": "So'rovni bekor qilish"
+        "confirmCancelAction": "So'rovni bekor qilish",
+        "retry": "Qayta urinish",
+        "retrying": "Qayta urinilmoqda…"
       },
       "approveSuccess": "So'rov tasdiqlandi.",
       "cancelSuccess": "So'rov bekor qilindi.",
@@ -4373,7 +4500,7 @@
     },
     "integrations": {
       "title": "Integratsiyalar",
-      "subtitle": "SMS, Telegram, to'lovlar va telefoniya.",
+      "subtitle": "Telegram, to'lovlar va telefoniya.",
       "setup": "Sozlash",
       "active": "Yoqilgan",
       "inactive": "O'chirilgan",
@@ -4382,10 +4509,28 @@
       "state": {
         "ok": "Ulangan",
         "incomplete": "E'tibor talab qiladi",
+        "unavailable": "Mavjud emas",
         "missing": "Sozlanmagan",
         "notConnected": "Ulanmagan"
       },
       "telephonyNotConnectedHint": "CRMga hali qo'ng'iroqlar kelmagan: ATS bilan integratsiya ulanmagan.",
+      "paymentUnavailableHint": "Onlayn to'lov hali yo'q: Payme, Click va Uzum kalitlaridan hech narsa foydalanmaydi, shuning uchun ularni bu yerda saqlab bo'lmaydi.",
+      "tgReconnect": "Botni almashtirish",
+      "telephony": {
+        "title": "ATS hodisalarini qabul qilish",
+        "hint": "ATS sozlamalarida shu manzilni va maxfiy kalitli sarlavhani ko'rsating. CRMga birinchi qo'ng'iroq kelganda karta «Ulangan» bo'ladi.",
+        "url": "Hodisalar manzili",
+        "header": "Sarlavha",
+        "secret": "Maxfiy kalit",
+        "noSecret": "Maxfiy kalit hali yo'q: usiz ATS qo'ng'iroqlarni uzata olmaydi.",
+        "generate": "Maxfiy kalit yaratish",
+        "rotate": "Maxfiy kalitni almashtirish",
+        "rotateHint": "Almashtirilgach eski kalit darhol ishlamay qoladi, uni ATSda yangilang.",
+        "saved": "Maxfiy kalit saqlandi",
+        "copy": "Nusxalash",
+        "copied": "Nusxalandi",
+        "copyFailed": "Nusxalab bo'lmadi"
+      },
       "fields": {
         "label": "Yorliq (ixtiyoriy)",
         "labelPlaceholder": "main, backup, eskiz…",
@@ -4458,7 +4603,7 @@
         },
         "telephony": {
           "title": "Telefoniya",
-          "description": "SIP-provayder: kiruvchi qo'ng'iroqlar, yozish."
+          "description": "ATS qo'ng'iroq hodisalari: kiruvchi va o'tkazib yuborilgan."
         }
       },
       "smsTest": "Test SMS",
@@ -4607,7 +4752,7 @@
     },
     "knowledge": {
       "title": "Bilimlar bazasi",
-      "subtitle": "Klinikangizning dorilari, tashxis bo'yicha yo'riqnomalari, protokollari va eslatmalari",
+      "subtitle": "Klinikangizning dorilari, tashxis bo'yicha yo'riqnomalari, protokollari va tashxislari",
       "tabs": {
         "drugs": "Dorilar",
         "guides": "Tashxis yo'riqnomalari",
@@ -4677,6 +4822,7 @@
           "sideEffects": "Nojo'ya ta'sirlar",
           "dosingAdult": "Doza: kattalar",
           "dosingPediatric": "Doza: bolalar",
+          "dosingElderly": "Doza: keksalar",
           "dosingRenal": "Doza: buyrak yetishmovchiligi",
           "rxOnly": "Faqat retsept bo'yicha"
         }
@@ -8324,6 +8470,11 @@
       "collapse": {
         "expand": "Yoyish",
         "collapse": "Yig‘ish"
+      },
+      "cardMissing": {
+        "title": "Shifokor kartochkasi bog‘lanmagan",
+        "body": "Loginingiz jadvaldagi shifokor kartochkasiga bog‘lanmagan, shuning uchun kabinetni ochib bo‘lmaydi. Klinika administratoridan «Sozlamalar → Foydalanuvchilar» bo‘limida kartochkangizni tanlashni so‘rang.",
+        "signOut": "Chiqish"
       },
       "topbar": {
         "searchPlaceholder": "Bemor qidirish: familiya, telefon, «Familiya 1969»…",

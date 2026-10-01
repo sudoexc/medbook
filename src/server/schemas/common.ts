@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 
+import { isTashkentDateString } from "@/lib/tashkent-time";
+
 export const CuidSchema = z.string().min(10).max(40);
 
 export const IdParamSchema = z.object({
@@ -24,6 +26,15 @@ export const DateRangeSchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 });
+
+/**
+ * A Tashkent calendar day as an `<input type="date">` sends it (YYYY-MM-DD).
+ * Pair with `tashkentDayRange` for an inclusive from/to filter; `z.coerce.date`
+ * turned the same string into UTC midnight, five hours off (audit ST-09).
+ */
+export const TashkentDaySchema = z
+  .string()
+  .refine(isTashkentDateString, { message: "expected YYYY-MM-DD" });
 
 export const SortDirSchema = z.enum(["asc", "desc"]).default("desc");
 

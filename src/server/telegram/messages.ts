@@ -98,7 +98,7 @@ const RU: Dict = {
   "tgVoiceReply.received":
     "Получил, расшифровываю и структурирую SOAP-черновик. Откройте случай в CRM через минуту.",
   "tgVoiceReply.noActiveCase":
-    "Нет активного случая. Откройте случай в CRM, чтобы получить SOAP-черновик.",
+    "Нет начатого приёма со случаем. Начните приём пациента в CRM и отправьте голосовое снова.",
   "tgVoiceReply.aiPaused":
     "Голосовые SOAP-черновики сейчас отключены. Запишите осмотр в CRM.",
 };
@@ -178,7 +178,7 @@ const UZ: Dict = {
   "tgVoiceReply.received":
     "Qabul qildim, ovozni matnga aylantirib SOAP-qoralama tayyorlayapman. Bir daqiqadan so'ng CRM'da hodisani oching.",
   "tgVoiceReply.noActiveCase":
-    "Faol hodisa yo'q. SOAP-qoralama olish uchun CRM'da hodisani oching.",
+    "Hodisaga bog'langan boshlangan qabul yo'q. CRM'da bemor qabulini boshlang va ovozli xabarni qayta yuboring.",
   "tgVoiceReply.aiPaused":
     "Ovozli SOAP-qoralamalar hozircha o'chirilgan. Ko'rikni CRM'da yozing.",
 };

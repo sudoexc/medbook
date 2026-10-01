@@ -76,6 +76,7 @@ vi.mock("@/lib/patient-experience/medication-schedule", () => ({
   dosesDueInWindow: () => [new Date("2026-09-28T04:00:00Z")],
   // …of its trailing catch-up window (audit INF-12).
   dosesDueBetween: () => [new Date("2026-09-28T04:00:00Z")],
+  isCourseFinished: () => false,
 }));
 vi.mock("@/lib/prisma", () => {
   type Where = {

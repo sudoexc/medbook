@@ -36,6 +36,13 @@ export type ToolResult = {
   data: unknown;
   summary: string;
   chips?: Chip[];
+  /**
+   * Every person's name the result carries (patients, doctors). The loop
+   * hands them to the LLM proxy as `knownNames`, so the summary that goes
+   * back to the model reaches it with `<NAME_N>` tokens instead of the
+   * names (audit AC-12); the proxy restores them in the final answer.
+   */
+  names?: string[];
 };
 
 export type Tool<TInput = unknown> = {

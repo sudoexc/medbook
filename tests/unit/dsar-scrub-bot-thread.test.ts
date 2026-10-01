@@ -62,8 +62,22 @@ vi.mock("@/lib/prisma", () => ({
         return { count: 2 };
       }),
     },
-    message: { updateMany: vi.fn(async () => ({ count: 3 })) },
+    message: {
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(async () => ({ count: 3 })),
+    },
     patientClinicalNote: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    eventOutbox: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    reminder: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    // The other carriers (audit PT-07) are pinned in p5-dsar-erasure.test.ts.
+    lead: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    onlineRequest: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    notificationSend: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    communication: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    call: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    review: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    document: { findMany: vi.fn(async () => []), delete: vi.fn() },
+    visitNoteRevision: { findMany: vi.fn(async () => []), update: vi.fn() },
     auditLog: { create: vi.fn(async () => ({})) },
   },
 }));

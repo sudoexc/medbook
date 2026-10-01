@@ -58,6 +58,9 @@ vi.mock("@/lib/prisma", () => ({
         },
       ),
     },
+    // «Учёт оплат в CRM» off: no balance column (audit PT-19).
+    clinic: { findUnique: vi.fn(async () => ({ paymentsTrackedSince: null })) },
+    auditLog: { create: vi.fn(async () => ({})) },
   },
 }));
 
@@ -188,8 +191,10 @@ describe("exports worker", () => {
     expect(body.charCodeAt(0)).toBe(0xfeff);
     const withoutBom = body.slice(1);
     const lines = withoutBom.split("\n").filter((l) => l.length > 0);
+    // Money in сум, and no balance column while payments are not recorded
+    // in the CRM (audit PT-19).
     expect(lines[0]).toBe(
-      "id,fullName,phone,gender,birthDate,segment,source,ltv,visitsCount,balance,lastVisitAt,tags,createdAt",
+      "id,fullName,phone,gender,birthDate,segment,source,ltv_sum,visitsCount,lastVisitAt,tags,createdAt",
     );
     // Data row
     expect(lines[1]?.startsWith("p1,Alice,+998,F,,,,")).toBe(true);
@@ -306,6 +311,8 @@ describe("exports worker", () => {
     expect(lines[0]).toBe(
       "id,appointmentId,patientId,amount,currency,method,status,paidAt,createdAt",
     );
+    // 10000 тийин is 100 сум (audit INF-02).
+    expect(lines[1]).toContain("pay1,a1,p1,100,UZS,CASH,PAID");
     expect(ran!.rowCount).toBe(1);
   });
 });

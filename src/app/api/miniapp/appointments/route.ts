@@ -292,6 +292,11 @@ export const POST = createMiniAppHandler(
         case "on_behalf_of_not_linked":
           // Unlinked while this booking ran; the same answer as above.
           return err("on_behalf_of_not_linked", 403);
+        case "patient_not_found":
+        case "case_not_found":
+          // The acting patient comes from the session and no case id is
+          // passed, so neither is expected here (audit AP-03 kernel check).
+          return err(result.reason, 422);
       }
     }
 

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { queryBool } from "./query-bool";
+
 /**
  * Phase 9c — Branch CRUD schemas.
  *
@@ -23,10 +25,14 @@ export const CreateBranchSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export const UpdateBranchSchema = CreateBranchSchema.partial();
+export const UpdateBranchSchema = CreateBranchSchema.partial().extend({
+  // Switch off a branch that still has doctors, cabinets or upcoming visits:
+  // the admin saw the counts and confirmed (audit ST-06). Not a column.
+  confirmInUse: z.boolean().optional(),
+});
 
 export const QueryBranchSchema = z.object({
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBool(),
   limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 

@@ -181,7 +181,10 @@ async function loadCatalog(): Promise<CatalogService[] | null> {
         priceBase: true,
         isActive: true,
         updatedAt: true,
+        // Only doctors the site shows (audit LD-08): a line that names a
+        // doctor taken off the site drops off the sheet with him.
         doctors: {
+          where: { doctor: { listedOnSite: true } },
           select: { priceOverride: true, doctor: { select: { slug: true } } },
         },
       },

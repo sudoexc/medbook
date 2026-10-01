@@ -67,6 +67,11 @@ export const AUDIT_ACTION = {
   // after }` queue statuses. One of the two ways a row leaves NO_SHOW (the
   // other is APPOINTMENT_STATUS_REVERTED). Historical lowercase.
   APPOINTMENT_QUEUE_STATUS: "appointment.queue-status",
+  // Audit AP-03 — staff set a visit's price by hand (final price, discount
+  // or a line's price) through PATCH /api/crm/appointments/[id].
+  // `entityType: "Appointment"`; `meta` carries `{ fields, before, after }`
+  // with `priceFinal`, `discountPct`, `discountAmount` on both sides.
+  APPOINTMENT_PRICE_OVERRIDE: "appointment.price_override",
 
   // Phase 13 — Action Center lifecycle. `entityType: "Action"` for all of
   // these. `meta` carries `{ type, payload, oldStatus, newStatus, ... }` plus
@@ -294,9 +299,16 @@ export const AUDIT_ACTION = {
   // Phase 17 Wave 3 — deletion job ran in HARD_DELETE mode and removed the
   // Patient row entirely. `entityType: "Patient"`, `entityId: <patientId>`.
   // `meta` is `{ jobId, erased: [field names] }`: the erased identity is
-  // named, never copied (audit SEC-09). Rare in practice — the default
-  // mode is ANONYMIZE.
+  // named, never copied (audit SEC-09). No longer written (audit PT-07):
+  // the card's medical records must be kept, so a HARD_DELETE request is
+  // carried out as an anonymization (PATIENT_ANONYMIZED with
+  // `requestedMode: "HARD_DELETE"`). Kept for the rows already written.
   PATIENT_HARD_DELETED: "PATIENT_HARD_DELETED",
+
+  // Audit PT-07 — the deletion executor gave up on a job after its retries
+  // (status FAILED). `entityType: "DataDeletionJob"`, `entityId: <jobId>`.
+  // `meta` is `{ patientId, attempts, errorMessage }`.
+  PATIENT_DELETION_FAILED: "PATIENT_DELETION_FAILED",
 
   // Phase 17 Wave 3 — deletion job ran in ANONYMIZE mode and scrubbed PII
   // off the Patient row while preserving aggregate analytics (visit
@@ -315,6 +327,17 @@ export const AUDIT_ACTION = {
   // `entityType: "User"`, `entityId: <userId>`. `meta` is `{}`.
   TOTP_DISABLED: "TOTP_DISABLED",
 
+  // Audit ST-03 — an ADMIN (or the platform owner, for a clinic's only
+  // admin) wiped another user's TOTP after re-entering their own password,
+  // so a lost phone no longer needs a database edit. `entityType: "User"`,
+  // `entityId: <target userId>`. `meta` is `{ by, via, revokedSessions }`.
+  TOTP_RESET_BY_ADMIN: "TOTP_RESET_BY_ADMIN",
+
+  // Audit CM-15 — the user set a new password from their own session.
+  // `entityType: "User"`, `entityId: <userId>`. `meta` is
+  // `{ revokedSessions, temporaryPasswordFlow }`; never the password.
+  PASSWORD_CHANGED: "PASSWORD_CHANGED",
+
   // Phase 17 Wave 2 — user clicked "Regenerate recovery codes". The new
   // 10 codes are shown ONCE; old hashes are dropped. `entityType: "User"`,
   // `entityId: <userId>`. `meta` is `{ recoveryCodeCount }`.
@@ -331,6 +354,19 @@ export const AUDIT_ACTION = {
   // `entityId: <userSessionId>`. `meta` carries `{ idleMinutes,
   // configuredMinutes }`.
   SESSION_TIMEOUT_LOGOUT: "SESSION_TIMEOUT_LOGOUT",
+
+  // Audit G1-04 — staff sign-in history. Written from the credentials
+  // `authorize()` (src/server/auth/login-audit.ts) with the real client IP
+  // and user agent. `entityType: "User"`, `entityId: <userId>` (null for an
+  // email that matches no account; then `actorLabel` is the typed email and
+  // `clinicId` is null). SUCCEEDED carries `actorId`; FAILED never does (the
+  // person typing is not proven to be the account) and its `meta` is
+  // `{ reason }`: bad_password | unknown_user | inactive | clinic_inactive |
+  // totp_required | bad_totp | bad_recovery_code | throttled. No password or
+  // code is ever stored. LOGOUT comes from the NextAuth signOut event.
+  LOGIN_SUCCEEDED: "LOGIN_SUCCEEDED",
+  LOGIN_FAILED: "LOGIN_FAILED",
+  LOGOUT: "LOGOUT",
 
   // Phase 17 Wave 2 — proxy invalidated a session because it was older
   // than the 8h hard cap. `entityType: "UserSession"`, `entityId:
@@ -638,6 +674,14 @@ export const AUDIT_ACTION = {
   // so we have a forensic record of which slice of PII left the system.
   // Distinct from PATIENT_DATA_EXPORT_* (those are DSAR per-patient JSON).
   CRM_EXPORT_REQUESTED: "CRM_EXPORT_REQUESTED",
+
+  // Audit G1-06 / INF-02 — a bulk CSV export finished: the patient file
+  // read many patients at once, so it is one row here (not a PatientView per
+  // patient). Written by the export worker and by the streaming
+  // `/api/crm/patients/export`. `entityType: "ExportJob"`, `entityId:
+  // <job.id>` (null for the stream). `meta` carries `{ kind, filters,
+  // rowCount, via }`.
+  CRM_EXPORT_COMPLETED: "CRM_EXPORT_COMPLETED",
 
   // Reactivation campaigns. `entityType: "Campaign"`, `entityId:
   // <campaignId>`.

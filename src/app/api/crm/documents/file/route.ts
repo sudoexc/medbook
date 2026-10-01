@@ -24,6 +24,41 @@ import { err } from "@/server/http";
 import { fetchObject } from "@/server/storage/minio";
 import { safeFileHeaders } from "@/server/storage/safe-file";
 import { isClinicOwnedKey } from "@/lib/storage-ref";
+import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
+
+/**
+ * The patient a stored object belongs to: a Document whose URL ends in the
+ * key (raw MinIO URL or our proxy URL), or an issued conclusion PDF of a
+ * visit-note revision. Null for a doctor's signature and the like.
+ */
+async function patientOfStoredFile(
+  key: string,
+): Promise<{ patientId: string; ref: string } | null> {
+  try {
+    const doc = await prisma.document.findFirst({
+      where: {
+        OR: [
+          { fileUrl: { endsWith: key } },
+          { fileUrl: { endsWith: encodeURIComponent(key) } },
+        ],
+      },
+      select: { id: true, patientId: true },
+    });
+    if (doc) return { patientId: doc.patientId, ref: doc.id };
+    const revision = await prisma.visitNoteRevision.findFirst({
+      where: { pdfObjectKey: key },
+      select: { visitNoteId: true, visitNote: { select: { patientId: true } } },
+    });
+    if (revision?.visitNote) {
+      return { patientId: revision.visitNote.patientId, ref: revision.visitNoteId };
+    }
+  } catch (e) {
+    // The file is served either way; the access log must not break it.
+    console.error("[documents/file] patient lookup for the view log failed", e);
+  }
+  return null;
+}
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"] },
@@ -46,6 +81,17 @@ export const GET = createApiListHandler(
       return err("StorageUnavailable", 502);
     }
     if (!fetched.body) return err("EmptyBody", 502);
+
+    // Whose chart this file belongs to, for «Просмотры карточек» (audit
+    // G1-06): the nurse opening a scan through this proxy was invisible.
+    // Only patient files live under `clinics/<id>/`; logos and drug photos
+    // are skipped without a lookup.
+    if (key.startsWith(`clinics/${clinicId}/`)) {
+      const owner = await patientOfStoredFile(key);
+      if (owner) {
+        notePatientView(prisma, request, ctx, owner.patientId, "document.file", owner.ref);
+      }
+    }
 
     // Per RFC 6266: bare `filename=` must be ASCII; non-ASCII (e.g. Cyrillic
     // titles) need `filename*=UTF-8''…` or the Response constructor throws

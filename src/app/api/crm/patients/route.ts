@@ -7,8 +7,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
-import { patientSearchWhere } from "@/server/patient/search-where";
-import { patientBalanceIdWhere } from "@/server/patient/finance";
+import { buildPatientListWhere } from "@/server/patient/list-where";
 import {
   birthDateFromYear,
   parsePatientIdentity,
@@ -76,28 +75,14 @@ export const GET = createApiListHandler(
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
 
-    const where: Record<string, unknown> = {};
-    if (q.segment) where.segment = q.segment;
-    if (q.source) where.source = q.source;
-    if (q.gender) where.gender = q.gender;
-    if (q.tag) where.tags = { has: q.tag };
-    if (q.consent === "yes") where.consentMarketing = true;
-    if (q.consent === "no") where.consentMarketing = false;
-    // «Должники» on the computed balance (audit PT-08): the `balance` column
-    // is never written, so filtering on it matched nobody, or everybody.
-    if (q.balance && ctx.kind === "TENANT") {
-      const idWhere = await patientBalanceIdWhere(ctx.clinicId, q.balance);
-      if (idWhere) where.id = idWhere;
-    }
-    if (q.registeredFrom || q.registeredTo) {
-      where.createdAt = {
-        ...(q.registeredFrom ? { gte: q.registeredFrom } : {}),
-        ...(q.registeredTo ? { lte: q.registeredTo } : {}),
-      };
-    }
-    // Name / phone / passport / Telegram, and «Фамилия ГГГГ» (audit PT-03).
-    const search = patientSearchWhere(q.q);
-    if (search) where.AND = [search];
+    // One builder for the list and both exports, so «Экспорт» downloads
+    // what is on screen (audit PT-19); periods are Tashkent days with the
+    // last one included, «Дата посещения» is the visit date (PT-18), and
+    // DSAR-erased cards are out (PT-07).
+    const where = await buildPatientListWhere(
+      q,
+      ctx.kind === "TENANT" ? ctx.clinicId : null,
+    );
 
     const take = q.limit + 1;
     const rows = await prisma.patient.findMany({

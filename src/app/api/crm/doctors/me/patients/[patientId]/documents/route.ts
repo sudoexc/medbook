@@ -22,6 +22,7 @@ import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { ok, err, notFound, parseQuery } from "@/server/http";
 import { staffFileHref } from "@/lib/storage-ref";
 
@@ -89,6 +90,8 @@ export const GET = createApiListHandler(
       select: { id: true },
     });
     if (!hasRelationship) return notFound();
+    // The doctor reading the chart is in «Просмотры карточек» (audit G1-06).
+    notePatientView(prisma, request, ctx, patientId, "doctor.card", "documents");
 
     const take = q.limit + 1;
     const rows = await prisma.document.findMany({

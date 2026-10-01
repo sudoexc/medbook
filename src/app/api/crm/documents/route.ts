@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
+import { tashkentDayRange } from "@/lib/tashkent-time";
 import {
   CreateDocumentSchema,
   QueryDocumentSchema,
@@ -99,12 +100,10 @@ export const GET = createApiListHandler(
         ],
       });
     }
-    if (q.from || q.to) {
-      const range: Record<string, Date> = {};
-      if (q.from) range.gte = new Date(q.from);
-      if (q.to) range.lte = new Date(q.to);
-      where.createdAt = range;
-    }
+    // `new Date("YYYY-MM-DD")` is UTC midnight (05:00 in Tashkent), so the
+    // old `lte` dropped the whole last day (audit CM-16).
+    const createdAt = tashkentDayRange(q.from, q.to);
+    if (createdAt) where.createdAt = createdAt;
     if (q.pendingSignature === true) {
       // Consent/contract docs not yet marked signed (POST .../[id]/sign).
       // Pushed as an AND clause so it composes with an explicit `type` filter.

@@ -69,8 +69,12 @@ type DeletionRow = {
     | "APPROVED"
     | "CANCELLED"
     | "EXECUTED"
-    | "ANONYMIZED";
+    | "ANONYMIZED"
+    | "FAILED";
   mode: "ANONYMIZE" | "HARD_DELETE";
+  /** Failed executions so far, and the last error (audit PT-07). */
+  attempts: number;
+  errorMessage: string | null;
   patientId: string;
   patientName: string | null;
   scheduledFor: string;
@@ -175,6 +179,9 @@ function ExportsTab() {
 
   return (
     <div className="motion-stagger space-y-2">
+      {/* Where the password is (audit PT-09): it is never stored, so the
+          queue cannot show it again. */}
+      <p className="text-xs text-muted-foreground">{t("exportsPasswordHint")}</p>
       {rows.map((r) => {
         const canDownload = r.status === "READY" || r.status === "DELIVERED";
         return (
@@ -288,6 +295,7 @@ function DeletionsTab() {
   // createdAt desc (server already returns desc).
   const sortedRows = React.useMemo(() => {
     const order: Record<DeletionRow["status"], number> = {
+      FAILED: 0,
       PENDING_REVIEW: 0,
       APPROVED: 1,
       EXECUTED: 2,
@@ -342,7 +350,12 @@ function DeletionRowCard({
   const t = useTranslations("settings.dsar");
   const tag = intlLocale(useLocale());
   const canApprove = row.status === "PENDING_REVIEW";
-  const canCancel = row.status === "PENDING_REVIEW" || row.status === "APPROVED";
+  // A FAILED job (audit PT-07) is run again by approving it once more.
+  const canRetry = row.status === "FAILED";
+  const canCancel =
+    row.status === "PENDING_REVIEW" ||
+    row.status === "APPROVED" ||
+    row.status === "FAILED";
   return (
     <div className="motion-rise-in flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1 space-y-1">
@@ -378,8 +391,18 @@ function DeletionRowCard({
             <span className="font-medium">{t("notes")}:</span> {row.notes}
           </div>
         ) : null}
+        {row.errorMessage ? (
+          <div className="text-xs text-destructive">
+            {t("errorMessage")}: {row.errorMessage} · {t("attempts", { n: row.attempts })}
+          </div>
+        ) : null}
       </div>
       <div className="flex shrink-0 gap-2">
+        {canRetry ? (
+          <Button size="sm" variant="default" disabled={approving} onClick={onApprove}>
+            {approving ? t("actions.retrying") : t("actions.retry")}
+          </Button>
+        ) : null}
         {canApprove ? (
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -452,6 +475,7 @@ function DeletionStatusBadge({ status }: { status: DeletionRow["status"] }) {
     CANCELLED: "outline",
     EXECUTED: "destructive",
     ANONYMIZED: "outline",
+    FAILED: "destructive",
   };
   const Icon = {
     PENDING_REVIEW: ClockIcon,
@@ -459,6 +483,7 @@ function DeletionStatusBadge({ status }: { status: DeletionRow["status"] }) {
     CANCELLED: XCircleIcon,
     EXECUTED: AlertCircleIcon,
     ANONYMIZED: ShieldCheckIcon,
+    FAILED: AlertCircleIcon,
   }[status];
   return (
     <Badge variant={variantMap[status]} className="gap-1">

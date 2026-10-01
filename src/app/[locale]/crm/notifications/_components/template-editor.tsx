@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   EyeIcon,
   RocketIcon,
@@ -154,8 +154,20 @@ function buildSample(
   };
 }
 
+/** Refusals of the test send the editor has a message for. */
+const TEST_REFUSALS = new Set([
+  "channel_not_supported",
+  "bot_not_connected",
+  "no_staff_telegram",
+  "staff_not_started_bot",
+  "staff_blocked_bot",
+  "tg_timeout",
+  "tg_error",
+]);
+
 export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props) {
   const t = useTranslations("notifications");
+  const locale = useLocale();
   const sample = React.useMemo(() => buildSample(t), [t]);
   const selected = selectedId ? templates.find((tpl) => tpl.id === selectedId) ?? null : null;
   const [form, setForm] = React.useState<FormState>(EMPTY);
@@ -201,6 +213,12 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
   };
 
   const onSave = async () => {
+    // The send worker delivers no email (audit UX-10): an active EMAIL
+    // template would turn every send into FAILED. The server refuses it too.
+    if (form.channel === "EMAIL" && form.isActive) {
+      toast.error(t("editor.emailUnsupported"));
+      return;
+    }
     const { event, ...fields } = form;
     try {
       if (isCreate) {
@@ -235,24 +253,39 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
       toast.info(t("editor.saveBeforeTest"));
       return;
     }
+    // Audit UX-10: this used to queue a send for the made-up patient
+    // "dev-fake-patient" and always failed with a 500. The saved template
+    // now goes to the admin's own Telegram, nothing is written to the sends.
     try {
-      const res = await fetch("/api/crm/notifications/sends", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          templateId: selected.id,
-          patientId: "dev-fake-patient",
-          channel: selected.channel,
-          recipient: "+998000000000",
-          body: previewRender(selected.bodyRu, sample),
-          scheduledFor: new Date().toISOString(),
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      toast.success(t("editor.testSent"));
-    } catch (e) {
-      toast.error((e as Error).message);
+      const res = await fetch(
+        `/api/crm/notifications/templates/${selected.id}/test-send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            locale,
+            sample: {
+              patient: sample.patient,
+              appointment: sample.appointment,
+              payment: sample.payment,
+            },
+          }),
+        },
+      );
+      if (res.ok) {
+        toast.success(t("editor.testSent"));
+        return;
+      }
+      const j = (await res.json().catch(() => null)) as { reason?: string } | null;
+      const reason = j?.reason;
+      toast.error(
+        reason && TEST_REFUSALS.has(reason)
+          ? t(`editor.testRefused.${reason}`)
+          : t("editor.testFailed"),
+      );
+    } catch {
+      toast.error(t("editor.testFailed"));
     }
   };
 
@@ -352,13 +385,25 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="TG">Telegram</SelectItem>
-              {form.channel !== "TG" ? (
+              {/* Email is not delivered by the worker (audit UX-10), nor any
+                  channel but Telegram: an old template keeps showing its
+                  channel, which cannot be picked again. */}
+              {form.channel === "EMAIL" ? (
+                <SelectItem value="EMAIL" disabled>
+                  {t("editor.channelEmailUnsupported")}
+                </SelectItem>
+              ) : form.channel !== "TG" ? (
                 <SelectItem value={form.channel} disabled>
                   {t("editor.channelUnavailable", { channel: form.channel })}
                 </SelectItem>
               ) : null}
             </SelectContent>
           </Select>
+          {form.channel === "EMAIL" ? (
+            <p className="text-[11px] text-destructive">
+              {t("editor.emailUnsupported")}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1">
@@ -498,7 +543,12 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
             </Button>
           ) : null}
         </div>
-        <Button variant="outline" onClick={onTestSend} disabled={!selected}>
+        <Button
+          variant="outline"
+          onClick={onTestSend}
+          disabled={!selected}
+          title={t("editor.testSendHint")}
+        >
           <RocketIcon className="size-4" />
           {t("editor.testSend")}
         </Button>

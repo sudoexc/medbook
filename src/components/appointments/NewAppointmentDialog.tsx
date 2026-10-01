@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { probeFromTyped, sameNameLikely } from "@/lib/patients/identity-match";
 import { conflictMessageValues } from "@/lib/appointments/conflict-message";
+import { effectiveServiceTerms } from "@/lib/doctor-service-terms";
 import {
   Dialog,
   DialogContent,
@@ -321,7 +322,11 @@ export function NewAppointmentDialog({
   // Cabinet is bound to the doctor model — read it off the picked DoctorHit.
   type DoctorDetail = {
     id: string;
-    services: { serviceId: string }[];
+    services: {
+      serviceId: string;
+      priceOverride: number | null;
+      durationMinOverride: number | null;
+    }[];
   };
   const doctorDetailQuery = useQuery<DoctorDetail | null, Error>({
     queryKey: ["doctor", "detail", state.doctorId],
@@ -344,11 +349,21 @@ export function NewAppointmentDialog({
     return new Set(d.services.map((s) => s.serviceId));
   }, [doctorDetailQuery.data]);
 
-  const filteredServices = React.useMemo(() => {
+  // Each service as THIS doctor does it (audit DR-02): his own price and
+  // duration override the catalog, so the picker shows what the visit will
+  // cost and the slot is sized like the server books it.
+  const filteredServices = React.useMemo<ServiceHit[]>(() => {
     const all = servicesQuery.data ?? [];
-    if (!allowedServiceIds) return [];
-    return all.filter((s) => allowedServiceIds.has(s.id));
-  }, [servicesQuery.data, allowedServiceIds]);
+    const d = doctorDetailQuery.data;
+    if (!allowedServiceIds || !d) return [];
+    const links = new Map(d.services.map((l) => [l.serviceId, l]));
+    return all
+      .filter((s) => allowedServiceIds.has(s.id))
+      .map((s) => {
+        const terms = effectiveServiceTerms(s, links.get(s.id));
+        return { ...s, priceBase: terms.price, durationMin: terms.durationMin };
+      });
+  }, [servicesQuery.data, allowedServiceIds, doctorDetailQuery.data]);
 
   const selectedDoctor = React.useMemo<DoctorHit | null>(() => {
     if (!state.doctorId) return null;
@@ -440,7 +455,7 @@ export function NewAppointmentDialog({
       const totalDuration = Math.max(
         5,
         values.serviceIds.reduce((acc, sid) => {
-          const svc = (servicesQuery.data ?? []).find((x) => x.id === sid);
+          const svc = filteredServices.find((x) => x.id === sid);
           return acc + (svc?.durationMin ?? 0);
         }, 0) || 20,
       );

@@ -26,6 +26,11 @@ import { PatientReferralCard } from "./patient-referral-card";
 import { PatientTimeline } from "./patient-timeline";
 import { PatientRightRail } from "./patient-right-rail";
 import { DeletePatientDialog } from "./delete-patient-dialog";
+import {
+  PatientDataExportDialog,
+  PatientErasureRequestDialog,
+} from "./patient-privacy-dialogs";
+import { patientAuditHref } from "@/lib/audit-links";
 import { PatientCardSkeleton } from "./patient-card-skeleton";
 
 // Tabs are lazy-loaded so the initial overview render stays light. Only the
@@ -80,6 +85,8 @@ export function PatientCardClient({ id }: { id: string }) {
 
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [erasureOpen, setErasureOpen] = React.useState(false);
   const [newApptOpen, setNewApptOpen] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("overview");
 
@@ -151,6 +158,8 @@ export function PatientCardClient({ id }: { id: string }) {
   const patient = q.data!;
   const appointments = apptsQ.data?.rows ?? [];
   const showMedical = canViewMedical(role);
+  // Data rights and the audit log are the admin's (the APIs say so too).
+  const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
   const visibleTabs = TAB_ORDER.filter(
     (tb) => tb.key !== "medical" || showMedical,
   );
@@ -174,6 +183,15 @@ export function PatientCardClient({ id }: { id: string }) {
             appointments={appointments}
             onOpenDeleteDialog={() => setDeleteOpen(true)}
             onOpenNewAppointmentDialog={openNewAppointment}
+            privacyActions={
+              isAdmin
+                ? {
+                    onExportData: () => setExportOpen(true),
+                    onRequestErasure: () => setErasureOpen(true),
+                    auditHref: patientAuditHref(locale, patient.id),
+                  }
+                : undefined
+            }
           />
 
           <PatientSummaryCard patientId={patient.id} />
@@ -272,7 +290,22 @@ export function PatientCardClient({ id }: { id: string }) {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         patient={patient}
+        onRequestErasure={isAdmin ? () => setErasureOpen(true) : undefined}
       />
+      {isAdmin ? (
+        <>
+          <PatientDataExportDialog
+            open={exportOpen}
+            onOpenChange={setExportOpen}
+            patientId={patient.id}
+          />
+          <PatientErasureRequestDialog
+            open={erasureOpen}
+            onOpenChange={setErasureOpen}
+            patientId={patient.id}
+          />
+        </>
+      ) : null}
       <NewAppointmentDialog
         open={newApptOpen}
         onOpenChange={setNewApptOpen}

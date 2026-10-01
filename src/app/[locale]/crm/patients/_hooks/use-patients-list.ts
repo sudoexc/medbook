@@ -61,6 +61,9 @@ export type PatientsListFilters = {
   balance?: "debt" | "zero" | "credit";
   registeredFrom?: string;
   registeredTo?: string;
+  /** «Дата посещения»: Tashkent days, both included (audit PT-18). */
+  visitedFrom?: string;
+  visitedTo?: string;
   sort?: "createdAt" | "lastVisitAt" | "visitsCount" | "ltv" | "fullName";
   dir?: "asc" | "desc";
 };
@@ -79,6 +82,8 @@ function buildSearch(
   if (filters.balance) params.set("balance", filters.balance);
   if (filters.registeredFrom) params.set("registeredFrom", filters.registeredFrom);
   if (filters.registeredTo) params.set("registeredTo", filters.registeredTo);
+  if (filters.visitedFrom) params.set("visitedFrom", filters.visitedFrom);
+  if (filters.visitedTo) params.set("visitedTo", filters.visitedTo);
   if (filters.sort) params.set("sort", filters.sort);
   if (filters.dir) params.set("dir", filters.dir);
   if (cursor) params.set("cursor", cursor);

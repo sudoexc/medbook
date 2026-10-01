@@ -895,6 +895,13 @@ model Doctor {
   // Doctors raise it in their own settings when they want more appointments.
   maxBookableSlotsPerDay Int      @default(3)
   isActive               Boolean  @default(true)
+  // Shown on the public site (audit LD-08): «Наши специалисты», the booking
+  // form, /doctors/<id> and the sitemap. Separate from isActive on purpose:
+  // the clinic deactivates doctors to declutter the CRM while they still
+  // work there, and a doctor who left keeps his history (he cannot be
+  // deleted) but must disappear from the site. Defaults to true: every
+  // doctor the site showed before the flag stays on it.
+  listedOnSite           Boolean  @default(true)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -3034,6 +3041,10 @@ model EventOutbox {
 
   // Pumper poll — narrow PENDING rows per clinic by createdAt.
   @@index([clinicId, status, createdAt])
+  // The pumper polls every clinic at once (no clinicId in its WHERE), and the
+  // retention sweep deletes by status and age: both need status first, or
+  // every 200 ms tick reads the whole table (audit INF-04).
+  @@index([status, createdAt])
   // Replay cursor — `/api/events?since=<eventId>` reads DELIVERED rows after
   // the cursor's createdAt.
   @@index([clinicId, createdAt])
@@ -3622,6 +3633,9 @@ enum DataDeletionStatus {
   CANCELLED
   EXECUTED
   ANONYMIZED
+  // The executor gave up after its retries; `errorMessage` says why. An
+  // admin can approve it again (audit PT-07).
+  FAILED
 }
 
 enum DataDeletionMode {
@@ -3694,6 +3708,12 @@ model DataDeletionJob {
   // For Mini App requests: the patient is the actor. For CRM-initiated
   // requests: the User who created the job.
   requestedByUserId String?
+  // Failed executions so far (audit PT-07). A job that keeps failing used
+  // to stay APPROVED forever, retried every hour, and fifty such jobs
+  // filled the whole batch; after MAX_DELETION_ATTEMPTS it is FAILED.
+  attempts          Int                @default(0)
+  // The last failure, for the DSAR queue screen. Never patient data.
+  errorMessage      String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 

@@ -9,9 +9,9 @@
  *   2. Load patient + case context from DB (under SYSTEM tenant scope).
  *   3. `structureSoap(...)` — LLM proxy splits transcript into SOAP sections.
  *   4. Stitch the four sections back into markdown and write
- *      `MedicalCase.soapDraft`. **Overwrite policy**: we always overwrite.
- *      Append/diff between drafts is over-engineering for Wave 5; the doctor
- *      reviews + edits + saves in CRM, so the draft is ephemeral by design.
+ *      `MedicalCase.soapDraft`. A draft already there is kept and the new
+ *      dictation is added below it (audit AC-13): overwriting lost the
+ *      doctor's earlier dictation or his own edits without a word.
  *   5. Audit `VOICE_SOAP_DRAFTED` on `MedicalCase`.
  *   6. Publish `case.soap-draft.refreshed` SSE event so the open case page
  *      surfaces the new draft without a refresh.
@@ -28,7 +28,10 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 
 import { transcribe } from "@/server/ai/transcribe";
 import { structureSoap, stitchSoapMarkdown } from "@/server/ai/soap";
-import { serializeMedicalCaseForWrite } from "@/server/medical-case/cipher-fields";
+import {
+  hydrateMedicalCaseForRead,
+  serializeMedicalCaseForWrite,
+} from "@/server/medical-case/cipher-fields";
 import { getQueue } from "@/server/queue";
 import { publishEventSafe } from "@/server/realtime/publish";
 
@@ -144,12 +147,27 @@ export async function process(job: VoiceSoapJob): Promise<void> {
       plan: structured.plan,
     });
 
-    // 3) Overwrite the draft. (Append/diff is intentional non-goal — see
-    //    file header.) `soapDraft` is encrypted at rest — the boundary helper
-    //    swaps the markdown for ciphertext.
+    // 3) Write the draft, keeping what is there (audit AC-13): a non-empty
+    //    draft gets the new dictation appended. `soapDraft` is encrypted at
+    //    rest; the boundary helpers decrypt the old text and encrypt the new.
+    const current = await prisma.medicalCase.findUnique({
+      where: { id: job.caseId },
+      select: { soapDraft: true },
+    });
+    const previous = current
+      ? hydrateMedicalCaseForRead({ soapDraft: current.soapDraft }).soapDraft
+      : null;
+    if (current?.soapDraft && previous === null) {
+      // Stored but unreadable (a damaged envelope reads as null): writing
+      // would destroy it for good, so this dictation is not saved.
+      console.warn(`[voice-soap] case ${job.caseId}: draft unreadable, not overwritten`);
+      return;
+    }
     await prisma.medicalCase.update({
       where: { id: job.caseId },
-      data: serializeMedicalCaseForWrite({ soapDraft: markdown }),
+      data: serializeMedicalCaseForWrite({
+        soapDraft: appendSoapDraft(previous, markdown),
+      }),
     });
 
     // 4) Audit row. `LLM_CALL` rows already track per-step cost; this is
@@ -184,6 +202,16 @@ export async function process(job: VoiceSoapJob): Promise<void> {
       payload: { caseId: job.caseId },
     });
   });
+}
+
+/**
+ * The draft after a new dictation: the new text alone when there was none,
+ * otherwise the old draft, a rule, and the new text. Pure; exported for tests.
+ */
+export function appendSoapDraft(previous: string | null, next: string): string {
+  const old = (previous ?? "").trim();
+  if (!old) return next;
+  return `${old}\n\n---\n\n${next}`;
 }
 
 /** Start the worker; idempotent (safe to call multiple times). */

@@ -27,6 +27,8 @@ const KNOWN_KEYS: (keyof PatientsFilterState)[] = [
   "balance",
   "registeredFrom",
   "registeredTo",
+  "visitedFrom",
+  "visitedTo",
   "sort",
   "dir",
   "ageMin",
@@ -51,6 +53,9 @@ export function parse(sp: URLSearchParams): PatientsFilterState {
       if ((PATIENT_SEGMENTS as readonly string[]).includes(upper)) {
         out.segment = upper;
       }
+    } else if (key === "visitedFrom" || key === "visitedTo") {
+      // Tashkent days only: anything else would fail the whole list.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) out[key] = v;
     } else if (key === "balance") {
       if (v === "debt" || v === "zero" || v === "credit") out.balance = v;
     } else if (key === "sort") {
@@ -69,6 +74,35 @@ export function parse(sp: URLSearchParams): PatientsFilterState {
     } else {
       (out as Record<string, string>)[key] = v;
     }
+  }
+  return out;
+}
+
+/**
+ * The CSV export's `filters` for the list state (audit PT-19): the same
+ * keys the list sends, plus the age range the page applies on the loaded
+ * rows. Sorting does not change which patients are in the file.
+ */
+export function exportFiltersOf(
+  state: PatientsFilterState,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of [
+    "q",
+    "segment",
+    "source",
+    "gender",
+    "tag",
+    "balance",
+    "registeredFrom",
+    "registeredTo",
+    "visitedFrom",
+    "visitedTo",
+    "ageMin",
+    "ageMax",
+  ] as const) {
+    const v = state[key];
+    if (v !== undefined && v !== null && v !== "") out[key] = v;
   }
   return out;
 }

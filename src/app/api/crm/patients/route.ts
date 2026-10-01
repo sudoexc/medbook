@@ -148,7 +148,8 @@ export const GET = createApiListHandler(
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    // CM-08 — «Создать карточку» for an unknown caller in the call center.
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"],
     bodySchema: CreateBody,
   },
   async ({ request, body, ctx }) => {

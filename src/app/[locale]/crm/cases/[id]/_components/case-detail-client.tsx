@@ -382,6 +382,7 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
               defaultDoctorId={data.primaryDoctorId}
               prescriptions={data.prescriptions ?? []}
               doctors={prescriptionDoctors.data ?? []}
+              canChooseAuthor={role !== "DOCTOR"}
             />
           ) : null}
         </PageContainer>

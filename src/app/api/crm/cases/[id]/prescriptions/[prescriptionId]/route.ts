@@ -5,6 +5,10 @@
  *   don't merge — the editor re-submits the whole `{times,days,startsAt}`).
  * - DELETE is a hard delete. Cascade unwinds `MedicationReminderSend` rows
  *   (referential `onDelete: Cascade`).
+ * - Audit PT-12: a doctor changes or deletes only his own prescription; the
+ *   row keeps its author's name, so another doctor's edit used to go out
+ *   under that name. ADMIN may correct any (audited as PRESCRIPTION_UPDATED
+ *   with the actor). 403 `not_author` otherwise.
  */
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +25,23 @@ import {
   publishViaOutbox,
 } from "@/server/realtime/outbox";
 import type { ActorRole, Surface } from "@/server/realtime/envelope";
+
+/**
+ * PT-12 — may this caller change the prescription? ADMIN always; a DOCTOR
+ * only when he wrote it. Null when allowed, the 403 otherwise.
+ */
+async function authorGuard(
+  ctx: { role: string; userId: string },
+  prescriptionDoctorId: string,
+): Promise<Response | null> {
+  if (ctx.role !== "DOCTOR") return null;
+  const self = await prisma.doctor.findFirst({
+    where: { userId: ctx.userId },
+    select: { id: true },
+  });
+  if (self && self.id === prescriptionDoctorId) return null;
+  return err("Forbidden", 403, { reason: "not_author" });
+}
 
 function idsFromUrl(request: Request): {
   caseId: string;
@@ -49,6 +70,7 @@ export const PATCH = createApiHandler(
         id: true,
         caseId: true,
         patientId: true,
+        doctorId: true,
         drugName: true,
         dosage: true,
         schedule: true,
@@ -58,6 +80,8 @@ export const PATCH = createApiHandler(
       },
     });
     if (!before || before.caseId !== caseId) return notFound();
+    const denied = await authorGuard(ctx, before.doctorId);
+    if (denied) return denied;
 
     const dataRaw: Record<string, unknown> = {};
     if (body.drugName !== undefined) dataRaw.drugName = body.drugName;
@@ -146,6 +170,7 @@ export const DELETE = createApiHandler(
         id: true,
         caseId: true,
         patientId: true,
+        doctorId: true,
         drugName: true,
         dosage: true,
         schedule: true,
@@ -153,6 +178,8 @@ export const DELETE = createApiHandler(
       },
     });
     if (!before || before.caseId !== caseId) return notFound();
+    const denied = await authorGuard(ctx, before.doctorId);
+    if (denied) return denied;
 
     const actorRole: ActorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "ADMIN";
     const surface: Surface = ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";

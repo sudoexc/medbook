@@ -1,111 +1,104 @@
 /**
- * Phase 16 Wave 1 — Treatment plan progress projection.
+ * Treatment plan card arithmetic (audit MA-11).
  *
- * Locks the math used by `<TreatmentPlanCard />` so the UI never has to
- * branch on edge-cases. The MedicalCase model has no explicit
- * `plannedVisits` field today, so the helper projects total from the
- * completed-count + (optionally) one upcoming booking.
+ * The MedicalCase model has no planned number of visits. The card used to
+ * project one (completed + next booking, at least 1), so an OPEN case with
+ * one finished visit and nothing booked read «1 из 1, Лечение завершено ✓».
+ * Now «completed» is the case's own RESOLVED status, and without a plan
+ * length there is no «N из M» and no bar.
  */
 import { describe, expect, it } from "vitest";
 
 import { computeProgress } from "@/server/services/treatment-plan";
 
 describe("computeProgress", () => {
-  it("treats a brand-new case (0 completed, no next) as empty with total=1", () => {
+  it("never calls an OPEN case finished, whatever the visit count", () => {
     const p = computeProgress({
-      completedAppointments: 0,
+      caseStatus: "OPEN",
+      completedAppointments: 1,
       nextBookedAt: null,
     });
-    expect(p.done).toBe(0);
-    // We always render at least 1 in the denominator so the bar isn't NaN.
-    expect(p.total).toBe(1);
-    expect(p.empty).toBe(true);
     expect(p.completed).toBe(false);
-    expect(p.nextVisitAt).toBeNull();
-    expect(p.progress).toBe(0);
+    expect(p.done).toBe(1);
+    // No plan length: no denominator and no bar, only the visit count.
+    expect(p.total).toBeNull();
+    expect(p.progress).toBeNull();
+    expect(p.empty).toBe(false);
   });
 
-  it("projects total = completed + 1 when a next visit is booked", () => {
-    const next = new Date("2026-05-12T09:00:00.000Z");
+  it("only a RESOLVED case is «Лечение завершено»", () => {
+    expect(
+      computeProgress({ caseStatus: "RESOLVED", completedAppointments: 3, nextBookedAt: null })
+        .completed,
+    ).toBe(true);
+    for (const caseStatus of ["ABANDONED", "TRANSFERRED"]) {
+      expect(
+        computeProgress({ caseStatus, completedAppointments: 3, nextBookedAt: null }).completed,
+      ).toBe(false);
+    }
+  });
+
+  it("reports the next visit and does not invent a total from it", () => {
+    const next = new Date("2026-10-12T09:00:00.000Z");
     const p = computeProgress({
+      caseStatus: "OPEN",
       completedAppointments: 3,
       nextBookedAt: next,
     });
-    expect(p.done).toBe(3);
-    expect(p.total).toBe(4); // 3 done + 1 booked
     expect(p.nextVisitAt).toBe(next.toISOString());
-    expect(p.empty).toBe(false);
-    expect(p.completed).toBe(false);
-    expect(p.progress).toBeCloseTo(0.75, 5);
+    expect(p.total).toBeNull();
+    expect(p.progress).toBeNull();
   });
 
-  it("marks a case as completed when done >= total and no next booking", () => {
+  it("a brand-new case is empty", () => {
+    const p = computeProgress({ caseStatus: "OPEN", completedAppointments: 0, nextBookedAt: null });
+    expect(p.empty).toBe(true);
+    expect(p.done).toBe(0);
+    expect(p.completed).toBe(false);
+  });
+
+  it("uses a doctor-set plan length when there is one", () => {
     const p = computeProgress({
+      caseStatus: "OPEN",
+      completedAppointments: 1,
+      nextBookedAt: null,
+      plannedVisits: 5,
+    });
+    expect(p.total).toBe(5);
+    expect(p.progress).toBeCloseTo(0.2, 5);
+    // Reaching the plan does not close the case either.
+    const full = computeProgress({
+      caseStatus: "OPEN",
       completedAppointments: 5,
       nextBookedAt: null,
       plannedVisits: 5,
     });
-    expect(p.done).toBe(5);
-    expect(p.total).toBe(5);
-    expect(p.completed).toBe(true);
-    expect(p.empty).toBe(false);
-    expect(p.progress).toBe(1);
+    expect(full.progress).toBe(1);
+    expect(full.completed).toBe(false);
   });
 
-  it("respects an explicit plannedVisits when provided and larger than projection", () => {
+  it("a course that ran past its plan grows the plan instead of overflowing", () => {
     const p = computeProgress({
-      completedAppointments: 1,
-      nextBookedAt: null,
-      plannedVisits: 5,
-    });
-    expect(p.total).toBe(5);
-    expect(p.done).toBe(1);
-    expect(p.completed).toBe(false);
-    expect(p.progress).toBeCloseTo(0.2, 5);
-  });
-
-  it("projects total beyond plannedVisits when reality exceeds the plan", () => {
-    // Patient came back 6 times for a "5 visit" course — total clamps up.
-    const next = new Date("2026-05-12T09:00:00.000Z");
-    const p = computeProgress({
+      caseStatus: "OPEN",
       completedAppointments: 6,
-      nextBookedAt: next,
+      nextBookedAt: "2026-10-12T09:00:00.000Z",
       plannedVisits: 5,
     });
-    expect(p.total).toBe(7); // max(5, 6+1, 1)
-    expect(p.completed).toBe(false);
+    expect(p.total).toBe(7);
+    expect(p.progress).toBeLessThanOrEqual(1);
   });
 
-  it("accepts nextBookedAt as ISO string and Date interchangeably", () => {
+  it("clamps negative counts to 0 and accepts ISO strings and Dates alike", () => {
+    expect(
+      computeProgress({ caseStatus: "OPEN", completedAppointments: -5, nextBookedAt: null }).done,
+    ).toBe(0);
     const iso = "2026-05-12T09:00:00.000Z";
-    const a = computeProgress({
-      completedAppointments: 1,
-      nextBookedAt: iso,
-    });
-    const b = computeProgress({
-      completedAppointments: 1,
-      nextBookedAt: new Date(iso),
-    });
-    expect(a.nextVisitAt).toBe(b.nextVisitAt);
-    expect(a.total).toBe(b.total);
-    expect(a.progress).toBeCloseTo(b.progress, 10);
-  });
-
-  it("never reports progress > 1 even with bogus inputs", () => {
-    const p = computeProgress({
-      completedAppointments: 99,
-      nextBookedAt: null,
-      plannedVisits: 1,
-    });
-    expect(p.progress).toBe(1);
-  });
-
-  it("clamps negative completedAppointments to 0", () => {
-    const p = computeProgress({
-      completedAppointments: -5,
-      nextBookedAt: null,
-    });
-    expect(p.done).toBe(0);
-    expect(p.empty).toBe(true);
+    expect(
+      computeProgress({ caseStatus: "OPEN", completedAppointments: 1, nextBookedAt: iso })
+        .nextVisitAt,
+    ).toBe(
+      computeProgress({ caseStatus: "OPEN", completedAppointments: 1, nextBookedAt: new Date(iso) })
+        .nextVisitAt,
+    );
   });
 });

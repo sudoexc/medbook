@@ -19,6 +19,14 @@
  *   - note must be FINALIZED (a DRAFT is simply edited),
  *   - the 24h window must be OVER — inside it the doctor edits the note
  *     directly and the two correction regimes must never overlap.
+ *
+ * Reaching the patient (audit G3-03): the amendment commits together with a
+ * `visit-note.amended` outbox event, so the visit screen open in the Mini App
+ * refetches and shows the «Исправления» block (the visit summary carries
+ * the amendments), and, once the clinic has switched the `visit-note.amended`
+ * message on in /crm/settings/notifications (it starts off), the patient is
+ * sent a message that the doctor corrected his conclusion. Before, it
+ * existed only inside the re-rendered PDF and nobody was told.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +34,8 @@ import { audit } from "@/lib/audit";
 import { ok, forbidden, notFound, conflict } from "@/server/http";
 import { CreateVisitNoteAmendmentSchema } from "@/server/schemas/visit-note";
 import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
+import { queueAmendmentNotice } from "@/server/visit-notes/amendment-notice";
+import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 
 function idFromUrl(request: Request): string {
   // .../visit-notes/[id]/amendments — id is segment[-2].
@@ -118,6 +128,31 @@ export const POST = createApiHandler(
         where: { id: note.id },
         data: { handoutStaleAt: now },
       });
+      await publishViaOutbox(tx, {
+        type: "visit-note.amended",
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "DOCTOR",
+          userId: ctx.userId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: `user:${ctx.userId}`,
+        },
+        surface: "DOCTOR_CABINET",
+        tenantScope: {
+          clinicId: note.clinicId,
+          doctorId: note.doctorId,
+          patientId: note.patientId,
+          appointmentId: note.appointmentId,
+        },
+        payload: {
+          visitNoteId: note.id,
+          appointmentId: note.appointmentId,
+          doctorId: note.doctorId,
+          patientId: note.patientId,
+          amendmentId: row.id,
+        },
+      });
       return row;
     });
 
@@ -127,6 +162,13 @@ export const POST = createApiHandler(
       entityId: amendment.id,
       meta: { visitNoteId: note.id, reason: body.reason },
     });
+
+    // Best-effort: the correction is issued whether or not the message goes.
+    try {
+      await queueAmendmentNotice({ clinicId: note.clinicId, visitNoteId: note.id });
+    } catch (e) {
+      console.error("[visit-notes/amendments] patient notice failed", e);
+    }
 
     return ok(amendment, 201);
   },

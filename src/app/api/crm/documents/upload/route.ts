@@ -20,10 +20,19 @@
  * couldn't issue a real one, leaving the bytes nowhere and the row
  * undownloadable. Now bytes always land in storage before the metadata row
  * is created.
+ *
+ * DELETE takes back an upload whose document was never created (audit
+ * CM-05): `{ fileUrl, uploadToken }`, the same receipt, so only the clinic
+ * that stored the bytes can remove them, and only while no document or
+ * signature uses them. The library dialog calls it when saving the document
+ * fails, so the bucket does not collect orphans.
  */
 import { randomUUID } from "node:crypto";
 
+import { z } from "zod";
+
 import { createApiHandler } from "@/lib/api-handler";
+import { prisma } from "@/lib/prisma";
 import {
   DOCUMENT_TYPES,
   MEDIA_TYPES,
@@ -33,8 +42,16 @@ import {
   checkUpload,
 } from "@/server/storage/safe-file";
 import { ok, err } from "@/server/http";
-import { uploadObject, isStubMode } from "@/server/storage/minio";
-import { signDocumentUpload } from "@/server/documents/file-ref";
+import {
+  deleteObject,
+  uploadObject,
+  isStubMode,
+} from "@/server/storage/minio";
+import {
+  checkDocumentFileUrl,
+  deletableDocumentKey,
+  signDocumentUpload,
+} from "@/server/documents/file-ref";
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25MB cap matches what the presign flow allowed.
 
@@ -110,5 +127,36 @@ export const POST = createApiHandler(
       mimeType: contentType,
       sizeBytes: file.size,
     });
+  },
+);
+
+const DiscardUploadSchema = z.object({
+  fileUrl: z.string().min(1).max(1000),
+  uploadToken: z.string().min(1).max(200),
+});
+
+export const DELETE = createApiHandler(
+  {
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"],
+    bodySchema: DiscardUploadSchema,
+  },
+  async ({ body, ctx }) => {
+    if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
+    // The receipt proves this clinic stored these bytes a moment ago.
+    const file = checkDocumentFileUrl({
+      clinicId: ctx.clinicId,
+      fileUrl: body.fileUrl,
+      uploadToken: body.uploadToken,
+    });
+    if (!file.ok || !file.key) {
+      return err("InvalidFileUrl", 400, {
+        reason: file.ok ? "file_not_issued" : file.reason,
+      });
+    }
+    // Never an object a document (or a doctor's signature) already uses.
+    const key = await deletableDocumentKey(prisma, ctx.clinicId, body.fileUrl);
+    if (!key) return ok({ deleted: false });
+    await deleteObject(undefined, key);
+    return ok({ deleted: true });
   },
 );

@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { type Locale } from "@/lib/format";
 import { type ActionSeverity } from "@/lib/actions/types";
+import { appointmentDrawerHref } from "@/lib/calls/caller-context";
 
 import { useUnconfirmedActions, type UnconfirmedActionRow } from "../_hooks/use-unconfirmed";
 import { useSetQueueStatus } from "../../appointments/_hooks/use-appointment";
@@ -64,9 +65,23 @@ export function UnconfirmedWidget() {
   const t = useTranslations("callCenter.unconfirmed");
   const tSev = useTranslations("actionCenter.dashboard.actionsList");
   const locale = useLocale() as Locale;
-  const { data: rows = [], isLoading } = useUnconfirmedActions();
+  const { data: rows = [], isLoading, error } = useUnconfirmedActions();
   const [collapsed, setCollapsed] = React.useState(false);
 
+  // A failed load says so (audit AC-16): on a 403 the widget used to vanish,
+  // and the operator whose job is these calls saw nothing to confirm.
+  if (error && rows.length === 0) {
+    return (
+      <section
+        aria-label={t("ariaLabel")}
+        className="flex items-center gap-2 border-b border-border bg-destructive/5 px-4 py-2.5 text-[12px] text-destructive"
+      >
+        <ShieldCheckIcon className="size-4 shrink-0" aria-hidden />
+        <span className="font-semibold">{t("title")}</span>
+        <span className="text-destructive/80">{t("loadError")}</span>
+      </section>
+    );
+  }
   if (!isLoading && rows.length === 0) return null;
 
   return (
@@ -175,7 +190,9 @@ function UnconfirmedRow({
           : "priorityLow";
 
   const patientHref = `/${locale}/crm/patients/${row.payload.patientId}`;
-  const apptHref = `/${locale}/crm/appointments?id=${row.payload.appointmentId}`;
+  // The appointments page opens a visit's drawer from `?ap=`; `?id=` was
+  // never read (audit CM-11).
+  const apptHref = appointmentDrawerHref(row.payload.appointmentId, locale);
 
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-background/60 px-2.5 py-2 transition-colors hover:bg-muted/30">

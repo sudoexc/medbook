@@ -36,17 +36,23 @@ import { serializePrescriptionForWrite } from "@/server/prescription/cipher-fiel
 import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
+import {
+  CONCLUSION_BACKFILL_WINDOW_MS,
+  hasDeliverableHandout,
+} from "@/server/visit-notes/conclusion-delivery";
+
+// Re-exported: the unit tests and older imports reach it through here.
+export { hasDeliverableHandout };
 
 export const QUEUE_NAME = "doctor:visit-note-handout";
 export const JOB_NAME = "visit-note-handout-tick";
 
 const TICK_INTERVAL_MS = 30 * 1000;
 /**
- * Only sweep notes finalized within this window. Bounds the one-time backfill
- * when the feature first ships (so we don't render the clinic's entire history
- * at once) while staying generous enough to catch up after a worker outage.
+ * Only sweep notes finalized within this window (shared with «Отправить в
+ * Telegram», which must know whether a missing PDF is still coming, VW-06).
  */
-const BACKFILL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const BACKFILL_WINDOW_MS = CONCLUSION_BACKFILL_WINDOW_MS;
 const BATCH = 25;
 
 type SweepAmendment = {
@@ -93,19 +99,6 @@ type SweepNote = {
     instructionUz: string | null;
   }>;
 };
-
-/**
- * Pure predicate — does this note carry a handout we can deliver right now?
- * Exported so the unit test can assert the never-bodyMarkdown / skip-empty
- * rules without a database.
- */
-export function hasDeliverableHandout(note: {
-  status: string;
-  patientHandoutMarkdown: string | null;
-}): boolean {
-  if (note.status !== "FINALIZED") return false;
-  return Boolean(note.patientHandoutMarkdown?.trim());
-}
 
 /**
  * Map amendment rows to the presentation shape the PDF renderer consumes.
@@ -255,6 +248,8 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
         mimeType: "application/pdf",
         sizeBytes: pdf.length,
         uploadedById: null,
+        // Rendered here, not uploaded by anyone: no «От пациента» badge (CD-06).
+        source: "SYSTEM",
       },
       update: {
         fileUrl: uploaded.url,

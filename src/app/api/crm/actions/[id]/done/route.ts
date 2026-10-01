@@ -2,10 +2,11 @@
  * POST /api/crm/actions/[id]/done — user actioned this and the underlying
  * issue is resolved. Sets `doneAt = now` and `status='DONE'`.
  *
- * RBAC: ADMIN, RECEPTIONIST, DOCTOR. See dismiss/route.ts for the DOCTOR
+ * RBAC: ADMIN, RECEPTIONIST, CALL_OPERATOR, DOCTOR. See dismiss/route.ts for the DOCTOR
  * rationale (Wave 2 will tighten with row-level ownership checks).
  */
 import { createApiHandler } from "@/lib/api-handler";
+import { ACTION_READER_ROLES } from "@/lib/actions/roles";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound } from "@/server/http";
@@ -15,7 +16,7 @@ import { actionIdFromUrl } from "@/server/actions/handler-utils";
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    roles: [...ACTION_READER_ROLES],
     bodySchema: DoneActionSchema,
   },
   async ({ request }) => {

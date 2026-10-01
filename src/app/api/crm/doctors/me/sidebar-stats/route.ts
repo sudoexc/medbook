@@ -24,7 +24,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { doctorConversationScope } from "@/server/conversations/doctor-scope";
+import { doctorUnreadTotal } from "@/server/conversations/doctor-unread";
 import {
   tashkentDayBounds,
   tashkentComponents,
@@ -71,7 +71,7 @@ export const GET = createApiListHandler(
     const { dayStart: start, dayEnd: end } = tashkentDayBounds(now);
     const weekday = tashkentComponents(now).dow;
 
-    const [todayAppointments, unreadAgg, schedule] = await Promise.all([
+    const [todayAppointments, unreadMessages, schedule] = await Promise.all([
       prisma.appointment.findMany({
         where: {
           doctorId: doctor.id,
@@ -80,16 +80,11 @@ export const GET = createApiListHandler(
         },
         select: { status: true },
       }),
-      // Same scope as the conversations list — imported, not mirrored. The
-      // hand-copied version here kept the old appointment-only rule after the
-      // list was widened, so messages arrived with no badge on «Сообщения».
-      prisma.conversation.aggregate({
-        where: {
-          unreadCount: { gt: 0 },
-          OR: doctorConversationScope(doctor.id, doctor.userId ?? null),
-        },
-        _sum: { unreadCount: true },
-      }),
+      // Same scope and the same per-doctor unread as his inbox (DC-10):
+      // what HE has not read, not the desk's shared counter, and no
+      // stranger's unlinked thread. Imported, never mirrored: a hand copy
+      // here once kept an old scope and messages came with no badge.
+      doctorUnreadTotal({ doctorId: doctor.id, userId: ctx.userId }),
       prisma.doctorSchedule.findMany({
         where: {
           doctorId: doctor.id,
@@ -126,8 +121,6 @@ export const GET = createApiListHandler(
       capacity > 0
         ? Math.min(100, Math.round((todayCount / capacity) * 100))
         : 0;
-
-    const unreadMessages = unreadAgg._sum.unreadCount ?? 0;
 
     const payload: SidebarStatsResponse = {
       todayBadge,

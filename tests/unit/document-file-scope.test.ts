@@ -9,7 +9,7 @@
  * Pinned here:
  *   - a stored object is accepted only with the receipt the upload route
  *     issued for it, in this clinic's documents folder; anything else must
- *     be an https link (or the signature pad's inline PNG);
+ *     be an https link;
  *   - the document's patient and appointment belong together and to the clinic;
  *   - DELETE never removes another clinic's object, nor one another
  *     document still uses;
@@ -209,7 +209,7 @@ describe("checkDocumentFileUrl", () => {
     }
   });
 
-  it("an external link must be https; the signature pad's PNG is allowed inline", () => {
+  it("an external link must be https; no data: value, the signature pad uploads its PNG (CD-05)", () => {
     expect(checkDocumentFileUrl({ clinicId: "c1", fileUrl: "https://lab.example/r/1.pdf" })).toEqual({
       ok: true,
       key: null,
@@ -219,7 +219,7 @@ describe("checkDocumentFileUrl", () => {
     expect(checkDocumentFileUrl({ clinicId: "c1", fileUrl: "data:text/html,<script>" }).ok).toBe(false);
     expect(
       checkDocumentFileUrl({ clinicId: "c1", fileUrl: "data:image/png;base64,iVBORw0KGgo=" }).ok,
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
@@ -343,7 +343,7 @@ describe("send-telegram reads only this clinic's objects in the main bucket", ()
     ];
     const res = await send();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ sent: 1, failed: 2 });
+    expect(await res.json()).toMatchObject({ sent: 1, failed: 2 });
     expect(h.fetched).toEqual([{ bucket: undefined, key: OWN_KEY }]);
   });
 

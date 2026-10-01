@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BadgeCheckIcon,
+  BanIcon,
   DownloadIcon,
   EyeIcon,
   PenLineIcon,
@@ -38,6 +39,12 @@ import {
 } from "../_hooks/use-documents";
 import { UploadDialog } from "./upload-dialog";
 import { documentHref } from "@/lib/storage-ref";
+import {
+  canMarkSigned,
+  isPatientDocument,
+  isVoidedDocument,
+  type DocumentSourceValue,
+} from "@/lib/document-guards";
 
 const DOC_TYPES: DocumentType[] = [
   "REFERRAL",
@@ -48,6 +55,13 @@ const DOC_TYPES: DocumentType[] = [
   "RECEIPT",
   "OTHER",
 ];
+
+// CD-06: filter by who put the document in the chart.
+const SOURCE_LABEL_KEY: Record<DocumentSourceValue, string> = {
+  STAFF: "filters.sourceStaff",
+  PATIENT: "filters.sourcePatient",
+  SYSTEM: "filters.sourceSystem",
+};
 
 function formatSize(bytes: number | null): string {
   if (bytes == null) return "—";
@@ -131,6 +145,24 @@ export function DocumentsPageClient() {
             {DOC_TYPES.map((tp) => (
               <SelectItem key={tp} value={tp}>
                 {t(`types.${tp}` as never)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={filters.source || "__all"}
+          onValueChange={(v) =>
+            patch({ source: v === "__all" ? "" : (v as DocumentSourceValue) })
+          }
+        >
+          <SelectTrigger className="w-[190px]" aria-label={t("filters.source")}>
+            <SelectValue placeholder={t("filters.source")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all">{t("filters.sourceAll")}</SelectItem>
+            {(Object.keys(SOURCE_LABEL_KEY) as DocumentSourceValue[]).map((src) => (
+              <SelectItem key={src} value={src}>
+                {t(SOURCE_LABEL_KEY[src] as never)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -220,7 +252,9 @@ export function DocumentsPageClient() {
                     <td className="px-3 py-2 font-medium">
                       <div className="flex items-center gap-2">
                         <span>{d.title}</span>
-                        {d.uploadedBy === null ? (
+                        {/* CD-06: by the stored source; rendered
+                            conclusions used to carry this badge too. */}
+                        {isPatientDocument(d) ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
                             {t("patientUploadBadge")}
                           </span>
@@ -254,7 +288,16 @@ export function DocumentsPageClient() {
                       {formatSize(d.sizeBytes)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {d.type === "CONSENT" || d.type === "CONTRACT" ? (
+                      {/* CD-09: voided by ADMIN, kept as a record. */}
+                      {isVoidedDocument(d) ? (
+                        <span
+                          title={d.voidReason ?? undefined}
+                          className="mr-1 inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive"
+                        >
+                          <BanIcon className="size-3" />
+                          {t("voided")}
+                        </span>
+                      ) : d.signedAt || canMarkSigned(d) ? (
                         d.signedAt ? (
                           <span
                             title={new Date(d.signedAt).toLocaleString(
@@ -325,6 +368,7 @@ export function DocumentsPageClient() {
       <UploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
+        initialPatientId={filters.patientId || undefined}
         onUploaded={() => {
           setUploadOpen(false);
           void q.refetch();

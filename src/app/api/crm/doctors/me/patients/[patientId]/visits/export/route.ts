@@ -14,14 +14,17 @@
  * histories Excel can handle 100k rows easily and Postgres copes far past
  * that. We still cap at 5000 rows defensively.
  *
- * Audit: `VISIT_LIST_EXPORTED` with row count + patientId.
+ * Audit: `VISIT_LIST_EXPORTED` with row count + patientId, written only
+ * once the response exists (audit DC-03: the Cyrillic file name used to
+ * throw in the Response constructor AFTER the audit row, so nearly every
+ * patient got a 500 and the log a false «exported»).
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { tashkentComponents } from "@/lib/booking-validation";
 import { audit } from "@/lib/audit";
-import { contentDisposition } from "@/lib/content-disposition";
 import { err, notFound } from "@/server/http";
+import { contentDisposition } from "@/server/storage/safe-file";
 import {
   formatVisitDiagnosis,
   parseAdditionalDiagnoses,
@@ -37,10 +40,15 @@ function patientIdFromUrl(request: Request): string {
   return parts[idx - 1] ?? "";
 }
 
+/**
+ * Always quoted (commas, quotes, newlines). Quotes do NOT stop Excel from
+ * running `=HYPERLINK(…)` typed into a diagnosis or a conclusion, so a cell
+ * that starts with a formula character gets a leading apostrophe and is
+ * shown as text (DC-03).
+ */
 function csvCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  // Always quote — covers commas, quotes, newlines, leading equals (formula
-  // injection) without branching.
+  const raw = v == null ? "" : String(v);
+  const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${s.replace(/"/g, '""')}"`;
 }
 
@@ -193,6 +201,20 @@ export const GET = createApiListHandler(
     // with encoding pickers).
     const body = "﻿" + lines.join("\r\n") + "\r\n";
 
+    const filename = visitsCsvFilename(
+      patient.fullName,
+      tashkentComponents(new Date()).date,
+    );
+
+    const response = new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": contentDisposition(filename),
+        "Cache-Control": "private, no-store",
+      },
+    });
+
     await audit(request, {
       action: "visit_list.exported",
       entityType: "Patient",
@@ -204,17 +226,20 @@ export const GET = createApiListHandler(
       },
     });
 
-    const filename = `visits-${patient.fullName.replace(/[^A-Za-zА-Яа-яЁё0-9]+/g, "-")}-${tashkentComponents(new Date()).date}.csv`;
-
-    // The name is Cyrillic: a bare `filename="…"` is not a ByteString and
-    // the Response constructor threw, a 500 (audit AN-26).
-    return new Response(body, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": contentDisposition(filename),
-        "Cache-Control": "private, no-store",
-      },
-    });
+    return response;
   },
 );
+
+/**
+ * `visits-<name>-<date>.csv`: letters and digits kept in their own script
+ * (Cyrillic, Uzbek Latin), anything else folded to a dash.
+ * `contentDisposition` adds the ASCII fallback the header needs.
+ */
+function visitsCsvFilename(fullName: string, date: string): string {
+  const name =
+    fullName
+      .replace(/[^\p{L}\p{N}]+/gu, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "patient";
+  return `visits-${name}-${date}.csv`;
+}

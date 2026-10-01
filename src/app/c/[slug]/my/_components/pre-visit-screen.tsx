@@ -25,12 +25,32 @@ import {
 import { useT, useLang } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
-import { isUpcomingVisitStatus } from "@/lib/appointments/active-statuses";
 import { useActiveContext } from "../_hooks/use-active-context";
 import { usePreVisit, useSubmitPreVisit } from "../_hooks/use-pre-visit";
+import {
+  preVisitClosedReason,
+  type PreVisitClosedReason,
+} from "@/lib/patient-experience/pre-visit";
+import type { Dict } from "./mini-i18n";
 
 function formatLines(values: string[]): string {
   return values.join("\n");
+}
+
+/** What to tell the patient when the form is closed for this visit (MA-09). */
+function closedText(t: Dict, reason: PreVisitClosedReason | null | undefined): string {
+  switch (reason) {
+    case "cancelled":
+      return t.preVisit.closedCancelled;
+    case "completed":
+      return t.preVisit.closedCompleted;
+    case "no_show":
+      return t.preVisit.closedNoShow;
+    case "in_progress":
+      return t.preVisit.closedInProgress;
+    default:
+      return t.preVisit.notOpen;
+  }
 }
 
 function parseLines(raw: string): string[] {
@@ -76,10 +96,16 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
     setHydrated(true);
   }, [hydrated, query.data]);
 
-  // The server's gate, so the button is never live for a visit the POST
-  // would refuse (a SKIPPED or IN_PROGRESS visit used to pass here).
-  const isOpen = isUpcomingVisitStatus(query.data?.appointment.status ?? "");
-  const canSubmit = complaints.trim().length > 0 && !submit.isPending && isOpen;
+  // Same gate as the server (audit MA-09): CONFIRMED is open like BOOKED,
+  // and a closed visit says why instead of failing on submit.
+  const closedReason = query.data
+    ? preVisitClosedReason(query.data.appointment.status)
+    : null;
+  const canSubmit =
+    complaints.trim().length > 0 &&
+    !submit.isPending &&
+    !!query.data &&
+    closedReason === null;
 
   const submittedAt = query.data?.submittedAt ?? null;
 
@@ -95,10 +121,13 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
       tg.haptic.notification("success");
     } catch (e) {
       tg.haptic.notification("error");
-      const err = e as Error & { data?: { reason?: string } };
+      const err = e as Error & {
+        data?: { reason?: string; closedReason?: PreVisitClosedReason };
+      };
       const reason = err.data?.reason;
-      if (reason === "appointment_not_open") setErrMsg(t.preVisit.notOpen);
-      else if (reason === "forbidden") setErrMsg(t.preVisit.forbidden);
+      if (reason === "appointment_not_open") {
+        setErrMsg(closedText(t, err.data?.closedReason));
+      } else if (reason === "forbidden") setErrMsg(t.preVisit.forbidden);
       else if (reason === "not_found") setErrMsg(t.preVisit.notFound);
       else setErrMsg(t.preVisit.error);
     }
@@ -114,13 +143,14 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
           : t.preVisit.submit,
       active: Boolean(canSubmit),
       progress: submit.isPending,
-      visible: true,
+      visible: closedReason === null,
       onClick: onSubmit,
     });
   }, [
     tg,
     submit.isPending,
     canSubmit,
+    closedReason,
     onSubmit,
     submittedAt,
     t.preVisit.saving,
@@ -152,9 +182,9 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
           .replace("{doctor}", doctorName)}
       </MCard>
 
-      {!isOpen ? (
-        <MCard className="mb-4 text-sm" style={{ color: "var(--tg-hint)" }}>
-          {t.preVisit.notOpen}
+      {closedReason !== null ? (
+        <MCard className="mb-4 text-sm" style={{ color: "var(--ma-danger)" }}>
+          {closedText(t, closedReason)}
         </MCard>
       ) : null}
 

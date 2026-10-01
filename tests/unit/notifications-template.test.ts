@@ -97,7 +97,7 @@ describe("validate", () => {
 });
 
 describe("ALLOWED_KEYS_BY_TRIGGER", () => {
-  it("covers all 15 triggers (incl. Phase 16 Wave 3 medication + referral)", () => {
+  it("covers all 16 triggers (incl. Phase 16 Wave 3 medication + referral, G3-03 amendment)", () => {
     const expected = [
       "appointment.created",
       "appointment.thank-you",
@@ -114,6 +114,7 @@ describe("ALLOWED_KEYS_BY_TRIGGER", () => {
       "appointment.nps-request",
       "medication.reminder",
       "referral.reward-earned",
+      "visit-note.amended",
     ].sort();
     expect(Object.keys(ALLOWED_KEYS_BY_TRIGGER).sort()).toEqual(expected);
   });

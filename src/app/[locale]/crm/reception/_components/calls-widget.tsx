@@ -16,7 +16,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { PhoneText } from "@/components/atoms/phone-text";
-import { useCallPatch } from "../../call-center/_hooks/use-call-notes";
+import { canMarkCallMissed } from "@/lib/calls/call-state";
+import {
+  EndCallError,
+  useEndCall,
+} from "../../call-center/_hooks/use-call-notes";
 
 import type { CallRow } from "../_hooks/use-reception-live";
 
@@ -132,16 +136,22 @@ function HeroCall({
 }) {
   const t = useTranslations("reception.calls");
   const isVip = row.patient?.segment === "VIP";
-  const patch = useCallPatch();
+  const endCall = useEndCall();
+  // A rejected call reached nobody: it is closed as missed, so it is
+  // counted and listed for a call back (audit CM-07). A call somebody
+  // already answered is a conversation, not a missed call: the reject is
+  // off for it and the server refuses it (409 `call_answered`).
+  const canReject = canMarkCallMissed(row);
   const onReject = async () => {
     try {
-      await patch.mutateAsync({
-        id: row.id,
-        patch: { endedAt: new Date().toISOString() },
-      });
+      await endCall.mutateAsync({ id: row.id, outcome: "MISSED" });
       toast.success(t("rejectedToast"));
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(
+        e instanceof EndCallError && e.reason === "call_answered"
+          ? t("rejectAnswered")
+          : (e as Error).message,
+      );
     }
   };
   return (
@@ -198,8 +208,8 @@ function HeroCall({
           size="icon"
           variant="secondary"
           aria-label={t("rejectAria")}
-          title={t("rejectAria")}
-          disabled={patch.isPending}
+          title={canReject ? t("rejectAria") : t("rejectAnswered")}
+          disabled={!canReject || endCall.isPending}
           onClick={onReject}
           className="motion-press"
         >

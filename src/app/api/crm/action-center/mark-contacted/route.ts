@@ -17,6 +17,7 @@
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
+import { ACTION_READER_ROLES } from "@/lib/actions/roles";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
@@ -30,7 +31,7 @@ const Body = z.object({
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    roles: [...ACTION_READER_ROLES],
     bodySchema: Body,
   },
   async ({ body, request, ctx }) => {

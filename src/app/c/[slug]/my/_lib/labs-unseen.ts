@@ -19,8 +19,15 @@ export type SeenableLab = { reviewedAt: string | null };
 
 const SEEN_KEY_PREFIX = "miniapp:labs:seenAt:";
 
-function seenKey(clinicSlug: string): string {
-  return `${SEEN_KEY_PREFIX}${clinicSlug}`;
+/**
+ * One marker per card: the owner's keeps its old key, a relative's (MA-18:
+ * the screen now shows her results) gets its own, so opening his results
+ * never marks hers as seen.
+ */
+function seenKey(clinicSlug: string, activePatientId?: string | null): string {
+  return activePatientId
+    ? `${SEEN_KEY_PREFIX}${clinicSlug}:${activePatientId}`
+    : `${SEEN_KEY_PREFIX}${clinicSlug}`;
 }
 
 /**
@@ -47,10 +54,13 @@ export function countUnseenLabs(
 }
 
 /** Reads the stored marker. `null` when unset, unparsable, or unavailable. */
-export function readLabsSeenAt(clinicSlug: string): number | null {
+export function readLabsSeenAt(
+  clinicSlug: string,
+  activePatientId?: string | null,
+): number | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(seenKey(clinicSlug));
+    const raw = window.localStorage.getItem(seenKey(clinicSlug, activePatientId));
     if (!raw) return null;
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : null;
@@ -62,10 +72,14 @@ export function readLabsSeenAt(clinicSlug: string): number | null {
 }
 
 /** Stamps "the patient has now looked at the labs screen". */
-export function writeLabsSeenAt(clinicSlug: string, atMs: number): void {
+export function writeLabsSeenAt(
+  clinicSlug: string,
+  atMs: number,
+  activePatientId?: string | null,
+): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(seenKey(clinicSlug), String(atMs));
+    window.localStorage.setItem(seenKey(clinicSlug, activePatientId), String(atMs));
   } catch {
     /* ignore — badge simply stays until storage works again */
   }

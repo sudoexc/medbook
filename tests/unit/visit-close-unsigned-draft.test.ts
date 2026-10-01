@@ -168,6 +168,8 @@ vi.mock("@/lib/prisma", () => {
       })),
     },
     prescription: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    // AP-11: who cancelled (a staff cancel here, so the revert may go on).
+    auditLog: { findFirst: vi.fn(async () => null) },
     eventOutbox: { create: vi.fn(async () => ({ id: "o1" })) },
     $transaction: vi.fn(async <T,>(fn: (tx: unknown) => Promise<T>) =>
       fn(prisma),

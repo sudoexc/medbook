@@ -37,6 +37,20 @@
  *     so a row whose `status` drifted behind a WAITING `queueStatus` is
  *     left alone too.
  *
+ *   - Nor a booking whose patient checked in from the Mini App («Я на
+ *     месте», `arrivedAt`) and was never marked «Пришёл» (audit G3-01). He
+ *     was in the hall, told «вас встретят»; the desk just did not react.
+ *     A no-show and its «вы не пришли» message would be both false and an
+ *     insult. The row stays a booking, its «Отметился в приложении» badge
+ *     stays on reception's lists (`lib/appointments/self-check-in`), and
+ *     at the same cutoff reception gets a task to settle it
+ *     (`raiseSelfCheckInTasks`): skipping it silently left the visit a
+ *     booking for good, with nobody asked to decide. The running-late text
+ *     skips him for the same reason. Only a check-in made on the visit's own
+ *     clinic day counts (`checkedInOnVisitDay`): a stamp left over from a
+ *     day the visit was moved off protects nothing, and such a booking is
+ *     swept like any other.
+ *
  * The flip is a guess, not a verdict: a patient who walks in later the same
  * clinic day can still be checked in with «Пришёл», which the audit row
  * written below makes possible (`canArriveAfterAutoNoShow`).
@@ -78,6 +92,11 @@ import {
 } from "@/server/appointments/stale-visit";
 import { refreshPatientVisitStats } from "@/server/patient/last-contacted";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { checkedInOnVisitDay } from "@/lib/appointments/self-check-in";
+import {
+  raiseSelfCheckInTasks,
+  type UnansweredCheckIn,
+} from "@/server/appointments/self-check-in-task";
 
 export const QUEUE_NAME = "appointment-lifecycle-sweep";
 export const JOB_NAME = "scan";
@@ -106,6 +125,8 @@ export type SweepCandidate = {
   queueStatus?: AppointmentStatus;
   /** The case the visit belongs to; a no-show reprices it (AP-04). */
   medicalCaseId?: string | null;
+  /** Mini App check-in: the patient said he was here (G3-01). */
+  arrivedAt?: Date | null;
 };
 
 /**
@@ -121,6 +142,36 @@ export function autoNoShowWhere(cutoff: Date) {
     queueStatus: { in: [...SWEEP_STATUSES] },
     channel: { not: "WALKIN" as const },
     endDate: { lt: cutoff },
+    // G3-01: a booking with a Mini App check-in goes through
+    // `selfCheckInSweepWhere` instead, which tells a real one from a stale
+    // stamp; SQL cannot compare the stamp's clinic day with the visit's.
+    arrivedAt: null,
+  };
+}
+
+/**
+ * How far back the check-in pass looks past the cutoff. The task is raised
+ * on the first tick after the cutoff; the window only has to outlast a
+ * worker outage. Past it, a visit still undecided has its task (open, or
+ * closed by a person), and the pass does not rescan it every ten minutes.
+ */
+export const SELF_CHECK_IN_LOOKBACK_HOURS = 48;
+
+/**
+ * The check-in pass's filter (review of G3-01): the same bookings as
+ * `autoNoShowWhere`, but with a Mini App check-in, and only those whose
+ * cutoff passed within the lookback window.
+ */
+export function selfCheckInSweepWhere(cutoff: Date) {
+  return {
+    status: { in: [...SWEEP_STATUSES] },
+    queueStatus: { in: [...SWEEP_STATUSES] },
+    channel: { not: "WALKIN" as const },
+    endDate: {
+      lt: cutoff,
+      gte: new Date(cutoff.getTime() - SELF_CHECK_IN_LOOKBACK_HOURS * 3_600_000),
+    },
+    arrivedAt: { not: null },
   };
 }
 
@@ -139,11 +190,35 @@ export function selectAutoNoShows<T extends SweepCandidate>(
     if (!SWEEP_STATUSES.includes(row.status)) continue;
     if (row.queueStatus && !SWEEP_STATUSES.includes(row.queueStatus)) continue;
     if (row.channel === "WALKIN") continue;
+    // A stale stamp from a day the visit was moved off does not count.
+    if (checkedInOnVisitDay(row)) continue;
     if (row.endDate.getTime() < cutoff) {
       out.push(row);
     }
   }
   return out;
+}
+
+/**
+ * The bookings with a Mini App check-in that crossed the auto no-show
+ * cutoff, split by the one rule (`checkedInOnVisitDay`): a check-in made on
+ * the visit's day is a question for reception (`answer`), a stamp left from
+ * another day is no check-in at all, so the booking is swept (`sweep`).
+ */
+export function splitCheckedInPastCutoff<
+  T extends SweepCandidate & { arrivedAt?: Date | null },
+>(rows: ReadonlyArray<T>, now: Date): { answer: T[]; sweep: T[] } {
+  const cutoff = now.getTime() - AUTO_NO_SHOW_GRACE_MIN * 60_000;
+  const answer: T[] = [];
+  const sweep: T[] = [];
+  for (const row of rows) {
+    if (!SWEEP_STATUSES.includes(row.status)) continue;
+    if (row.queueStatus && !SWEEP_STATUSES.includes(row.queueStatus)) continue;
+    if (row.channel === "WALKIN") continue;
+    if (!row.arrivedAt || row.endDate.getTime() >= cutoff) continue;
+    (checkedInOnVisitDay(row) ? answer : sweep).push(row);
+  }
+  return { answer, sweep };
 }
 
 /** The slice of a stale IN_PROGRESS row the close-out needs. */
@@ -263,6 +338,146 @@ export async function closeStaleInProgressVisits(
   return { scanned: stale.length, closed };
 }
 
+/**
+ * Flip one booking to NO_SHOW with every effect of a no-show. Returns
+ * whether it flipped. The write is conditional on what the scan saw,
+ * `arrivedAt` included: a check-in landing between the scan and now wins.
+ */
+async function flipToNoShow(row: SweepCandidate, now: Date): Promise<boolean> {
+  // Defense in depth — a receptionist may have flipped the row between
+  // the scan and now. canTransitionAt is the same gate the bulk-status
+  // route uses, so the worker can never make a write the UI couldn't.
+  const check = canTransitionAt(row.status, "NO_SHOW", row.date, now, 0);
+  if (!check.ok) return false;
+
+  try {
+    // Conditional on the status the scan saw and on the row still being
+    // outside the queue, so a receptionist's click in between wins; both
+    // status columns move together (Q-14). The case is repriced in the
+    // same transaction, only when the flip really happened (AP-04).
+    const res = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.$transaction(async (tx) => {
+        const written = await tx.appointment.updateMany({
+          where: {
+            id: row.id,
+            status: row.status,
+            queueStatus: { in: [...SWEEP_STATUSES] },
+            // A check-in that landed between the scan and now wins too: a
+            // fresh tap replaces a stale stamp, so the stamp read must hold.
+            arrivedAt: row.arrivedAt ?? null,
+          },
+          data: { ...NO_SHOW_FIELDS },
+        });
+        if (written.count > 0) {
+          await repriceCaseAfterNoShow(tx, row.medicalCaseId);
+        }
+        return written;
+      }),
+    );
+    if (res.count === 0) return false;
+
+    // Worker audit: no Request/session, write to AuditLog directly with
+    // the actorLabel stamp other workers use so compliance dashboards
+    // can distinguish automated transitions from receptionist clicks.
+    await prisma.auditLog.create({
+      data: {
+        clinicId: row.clinicId,
+        // Reception's same-day «Пришёл» keys on this action to tell the
+        // sweep's guess from a person's no-show (auto-no-show.ts).
+        action: AUDIT_ACTION.APPOINTMENT_AUTO_NO_SHOW,
+        entityType: "Appointment",
+        entityId: row.id,
+        meta: {
+          from: row.status,
+          to: "NO_SHOW",
+          graceMinutes: AUTO_NO_SHOW_GRACE_MIN,
+          endDate: row.endDate.toISOString(),
+        },
+        actorId: null,
+        actorRole: null,
+        actorLabel: "system",
+      },
+    });
+
+    publishEventSafe(row.clinicId, {
+      type: "appointment.statusChanged",
+      payload: {
+        appointmentId: row.id,
+        doctorId: row.doctorId,
+        status: "NO_SHOW",
+        previousStatus: row.status,
+      },
+    });
+    // Reception's lanes read `queueStatus`: tell the boards it moved.
+    publishEventSafe(row.clinicId, {
+      type: "queue.updated",
+      payload: {
+        appointmentId: row.id,
+        doctorId: row.doctorId,
+        queueStatus: "NO_SHOW",
+        previousStatus: row.status,
+      },
+    });
+
+    // TZ-notifications-cancel-sync §8.2 — text the patient "sorry it
+    // didn't happen, want to reschedule?" Idempotent via the standard
+    // NotificationSend (appointmentId, templateId) unique key, so a
+    // duplicate auto-flip (impossible by status guard, but defensive)
+    // can't double-send. The visit's risk tasks close with it (AP-04).
+    await runWithTenant({ kind: "SYSTEM" }, () =>
+      runNoShowEffects({ clinicId: row.clinicId, appointmentId: row.id }),
+    );
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(
+      `[lifecycle-sweep] failed appt=${row.id} clinic=${row.clinicId} err=${msg}`,
+    );
+    return false;
+  }
+}
+
+/**
+ * Review of G3-01 — the bookings with a Mini App check-in that crossed the
+ * cutoff. A check-in made on the visit's day gets reception's task instead
+ * of the no-show; a stale stamp from another day is swept like any booking.
+ */
+export async function handleCheckedInPastCutoff(
+  now: Date = new Date(),
+): Promise<{ scanned: number; tasks: number; flipped: number }> {
+  const cutoff = new Date(now.getTime() - AUTO_NO_SHOW_GRACE_MIN * 60_000);
+  const rows = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.appointment.findMany({
+      where: selfCheckInSweepWhere(cutoff),
+      select: {
+        id: true,
+        clinicId: true,
+        doctorId: true,
+        patientId: true,
+        status: true,
+        queueStatus: true,
+        date: true,
+        endDate: true,
+        channel: true,
+        medicalCaseId: true,
+        arrivedAt: true,
+        patient: { select: { fullName: true } },
+        doctor: { select: { nameRu: true } },
+      },
+      take: 200,
+      orderBy: { endDate: "asc" },
+    }),
+  )) as Array<SweepCandidate & UnansweredCheckIn>;
+
+  const { answer, sweep } = splitCheckedInPastCutoff(rows, now);
+  let flipped = 0;
+  for (const row of sweep) {
+    if (await flipToNoShow(row, now)) flipped += 1;
+  }
+  const tasks = await raiseSelfCheckInTasks(answer);
+  return { scanned: rows.length, tasks, flipped };
+}
+
 async function tick(): Promise<void> {
   const now = new Date();
 
@@ -278,6 +493,20 @@ async function tick(): Promise<void> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn(`[lifecycle-sweep] stale visit scan failed err=${msg}`);
+  }
+
+  // G3-01 review — independent of the no-show pass below for the same
+  // reason: it returns early when no plain booking is stale.
+  try {
+    const checkedIn = await handleCheckedInPastCutoff(now);
+    if (checkedIn.tasks > 0 || checkedIn.flipped > 0) {
+      console.info(
+        `[lifecycle-sweep] checked-in past cutoff tasks=${checkedIn.tasks} flipped=${checkedIn.flipped}/${checkedIn.scanned}`,
+      );
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[lifecycle-sweep] check-in pass failed err=${msg}`);
   }
   const cutoff = new Date(now.getTime() - AUTO_NO_SHOW_GRACE_MIN * 60_000);
 
@@ -296,6 +525,7 @@ async function tick(): Promise<void> {
         endDate: true,
         channel: true,
         medicalCaseId: true,
+        arrivedAt: true,
       },
       // Bound the batch so a long outage backlog doesn't blow the event
       // loop on first tick. 500 stale rows per tick × every 10 min drains
@@ -311,94 +541,7 @@ async function tick(): Promise<void> {
 
   let flipped = 0;
   for (const row of stale) {
-    // Defense in depth — a receptionist may have flipped the row between
-    // the scan and now. canTransitionAt is the same gate the bulk-status
-    // route uses, so the worker can never make a write the UI couldn't.
-    const check = canTransitionAt(row.status, "NO_SHOW", row.date, now, 0);
-    if (!check.ok) continue;
-
-    try {
-      // Conditional on the status the scan saw and on the row still being
-      // outside the queue, so a receptionist's click in between wins; both
-      // status columns move together (Q-14). The case is repriced in the
-      // same transaction, only when the flip really happened (AP-04).
-      const res = await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.$transaction(async (tx) => {
-          const written = await tx.appointment.updateMany({
-            where: {
-              id: row.id,
-              status: row.status,
-              queueStatus: { in: [...SWEEP_STATUSES] },
-            },
-            data: { ...NO_SHOW_FIELDS },
-          });
-          if (written.count > 0) {
-            await repriceCaseAfterNoShow(tx, row.medicalCaseId);
-          }
-          return written;
-        }),
-      );
-      if (res.count === 0) continue;
-
-      // Worker audit: no Request/session, write to AuditLog directly with
-      // the actorLabel stamp other workers use so compliance dashboards
-      // can distinguish automated transitions from receptionist clicks.
-      await prisma.auditLog.create({
-        data: {
-          clinicId: row.clinicId,
-          // Reception's same-day «Пришёл» keys on this action to tell the
-          // sweep's guess from a person's no-show (auto-no-show.ts).
-          action: AUDIT_ACTION.APPOINTMENT_AUTO_NO_SHOW,
-          entityType: "Appointment",
-          entityId: row.id,
-          meta: {
-            from: row.status,
-            to: "NO_SHOW",
-            graceMinutes: AUTO_NO_SHOW_GRACE_MIN,
-            endDate: row.endDate.toISOString(),
-          },
-          actorId: null,
-          actorRole: null,
-          actorLabel: "system",
-        },
-      });
-
-      publishEventSafe(row.clinicId, {
-        type: "appointment.statusChanged",
-        payload: {
-          appointmentId: row.id,
-          doctorId: row.doctorId,
-          status: "NO_SHOW",
-          previousStatus: row.status,
-        },
-      });
-      // Reception's lanes read `queueStatus`: tell the boards it moved.
-      publishEventSafe(row.clinicId, {
-        type: "queue.updated",
-        payload: {
-          appointmentId: row.id,
-          doctorId: row.doctorId,
-          queueStatus: "NO_SHOW",
-          previousStatus: row.status,
-        },
-      });
-
-      // TZ-notifications-cancel-sync §8.2 — text the patient "sorry it
-      // didn't happen, want to reschedule?" Idempotent via the standard
-      // NotificationSend (appointmentId, templateId) unique key, so a
-      // duplicate auto-flip (impossible by status guard, but defensive)
-      // can't double-send. The visit's risk tasks close with it (AP-04).
-      await runWithTenant({ kind: "SYSTEM" }, () =>
-        runNoShowEffects({ clinicId: row.clinicId, appointmentId: row.id }),
-      );
-
-      flipped += 1;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn(
-        `[lifecycle-sweep] failed appt=${row.id} clinic=${row.clinicId} err=${msg}`,
-      );
-    }
+    if (await flipToNoShow(row, now)) flipped += 1;
   }
 
   // TZ-notifications-cancel-sync §8.2 — running-late sub-pass. Same sweep
@@ -424,6 +567,7 @@ async function tick(): Promise<void> {
         status: true,
         date: true,
         endDate: true,
+        arrivedAt: true,
       },
       take: 500,
       orderBy: { date: "asc" },
@@ -438,6 +582,10 @@ async function tick(): Promise<void> {
     // reception sees the orange chip.
     if (!isRunningLate(row, now)) continue;
     if (minutesPastStart(row, now) < 15) continue;
+    // G3-01: «вы опаздываете» to a patient sitting in the hall after his
+    // Mini App check-in is the same insult as the no-show message. Only a
+    // check-in made on the visit's day counts, like everywhere else.
+    if (checkedInOnVisitDay(row)) continue;
     fireTrigger({
       kind: "appointment.running-late",
       appointmentId: row.id,

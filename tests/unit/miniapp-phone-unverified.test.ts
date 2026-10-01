@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Audit PH-01 / MA-04: the Mini App no longer writes a typed phone into the
@@ -80,6 +80,10 @@ vi.mock("@/lib/prisma", () => {
   return {
     prisma: {
       patient,
+      // The booked service is one the doctor offers (MA-08 guard).
+      serviceOnDoctor: { count: vi.fn(async () => 1) },
+      // Its length, for the slot-grid check (MA-14).
+      service: { findMany: vi.fn(async () => [{ durationMin: 30 }]) },
       $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ patient })),
     },
   };
@@ -103,6 +107,10 @@ vi.mock("@/server/miniapp/active-patient", () => ({
 }));
 vi.mock("@/server/observability/metrics", () => ({
   getMetrics: () => ({ bookingDuration: { observe: () => undefined } }),
+}));
+// The start is one the picker offers (MA-14 grid, tested on its own).
+vi.mock("@/server/services/appointments", () => ({
+  isOfferedSlotStart: vi.fn(async () => true),
 }));
 vi.mock("@/server/appointments/book", () => ({
   bookAppointment: vi.fn(async (input: Record<string, unknown>) => {
@@ -161,6 +169,14 @@ describe("POST /api/miniapp/profile", () => {
 });
 
 describe("POST /api/miniapp/appointments", () => {
+  // The booked start lies inside the 14 day booking horizon (MA-14).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T03:00:00Z") });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("booking with the number of an existing clinic card no longer 500s: the phone is ignored, the booking goes through", async () => {
     const { POST } = await import("@/app/api/miniapp/appointments/route");
     const res = await POST(

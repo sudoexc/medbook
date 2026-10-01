@@ -25,6 +25,8 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import { ok, err, parseQuery } from "@/server/http";
+import { CLINICAL_FORMS_ISSUING } from "@/lib/clinical-forms-issuing";
+import { formRetired } from "@/server/clinical-forms/retired";
 import {
   CreateReferralSchema,
   QueryReferralsSchema,
@@ -34,6 +36,9 @@ export const POST = createApiHandler(
   { roles: ["DOCTOR"], bodySchema: CreateReferralSchema },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+    // CD-07: issuing new forms is switched off (`@/lib/clinical-forms-issuing`);
+    // the list, print and cancel routes keep serving the ones issued earlier.
+    if (!CLINICAL_FORMS_ISSUING) return formRetired("referral");
 
     if (body.toDoctorId && body.toDoctorId === ctx.userId) {
       return err("BadRequest", 400, { reason: "self_referral" });

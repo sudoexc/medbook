@@ -93,7 +93,10 @@ export const GET = createApiListHandler(
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    // CM-08 — a booking made from the call center files the visit under a
+    // case like the desk's does (NewAppointmentDialog opens one when the
+    // patient has none). The clinical fields stay the doctor's (below).
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"],
     bodySchema: CreateMedicalCaseSchema,
   },
   async ({ request, body, ctx }) => {

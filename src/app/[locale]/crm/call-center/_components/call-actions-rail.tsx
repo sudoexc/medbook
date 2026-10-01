@@ -15,12 +15,13 @@ import {
 
 import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
+import { canMarkCallMissed } from "@/lib/calls/call-state";
 import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 
 import type { CallRow } from "../_hooks/types";
 import { deriveStatus } from "../_hooks/types";
-import { useCallPatch } from "../_hooks/use-call-notes";
+import { EndCallError, useEndCall } from "../_hooks/use-call-notes";
 
 /**
  * Right column — operator control surface.
@@ -36,38 +37,40 @@ import { useCallPatch } from "../_hooks/use-call-notes";
  */
 export function CallActionsRail({ call }: { call: CallRow | null }) {
   const t = useTranslations("callCenter.actionsRail");
-  const patch = useCallPatch();
+  const endCall = useEndCall();
 
   const status = call ? deriveStatus(call) : null;
+  // A call is over once it has an end, whatever the status column says
+  // (audit CM-07): the buttons must not offer to end it twice.
   const canEnd =
-    Boolean(call) && status !== "ended" && status !== "missed";
+    Boolean(call) &&
+    !call?.endedAt &&
+    status !== "ended" &&
+    status !== "missed";
+  // «Пропуск» only while nobody has picked the call up: an answered call is
+  // a conversation, the server refuses to count it as missed (409
+  // `call_answered`), and «Завершить» closes it with its talk time.
+  const answered = canEnd && call !== null && !canMarkCallMissed(call);
+  const canMarkMissed = canEnd && !answered;
 
-  const onHangup = async () => {
+  // «Завершить» closes the call as a conversation, «Пропуск» as a missed
+  // call to return: the server writes status, direction and duration.
+  const onEnd = async (outcome: "ENDED" | "MISSED") => {
     if (!call) return;
     try {
-      await patch.mutateAsync({
-        id: call.id,
-        patch: { endedAt: new Date().toISOString() },
-      });
-      toast.success(t("toasts.hangupDone"));
+      await endCall.mutateAsync({ id: call.id, outcome });
+      toast.success(
+        outcome === "MISSED" ? t("toasts.markedMissed") : t("toasts.hangupDone"),
+      );
     } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
-
-  const onMarkMissed = async () => {
-    if (!call) return;
-    try {
-      await patch.mutateAsync({
-        id: call.id,
-        patch: {
-          endedAt: new Date().toISOString(),
-          tags: Array.from(new Set([...call.tags, "missed"])),
-        },
-      });
-      toast.success(t("toasts.markedMissed"));
-    } catch (e) {
-      toast.error((e as Error).message);
+      const reason = e instanceof EndCallError ? e.reason : null;
+      toast.error(
+        reason === "call_already_ended"
+          ? t("toasts.alreadyEnded")
+          : reason === "call_answered"
+            ? t("toasts.alreadyAnswered")
+            : t("toasts.endFailed"),
+      );
     }
   };
 
@@ -106,15 +109,16 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             label={t("controls.hangup")}
             icon={<PhoneOffIcon className="size-5" />}
             tone="danger"
-            disabled={!canEnd || patch.isPending}
-            onClick={onHangup}
+            disabled={!canEnd || endCall.isPending}
+            onClick={() => void onEnd("ENDED")}
           />
           <ControlTile
             label={t("controls.markMissed")}
             icon={<PhoneMissedIcon className="size-5" />}
             tone="warning"
-            disabled={!canEnd || patch.isPending}
-            onClick={onMarkMissed}
+            disabled={!canMarkMissed || endCall.isPending}
+            title={answered ? t("toasts.alreadyAnswered") : undefined}
+            onClick={() => void onEnd("MISSED")}
           />
           <ControlTile
             label={t("controls.transfer")}

@@ -1,276 +1,132 @@
 /**
- * POST /api/crm/actions/[id]/outcome — the six call outcomes each drive the
- * right durable write (TZ-risk-outcomes §4). Self-contained mocks (auth /
- * tenant / prisma / confirm / cancel) mirror the reorder + queue-status tests.
+ * Call-outcome stamps (TZ-risk-outcomes §4) and the retired per-Action
+ * endpoint (audit AC-19).
+ *
+ * `POST /api/crm/actions/[id]/outcome` let a DOCTOR cancel any visit of the
+ * clinic, ran «Отказался» on any task type (a «нет канала» or low-NPS task
+ * cancelled its visit too), and stamped the Action DONE even when the visit
+ * refused the change. No screen called it any more: the risk list records
+ * outcomes per appointment (`/api/crm/action-center/risk-today/outcome`,
+ * covered by risk-today-outcome.test.ts). The route is gone; the stamping
+ * rules it shared live on in `server/actions/outcome.ts` and are pinned here
+ * without a route.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
-type Row = {
-  id: string;
-  clinicId: string;
-  type: string;
-  severity: string;
-  status: string;
-  payload: Record<string, unknown>;
-  outcome: string | null;
-  outcomeNote: string | null;
-  callbackAt: Date | null;
-  resolvedById: string | null;
-  callAttempts: number;
-  doneAt: Date | null;
-  snoozeUntil: Date | null;
-  expiresAt: Date | null;
-};
+import { describe, expect, it } from "vitest";
 
-const state = {
-  row: null as Row | null,
-  /** Rows written by `upsertAction` (the PATIENT_CALLBACK hand-off). */
-  created: [] as Array<Record<string, unknown>>,
-  confirmCalls: [] as unknown[],
-  cancelCalls: [] as unknown[],
-  audits: [] as Array<{ action: string; meta: unknown }>,
-};
+import {
+  NO_ANSWER_MAX_ATTEMPTS,
+  NO_ANSWER_SNOOZE_MIN,
+  callbackOutlivesVisit,
+  normalizeOutcomeInput,
+  outcomeRecordedByTheMove,
+  outcomeStamp,
+  returnDayIsLater,
+  type OutcomeInput,
+} from "@/server/actions/outcome";
+import * as actionSchemas from "@/server/schemas/action";
 
+const NOW = new Date("2026-10-01T06:00:00.000Z"); // 11:00 Tashkent
 /** The visit the risk row is about: today, three hours from now. */
-const APPT_AT = new Date(Date.now() + 3 * 60 * 60_000);
+const APPT_AT = new Date(NOW.getTime() + 3 * 60 * 60_000);
 
-vi.mock("@/lib/auth", () => ({
-  auth: vi.fn(async () => ({
-    user: { id: "u_recept", role: "RECEPTIONIST", clinicId: "c1", email: "r@x.t" },
-  })),
-}));
-vi.mock("@/lib/pin", () => ({ hasValidPin: () => false }));
-vi.mock("@/lib/tenant-context", () => ({
-  runWithTenant: <T,>(_ctx: unknown, fn: () => T) => fn(),
-  getTenant: () => ({
-    kind: "TENANT" as const,
-    clinicId: "c1",
-    userId: "u_recept",
-    role: "RECEPTIONIST" as const,
-  }),
-}));
-vi.mock("@/server/platform/branch-cookie", () => ({
-  readActiveBranchFromCookieHeader: () => null,
-}));
-vi.mock("@/lib/audit", () => ({
-  audit: vi.fn(async (_req: unknown, a: { action: string; meta: unknown }) => {
-    state.audits.push({ action: a.action, meta: a.meta });
-  }),
-}));
-vi.mock("@/server/appointments/confirm", () => ({
-  confirmAppointment: vi.fn(async (input: unknown) => {
-    state.confirmCalls.push(input);
-    return { ok: true, alreadyConfirmed: false };
-  }),
-}));
-vi.mock("@/server/appointments/cancel", () => ({
-  cancelAppointment: vi.fn(async (input: unknown) => {
-    state.cancelCalls.push(input);
-    return { ok: true, alreadyCancelled: false, lateCancelMinutes: 0 };
-  }),
-}));
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    appointment: {
-      findUnique: vi.fn(async () => ({
-        id: "ap_1",
-        date: APPT_AT,
-        patientId: "p_1",
-        patient: { fullName: "Юсупова Лола" },
-        doctor: { nameRu: "Султанов А." },
-      })),
-    },
-    action: {
-      findUnique: vi.fn(async ({ where }: { where: { id?: string } }) =>
-        // By id: the row under test. By dedupe key: a callback task, if any.
-        where.id ? state.row : (state.created[0] ?? null),
-      ),
-      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-        const row = { id: `act_cb_${state.created.length + 1}`, ...data };
-        state.created.push(row);
-        return row;
-      }),
-      update: vi.fn(
-        async ({ data }: { data: Partial<Row> }) => {
-          state.row = { ...(state.row as Row), ...data };
-          return state.row;
-        },
-      ),
-    },
-    auditLog: { create: vi.fn(async () => ({})) },
-  },
-}));
-
-async function loadPOST() {
-  vi.resetModules();
-  const mod = await import("@/app/api/crm/actions/[id]/outcome/route");
-  return mod.POST as (req: Request) => Promise<Response>;
+function input(over: Partial<OutcomeInput>): OutcomeInput {
+  return { outcome: "CONFIRMED", note: null, callbackAt: null, ...over };
 }
 
-function postReq(body: unknown): Request {
-  return new Request("https://x/api/crm/actions/act_1/outcome", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+describe("AC-19 — the per-Action outcome endpoint is retired", () => {
+  it("the route file no longer exists", () => {
+    const route = join(
+      process.cwd(),
+      "src/app/api/crm/actions/[id]/outcome/route.ts",
+    );
+    expect(existsSync(route)).toBe(false);
   });
-}
 
-const FUTURE = new Date(Date.now() + 3 * 60 * 60_000);
-
-function seed(over: Partial<Row> = {}): Row {
-  return {
-    id: "act_1",
-    clinicId: "c1",
-    type: "NO_SHOW_RISK_HIGH",
-    severity: "high",
-    status: "OPEN",
-    payload: { appointmentId: "ap_1", patientId: "p_1" },
-    outcome: null,
-    outcomeNote: null,
-    callbackAt: null,
-    resolvedById: null,
-    callAttempts: 0,
-    doneAt: null,
-    snoozeUntil: null,
-    expiresAt: FUTURE,
-    ...over,
-  };
-}
-
-beforeEach(() => {
-  state.row = seed();
-  state.created = [];
-  state.confirmCalls = [];
-  state.cancelCalls = [];
-  state.audits = [];
+  it("its body schema is gone too; the risk-today schema stays", () => {
+    expect("OutcomeActionSchema" in actionSchemas).toBe(false);
+    expect(actionSchemas.RiskOutcomeSchema).toBeDefined();
+  });
 });
 
-describe("POST /api/crm/actions/[id]/outcome", () => {
-  it("CONFIRMED → confirmAppointment + DONE(outcome)", async () => {
-    const POST = await loadPOST();
-    const res = await POST(postReq({ outcome: "CONFIRMED" }));
-    expect(res.status).toBe(200);
-    expect(state.confirmCalls).toHaveLength(1);
-    expect(state.confirmCalls[0]).toMatchObject({
-      appointmentId: "ap_1",
-      clinicId: "c1",
-      actorId: "u_recept",
-      via: "INBOUND_CALL",
-    });
-    expect(state.row!.status).toBe("DONE");
-    expect(state.row!.outcome).toBe("CONFIRMED");
-    expect(state.row!.resolvedById).toBe("u_recept");
-  });
-
-  it("REFUSED → cancelAppointment(reason=note) + DONE", async () => {
-    const POST = await loadPOST();
-    const res = await POST(postReq({ outcome: "REFUSED", note: "передумал" }));
-    expect(res.status).toBe(200);
-    expect(state.cancelCalls).toHaveLength(1);
-    expect(state.cancelCalls[0]).toMatchObject({
-      appointmentId: "ap_1",
-      reason: "передумал",
-    });
-    expect(state.row!.status).toBe("DONE");
-    expect(state.row!.outcome).toBe("REFUSED");
+describe("outcome stamps", () => {
+  it("CONFIRMED / REFUSED close the row with who and when", () => {
+    for (const outcome of ["CONFIRMED", "REFUSED"] as const) {
+      const stamp = outcomeStamp(
+        { callAttempts: 0, severity: "high" },
+        input({ outcome, note: outcome === "REFUSED" ? "передумал" : null }),
+        "u_recept",
+        NOW,
+      );
+      expect(stamp).toMatchObject({
+        status: "DONE",
+        doneAt: NOW,
+        outcome,
+        resolvedById: "u_recept",
+      });
+    }
   });
 
   // Audit AC-10: only the saved move records «Перенести».
-  it("RESCHEDULED → 409 reschedule_in_drawer, nothing recorded", async () => {
-    const POST = await loadPOST();
-    const before = { ...state.row! };
-    const res = await POST(postReq({ outcome: "RESCHEDULED" }));
-    expect(res.status).toBe(409);
-    expect(JSON.stringify(await res.json())).toContain("reschedule_in_drawer");
-    expect(state.confirmCalls).toHaveLength(0);
-    expect(state.cancelCalls).toHaveLength(0);
-    expect(state.row!.status).toBe(before.status);
-    expect(state.row!.outcome ?? null).toBe(before.outcome ?? null);
+  it("RESCHEDULED is recorded by the move, never as a call outcome", () => {
+    expect(outcomeRecordedByTheMove("RESCHEDULED")).toBe(true);
+    expect(outcomeRecordedByTheMove("CONFIRMED")).toBe(false);
   });
 
-  it("CALLBACK before the visit → SNOOZED until callbackAt with note", async () => {
-    const POST = await loadPOST();
-    const when = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
-    const res = await POST(
-      postReq({ outcome: "CALLBACK", callbackAt: when, note: "занят" }),
-    );
-    expect(res.status).toBe(200);
-    expect(state.row!.status).toBe("SNOOZED");
-    expect(state.row!.snoozeUntil?.toISOString()).toBe(when);
-    expect(state.row!.callbackAt?.toISOString()).toBe(when);
-    expect(state.row!.outcomeNote).toBe("занят");
-    expect(state.created).toHaveLength(0);
+  it("CALLBACK before the visit snoozes the row until the call time", () => {
+    const when = new Date(NOW.getTime() + 2 * 60 * 60_000);
+    const i = input({ outcome: "CALLBACK", callbackAt: when, note: "занят" });
+    expect(callbackOutlivesVisit(i, APPT_AT)).toBe(false);
+    const stamp = outcomeStamp({ callAttempts: 0, severity: "high" }, i, "u", NOW);
+    expect(stamp).toMatchObject({
+      status: "SNOOZED",
+      snoozeUntil: when,
+      callbackAt: when,
+      outcomeNote: "занят",
+    });
   });
 
   // Audit AC-09: the risk row expires with the visit, so a later call moves
-  // to a task of its own.
-  it("CALLBACK after the visit → the row is DONE and a PATIENT_CALLBACK task waits for the time", async () => {
-    const POST = await loadPOST();
+  // to a task of its own and this row is done.
+  it("CALLBACK after the visit hands the call off and closes the row", () => {
     const when = new Date(APPT_AT.getTime() + 20 * 60 * 60_000);
-    const res = await POST(
-      postReq({ outcome: "CALLBACK", callbackAt: when.toISOString(), note: "на работе" }),
-    );
-    expect(res.status).toBe(200);
-    expect(state.cancelCalls).toHaveLength(0);
-    expect(state.row).toMatchObject({ status: "DONE", outcome: "CALLBACK" });
-    expect(state.created).toEqual([
-      expect.objectContaining({
-        type: "PATIENT_CALLBACK",
-        status: "SNOOZED",
-        snoozeUntil: when,
-        expiresAt: null,
-        payload: expect.objectContaining({ reason: "CALLBACK", note: "на работе" }),
-      }),
-    ]);
+    const i = input({ outcome: "CALLBACK", callbackAt: when });
+    expect(callbackOutlivesVisit(i, APPT_AT)).toBe(true);
+    const stamp = outcomeStamp({ callAttempts: 0, severity: "high" }, i, "u", NOW, {
+      handedOff: true,
+    });
+    expect(stamp).toMatchObject({ status: "DONE", outcome: "CALLBACK" });
   });
 
-  it("CALLBACK without callbackAt → 400 (schema)", async () => {
-    const POST = await loadPOST();
-    const res = await POST(postReq({ outcome: "CALLBACK" }));
-    expect(res.status).toBe(400);
-  });
-
-  // Audit AC-09: «хочет прийти позже» frees today's slot and schedules the
-  // call for 09:00 of the return day.
-  it("RETURN_LATER → cancels the visit, closes the row, schedules the call on the return day", async () => {
-    const POST = await loadPOST();
-    const when = new Date(Date.now() + 30 * 24 * 60 * 60_000);
-    const res = await POST(
-      postReq({ outcome: "RETURN_LATER", callbackAt: when.toISOString(), note: "после отпуска" }),
+  // Audit AC-09: «хочет прийти позже» schedules the call for 09:00 of the
+  // return day, and only another day than the visit's own.
+  it("RETURN_LATER is due at 09:00 of the return day, never on the visit's own day", () => {
+    const picked = new Date(NOW.getTime() + 30 * 24 * 60 * 60_000);
+    const normalized = normalizeOutcomeInput(
+      input({ outcome: "RETURN_LATER", callbackAt: picked }),
     );
-    expect(res.status).toBe(200);
-    expect(state.cancelCalls).toEqual([
-      expect.objectContaining({ appointmentId: "ap_1", reason: "после отпуска" }),
-    ]);
-    expect(state.row!.status).toBe("DONE");
-    const [task] = state.created;
-    expect(task).toMatchObject({ type: "PATIENT_CALLBACK", status: "SNOOZED" });
-    const at = task!.snoozeUntil as Date;
     // 09:00 Tashkent (04:00Z) on the picked day.
-    expect(at.toISOString().slice(11)).toBe("04:00:00.000Z");
-    expect(at.getTime() - when.getTime()).toBeLessThan(24 * 60 * 60_000);
+    expect(normalized.callbackAt!.toISOString().slice(11)).toBe("04:00:00.000Z");
+    expect(returnDayIsLater(normalized, APPT_AT)).toBe(true);
+    expect(
+      returnDayIsLater(input({ outcome: "RETURN_LATER", callbackAt: APPT_AT }), APPT_AT),
+    ).toBe(false);
   });
 
-  it("RETURN_LATER on the visit's own day → 409, nothing written", async () => {
-    const POST = await loadPOST();
-    const res = await POST(
-      postReq({ outcome: "RETURN_LATER", callbackAt: APPT_AT.toISOString() }),
+  it("NO_ANSWER counts the attempt, snoozes, and escalates at the cap", () => {
+    const stamp = outcomeStamp(
+      { callAttempts: NO_ANSWER_MAX_ATTEMPTS - 1, severity: "medium" },
+      input({ outcome: "NO_ANSWER" }),
+      "u",
+      NOW,
     );
-    expect(res.status).toBe(409);
-    expect(state.cancelCalls).toHaveLength(0);
-    expect(state.row!.status).toBe("OPEN");
-    expect(state.created).toHaveLength(0);
-  });
-
-  it("NO_ANSWER → attempts++ + SNOOZED; escalates severity at the cap", async () => {
-    // First two attempts stay 'high' severity's input; third hits the cap.
-    state.row = seed({ callAttempts: 2, severity: "medium" });
-    const POST = await loadPOST();
-    const res = await POST(postReq({ outcome: "NO_ANSWER" }));
-    expect(res.status).toBe(200);
-    expect(state.row!.callAttempts).toBe(3);
-    expect(state.row!.status).toBe("SNOOZED");
-    expect(state.row!.snoozeUntil).toBeInstanceOf(Date);
-    expect(state.row!.severity).toBe("high");
+    expect(stamp.callAttempts).toBe(NO_ANSWER_MAX_ATTEMPTS);
+    expect(stamp.status).toBe("SNOOZED");
+    expect((stamp.snoozeUntil as Date).getTime()).toBe(
+      NOW.getTime() + NO_ANSWER_SNOOZE_MIN * 60_000,
+    );
+    expect(stamp.severity).toBe("high");
   });
 });

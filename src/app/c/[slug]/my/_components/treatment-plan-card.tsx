@@ -14,10 +14,12 @@ import { MCard, MErrorInline, MSection, MSpinner } from "./mini-ui";
  * Treatment plan summary card on the Mini App home.
  *
  * Shows the most recently active `MedicalCase` for the active context
- * (self or "on behalf of" relative). Displays "{done} of {total} visits ·
- * next {date}" with a small progress bar and a CTA into the booking flow
- * pre-tagged with `caseId` so the next appointment is auto-attached to the
- * same case.
+ * (self or "on behalf of" relative). Displays the number of visits and the
+ * next one, «{done} of {total}» with a progress bar only when the doctor set
+ * a plan length (audit MA-11: an invented denominator read «Лечение
+ * завершено» after the first visit), and a CTA into the booking flow
+ * pre-tagged with `caseId`, which the wizard carries to the booking so the
+ * next appointment lands in the same case.
  *
  * Renders nothing when:
  *   - the query is still loading (we render a small spinner inside MSection)
@@ -70,7 +72,10 @@ export function TreatmentPlanCard({
 
   const { active } = data;
   const { progress } = active;
-  const pct = Math.max(0, Math.min(100, Math.round(progress.progress * 100)));
+  const pct =
+    progress.progress === null
+      ? null
+      : Math.max(0, Math.min(100, Math.round(progress.progress * 100)));
   const doctorName = active.primaryDoctor
     ? lang === "UZ"
       ? active.primaryDoctor.nameUz
@@ -125,9 +130,14 @@ export function TreatmentPlanCard({
               >
                 {progress.completed
                   ? t.treatmentPlan.completed
-                  : t.treatmentPlan.progress
-                      .replace("{done}", String(progress.done))
-                      .replace("{total}", String(progress.total))}
+                  : progress.total !== null
+                    ? t.treatmentPlan.progress
+                        .replace("{done}", String(progress.done))
+                        .replace("{total}", String(progress.total))
+                    : t.treatmentPlan.visitsDone.replace(
+                        "{n}",
+                        String(progress.done),
+                      )}
                 {nextLabel && !progress.completed ? (
                   <>
                     {" · "}
@@ -137,21 +147,23 @@ export function TreatmentPlanCard({
                   </>
                 ) : null}
               </div>
-              <div
-                className="mt-2 h-1.5 overflow-hidden rounded-full"
-                style={{
-                  backgroundColor:
-                    "color-mix(in oklch, var(--tg-hint) 18%, transparent)",
-                }}
-              >
+              {pct !== null ? (
                 <div
-                  className="h-full rounded-full transition-[width] duration-500"
+                  className="mt-2 h-1.5 overflow-hidden rounded-full"
                   style={{
-                    width: `${pct}%`,
-                    backgroundColor: "var(--tg-accent)",
+                    backgroundColor:
+                      "color-mix(in oklch, var(--tg-hint) 18%, transparent)",
                   }}
-                />
-              </div>
+                >
+                  <div
+                    className="h-full rounded-full transition-[width] duration-500"
+                    style={{
+                      width: `${pct}%`,
+                      backgroundColor: "var(--tg-accent)",
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
 

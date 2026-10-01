@@ -36,11 +36,12 @@ import { paidNetTiyin } from "@/server/services/ltv-compute";
 import { isAllowedToReceive } from "./consent-gate";
 import { LIVE_SEND_STATUSES, coversStart } from "./delivery-state";
 import {
+  type DefaultTemplate,
   MANUAL_APPOINTMENT_REMINDER_KEY,
   MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
   NPS_REQUEST_TEMPLATE,
   PRE_VISIT_QUESTIONNAIRE_TEMPLATE,
-  type DefaultTemplate,
+  VISIT_NOTE_AMENDED_KEY,
 } from "./default-templates";
 import { ensureClinicTemplate } from "./ensure-template";
 import {
@@ -49,6 +50,10 @@ import {
   type FamilyRelay,
 } from "./family-relay";
 import { recordPatientNoChannel } from "./no-channel-action";
+import {
+  APPOINTMENT_RESTORED_KEY,
+  restoreNoticeTemplate,
+} from "@/server/appointments/restore-notice";
 import { skipsWhenConfirmed } from "./rules";
 import { render } from "./template";
 import { TEMPLATE_PICK_ORDER } from "./template-events";
@@ -91,6 +96,10 @@ export const TRIGGER_KEYS = [
   // so the patient was reminded of a slot that no longer exists and got
   // nothing at all for the new one.
   "appointment.rescheduled",
+  // Audit AP-11 — the doctor undid a cancellation or a no-show: «ваша запись
+  // восстановлена». A MANUAL-trigger row matched by its slug, created
+  // switched off (`server/appointments/restore-notice.ts`).
+  "appointment.restored",
   // TZ-notifications-cancel-sync §3 — fired by appointment-lifecycle-sweep
   // when `isRunningLate(row, now)` and no NotificationSend exists for this
   // (appointment, template) pair.
@@ -131,6 +140,10 @@ export const TRIGGER_KEYS = [
   // referrer that they've earned a discount. Idempotency:
   // `ReferralReward(referrerPatientId, referredPatientId)` unique key.
   "referral.reward-earned",
+  // Audit G3-03 — the doctor appended a correction to a signed conclusion.
+  // Fired by POST visit-notes/[id]/amendments; a visit corrected twice
+  // tells the patient twice (see `onVisitNoteAmended`).
+  "visit-note.amended",
 ] as const;
 
 export type TriggerKey = (typeof TRIGGER_KEYS)[number];
@@ -494,6 +507,9 @@ function whereForTrigger(
     // `appointment.cancelled.by-staff` / `.by-patient`: an audience template
     // first, then a generic one if the clinic only has that (default seed
     // has both variants). Two tiers, see `whereTiersForTrigger`.
+    case "appointment.restored":
+      // No dedicated enum: a MANUAL-trigger row matched by its slug.
+      return { key: APPOINTMENT_RESTORED_KEY };
     case "appointment.rescheduled":
       // Enum first; slug fallback for clinics that hand-seeded a row before
       // the enum existed.
@@ -530,6 +546,9 @@ function whereForTrigger(
       return { key: "medication.reminder" };
     case "referral.reward-earned":
       return { key: "referral.reward-earned" };
+    case "visit-note.amended":
+      // No dedicated enum: a MANUAL-trigger row matched by its slug.
+      return { key: VISIT_NOTE_AMENDED_KEY };
     default:
       return null;
   }
@@ -1024,12 +1043,15 @@ export async function materializeForAppointmentsBulk(
 }
 
 /**
- * The clinic's manual-reminder template, created from the default on first
- * use. Clinics are not seeded automatically, and a button that silently found
- * no template is exactly how «Напомнить всем» came to send nothing (AP-02).
+ * The clinic's manual-reminder row, created from the default on first use.
+ * Clinics are not seeded automatically, and a button that silently found no
+ * template is exactly how «Напомнить всем» came to send nothing (AP-02).
+ * Pressed by staff on purpose, so a brand-new row starts active.
  */
 function ensureManualReminderTemplate(clinicId: string) {
-  return ensureClinicTemplate(clinicId, MANUAL_APPOINTMENT_REMINDER_TEMPLATE);
+  return ensureClinicTemplate(clinicId, MANUAL_APPOINTMENT_REMINDER_TEMPLATE, {
+    activeOnCreate: true,
+  });
 }
 
 export type ManualReminderResult = {
@@ -1416,6 +1438,92 @@ export async function onAppointmentThankYou(
   );
 }
 
+export type VisitNoteAmendedResult = {
+  /** Rows created (the Telegram message and its in-app mirror). */
+  queued: number;
+  /** Why nothing was queued. */
+  skipped?: "no_appointment" | "template_off" | "pending" | "no_channel";
+};
+
+/**
+ * Audit G3-03 — «врач внёс исправление в заключение», through the clinic's
+ * `visit-note.amended` template like every other patient message, so the
+ * clinic switches it on or off in /crm/settings/notifications. No active
+ * template, no message.
+ *
+ * Not one notice per visit, unlike the cascade: a conclusion corrected again
+ * days later is news again. Only a notice still waiting to go out absorbs a
+ * new correction, since it already sends the patient to the visit screen
+ * that lists every correction.
+ */
+export async function onVisitNoteAmended(
+  appointmentId: string,
+): Promise<VisitNoteAmendedResult> {
+  const appt = await loadAppointment(appointmentId);
+  if (!appt) return { queued: 0, skipped: "no_appointment" };
+  const tpl = await findTemplateFor(appt.clinicId, "visit-note.amended");
+  if (!tpl) return { queued: 0, skipped: "template_off" };
+  const pending = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.findFirst({
+      where: {
+        clinicId: appt.clinicId,
+        patientId: appt.patientId,
+        appointmentId: appt.id,
+        templateId: tpl.templateId,
+        status: { in: ["QUEUED", "SENDING"] },
+      },
+      select: { id: true },
+    }),
+  );
+  if (pending) return { queued: 0, skipped: "pending" };
+  const recipient = pickRecipient(tpl.channel, appt.patient);
+  if (!recipient) {
+    // Same compensator as every trigger: reception calls the patient.
+    await recordPatientNoChannel({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      patientName: appt.patient.fullName,
+      triggerKey: "visit-note.amended",
+      appointmentId: appt.id,
+      appointmentAt: appt.date,
+    });
+    return { queued: 0, skipped: "no_channel" };
+  }
+  const body = renderAppointmentBody(tpl, appt);
+  const now = new Date();
+  await createSend({
+    clinicId: appt.clinicId,
+    patientId: appt.patientId,
+    appointmentId: appt.id,
+    templateId: tpl.templateId,
+    channel: tpl.channel,
+    recipient,
+    body,
+    scheduledFor: now,
+  });
+  let queued = 1;
+  // The Mini App inbox mirror, as for every trigger (see the bulk path).
+  if (
+    appt.patient.telegramId &&
+    tpl.channel !== "INAPP" &&
+    tpl.channel !== "VISIT" &&
+    tpl.channel !== "CALL"
+  ) {
+    await createSend({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      appointmentId: appt.id,
+      templateId: tpl.templateId,
+      channel: "INAPP",
+      recipient: appt.patientId,
+      body,
+      scheduledFor: now,
+    });
+    queued += 1;
+  }
+  return { queued };
+}
+
 /**
  * Schedule the reminder cascade for an appointment.
  *
@@ -1561,6 +1669,44 @@ export async function onAppointmentRescheduled(
     "appointment.rescheduled",
     new Date(),
   );
+  await scheduleAppointmentReminders(appointmentId);
+}
+
+/**
+ * Creates the clinic's «запись восстановлена» row, switched off, when it has
+ * none yet, so the admin finds it in the settings and decides when patients
+ * start getting it (patient Telegram messages are switched on one by one).
+ * Never touches an existing row.
+ */
+export function ensureAppointmentRestoredTemplate(clinicId: string) {
+  return ensureClinicTemplate(clinicId, restoreNoticeTemplate(), {
+    activeOnCreate: false,
+  });
+}
+
+/** Statuses a restored visit can be in: a booking again. */
+const RESTORED_STATUSES: ReadonlySet<string> = new Set(["BOOKED", "CONFIRMED"]);
+
+/**
+ * Audit AP-11 — the doctor undid a cancellation or a no-show. The patient was
+ * told the visit was off and every queued reminder was cancelled, so:
+ *   1. «ваша запись восстановлена», through the clinic's template (no active
+ *      template, no message), only while the visit is still ahead: a patient
+ *      who came late and is in the clinic needs no message about it;
+ *   2. the reminder cascade rebuilt for the bands still ahead (the cancelled
+ *      rows stay cancelled; the idempotency gate counts only live ones).
+ * A visit that was dropped again in the meantime gets neither.
+ */
+export async function onAppointmentRestored(
+  appointmentId: string,
+  now: Date = new Date(),
+): Promise<void> {
+  const appt = await loadAppointment(appointmentId);
+  if (!appt || !RESTORED_STATUSES.has(appt.status)) return;
+  await ensureAppointmentRestoredTemplate(appt.clinicId);
+  if (appt.date.getTime() > now.getTime()) {
+    await materializeForAppointment(appointmentId, "appointment.restored", now);
+  }
   await scheduleAppointmentReminders(appointmentId);
 }
 
@@ -2501,6 +2647,8 @@ export type FireTriggerPayload =
   // only tops up the cascade and cannot undo reminders already rendered
   // against the previous time.
   | { kind: "appointment.rescheduled"; appointmentId: string }
+  // AP-11 — a cancellation or a no-show undone (see onAppointmentRestored).
+  | { kind: "appointment.restored"; appointmentId: string }
   | { kind: "appointment.updated"; appointmentId: string }
   // Auto-messages widget — fired when a visit lands in COMPLETED so the
   // patient gets a "Спасибо за визит". Best-effort + idempotent.
@@ -2572,6 +2720,10 @@ export function fireTrigger(payload: FireTriggerPayload): void {
         }
         case "appointment.rescheduled": {
           await onAppointmentRescheduled(payload.appointmentId);
+          return;
+        }
+        case "appointment.restored": {
+          await onAppointmentRestored(payload.appointmentId);
           return;
         }
         case "appointment.updated": {

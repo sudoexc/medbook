@@ -65,7 +65,8 @@ export type LifecycleOffpath = (typeof LIFECYCLE_OFFPATH)[number];
  *
  * NURSE has read-only access to today's appointments (see
  * `src/lib/permissions/matrix.ts`). CALL_OPERATOR can edit Lead/Call rows
- * but does not advance visit lifecycle in this wave.
+ * and confirms bookings from the call center (`canUseQueueStatusRoute`),
+ * but does not drive the visit lifecycle.
  */
 export function canMutateStatus(role: LifecycleRole): boolean {
   switch (role) {
@@ -78,6 +79,21 @@ export function canMutateStatus(role: LifecycleRole): boolean {
     case "CALL_OPERATOR":
       return false;
   }
+}
+
+/**
+ * May `role` use the queue-status route for `target` at all? Every
+ * mutate-permitted role may (the ownership and transition rules come
+ * after), and the call operator for one move: confirming a booking on the
+ * phone, which is what the call center's «К подтверждению» is for (audit
+ * CM-08). Any other move by him is refused before the visit is read.
+ */
+export function canUseQueueStatusRoute(
+  role: LifecycleRole,
+  target: AppointmentStatus,
+): boolean {
+  if (canMutateStatus(role)) return true;
+  return role === "CALL_OPERATOR" && target === "CONFIRMED";
 }
 
 /**

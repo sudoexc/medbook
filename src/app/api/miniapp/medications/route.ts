@@ -27,6 +27,7 @@ import { err, ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { hydratePrescriptionForRead } from "@/server/prescription/cipher-fields";
+import { medicationReminderOpenSince } from "@/lib/patient-experience/medication-reminders";
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const onBehalfOf = new URL(request.url).searchParams.get("onBehalfOf");
@@ -111,13 +112,16 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   });
 
   // Open reminders = PENDING (sent, awaiting response) and SNOOZED whose
-  // `snoozeUntil` has lapsed. EXPIRED rows are skipped — the worker will
-  // already have stamped them with status EXPIRED if the patient didn't
-  // respond within ~24h (Wave 4 housekeeping).
+  // `snoozeUntil` has lapsed, from the open window only, newest first
+  // (audit MA-13). The follow-up worker stamps older unanswered rows
+  // EXPIRED; the window here also covers the minutes before its next pass.
+  // It used to be the 30 OLDEST rows, so the fresh doses fell off the list
+  // while week-old ones stayed «due».
   const reminders = await prisma.medicationReminderSend.findMany({
     where: {
       clinicId: ctx.clinicId,
       patientId: effectivePatientId,
+      scheduledFor: { gte: medicationReminderOpenSince(now) },
       OR: [
         { status: "PENDING" },
         { status: "SNOOZED", snoozeUntil: { lte: now } },
@@ -135,7 +139,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
         select: { id: true, drugName: true, dosage: true },
       },
     },
-    orderBy: { scheduledFor: "asc" },
+    orderBy: { scheduledFor: "desc" },
     take: 30,
   });
 

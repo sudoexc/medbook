@@ -15,9 +15,10 @@ import {
   KIOSK_UPCOMING_STATUSES,
 } from "@/server/kiosk/checkin-statuses";
 import {
-  findPhoneClaim,
-  findVerifiedPhoneOwners,
-} from "@/server/patient/phone-identity";
+  findKioskCards,
+  isNumberCard,
+  type KioskCard,
+} from "@/server/kiosk/phone-cards";
 import { z } from "zod";
 
 // GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone.
@@ -53,6 +54,55 @@ async function pickKioskOwner<T extends { id: string }>(
     select: { patientId: true },
   });
   return owners.find((o) => o.id === booked?.patientId) ?? owners[0]!;
+}
+
+const bookingSelect = {
+  id: true,
+  patientId: true,
+  date: true,
+  primaryService: { select: { nameRu: true } },
+  queueOrder: true,
+  ticketSeq: true,
+  queueStatus: true,
+  doctor: {
+    select: {
+      id: true,
+      nameRu: true,
+      ticketPrefix: true,
+      cabinet: { select: { number: true } },
+    },
+  },
+} satisfies Prisma.AppointmentSelect;
+
+type BookingRow = Prisma.AppointmentGetPayload<{ select: typeof bookingSelect }>;
+
+/** One card's bookings, split into today (check-in) and later days (info). */
+function bookingsView(rows: BookingRow[], dayEnd: Date) {
+  const today = rows.filter((a) => a.date < dayEnd);
+  const upcoming = rows.filter((a) => a.date >= dayEnd);
+  return {
+    appointments: today.map((a) => ({
+      id: a.id,
+      doctorName: a.doctor.nameRu,
+      cabinet: a.doctor.cabinet?.number ?? null,
+      service: a.primaryService?.nameRu ?? null,
+      time: tashkentComponents(a.date).time, // "HH:mm" in Tashkent wall clock
+      queueOrder: a.queueOrder,
+      queueStatus: a.queueStatus,
+      ticketNumber: ticketNumberFor(a.doctor, a.ticketSeq ?? a.queueOrder),
+    })),
+    upcoming: upcoming.map((a) => {
+      const c = tashkentComponents(a.date);
+      return {
+        id: a.id,
+        doctorName: a.doctor.nameRu,
+        cabinet: a.doctor.cabinet?.number ?? null,
+        service: a.primaryService?.nameRu ?? null,
+        date: c.date, // YYYY-MM-DD Tashkent
+        time: c.time, // HH:mm Tashkent
+      };
+    }),
+  };
 }
 
 export async function GET(request: Request) {
@@ -106,90 +156,85 @@ export async function GET(request: Request) {
     },
   ];
 
-  const found = await runWithTenant({ kind: "SYSTEM" }, async () => {
-    const owners = await findVerifiedPhoneOwners(prisma, clinic.id, phone);
-    if (owners.length > 0) {
-      return {
-        card: await pickKioskOwner(clinic.id, owners, liveBookings),
-        unverified: false,
-      };
-    }
-    const claim = await findPhoneClaim(prisma, clinic.id, phone);
-    return claim ? { card: claim, unverified: true } : null;
-  });
-  const patient = found?.card ?? null;
-
-  if (!patient) {
-    return Response.json({ patient: null, appointments: [], upcoming: [] });
-  }
-
-  const all = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.appointment.findMany({
-      where: {
-        clinicId: clinic.id,
-        patientId: patient.id,
-        OR: liveBookings,
-      },
-      select: {
-        id: true,
-        date: true,
-        primaryService: { select: { nameRu: true } },
-        queueOrder: true,
-        ticketSeq: true,
-        queueStatus: true,
-        doctor: {
-          select: {
-            id: true,
-            nameRu: true,
-            ticketPrefix: true,
-            cabinet: { select: { number: true } },
-          },
-        },
-      },
-      orderBy: { date: "asc" },
-    }),
+  // Relatives on the same number (audit P1D-02): the son registered under
+  // his mother's phone, the child she booked for in the Mini App. Their
+  // bookings were invisible, so they could not check in.
+  const cards = await runWithTenant({ kind: "SYSTEM" }, () =>
+    findKioskCards(prisma, clinic.id, phone),
   );
-
-  const today: typeof all = [];
-  const upcoming: typeof all = [];
-  for (const a of all) {
-    if (a.date < dayEnd) today.push(a);
-    else upcoming.push(a);
+  if (cards.length === 0) {
+    return Response.json({ patient: null, appointments: [], upcoming: [], people: [] });
   }
 
-  const formatTime = (d: Date) => {
-    const c = tashkentComponents(d);
-    return c.time; // "HH:mm" in Tashkent wall clock
-  };
+  const findBookings = (patientId: string | { in: string[] }) =>
+    runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.appointment.findMany({
+        where: { clinicId: clinic.id, patientId, OR: liveBookings },
+        select: bookingSelect,
+        orderBy: { date: "asc" },
+      }),
+    );
+
+  const owners = cards.filter((c) => c.relation === "owner");
+  const claim = cards.find((c) => c.relation === "claim") ?? null;
+  let patient: KioskCard | null =
+    owners.length > 0
+      ? await runWithTenant({ kind: "SYSTEM" }, () =>
+          pickKioskOwner(clinic.id, owners, liveBookings),
+        )
+      : claim;
+  let mine: BookingRow[];
+  let theirs: BookingRow[];
+  if (patient) {
+    const primaryId = patient.id;
+    mine = await findBookings(primaryId);
+    // Everyone else on the number, in one query.
+    const otherIds = cards.filter((c) => c.id !== primaryId).map((c) => c.id);
+    theirs = otherIds.length > 0 ? await findBookings({ in: otherIds }) : [];
+  } else {
+    // Only relatives hold the number (its owner's card is gone). Like any
+    // relative, one is offered only with a booking; with none it is a
+    // first visit, and the kiosk reveals no name.
+    theirs = await findBookings({ in: cards.map((c) => c.id) });
+    patient = cards.find((c) => theirs.some((a) => a.patientId === c.id)) ?? null;
+    if (!patient) {
+      return Response.json({ patient: null, appointments: [], upcoming: [], people: [] });
+    }
+    const primaryId = patient.id;
+    mine = theirs.filter((a) => a.patientId === primaryId);
+  }
+  const primaryCard = patient;
+  const others = cards.filter((c) => c.id !== primaryCard.id);
+
+  // Masked, no phone: whoever stands at the tablet typed a number, which
+  // does not make them that patient.
+  const person = (card: KioskCard, rows: BookingRow[]) => ({
+    id: card.id,
+    fullName: maskPatientName(card.fullName),
+    unverified: card.unverified,
+    relation: card.relation,
+    ...bookingsView(rows, dayEnd),
+  });
+  const primary = person(primaryCard, mine);
+  // The number's own cards are always offered (the two LD-10 owners); a
+  // relative only with a booking to check in to or to be told about. One
+  // without registers by name, which finds his card (decidePhoneOwner).
+  const people = [
+    primary,
+    ...others
+      .map((c) => person(c, theirs.filter((a) => a.patientId === c.id)))
+      .filter((p, i) => isNumberCard(others[i]!) || p.appointments.length + p.upcoming.length > 0),
+  ];
 
   return Response.json({
-    // Masked, no phone: whoever stands at the tablet typed a number, which
-    // does not make them that patient.
     patient: {
-      id: patient.id,
-      fullName: maskPatientName(patient.fullName),
-      unverified: found!.unverified,
+      id: primary.id,
+      fullName: primary.fullName,
+      unverified: primary.unverified,
     },
-    appointments: today.map((a) => ({
-      id: a.id,
-      doctorName: a.doctor.nameRu,
-      cabinet: a.doctor.cabinet?.number ?? null,
-      service: a.primaryService?.nameRu ?? null,
-      time: formatTime(a.date),
-      queueOrder: a.queueOrder,
-      queueStatus: a.queueStatus,
-      ticketNumber: ticketNumberFor(a.doctor, a.ticketSeq ?? a.queueOrder),
-    })),
-    upcoming: upcoming.map((a) => {
-      const c = tashkentComponents(a.date);
-      return {
-        id: a.id,
-        doctorName: a.doctor.nameRu,
-        cabinet: a.doctor.cabinet?.number ?? null,
-        service: a.primaryService?.nameRu ?? null,
-        date: c.date, // YYYY-MM-DD Tashkent
-        time: c.time, // HH:mm Tashkent
-      };
-    }),
+    appointments: primary.appointments,
+    upcoming: primary.upcoming,
+    // More than one: the kiosk asks «Кто пришёл?» before showing bookings.
+    people,
   });
 }

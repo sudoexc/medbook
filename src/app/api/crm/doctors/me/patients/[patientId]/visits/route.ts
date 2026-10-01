@@ -47,6 +47,12 @@ type VisitRow = {
   visitNoteId: string | null;
   /** DRAFT | FINALIZED. A draft means the visit was never signed off. */
   noteStatus: string | null;
+  /**
+   * Corrections appended to the signed conclusion (audit DC-06). They never
+   * rewrite the note, so the history row has to say they exist or the doctor
+   * reads the uncorrected text as current.
+   */
+  amendmentsCount: number;
   /** What this visit produced — documents, lab orders, structured meds. */
   documents: {
     id: string;
@@ -54,6 +60,8 @@ type VisitRow = {
     type: string;
     fileUrl: string;
     createdAt: string;
+    /** CD-06: who put it in the chart; PATIENT is badged in the timeline. */
+    source: string;
   }[];
   labs: { id: string; orderNumber: string; status: string; tests: number }[];
   medications: {
@@ -151,6 +159,7 @@ export const GET = createApiListHandler(
               },
               orderBy: { sortOrder: "asc" },
             },
+            _count: { select: { amendments: true } },
           },
         },
         // What the visit produced. Both hang off appointmentId, so a visit
@@ -163,6 +172,7 @@ export const GET = createApiListHandler(
             type: true,
             fileUrl: true,
             createdAt: true,
+            source: true,
           },
           orderBy: { createdAt: "desc" },
         },
@@ -241,6 +251,7 @@ export const GET = createApiListHandler(
         hasVisitNote: a.visitNote !== null && a.visitNote !== undefined,
         visitNoteId: a.visitNote?.id ?? null,
         noteStatus: a.visitNote?.status ?? null,
+        amendmentsCount: a.visitNote?._count.amendments ?? 0,
         documents: a.documents.map((d) => ({
           id: d.id,
           title: d.title,
@@ -248,6 +259,7 @@ export const GET = createApiListHandler(
           // Private bucket: the stored URL is AccessDenied (CD-02).
           fileUrl: staffFileHref(d.fileUrl),
           createdAt: d.createdAt.toISOString(),
+          source: String(d.source),
         })),
         labs: a.labOrders.map((l) => ({
           id: l.id,
@@ -282,6 +294,7 @@ export const GET = createApiListHandler(
                 type: true,
                 fileUrl: true,
                 createdAt: true,
+                source: true,
               },
               orderBy: { createdAt: "desc" },
               take: 50,
@@ -292,6 +305,7 @@ export const GET = createApiListHandler(
             type: String(d.type),
             fileUrl: staffFileHref(d.fileUrl),
             createdAt: d.createdAt.toISOString(),
+            source: String(d.source),
           })),
           labs: (
             await prisma.labOrder.findMany({

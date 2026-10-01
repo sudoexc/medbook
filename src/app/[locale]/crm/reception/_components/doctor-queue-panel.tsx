@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { SelfCheckInBadge } from "@/components/atoms/self-check-in-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -505,6 +506,9 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
             {tQueue("arrivedBadge")}
           </Badge>
         ) : null}
+
+        {/* G3-01: checked in from the Mini App, not yet «Пришёл». */}
+        <SelfCheckInBadge row={row} />
 
         {confirmedTime ? (
           <span

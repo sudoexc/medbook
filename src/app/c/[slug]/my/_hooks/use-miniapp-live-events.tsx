@@ -121,6 +121,12 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
     ["miniapp", "appointments"],
     ["miniapp", "visit-summary"],
   ],
+  // G3-03 — the doctor corrected a signed conclusion: an open visit screen
+  // shows the «Исправления» block within seconds, not after a reload.
+  "visit-note.amended": [
+    ["miniapp", "visit-summary"],
+    ["miniapp", "appointments"],
+  ],
   // P1.2 — a doctor flipping a lab result to REVIEWED makes it visible to the
   // patient for the first time, so refresh the labs screen without a manual pull.
   "lab.result.reviewed": [["miniapp", "labs"]],
@@ -131,6 +137,10 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "referral.created": [["miniapp", "documents"]],
   // A rendered PDF / upload landed in the patient's Document table.
   "document.created": [["miniapp", "documents"]],
+  // CD-09: the clinic renamed or deleted a document; without these the
+  // patient kept a dead link until a reload.
+  "document.updated": [["miniapp", "documents"]],
+  "document.deleted": [["miniapp", "documents"]],
   // Schedule change invalidates every cached slot query — the user may have
   // been mid-booking and the picker needs to redraw with the new availability.
   "doctor.scheduleChanged": [["miniapp", "slots"]],

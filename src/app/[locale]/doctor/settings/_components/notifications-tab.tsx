@@ -15,36 +15,42 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
 
 import {
+  doctorPrefCell,
+  isWiredDoctorPrefCell,
+  wiredDoctorPrefMatrix,
+  type DoctorPrefChannel,
+  type DoctorPrefEvent,
+} from "@/lib/doctor-notification-prefs";
+
+import {
   useDoctorNotificationPrefs,
   usePatchDoctorNotificationPrefs,
   type DoctorNotificationPref,
 } from "../_hooks/use-doctor-notification-prefs";
 
-type Channel = "inApp" | "email" | "telegram";
-type EventKey =
-  | "appointmentCreated"
-  | "messageNew"
-  | "labResultReceived"
-  | "reminderDue";
+type Channel = DoctorPrefChannel;
+type EventKey = DoctorPrefEvent;
 
-const EVENTS: Array<{ key: EventKey }> = [
-  { key: "appointmentCreated" },
-  { key: "messageNew" },
-  { key: "labResultReceived" },
-  { key: "reminderDue" },
-];
+const CHANNEL_ICONS: Record<Channel, React.ComponentType<{ className?: string }>> = {
+  inApp: BellIcon,
+  email: MailIcon,
+  telegram: SendIcon,
+};
 
+// Audit DC-09: only the cells something honours get a switch (see
+// lib/doctor-notification-prefs). The other nine were saved and ignored.
+const WIRED = wiredDoctorPrefMatrix();
+const EVENTS: Array<{ key: EventKey }> = WIRED.events.map((key) => ({ key }));
 const CHANNELS: Array<{
   key: Channel;
   icon: React.ComponentType<{ className?: string }>;
-}> = [
-  { key: "inApp", icon: BellIcon },
-  { key: "email", icon: MailIcon },
-  { key: "telegram", icon: SendIcon },
-];
+}> = WIRED.channels.map((key) => ({ key, icon: CHANNEL_ICONS[key] }));
+const GRID_COLUMNS = {
+  gridTemplateColumns: `minmax(0,1fr) repeat(${CHANNELS.length}, 80px)`,
+};
 
 function fieldName(event: EventKey, channel: Channel): keyof DoctorNotificationPref {
-  return `${event}_${channel}` as keyof DoctorNotificationPref;
+  return doctorPrefCell(event, channel) as keyof DoctorNotificationPref;
 }
 
 export function NotificationsTab() {
@@ -58,7 +64,10 @@ export function NotificationsTab() {
         <Skeleton className="mb-1 h-4 w-40 rounded-md" />
         <Skeleton className="mb-5 h-3 w-3/4 rounded-md" />
 
-        <div className="grid grid-cols-[minmax(0,1fr)_80px_80px_80px] items-center gap-3 border-b border-border pb-2">
+        <div
+          className="grid items-center gap-3 border-b border-border pb-2"
+          style={GRID_COLUMNS}
+        >
           <Skeleton className="h-3 w-16 rounded-md" />
           {CHANNELS.map((c) => (
             <Skeleton key={c.key} className="mx-auto h-3 w-12 rounded-md" />
@@ -69,7 +78,8 @@ export function NotificationsTab() {
           {EVENTS.map((e) => (
             <li
               key={e.key}
-              className="grid grid-cols-[minmax(0,1fr)_80px_80px_80px] items-center gap-3 py-3"
+              className="grid items-center gap-3 py-3"
+              style={GRID_COLUMNS}
             >
               <div className="min-w-0 space-y-1.5">
                 <Skeleton className="h-4 w-32 rounded-md" />
@@ -127,8 +137,8 @@ export function NotificationsTab() {
       <div
         className={cn(
           "grid items-center gap-3 border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
-          "grid-cols-[minmax(0,1fr)_80px_80px_80px]",
         )}
+        style={GRID_COLUMNS}
       >
         <div>{t("notifications.eventColumn")}</div>
         {CHANNELS.map((c) => (
@@ -143,7 +153,8 @@ export function NotificationsTab() {
         {EVENTS.map((e) => (
           <li
             key={e.key}
-            className="grid grid-cols-[minmax(0,1fr)_80px_80px_80px] items-center gap-3 py-3"
+            className="grid items-center gap-3 py-3"
+            style={GRID_COLUMNS}
           >
             <div className="min-w-0">
               <div className="text-sm font-medium text-foreground">
@@ -155,6 +166,10 @@ export function NotificationsTab() {
             </div>
             {CHANNELS.map((c) => {
               const checked = Boolean(data[fieldName(e.key, c.key)]);
+              // A wired channel may still lack this event: no switch there.
+              if (!isWiredDoctorPrefCell(doctorPrefCell(e.key, c.key))) {
+                return <div key={c.key} aria-hidden />;
+              }
               return (
                 <div key={c.key} className="flex justify-center">
                   <Switch
@@ -169,13 +184,12 @@ export function NotificationsTab() {
         ))}
       </ul>
 
+      {/* The old hint promised Telegram once a bot was linked in
+          «Безопасность»; there is no such link and no delivery to a doctor
+          by Telegram or email. Said plainly instead (DC-09). */}
       <div className="mt-4 flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <MessageCircleIcon className="size-4 shrink-0" />
-        <span>
-          {t.rich("notifications.telegramHint", {
-            strong: (chunks) => <strong>{chunks}</strong>,
-          })}
-        </span>
+        <span>{t("notifications.notConnected")}</span>
       </div>
     </div>
   );

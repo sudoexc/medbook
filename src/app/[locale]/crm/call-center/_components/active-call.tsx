@@ -22,9 +22,16 @@ import { cn } from "@/lib/utils";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 import { usePatient } from "../../patients/[id]/_hooks/use-patient";
 
+import {
+  appointmentDrawerHref,
+  averageCheckOf,
+  knownBalanceOf,
+} from "@/lib/calls/caller-context";
+
 import type { CallRow } from "../_hooks/types";
 import { deriveStatus } from "../_hooks/types";
 import { useCallNotes } from "../_hooks/use-call-notes";
+import { useNextAppointment } from "../_hooks/use-next-appointment";
 
 /**
  * Center column — caller context.
@@ -157,7 +164,11 @@ function CallerHeader({
         </h2>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <span className="tabular-nums">{formatPhone(phone)}</span>
-          <LiveTimer startedAt={call.createdAt} endedAt={call.endedAt} />
+          <LiveTimer
+            startedAt={call.answeredAt ?? call.createdAt}
+            endedAt={call.endedAt}
+            durationSec={call.durationSec}
+          />
         </div>
         {call.patient ? (
           <Link
@@ -184,25 +195,23 @@ function PatientBody({
 }) {
   const t = useTranslations("callCenter.active");
   const query = usePatient(patientId);
+  // The nearest visit still ahead, asked of the server (audit CM-11).
+  const nextQuery = useNextAppointment(patientId);
+  const upcoming = nextQuery.data ?? null;
 
   const p = query.data;
   const appointments = p?.appointments ?? [];
-  const past = appointments.filter(
-    (a) => a.status === "COMPLETED" || a.status === "NO_SHOW",
-  );
-  const upcoming = appointments.find(
-    (a) => a.status === "BOOKED" || a.status === "WAITING",
-  );
-  const avgCheck =
-    past.length > 0
-      ? Math.round(
-          past.reduce((acc, a) => acc + (a.priceFinal ?? 0), 0) / past.length,
-        )
-      : 0;
+  // «История посещений» lists the visits that happened; a no-show is not a
+  // visit and never carried money.
+  const past = appointments.filter((a) => a.status === "COMPLETED");
+  // Whole-history figures from the server's finance formula, not the last
+  // 10 rows; null when there is nothing honest to show (audit CM-11).
+  const avgCheck = averageCheckOf(p?.finance);
+  const balance = knownBalanceOf(p?.finance);
 
   const animatedLtv = useCountUp(p?.ltv ?? 0);
-  const animatedAvgCheck = useCountUp(avgCheck);
-  const animatedBalance = useCountUp(p?.balance ?? 0);
+  const animatedAvgCheck = useCountUp(avgCheck ?? 0);
+  const animatedBalance = useCountUp(balance ?? 0);
 
   if (query.isLoading) {
     return (
@@ -251,28 +260,38 @@ function PatientBody({
         <KpiCard
           label={t("kpi.avgCheck")}
           value={
-            avgCheck > 0 ? (
+            avgCheck !== null && avgCheck > 0 ? (
               <MoneyText
                 amount={Math.round(animatedAvgCheck)}
                 currency="UZS"
                 className="text-lg font-bold"
               />
             ) : (
-              <span className="text-lg font-bold">—</span>
+              <span className="text-sm font-semibold text-muted-foreground">
+                {t("kpi.noData")}
+              </span>
             )
           }
         />
         <KpiCard
           label={t("kpi.balance")}
           value={
-            <MoneyText
-              amount={Math.round(animatedBalance)}
-              currency="UZS"
-              className={cn(
-                "text-lg font-bold",
-                p.balance < 0 ? "text-destructive" : undefined,
-              )}
-            />
+            balance === null ? (
+              // The clinic does not record payments in the CRM: no balance
+              // is known, and 0 would read as «settled».
+              <span className="text-sm font-semibold text-muted-foreground">
+                {t("kpi.noData")}
+              </span>
+            ) : (
+              <MoneyText
+                amount={Math.round(animatedBalance)}
+                currency="UZS"
+                className={cn(
+                  "text-lg font-bold",
+                  balance < 0 ? "text-destructive" : undefined,
+                )}
+              />
+            )
           }
         />
       </section>
@@ -291,9 +310,11 @@ function PatientBody({
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">
-                {locale === "uz"
-                  ? upcoming.doctor.nameUz
-                  : upcoming.doctor.nameRu}
+                {upcoming.doctor
+                  ? locale === "uz"
+                    ? upcoming.doctor.nameUz
+                    : upcoming.doctor.nameRu
+                  : null}
               </div>
               <div className="text-[12px] text-muted-foreground">
                 {formatDate(upcoming.date, locale, "long")}
@@ -308,8 +329,10 @@ function PatientBody({
                 ) : null}
               </div>
             </div>
+            {/* No /crm/appointments/[id] route exists: the list opens the
+                visit's drawer from `?ap=` (audit CM-11). */}
             <Link
-              href={`/crm/appointments/${upcoming.id}`}
+              href={appointmentDrawerHref(upcoming.id)}
               className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
             >
               {t("nextAppointment.open")}
@@ -346,7 +369,7 @@ function PatientBody({
             </h3>
           </div>
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            {past.length}
+            {Math.max(p.visitsCount, past.length)}
           </span>
         </header>
         {past.length === 0 ? (
@@ -461,12 +484,19 @@ function StatusPill({ status, label }: { status: string; label: string }) {
   );
 }
 
+/**
+ * While the call is live: time since the answer (or the first ring). Once
+ * it is over: the recorded talk time only (audit CM-10), nothing for a call
+ * nobody answered.
+ */
 function LiveTimer({
   startedAt,
   endedAt,
+  durationSec,
 }: {
   startedAt: string;
   endedAt: string | null;
+  durationSec: number | null;
 }) {
   const start = React.useMemo(() => new Date(startedAt).getTime(), [startedAt]);
   const end = React.useMemo(
@@ -484,8 +514,11 @@ function LiveTimer({
     return () => window.clearInterval(id);
   }, [end]);
 
-  const refNow = end ?? now;
-  const sec = Math.max(0, Math.round((refNow - start) / 1000));
+  if (end != null && durationSec == null) return null;
+  const sec =
+    end != null
+      ? Math.max(0, durationSec ?? 0)
+      : Math.max(0, Math.round((now - start) / 1000));
   const mm = Math.floor(sec / 60);
   const ss = sec % 60;
   return (

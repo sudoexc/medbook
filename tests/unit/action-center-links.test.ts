@@ -192,6 +192,15 @@ const SAMPLES: Record<ActionType, ActionPayload> = {
     callbackAt: "2026-10-01T06:00:00.000Z",
     note: "",
   },
+  SELF_CHECK_IN_UNHANDLED: {
+    type: "SELF_CHECK_IN_UNHANDLED",
+    appointmentId: "ap1",
+    patientId: "p1",
+    patientName: "x",
+    doctorName: "x",
+    appointmentAt: "2026-10-01T04:00:00.000Z",
+    arrivedAt: "2026-10-01T03:55:00.000Z",
+  },
 };
 
 describe("actionDeeplinkPath", () => {
@@ -209,6 +218,10 @@ describe("actionDeeplinkPath", () => {
   it("opens the entity the task is about", () => {
     expect(actionDeeplinkPath(SAMPLES.PAYMENT_OVERDUE)).toBe("/crm/appointments?ap=ap1");
     expect(actionDeeplinkPath(SAMPLES.UNCONFIRMED_24H)).toBe("/crm/appointments?ap=ap1");
+    // The drawer holds «Пришёл» / «Не пришёл» for the unanswered check-in.
+    expect(actionDeeplinkPath(SAMPLES.SELF_CHECK_IN_UNHANDLED)).toBe(
+      "/crm/appointments?ap=ap1",
+    );
     expect(actionDeeplinkPath(SAMPLES.CASE_REPEAT_DUE)).toBe("/crm/cases/case1");
     expect(actionDeeplinkPath(SAMPLES.LOW_NPS_RECEIVED)).toBe("/crm/patients/p1");
     expect(actionDeeplinkPath(SAMPLES.TELEGRAM_LINK_CONFLICT)).toBe("/crm/patients/p1");

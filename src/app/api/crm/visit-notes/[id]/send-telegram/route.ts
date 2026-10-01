@@ -16,6 +16,15 @@
  * DOCTOR may send only for his own visit; reception/admin for any. 409s carry
  * a machine `reason` so the UI can switch to the QR-link dialog instead of
  * showing a dead error.
+ *
+ * The conclusion goes out only when its PDF is the current one (audit VW-06,
+ * `conclusionDeliveryState`). While the worker is still rendering it, right
+ * after signing or after a correction, the route answers 409
+ * `conclusion_rendering` and sends nothing, so the doctor retries in a
+ * minute instead of handing over the attachments alone. Otherwise the
+ * answer says whether the conclusion was among the files
+ * (`conclusionIncluded`) and, if not, why (`conclusion`: `not_signed`,
+ * `missing`, `failed`), so the panel never shows success without it.
  */
 import path from "node:path";
 
@@ -26,6 +35,7 @@ import { ok, err, notFound, forbidden } from "@/server/http";
 import { fetchObject } from "@/server/storage/minio";
 import { sendDocument } from "@/server/telegram/send";
 import { clinicReadableKey } from "@/server/documents/file-ref";
+import { conclusionDeliveryState } from "@/server/visit-notes/conclusion-delivery";
 
 /** Telegram caps media groups; ten is plenty for one visit's paperwork. */
 const MAX_DOCS = 10;
@@ -50,6 +60,10 @@ export const POST = createApiHandler(
         id: true,
         doctorId: true,
         appointmentId: true,
+        status: true,
+        patientHandoutMarkdown: true,
+        handoutStaleAt: true,
+        finalizedAt: true,
         patient: {
           select: { id: true, fullName: true, telegramId: true },
         },
@@ -92,30 +106,57 @@ export const POST = createApiHandler(
       return err("PatientNotLinked", 409, { reason: "not_linked" });
     }
 
-    // Everything the visit produced: the rendered conclusion (visitNoteId) and
-    // any uploads attached to the appointment. One query, deduped by id.
-    const documents = await prisma.document.findMany({
-      where: {
-        patientId: note.patient.id,
-        OR: [
-          { visitNoteId: note.id },
-          ...(note.appointmentId
-            ? [{ appointmentId: note.appointmentId }]
-            : []),
-        ],
-      },
-      select: {
-        id: true,
-        title: true,
-        fileUrl: true,
-        mimeType: true,
-      },
-      orderBy: { createdAt: "asc" },
-      take: MAX_DOCS,
+    // Everything the visit produced: the rendered conclusion (visitNoteId)
+    // and any uploads attached to the appointment. The conclusion is looked
+    // up on its own so a visit with many attachments can never push it out
+    // of the batch, and it goes first.
+    const docSelect = {
+      id: true,
+      title: true,
+      fileUrl: true,
+      mimeType: true,
+    } as const;
+    const conclusionDoc = await prisma.document.findFirst({
+      where: { patientId: note.patient.id, visitNoteId: note.id },
+      select: docSelect,
     });
+    const conclusion = conclusionDeliveryState({
+      status: note.status,
+      patientHandoutMarkdown: note.patientHandoutMarkdown,
+      handoutStaleAt: note.handoutStaleAt,
+      finalizedAt: note.finalizedAt,
+      hasConclusionDocument: conclusionDoc !== null,
+      now: new Date(),
+    });
+    if (conclusion === "rendering") {
+      // Nothing goes out: the attachments alone looked like «sent» while the
+      // patient walked out without his conclusion.
+      return err("ConclusionRendering", 409, { reason: "conclusion_rendering" });
+    }
+    const attachments = note.appointmentId
+      ? await prisma.document.findMany({
+          where: {
+            patientId: note.patient.id,
+            appointmentId: note.appointmentId,
+            visitNoteId: null,
+            type: { not: "CONCLUSION" },
+            // Voided by ADMIN (CD-09): filed on this visit by mistake.
+            voidedAt: null,
+          },
+          select: docSelect,
+          orderBy: { createdAt: "asc" },
+          take: MAX_DOCS - 1,
+        })
+      : [];
+    // A PDF left from before a rollback, or one the worker will no longer
+    // refresh (the handout was emptied), is not the conclusion: it stays.
+    const documents = [
+      ...(conclusion === "ready" && conclusionDoc ? [conclusionDoc] : []),
+      ...attachments,
+    ];
 
     if (documents.length === 0) {
-      return err("NothingToSend", 409, { reason: "nothing_to_send" });
+      return err("NothingToSend", 409, { reason: "nothing_to_send", conclusion });
     }
 
     const sent: string[] = [];
@@ -178,6 +219,15 @@ export const POST = createApiHandler(
       }
     }
 
+    const conclusionIncluded =
+      conclusionDoc !== null && sent.includes(conclusionDoc.id);
+    // Why the conclusion is not among the sent files, if it is not.
+    const conclusionStatus = conclusionIncluded
+      ? "included"
+      : conclusion === "ready"
+        ? "failed"
+        : conclusion;
+
     await audit(request, {
       action: "visit_note.documents_sent_telegram",
       entityType: "VisitNote",
@@ -187,12 +237,22 @@ export const POST = createApiHandler(
         sentDocumentIds: sent,
         failedDocumentIds: failed,
         packShotsSent: packsSent,
+        conclusion: conclusionStatus,
       },
     });
 
     if (sent.length === 0) {
-      return err("SendFailed", 502, { reason: "send_failed", failed: failed.length });
+      return err("SendFailed", 502, {
+        reason: "send_failed",
+        failed: failed.length,
+        conclusion: conclusionStatus,
+      });
     }
-    return ok({ sent: sent.length, failed: failed.length });
+    return ok({
+      sent: sent.length,
+      failed: failed.length,
+      conclusionIncluded,
+      conclusion: conclusionStatus,
+    });
   },
 );

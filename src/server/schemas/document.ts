@@ -10,10 +10,20 @@ export const DocumentTypeEnum = z.enum([
   "OTHER",
 ]);
 
+export const DocumentSourceEnum = z.enum(["STAFF", "PATIENT", "SYSTEM"]);
+
 /**
  * `uploadToken` is the receipt `POST /api/crm/documents/upload` returns with
  * the `fileUrl` of the bytes it stored. A `fileUrl` into our storage is
  * accepted only with it; anything else must be an `https:` link (audit CD-08).
+ * The signature pad uploads its PNG the same way: an inline data: URL never
+ * fit the 1000-character column limit, so the pad never saved (CD-05).
+ *
+ * `signsDocumentId` names an unsigned consent or contract of the same
+ * patient that this signature (the pad's PNG, filed as a consent) signs;
+ * both are stamped signed. A signature with no consent behind it is not a
+ * signed consent: the pad files it as OTHER, unsigned and deletable, so a
+ * scribble on the wrong patient's card never becomes a legal record.
  */
 export const CreateDocumentSchema = z.object({
   patientId: z.string(),
@@ -24,6 +34,7 @@ export const CreateDocumentSchema = z.object({
   uploadToken: z.string().max(200).optional().nullable(),
   mimeType: z.string().max(120).optional().nullable(),
   sizeBytes: z.number().int().min(0).optional().nullable(),
+  signsDocumentId: z.string().min(1).max(64).optional().nullable(),
 });
 
 /**
@@ -50,11 +61,22 @@ export const UpdateDocumentSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: "empty_patch" });
 
+/**
+ * POST /api/crm/documents/[id]/void: ADMIN voids a signed record filed by
+ * mistake (CD-09). The reason is required: it is the only account of why a
+ * legal record stopped counting.
+ */
+export const VoidDocumentSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
 export const QueryDocumentSchema = z.object({
   patientId: z.string().optional(),
   appointmentId: z.string().optional(),
   doctorId: z.string().optional(),
   type: DocumentTypeEnum.optional(),
+  /** CD-06: «от пациента» / clinic upload / rendered by the system. */
+  source: DocumentSourceEnum.optional(),
   q: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),

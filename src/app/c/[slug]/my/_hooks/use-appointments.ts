@@ -109,6 +109,8 @@ export function useBookAppointment() {
       lang?: "RU" | "UZ";
       comments?: string;
       onBehalfOf?: string | null;
+      /** The open case this booking continues (treatment-plan card, MA-11). */
+      medicalCaseId?: string | null;
       // Phase M4 — caller mints a stable id (UUID/ULID) once per
       // confirmation-screen instance so a double-tap MainButton or a
       // network retry collapses to a single booking. The mini-app server
@@ -162,6 +164,8 @@ export function useAttachCase() {
       create?: boolean;
       title?: string;
       primaryComplaint?: string;
+      /** The relative the visit was booked for (audit MA-18). */
+      onBehalfOf?: string | null;
     }) => {
       const res = await request<{
         caseId: string;
@@ -169,6 +173,7 @@ export function useAttachCase() {
         title: string;
       }>(`/api/miniapp/appointments/${args.appointmentId}/attach-case`, {
         method: "POST",
+        searchParams: args.onBehalfOf ? { onBehalfOf: args.onBehalfOf } : undefined,
         body: JSON.stringify({
           caseId: args.caseId,
           create: args.create,
@@ -193,8 +198,13 @@ export function useCancelAppointment() {
   const qc = useQueryClient();
   const { request, clinicSlug } = useMiniAppFetch();
   return useMutation({
-    mutationFn: async (args: { id: string; reason?: string | null }) => {
-      const { id, reason } = args;
+    mutationFn: async (args: {
+      id: string;
+      reason?: string | null;
+      /** A relative's visit is found under her card only (audit MA-18). */
+      onBehalfOf?: string | null;
+    }) => {
+      const { id, reason, onBehalfOf } = args;
       // Only send a body when the patient actually supplied a reason; the
       // DELETE handler accepts both empty body and `{ reason }` shape per TZ.
       const init: RequestInit =
@@ -205,7 +215,10 @@ export function useCancelAppointment() {
               headers: { "Content-Type": "application/json" },
             }
           : { method: "DELETE" };
-      await request(`/api/miniapp/appointments/${id}`, init);
+      await request(`/api/miniapp/appointments/${id}`, {
+        ...init,
+        searchParams: onBehalfOf ? { onBehalfOf } : undefined,
+      });
       return id;
     },
     // Phase M4 — Optimistic update. The patient taps "Cancel" and expects the
@@ -282,9 +295,12 @@ export function useRescheduleAppointment() {
       startAt: string;
       doctorId?: string;
       serviceIds?: string[];
+      /** A relative's visit is found under her card only (audit MA-18). */
+      onBehalfOf?: string | null;
     }) => {
       await request(`/api/miniapp/appointments/${args.id}`, {
         method: "PATCH",
+        searchParams: args.onBehalfOf ? { onBehalfOf: args.onBehalfOf } : undefined,
         body: JSON.stringify({
           startAt: args.startAt,
           doctorId: args.doctorId,

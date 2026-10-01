@@ -2,42 +2,23 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-export type DoctorNotificationPref = {
-  id: string;
-  userId: string;
-  appointmentCreated_inApp: boolean;
-  appointmentCreated_email: boolean;
-  appointmentCreated_telegram: boolean;
-  messageNew_inApp: boolean;
-  messageNew_email: boolean;
-  messageNew_telegram: boolean;
-  labResultReceived_inApp: boolean;
-  labResultReceived_email: boolean;
-  labResultReceived_telegram: boolean;
-  reminderDue_inApp: boolean;
-  reminderDue_email: boolean;
-  reminderDue_telegram: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
+import {
+  DOCTOR_NOTIFICATION_PREFS_KEY,
+  DOCTOR_NOTIFICATION_PREFS_URL,
+  fetchDoctorNotificationPrefs,
+  type DoctorNotificationPref,
+} from "@/lib/doctor-notification-prefs";
 
-export const notificationPrefsKey = [
-  "doctor",
-  "me",
-  "notification-prefs",
-] as const;
+export type { DoctorNotificationPref };
+
+// Shared with the cabinet's message alerts (audit DC-09): a flip written
+// here is in that cache at once, so the next message already obeys it.
+export const notificationPrefsKey = DOCTOR_NOTIFICATION_PREFS_KEY;
 
 export function useDoctorNotificationPrefs() {
   return useQuery<DoctorNotificationPref, Error>({
     queryKey: notificationPrefsKey,
-    queryFn: async ({ signal }) => {
-      const res = await fetch("/api/crm/doctors/me/notification-prefs", {
-        credentials: "include",
-        signal,
-      });
-      if (!res.ok) throw new Error(`notification-prefs: ${res.status}`);
-      return (await res.json()) as DoctorNotificationPref;
-    },
+    queryFn: ({ signal }) => fetchDoctorNotificationPrefs(signal),
     staleTime: 5 * 60_000,
   });
 }
@@ -50,7 +31,7 @@ export function usePatchDoctorNotificationPrefs() {
   const qc = useQueryClient();
   return useMutation<DoctorNotificationPref, Error, PrefPatch>({
     mutationFn: async (patch) => {
-      const res = await fetch("/api/crm/doctors/me/notification-prefs", {
+      const res = await fetch(DOCTOR_NOTIFICATION_PREFS_URL, {
         method: "PATCH",
         credentials: "include",
         headers: { "content-type": "application/json" },

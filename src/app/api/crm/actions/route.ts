@@ -26,13 +26,14 @@
  * the top of its severity (see `listActionsPage` for why not createdAt).
  */
 import { createApiListHandler } from "@/lib/api-handler";
+import { ACTION_READER_ROLES } from "@/lib/actions/roles";
 import { prisma } from "@/lib/prisma";
 import { ok, err, parseQuery } from "@/server/http";
 import { QueryActionSchema } from "@/server/schemas/action";
 import { listActionsPage, visibleActionsWhere } from "@/server/actions/list";
 
 export const GET = createApiListHandler(
-  { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
+  { roles: [...ACTION_READER_ROLES] },
   async ({ request, ctx }) => {
     if (ctx.kind !== "TENANT") {
       // SUPER_ADMIN must impersonate; the wrapper already short-circuits

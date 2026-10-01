@@ -194,7 +194,10 @@ const AUTO_CONFIRM_CHANNELS = new Set<string>(["PHONE", "KIOSK"]);
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    // CM-08 — the call operator books the caller from the call center
+    // («Записать пациента»); the permission matrix gives him Appointment
+    // write. He books like the desk does (any doctor, PHONE auto-confirms).
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"],
     bodySchema: CreateAppointmentSchema,
   },
   async ({ body, ctx }) => {
@@ -281,6 +284,12 @@ export const POST = createApiHandler(
           return err("BadStartAt", 400, { reason: "bad_start_at" });
         case "bad_channel":
           return err("BadChannel", 422, { reason: "bad_channel" });
+        case "booking_limit":
+          // Unreachable: only the Mini App passes a booking guard.
+          return conflict("booking_limit", { limit: result.limit });
+        case "on_behalf_of_not_linked":
+          // Unreachable: only the Mini App passes a booking guard.
+          return err("on_behalf_of_not_linked", 403);
       }
     }
 

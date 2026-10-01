@@ -242,6 +242,8 @@ describe("the Mini App visit summary", () => {
       conclusionDocument: null,
       doctor: { id: "doc_1" },
       appointment: { date: new Date("2026-09-29T06:00:00Z"), time: "11:00" },
+      // G3-03 — the summary carries the doctor's later corrections.
+      amendments: [],
     };
     vi.resetModules();
     const { GET } = await import("@/app/api/miniapp/visit-summary/[appointmentId]/route");

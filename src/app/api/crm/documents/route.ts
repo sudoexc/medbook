@@ -5,6 +5,10 @@
  * POST stores the metadata + the `fileUrl` of bytes the UI already sent to
  * `/api/crm/documents/upload`, together with that upload's receipt, or an
  * external `https:` link (audit CD-08, see `@/server/documents/file-ref`).
+ * Rows created here are `source = STAFF` (CD-06). A signature captured on
+ * the pad that signs a named unsigned consent (CD-05) is stamped `signedAt`
+ * together with that consent; nothing else is ever created signed, so a
+ * stray signature never becomes a legal record nobody can delete.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -25,6 +29,10 @@ import {
   checkDocumentFileUrl,
   storageKeyInUse,
 } from "@/server/documents/file-ref";
+import {
+  SIGNABLE_DOCUMENT_TYPES,
+  canMarkSigned,
+} from "@/lib/document-guards";
 
 /**
  * Per-patient sequence number — `#1` is the patient's oldest document,
@@ -65,6 +73,7 @@ export const GET = createApiListHandler(
     if (q.patientId) where.patientId = q.patientId;
     if (q.appointmentId) where.appointmentId = q.appointmentId;
     if (q.type) where.type = q.type;
+    if (q.source) where.source = q.source;
     if (q.q) {
       const term = q.q.trim();
       const phoneDigits = term.replace(/\D/g, "");
@@ -99,7 +108,15 @@ export const GET = createApiListHandler(
     if (q.pendingSignature === true) {
       // Consent/contract docs not yet marked signed (POST .../[id]/sign).
       // Pushed as an AND clause so it composes with an explicit `type` filter.
-      andClauses.push({ type: { in: ["CONSENT", "CONTRACT"] }, signedAt: null });
+      // A patient's own upload is never the clinic's consent to sign (CD-06),
+      // and a rendered document never waits for a signature either.
+      andClauses.push({
+        type: { in: [...SIGNABLE_DOCUMENT_TYPES] },
+        signedAt: null,
+        source: "STAFF",
+        visitNoteId: null,
+        referralId: null,
+      });
     }
 
     // DOCTOR sees only documents for their patients/appointments.
@@ -201,6 +218,33 @@ export const POST = createApiHandler(
       }
     }
 
+    // CD-05: a document is created signed only as the signature of this
+    // patient's unsigned clinic consent, and is then a consent itself. A
+    // bare «signed consent» with no consent text behind it was locked for
+    // good (CD-09), even when it was a test scribble on the wrong card.
+    const signs = Boolean(body.signsDocumentId);
+    if (
+      signs &&
+      !(SIGNABLE_DOCUMENT_TYPES as readonly string[]).includes(body.type)
+    ) {
+      return err("BadRequest", 400, { reason: "signed_only_for_consent" });
+    }
+    let signsDocumentId: string | null = null;
+    if (body.signsDocumentId) {
+      const target = await prisma.document.findFirst({
+        where: {
+          id: body.signsDocumentId,
+          patientId: body.patientId,
+          clinicId: ctx.clinicId,
+        },
+      });
+      if (!target || !canMarkSigned(target)) {
+        return err("BadRequest", 400, { reason: "consent_not_signable" });
+      }
+      signsDocumentId = target.id;
+    }
+    const signedAt = signs ? new Date() : null;
+
     const created = await prisma.$transaction(async (tx) => {
       const row = await tx.document.create({
         data: {
@@ -212,8 +256,18 @@ export const POST = createApiHandler(
           mimeType: body.mimeType ?? null,
           sizeBytes: body.sizeBytes ?? null,
           uploadedById,
+          source: "STAFF",
+          signedAt,
         } as never,
       });
+      if (signsDocumentId) {
+        // Conditional: a colleague who marked it signed a moment ago keeps
+        // his timestamp.
+        await tx.document.updateMany({
+          where: { id: signsDocumentId, signedAt: null },
+          data: { signedAt },
+        });
+      }
       // Surface the new document in the patient's Mini App /documents live.
       await publishViaOutbox(tx, {
         correlationId: newCorrelationId(),
@@ -242,6 +296,14 @@ export const POST = createApiHandler(
       entityId: created.id,
       meta: { after: created },
     });
+    if (signsDocumentId) {
+      await audit(request, {
+        action: "document.sign",
+        entityType: "Document",
+        entityId: signsDocumentId,
+        meta: { signatureDocumentId: created.id, signedAt },
+      });
+    }
     return ok(withStaffFileUrl(created), 201);
   }
 );

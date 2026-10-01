@@ -105,10 +105,10 @@ describe("GET /api/crm/doctors/me/conversations/[id]/scope", () => {
     expect(await ask("cv_1")).toEqual({ inScope: true });
     const where = state.conversationWhere as { id: string; AND: { OR: unknown[] }[] };
     expect(where.id).toBe("cv_1");
+    // DC-10: no stranger's unlinked thread («+1» for every doctor).
     expect(where.AND[0]!.OR).toEqual([
       { appointment: { doctorId: "doc_1" } },
       { patient: { appointments: { some: { doctorId: "doc_1" } } } },
-      { patientId: null },
       { assignedToId: "u_doc_1" },
     ]);
   });

@@ -16,7 +16,7 @@
  */
 import { z } from "zod";
 
-import { audit } from "@/lib/audit";
+import { auditMiniApp } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
 
@@ -65,7 +65,7 @@ export const POST = createMiniAppHandler(
       select: { id: true, status: true },
     });
 
-    await audit(request, {
+    await auditMiniApp(request, ctx, {
       action: AUDIT_ACTION.PATIENT_DATA_EXPORT_REQUESTED,
       entityType: "DataExportJob",
       entityId: job.id,

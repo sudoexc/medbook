@@ -5,10 +5,16 @@ import { usePathname } from "next/navigation";
 // Locale-aware router: pushes /crm/telegram as /<locale>/crm/telegram.
 import { useRouter } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { isDoctorThread } from "@/lib/doctor-tg-alert";
+import {
+  DOCTOR_NOTIFICATION_PREFS_KEY,
+  doctorWantsMessageAlerts,
+  fetchDoctorNotificationPrefs,
+} from "@/lib/doctor-notification-prefs";
 import {
   installNotificationSoundUnlock,
   playNotificationSound,
@@ -31,7 +37,9 @@ import {
  *
  * In the doctor's cabinet it rings only for the doctor's own threads (audit
  * DC-04, see `isDoctorThread`): reception works the whole clinic's inbox,
- * a doctor sees his caseload.
+ * a doctor sees his caseload. And only while his «Новое сообщение → В
+ * системе» switch is on (audit DC-09): the setting used to be saved and
+ * ignored, so switching it off changed nothing.
  */
 export function GlobalTgAlerts({
   inboxPath,
@@ -52,14 +60,26 @@ export function GlobalTgAlerts({
     installNotificationSoundUnlock();
   }, []);
 
+  // The doctor's own switch. Same cache as the settings tab, so a flip there
+  // reaches the next message without a reload. Reception has no such row.
+  const prefs = useQuery({
+    queryKey: DOCTOR_NOTIFICATION_PREFS_KEY,
+    queryFn: ({ signal }) => fetchDoctorNotificationPrefs(signal),
+    enabled: scope === "doctor",
+    staleTime: 5 * 60_000,
+  });
+
   const onInboxPageRef = React.useRef(false);
   const inboxPathRef = React.useRef(inboxPath);
   const scopeRef = React.useRef(scope);
+  const wantsAlertsRef = React.useRef(true);
   React.useEffect(() => {
     onInboxPageRef.current = pathname.includes(inboxPath);
     inboxPathRef.current = inboxPath;
     scopeRef.current = scope;
-  }, [pathname, inboxPath, scope]);
+    wantsAlertsRef.current =
+      scope !== "doctor" || doctorWantsMessageAlerts(prefs.data);
+  }, [pathname, inboxPath, scope, prefs.data]);
 
   const handler = React.useCallback(
     (event: { type: string; payload?: unknown }) => {
@@ -100,10 +120,13 @@ export function GlobalTgAlerts({
       };
 
       if (scopeRef.current === "doctor") {
+        // Switched off in his settings: no toast, no sound. The unread badge
+        // on «Сообщения» still counts the message.
+        if (!wantsAlertsRef.current) return;
         // Asked before a sound or a preview leaves the screen. The answer
         // may land after the doctor opened his inbox, which alerts itself.
         void isDoctorThread(p.conversationId).then((mine) => {
-          if (mine && !onInboxPageRef.current) ring();
+          if (mine && !onInboxPageRef.current && wantsAlertsRef.current) ring();
         });
         return;
       }

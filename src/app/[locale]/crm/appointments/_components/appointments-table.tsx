@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { SelfCheckInBadge } from "@/components/atoms/self-check-in-badge";
 import { MoneyText } from "@/components/atoms/money-text";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { Badge } from "@/components/ui/badge";
@@ -361,6 +362,8 @@ export function AppointmentsTable({
               <Badge variant={STATUS_VARIANT[r.status]} className="w-fit">
                 {t(`status.${r.status.toLowerCase()}` as never)}
               </Badge>
+              {/* G3-01: checked in from the Mini App, not yet «Пришёл». */}
+              <SelfCheckInBadge row={r} className="h-5 w-fit px-1.5 text-[10px]" />
               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Icon className="size-3" />
                 {t(`channel.${r.channel.toLowerCase()}` as never)}

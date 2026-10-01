@@ -54,6 +54,7 @@ export const uzDict = {
       medsLabel: "Dorilar",
       medsTitle: "{drug} qabul qilish vaqti",
       medsHint: "{dosage} · soat {time} da",
+      medsHintDated: "{dosage} · {date}, soat {time} da",
       resultsLabel: "Yangi hujjat",
       resultsTitle: "Xulosa tayyor",
       emptyTitle: "Hammasi joyida",
@@ -142,6 +143,7 @@ export const uzDict = {
     pickDoctor: "Mutaxassisni tanlang",
     pickSlot: "Sana va vaqtni tanlang",
     noDoctors: "Bu klinikada hozircha mavjud shifokorlar yo‘q",
+    doctorNotOnline: "Bu shifokorga onlayn yozilish hali sozlanmagan. Klinikaga qo‘ng‘iroq qilib yoziling.",
     noSpecializations: "Bu klinikada hozircha mutaxassislar yo‘q",
     noSlots: "Bo‘sh vaqt mavjud emas",
     priceFrom: "{price} dan",
@@ -163,6 +165,21 @@ export const uzDict = {
     bookInProgress: "Yozib qo‘yilmoqda…",
     errorConflict: "Bu vaqt band. Boshqa vaqtni tanlang.",
     errorBooking: "Yozuv yaratilmadi: {reason}",
+    // Booking and reschedule refusals by code (MA-14, MA-17): the sheet used
+    // to show the raw code («doctor_busy»).
+    errorLimitDoctor:
+      "Siz bu shifokorga allaqachon yozilgansiz. Boshqa vaqt kerak bo‘lsa, «Mening yozuvlarim» bo‘limida shu yozuvni ko‘chiring.",
+    errorLimitTotal:
+      "Ilova orqali {count} tadan ortiq kutilayotgan yozuv bo‘lishi mumkin emas. Yana yozilish uchun ulardan birini bekor qiling yoki ko‘chiring.",
+    errorLimitAccount:
+      "Bitta akkauntdan ilova orqali o‘zingiz va qarindoshlaringiz uchun birgalikda {count} tadan ortiq kutilayotgan yozuv bo‘lishi mumkin emas. Yana yozilish uchun ulardan birini bekor qiling yoki ko‘chiring.",
+    errorRateLimited: "Yozilishga juda ko‘p urinish bo‘ldi. Bir necha daqiqadan keyin qayta urinib ko‘ring.",
+    errorBeyondHorizon: "Onlayn yozilish {days} kun oldinga ochiq. Yaqinroq sanani tanlang.",
+    errorOffGrid: "Bu vaqtga yozilib bo‘lmaydi. Ro‘yxatdan vaqt tanlang.",
+    errorPast: "Bu vaqt allaqachon o‘tib ketgan. Boshqasini tanlang.",
+    errorOutsideHours: "Shifokor bu vaqtda qabul qilmaydi. Boshqa vaqtni tanlang.",
+    errorUnavailable: "Bu shifokorga onlayn yozilish hozircha mavjud emas. Klinikaga qo‘ng‘iroq qiling.",
+    errorGeneric: "Bo‘lmadi. Qayta urinib ko‘ring.",
     bookingFor: "Kim uchun yozuv",
     contextChanged:
       "Bu yozuv boshqa odam uchun tayyorlangan edi. Kerakli odamni yozish uchun qaytadan boshlang.",
@@ -216,6 +233,11 @@ export const uzDict = {
     notReadyTitle: "Xulosa tayyorlanmoqda",
     notReadyHint:
       "Shifokor xulosani hali rasmiylashtirmoqda. Birozdan keyin qayta kiring — odatda bu bir necha daqiqa oladi.",
+    // G3-03 — corrections the doctor appended after the 24h edit window.
+    amendmentsTitle: "Shifokor tuzatishlari",
+    amendmentsHint:
+      "Shifokor qabuldan keyin xulosaga tuzatish kiritdi. Agar tuzatish yuqoridagi matndan farq qilsa, tuzatish to‘g‘ri hisoblanadi.",
+    amendmentReason: "Sababi: {reason}",
   },
   appts: {
     title: "Mening yozuvlarim",
@@ -240,6 +262,11 @@ export const uzDict = {
     rescheduleSuccess: "Yozuv ko‘chirildi",
     rescheduleTitle: "Yangi vaqt",
     rescheduleSave: "Yangi vaqtni saqlash",
+    rescheduleArrived:
+      "Siz klinikada belgilangansiz, shuning uchun bu tashrifni faqat qabulxona orqali ko‘chirish mumkin.",
+    notEditable: "Bu yozuvni endi o‘zgartirib bo‘lmaydi. Kerak bo‘lsa, klinikaga qo‘ng‘iroq qiling.",
+    paymentLocked:
+      "Bu yozuv bo‘yicha to‘lov qilingan, shuning uchun undagi xizmatlarni qabulxona o‘zgartiradi.",
     paid: "To‘langan",
     unpaid: "To‘lanmagan",
     conclusion: "Xulosa",
@@ -280,6 +307,9 @@ export const uzDict = {
     uploadErrorTooLarge: "Fayl juda katta (maks. 10 MB)",
     uploadErrorMime: "Faqat foto va PDF qabul qilinadi",
     uploadErrorGeneric: "Faylni yuklab bo‘lmadi",
+    uploadErrorRateLimited: "Bir soatda juda ko‘p yuklash. Keyinroq urinib ko‘ring.",
+    uploadErrorDailyQuota: "Kunlik yuklash chegarasiga yetildi (200 MB). Ertaga urinib ko‘ring.",
+    uploadErrorTotalQuota: "Hujjatlar uchun umumiy chegaraga yetildi (1 GB). Qolgan hujjatlarni klinikaga olib keling.",
     types: {
       CONCLUSION: "Xulosa",
       REFERRAL: "Yo‘llanma",
@@ -316,6 +346,7 @@ export const uzDict = {
   treatmentPlan: {
     title: "Davolanish rejasi",
     progress: "{total} tashrifdan {done} tasi",
+    visitsDone: "Tashriflar: {n}",
     nextVisit: "keyingisi {date}",
     empty: "Hozircha faol davolanish rejasi yo‘q",
     bookCta: "Yozilish",
@@ -334,6 +365,10 @@ export const uzDict = {
     },
     unlink: "Uzish",
     confirmUnlink: "{name}ni oiladan uzasizmi?",
+    // The unlink is refused while the relative holds Mini App bookings
+    // ahead (MA-14): they would stop counting toward the account.
+    unlinkHasBookings:
+      "Qarindoshingizning ilova orqali kutilayotgan yozuvlari bor. Bu tashriflardan keyin yoki ular bekor qilingandan keyin uzish mumkin.",
     activeContext: "Kim uchun: {name}",
     maxReached: "Eng ko‘pi bilan 5 ta qarindosh qo‘shsa bo‘ladi",
     duplicate: "Bu bemor allaqachon oilada",
@@ -370,7 +405,11 @@ export const uzDict = {
     saving: "Yuborilmoqda…",
     submittedAt: "Yuborilgan: {at}",
     thankYou: "Rahmat! Javoblaringiz shifokorga yetkazildi.",
-    notOpen: "Bu yozuv allaqachon tugagan — anketa kerak emas.",
+    notOpen: "Bu yozuv uchun anketa yopilgan.",
+    closedCancelled: "Bu yozuv bekor qilingan, anketani to‘ldirish shart emas.",
+    closedCompleted: "Qabul allaqachon bo‘lib o‘tgan, anketani to‘ldirish shart emas.",
+    closedNoShow: "Bu yozuv vaqti o‘tib ketgan, anketani to‘ldirish shart emas.",
+    closedInProgress: "Qabul allaqachon boshlangan. Hammasini shifokorga joyida aytib bering.",
     notFound: "Yozuv topilmadi.",
     forbidden: "Bu yozuvga ruxsat yo‘q.",
     error: "Yuborib bo‘lmadi. Qayta urinib ko‘ring.",
@@ -463,6 +502,8 @@ export const uzDict = {
     deleteConfirmHelp:
       "Bu boshqa bemorning hisobini noto‘g‘ri o‘chirib qo‘ymaslik uchun kerak.",
     deleteConfirmMismatch: "Raqam profildagisi bilan mos kelmaydi.",
+    deleteConfirmWordLabel: "Profilda raqam yo‘q. Tasdiqlash uchun O‘CHIRISH so‘zini kiriting",
+    deleteConfirmWordMismatch: "Yuqorida yozilganidek O‘CHIRISH so‘zini kiriting.",
     deleteSubmit: "90 kundan keyin o‘chirish",
     deleteSaving: "So‘rov yaratilmoqda…",
     deleteSuccess:

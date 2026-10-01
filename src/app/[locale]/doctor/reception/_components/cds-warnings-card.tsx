@@ -141,7 +141,35 @@ export function CdsWarningsCard({
   }
 
   const result = query.data;
-  const showSpinner = query.isFetching && !result;
+  const showSpinner = query.isFetching && !result && !query.isError;
+
+  // VW-13 — the check failed (a 500, a timeout, a 403 after a role change, no
+  // network). Said out loud with a retry, never a silent card: silence is
+  // what a drug outside the catalog looks like, and an allergy would then go
+  // unnoticed. A failed refetch hides the older answer too: it was computed
+  // before whatever made the check stale (an allergy just recorded).
+  if (query.isError) {
+    return (
+      <div
+        role="alert"
+        className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-1.5 text-[11px] text-warning-text"
+      >
+        <AlertTriangleIcon className="size-3 shrink-0" />
+        <span className="min-w-0 flex-1">{t("cds.unavailable")}</span>
+        <button
+          type="button"
+          onClick={() => void query.refetch()}
+          disabled={query.isFetching}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-warning/40 bg-background px-2 py-0.5 font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+        >
+          {query.isFetching ? (
+            <Loader2Icon className="size-3 animate-spin" />
+          ) : null}
+          {t("cds.retry")}
+        </button>
+      </div>
+    );
+  }
 
   if (showSpinner) {
     return (

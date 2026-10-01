@@ -98,6 +98,10 @@ export const POST = createApiHandler(
           return err("patient_not_found", 404);
         case "bad_phone":
           return err("bad_phone", 400);
+        case "service_not_offered":
+          // The front desk sends no service yet; kept for the exhaustive
+          // switch, like doctor_off_duty.
+          return conflict("service_not_offered");
         case "phone_owner_mismatch":
           // Staff are authenticated and see full cards anyway: the owner's
           // name and birth year are what they need to decide.

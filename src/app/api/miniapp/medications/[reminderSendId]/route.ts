@@ -8,7 +8,9 @@
  * (TAKEN/SKIPPED/EXPIRED) returns 409 with `reason: "already_responded"`.
  *
  * SNOOZED bumps `snoozeUntil` to `now + snoozeMinutes` (default 30, max
- * 240). The worker re-surfaces the row once the snooze elapses.
+ * 240). The `medication-reminder-followup` worker re-surfaces the row (back
+ * to PENDING, with a new push) once the snooze elapses, and expires rows
+ * left unanswered past the open window.
  *
  * Ownership: the active context must own the reminder (clinicId + patientId
  * scope check). Family-context responses use `?onBehalfOf=` like every
@@ -17,7 +19,7 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
+import { auditMiniApp } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { err, notFound, ok } from "@/server/http";
 import { createMiniAppHandler } from "@/server/miniapp/handler";
@@ -101,7 +103,7 @@ export const POST = createMiniAppHandler(
       },
     });
 
-    await audit(request, {
+    await auditMiniApp(request, ctx, {
       action: AUDIT_ACTION.MEDICATION_REMINDER_RESPONDED,
       entityType: "MedicationReminderSend",
       entityId: updated.id,

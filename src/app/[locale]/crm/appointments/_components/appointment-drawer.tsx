@@ -57,6 +57,7 @@ import {
 import { MoneyText } from "@/components/atoms/money-text";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { SelfCheckInBadge } from "@/components/atoms/self-check-in-badge";
 import { SlotPicker } from "@/components/appointments/SlotPicker";
 import { AddPaymentDialog } from "@/components/payments/add-payment-dialog";
 
@@ -407,6 +408,10 @@ export function AppointmentDrawer({
                 confirmedVia={appt.confirmedVia}
                 locale={locale}
               />
+
+              {/* G3-01: the patient pressed «Я на месте» in the Mini App and
+                  is waiting to be met; stays until «Пришёл». */}
+              <SelfCheckInBadge row={appt} className="w-fit" />
 
               {/* Case badge — links visit to a MedicalCase ("episode of care"). */}
               <CaseBadge

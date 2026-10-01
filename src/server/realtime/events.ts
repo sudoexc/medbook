@@ -110,6 +110,11 @@ export const EVENT_TYPES = [
   // `/documents` list live — emitted AFTER the row + PDF exist so the refetch
   // actually finds it (unlike `referral.created`, which fires pre-render).
   "document.created",
+  // Audit CD-09: a document was renamed, retyped or got a new file, or was
+  // deleted. The Mini App held a deleted document (a dead link) until the
+  // patient reloaded. Audited by the route itself.
+  "document.updated",
+  "document.deleted",
   // Phase G8 — CDS override recorded. Lets a future quality dashboard refresh
   // its KPI tiles the moment a doctor justifies a flagged warning. Tenant
   // scope is the clinic; no PHI in the payload.
@@ -120,6 +125,11 @@ export const EVENT_TYPES = [
   // the reception list and the note panel.
   "visit-note.draftSaved",
   "visit-note.finalized",
+  // Audit G3-03 — the doctor appended a correction to a signed conclusion
+  // (past its 24h edit window). The patient's visit screen in the Mini App
+  // must show it at once; it used to reach only the re-rendered PDF. Audited
+  // by the route itself, so not by the pumper.
+  "visit-note.amended",
   // Phase M2 — mini-app patient-driven mutations. CRM surfaces (patient card,
   // notifications inbox, family panel, NPS dashboard, pre-visit drawer) need
   // to react in realtime when the patient touches them from TG.
@@ -475,6 +485,10 @@ export const DocumentCreatedPayload = z
   .passthrough();
 export type DocumentCreatedEventPayload = z.infer<typeof DocumentCreatedPayload>;
 
+/** CD-09: same shape for an edit or a deletion of a document. */
+export const DocumentChangedPayload = DocumentCreatedPayload;
+export type DocumentChangedEventPayload = z.infer<typeof DocumentChangedPayload>;
+
 /**
  * Phase G7 — sick-leave lifecycle. Same shape rules as the Rx payload.
  */
@@ -541,6 +555,8 @@ export const VisitNotePayload = z
     changedFields: z.array(z.string()).optional(),
     /** Lifecycle marker for `finalized`. */
     finalizedAt: z.string().datetime({ offset: true }).optional(),
+    /** The correction an `amended` event announces. */
+    amendmentId: z.string().min(1).optional(),
   })
   .passthrough();
 export type VisitNoteEventPayload = z.infer<typeof VisitNotePayload>;
@@ -736,9 +752,12 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("sickleave.cancelled", SickLeaveEventPayload),
   makeEvent("referral.created", ReferralCreatedPayload),
   makeEvent("document.created", DocumentCreatedPayload),
+  makeEvent("document.updated", DocumentChangedPayload),
+  makeEvent("document.deleted", DocumentChangedPayload),
   makeEvent("cds.override.recorded", CdsOverrideEventPayload),
   makeEvent("visit-note.draftSaved", VisitNotePayload),
   makeEvent("visit-note.finalized", VisitNotePayload),
+  makeEvent("visit-note.amended", VisitNotePayload),
   makeEvent("patient.familyLinked", PatientFamilyPayload),
   makeEvent("patient.familyUnlinked", PatientFamilyPayload),
   makeEvent("patient.profileUpdated", PatientProfileUpdatedPayload),

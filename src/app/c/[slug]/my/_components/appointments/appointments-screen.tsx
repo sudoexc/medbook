@@ -24,14 +24,17 @@ import {
   MiniAppAppointment,
 } from "../../_hooks/use-appointments";
 import { useActiveContext } from "../../_hooks/use-active-context";
-import { bookHref } from "../../_lib/booking-context";
+import { bookHref, myHref } from "../../_lib/booking-context";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import {
+  isPatientCancellable,
+  patientRescheduleRefusal,
+} from "@/lib/appointments/patient-reschedule";
+import { miniAppActionErrorText } from "../../_lib/action-errors";
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
 import { CancelReasonDialog } from "./cancel-reason-dialog";
-
-const CANCELLABLE_STATUSES = new Set(["BOOKED", "CONFIRMED", "WAITING", "SKIPPED"]);
 
 type Tab = "upcoming" | "past";
 
@@ -74,6 +77,8 @@ export function AppointmentsScreen() {
         date: null,
         time: null,
         onBehalfOf,
+        // Skips the service step, so clear a case an earlier run left (MA-11).
+        medicalCaseId: null,
       });
       router.push(bookHref(clinicSlug, "doctor", onBehalfOf));
     },
@@ -86,9 +91,12 @@ export function AppointmentsScreen() {
   // which 401'd for patients, so it was removed.
 
   React.useEffect(() => {
-    const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
+    // Back home on the same card (MA-18).
+    const off = tg.setBackButton(() =>
+      router.push(myHref(clinicSlug, "", onBehalfOf)),
+    );
     return off;
-  }, [tg, router, clinicSlug]);
+  }, [tg, router, clinicSlug, onBehalfOf]);
 
   React.useEffect(() => {
     // Hide MainButton on this screen — users act via row clicks.
@@ -148,8 +156,10 @@ export function AppointmentsScreen() {
         <div key={tab} className="ma-fade-in">
         <MSection>
           {query.data.map((appt) => {
+            // The server's own rule (MA-15); a stale status here can only
+            // show a ✕ the server then refuses with a readable reason.
             const cancellable =
-              tab === "upcoming" && CANCELLABLE_STATUSES.has(appt.status);
+              tab === "upcoming" && isPatientCancellable(appt.status);
             const tone = getAppointmentTone(appt.status);
             // CTA stays visible for a week past the target date — mirrors
             // the VISIT_FOLLOW_UP_DUE action expiry on the CRM side.
@@ -299,22 +309,26 @@ export function AppointmentsScreen() {
         onConfirm={async (reason) => {
           if (!cancelTarget) return;
           try {
-            await cancel.mutateAsync({ id: cancelTarget.id, reason });
+            await cancel.mutateAsync({ id: cancelTarget.id, reason, onBehalfOf });
             tg.haptic.notification("success");
             tg.showAlert(t.appts.cancelSuccess);
             setCancelTarget(null);
           } catch (e) {
             tg.haptic.notification("error");
-            tg.showAlert((e as Error).message);
+            tg.showAlert(miniAppActionErrorText(e, t));
           }
         }}
-        onPickReschedule={() => {
-          if (!cancelTarget) return;
-          const target = cancelTarget;
-          setCancelTarget(null);
-          setSelectedMode("reschedule");
-          setSelected(target);
-        }}
+        // «Перенести вместо отмены» only where the patient may move the visit.
+        onPickReschedule={
+          cancelTarget && patientRescheduleRefusal(cancelTarget) === null
+            ? () => {
+                const target = cancelTarget;
+                setCancelTarget(null);
+                setSelectedMode("reschedule");
+                setSelected(target);
+              }
+            : undefined
+        }
       />
     </div>
   );

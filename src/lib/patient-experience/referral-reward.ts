@@ -9,6 +9,17 @@
  *      pending `ReferralReward` snapshot and the booking's `priceFinal`.
  */
 
+/**
+ * Whether the refer-a-friend program is live (audit MA-19). It is not: the
+ * Mini App has no «Пригласить друга» screen, no step takes a friend's code,
+ * and nothing ever writes `Lead.referrerPatientId`, so no reward can be
+ * earned and the clinic's «% за приведённого друга» changed nothing. Until
+ * the program is built end to end, the setting, the patient card's referral
+ * block and the booking's reward lookup stay off; the data model and the
+ * helpers below are kept for that build.
+ */
+export const REFERRAL_PROGRAM_LIVE = false;
+
 const REFERRAL_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const REFERRAL_CODE_LENGTH = 8;
 

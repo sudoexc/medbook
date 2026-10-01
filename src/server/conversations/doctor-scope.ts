@@ -9,17 +9,19 @@
  * promises to mirror something is where the next bug lives; both callers now
  * import this.
  *
- * The scope, deliberately wide for a working clinic:
+ * The scope:
  *  - threads tied to one of the doctor's appointments;
  *  - threads of patients he has ever seen (his caseload is patients, not
  *    appointment rows — TG threads usually predate the appointment link);
- *  - unlinked threads (`patientId: null`) — the clinic's front door; they
- *    carry no other doctor's clinical data. Since audit TG-11 a thread from
- *    an account that already has a card is linked to it on arrival (and a
- *    link made from the inbox teaches the card its account), so another
- *    doctor's known patient no longer sits here: what stays unlinked is a
- *    contact nobody has identified yet;
  *  - threads explicitly assigned to his user.
+ *
+ * Unlinked threads (`patientId: null`) are NOT his any more (audit DC-10).
+ * They are the clinic's front door, a stranger nobody has identified yet,
+ * and reception answers them. Counting them put «+1» on every doctor's
+ * «Сообщения» for each new contact, and a doctor opening one cleared the
+ * desk's unread mark. Since audit TG-11 a known patient's thread is linked
+ * on arrival, so his own patients no longer arrive unlinked; a stranger
+ * reception wants a doctor to answer is assigned to him, and then it is in.
  */
 export function doctorConversationScope(
   doctorId: string,
@@ -28,7 +30,6 @@ export function doctorConversationScope(
   const or: Array<Record<string, unknown>> = [
     { appointment: { doctorId } },
     { patient: { appointments: { some: { doctorId } } } },
-    { patientId: null },
   ];
   if (userId) or.push({ assignedToId: userId });
   return or;

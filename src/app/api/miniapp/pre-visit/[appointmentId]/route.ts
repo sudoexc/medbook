@@ -17,10 +17,11 @@
  * `PatientFamily` (active relationships only). Mismatch → 403.
  */
 import { prisma } from "@/lib/prisma";
-import { isUpcomingVisitStatus } from "@/lib/appointments/active-statuses";
 import {
   PreVisitSubmissionSchema,
+  isPreVisitOpenStatus,
   parsePreVisitData,
+  preVisitClosedReason,
   type PreVisitData,
 } from "@/lib/patient-experience/pre-visit";
 import { err, forbidden, notFound, ok } from "@/server/http";
@@ -128,17 +129,15 @@ export const POST = createMiniAppHandler(
     if (loaded.kind === "not_found") return notFound();
     if (loaded.kind === "forbidden") return forbidden();
 
-    // Reject after the appointment has happened — pre-visit form is
-    // useless once the doctor has seen the patient. We still allow up to
-    // the appointment time itself. The shared upcoming list includes
-    // CONFIRMED (audit TG-09 review): phone and kiosk bookings are confirmed
-    // at creation and «✅ Подтверждаю» on the reminder confirms the rest, so
-    // a BOOKED/WAITING-only gate refused most of the questionnaires the
-    // worker sends.
-    if (!isUpcomingVisitStatus(loaded.appt.status)) {
+    // Reject once the visit is no longer ahead: the form is useless after
+    // the doctor has seen the patient, and a cancelled booking has no
+    // doctor to read it. CONFIRMED is open like BOOKED (audit MA-09); the
+    // closed reason lets the screen say which case it is.
+    if (!isPreVisitOpenStatus(loaded.appt.status)) {
       return err("appointment_not_open", 409, {
         reason: "appointment_not_open",
         status: loaded.appt.status,
+        closedReason: preVisitClosedReason(loaded.appt.status),
       });
     }
 

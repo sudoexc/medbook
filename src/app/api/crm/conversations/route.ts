@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
 import { doctorConversationScope } from "@/server/conversations/doctor-scope";
+import { doctorUnreadByConversation } from "@/server/conversations/doctor-unread";
 import { QueryConversationSchema } from "@/server/schemas/conversation";
 import { unansweredWhere } from "@/server/conversations/reply-state";
 
@@ -53,15 +54,27 @@ export const GET = createApiListHandler(
       });
       if (doc) doctorScopeId = doc.id;
     }
+    // DC-10 — a doctor's unread is his own (`doctor-unread.ts`): the shared
+    // counter is the desk's, and his reading no longer zeroes it.
+    // Only when the scope is his own row (resolved from his user above).
+    const ownUnread =
+      ctx.kind === "TENANT" &&
+      ctx.role === "DOCTOR" &&
+      doctorScopeId &&
+      (!q.doctorId || q.doctorId === "me")
+        ? { doctorId: doctorScopeId, userId: ctx.userId }
+        : null;
+    let ownUnreadMap: Map<string, number> | null = null;
+    if (ownUnread && q.unread) {
+      ownUnreadMap = await doctorUnreadByConversation(ownUnread);
+      delete where.unreadCount;
+      andClauses.push({ id: { in: [...ownUnreadMap.keys()] } });
+    }
     if (doctorScopeId) {
       const callerUserId = ctx.kind === "TENANT" ? ctx.userId : null;
-      // The old scope (appointment-tied OR assigned-to-me) left the doctor's
-      // inbox empty in practice: TG threads mostly arrive before any
-      // appointment is linked, so patientId/appointmentId are null and
-      // nothing matched — a live doctor saw «0 диалогов» while reception saw
-      // the same threads fine. His caseload is patients, not appointment
-      // rows, and unlinked threads carry no other doctor's clinical data —
-      // they are the clinic's front door, which he must be able to see.
+      // His caseload is patients, not appointment rows (an appointment-only
+      // scope left a live doctor with «0 диалогов»). Unlinked threads are
+      // the desk's since DC-10, unless assigned to him: see doctor-scope.
       andClauses.push({
         OR: doctorConversationScope(doctorScopeId, callerUserId),
       });
@@ -112,6 +125,18 @@ export const GET = createApiListHandler(
     if (rows.length > q.limit) {
       const next = rows.pop();
       nextCursor = next?.id ?? null;
+    }
+    if (ownUnread) {
+      const own =
+        ownUnreadMap ??
+        (await doctorUnreadByConversation({
+          ...ownUnread,
+          conversationIds: rows.map((r) => r.id),
+        }));
+      return ok({
+        rows: rows.map((r) => ({ ...r, unreadCount: own.get(r.id) ?? 0 })),
+        nextCursor,
+      });
     }
     return ok({ rows, nextCursor });
   }

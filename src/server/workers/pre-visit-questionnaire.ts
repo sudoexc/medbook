@@ -68,8 +68,8 @@ export async function runPreVisitTick(now: Date = new Date()): Promise<{
     const rows = await prisma.appointment.findMany({
       where: {
         date: { gte: lower, lte: upper },
-        // CONFIRMED: phone and kiosk bookings are confirmed at creation.
-        // The Mini App submit accepts the same list.
+        // CONFIRMED too (audit TG-09, MA-09): phone and kiosk bookings are
+        // confirmed at creation. The Mini App submit accepts the same list.
         status: { in: [...UPCOMING_VISIT_STATUSES] },
         preVisitNotifiedAt: null,
         preVisitSubmittedAt: null,

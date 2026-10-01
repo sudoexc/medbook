@@ -86,6 +86,19 @@ export default async function VisitDetailPage({
           patient: {
             select: { id: true, fullName: true, phone: true },
           },
+          // DC-06: corrections appended after signing. They never rewrite
+          // the fields above, so without them this page showed a dose the
+          // doctor had already corrected as if it were still current.
+          amendments: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              reason: true,
+              text: true,
+              createdAt: true,
+              doctor: { select: { nameRu: true, nameUz: true } },
+            },
+          },
         },
       });
 
@@ -170,6 +183,17 @@ export default async function VisitDetailPage({
           advice: data.note.advice,
           bodyMarkdown: data.note.bodyMarkdown,
           aiGenerated: data.note.aiGenerated,
+          amendments: data.note.amendments.map((a) => ({
+            id: a.id,
+            reason: a.reason,
+            text: a.text,
+            createdAt: a.createdAt.toISOString(),
+            author: a.doctor
+              ? locale === "uz"
+                ? a.doctor.nameUz
+                : a.doctor.nameRu
+              : null,
+          })),
           appointment: data.note.appointment
             ? {
                 date: data.note.appointment.date.toISOString(),

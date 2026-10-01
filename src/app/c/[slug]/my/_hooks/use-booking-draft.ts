@@ -20,6 +20,13 @@ export type BookingDraft = {
    * book when its own context disagrees (audit MA-02).
    */
   onBehalfOf: string | null;
+  /**
+   * The open case the booking continues, when the wizard was started from
+   * the treatment-plan card («Записаться» with `?caseId=`). The booking
+   * then lands in that case instead of the open-case guess (audit MA-11).
+   * The service step takes it from its URL, so every other entry clears it.
+   */
+  medicalCaseId: string | null;
 };
 
 const EMPTY: BookingDraft = {
@@ -29,6 +36,7 @@ const EMPTY: BookingDraft = {
   date: null,
   time: null,
   onBehalfOf: null,
+  medicalCaseId: null,
 };
 
 function storageKey(slug: string) {

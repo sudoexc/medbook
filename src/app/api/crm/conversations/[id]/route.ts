@@ -15,6 +15,10 @@ import {
 } from "@/server/conversations/link-patient";
 import { threadProfileName } from "@/lib/patients/telegram-card";
 import { doctorConversationScope } from "@/server/conversations/doctor-scope";
+import {
+  doctorReadClearsSharedUnread,
+  doctorUnreadByConversation,
+} from "@/server/conversations/doctor-unread";
 
 /**
  * Who may confirm that a chat's Telegram account is a card's own: the roles
@@ -42,12 +46,14 @@ export const GET = createApiListHandler(
     // the list (audit G6-07: a link from the reception widget, the search
     // or a toast). A doctor reads by id only what his list would show him.
     const where: Record<string, unknown> = { id, clinicId };
+    let doctorId: string | null = null;
     if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
       const doc = await prisma.doctor.findFirst({
         where: { userId: ctx.userId },
         select: { id: true },
       });
       if (doc) {
+        doctorId = doc.id;
         where.AND = [{ OR: doctorConversationScope(doc.id, ctx.userId) }];
       }
     }
@@ -68,6 +74,15 @@ export const GET = createApiListHandler(
       },
     });
     if (!row) return notFound();
+    // DC-10 — the same per-doctor unread as his list shows.
+    if (doctorId && ctx.kind === "TENANT") {
+      const own = await doctorUnreadByConversation({
+        doctorId,
+        userId: ctx.userId,
+        conversationIds: [row.id],
+      });
+      return ok({ ...row, unreadCount: own.get(row.id) ?? 0 });
+    }
     return ok(row);
   }
 );
@@ -111,7 +126,31 @@ export const PATCH = createApiHandler(
       if (!card) return notFound();
     }
     const data: Record<string, unknown> = { ...rest };
-    if (markRead) data.unreadCount = 0;
+    // DC-10 — `unreadCount` is the desk's counter. A doctor's read goes into
+    // his own mark, and moves the shared counter only on a thread assigned to
+    // him (there he is the desk). Opening his patient's thread used to wipe
+    // reception's unread mark and the question went unanswered.
+    const doctorReader =
+      markRead === true && ctx.kind === "TENANT" && ctx.role === "DOCTOR"
+        ? ctx.userId
+        : null;
+    if (
+      markRead &&
+      (doctorReader === null ||
+        doctorReadClearsSharedUnread(before, doctorReader))
+    ) {
+      data.unreadCount = 0;
+    }
+    if (doctorReader !== null) {
+      const readAt = new Date();
+      await prisma.conversationRead.upsert({
+        where: {
+          conversationId_userId: { conversationId: id, userId: doctorReader },
+        },
+        create: { clinicId, conversationId: id, userId: doctorReader, readAt },
+        update: { readAt },
+      });
+    }
     if (markAnswered) data.awaitingReplySince = null;
     // updateMany so an unscoped `update({ where: { id }})` can never write
     // across tenants; we already verified the row exists in this clinic.

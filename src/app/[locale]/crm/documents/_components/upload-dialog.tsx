@@ -12,6 +12,13 @@
  *
  * URL mode is unchanged — the operator pastes an existing URL straight into
  * the metadata payload.
+ *
+ * Audit CM-05: the patient is picked by name or phone (the field used to
+ * ask for the internal id «cmXXX…»), and comes pre-filled from the page's
+ * `?patientId=` filter; the upload's `mimeType` and `sizeBytes` reach the
+ * document (the list showed «—» for the size and the patient card could not
+ * preview the file); and when saving the document fails, the stored bytes
+ * are taken back instead of staying in the bucket as an orphan.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -36,6 +43,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { CreateDocumentSchema } from "@/server/schemas/document";
+import { discardDocumentUpload } from "@/lib/document-upload-client";
+import { PatientPicker } from "@/components/appointments/new-appointment-dialog/patient-picker";
+import type { PatientHit } from "@/components/appointments/new-appointment-dialog/types";
 
 import type { DocumentType } from "../_hooks/use-documents";
 
@@ -58,6 +68,32 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The card behind the page's `?patientId=` filter, as a picker hit. */
+async function fetchPatientHit(id: string): Promise<PatientHit | null> {
+  const res = await fetch(`/api/crm/patients/${encodeURIComponent(id)}`, {
+    credentials: "include",
+  });
+  if (!res.ok) return null;
+  const p = (await res.json()) as {
+    id: string;
+    fullName: string;
+    phone: string;
+    phoneNormalized: string;
+    phoneVerifiedAt?: string | null;
+    photoUrl: string | null;
+    segment: string;
+  };
+  return {
+    id: p.id,
+    fullName: p.fullName,
+    phone: p.phone,
+    phoneNormalized: p.phoneNormalized,
+    phoneVerifiedAt: p.phoneVerifiedAt ?? null,
+    photoUrl: p.photoUrl,
+    segment: p.segment,
+  };
 }
 
 function uploadFileWithProgress(
@@ -115,13 +151,17 @@ export function UploadDialog({
   open,
   onOpenChange,
   onUploaded,
+  initialPatientId,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   onUploaded: () => void;
+  /** The page's `?patientId=` filter: the dialog opens with that patient. */
+  initialPatientId?: string;
 }) {
   const t = useTranslations("docsLibrary");
-  const [patientId, setPatientId] = React.useState("");
+  const [patient, setPatient] = React.useState<PatientHit | null>(null);
+  const patientId = patient?.id ?? "";
   const [title, setTitle] = React.useState("");
   const [type, setType] = React.useState<DocumentType>("OTHER");
   const [file, setFile] = React.useState<File | null>(null);
@@ -133,8 +173,24 @@ export function UploadDialog({
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = React.useState(false);
 
+  // Pre-fill from the page filter once per opening; clearing the picker
+  // afterwards keeps it clear.
+  const prefilledRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!open) {
+      prefilledRef.current = false;
+      return;
+    }
+    if (prefilledRef.current || !initialPatientId) return;
+    prefilledRef.current = true;
+    void fetchPatientHit(initialPatientId).then((hit) => {
+      // A patient the user already picked wins over the late answer.
+      if (hit) setPatient((cur) => cur ?? hit);
+    });
+  }, [open, initialPatientId]);
+
   const reset = () => {
-    setPatientId("");
+    setPatient(null);
     setTitle("");
     setType("OTHER");
     setFile(null);
@@ -174,6 +230,10 @@ export function UploadDialog({
     // (audit CD-08). A pasted link has none and must be https.
     let uploadToken: string | null = null;
     let usedFile: File | null = null;
+    let mimeType: string | null = null;
+    let sizeBytes: number | null = null;
+    // Bytes this attempt stored: taken back if the document is not saved.
+    let storedUrl: string | null = null;
 
     if (mode === "file") {
       if (!file) {
@@ -183,9 +243,9 @@ export function UploadDialog({
       usedFile = file;
     }
 
-    if (!patientId.trim() || !title.trim()) {
+    if (!patientId || !title.trim()) {
       const fieldErrors: FieldErrors = {};
-      if (!patientId.trim()) fieldErrors.patientId = t("errorRequired");
+      if (!patientId) fieldErrors.patientId = t("errorRequired");
       if (!title.trim()) fieldErrors.title = t("errorRequired");
       setErrors(fieldErrors);
       toast.error(t("toastMissingFields"));
@@ -203,6 +263,9 @@ export function UploadDialog({
         );
         resolvedUrl = uploaded.fileUrl;
         uploadToken = uploaded.uploadToken;
+        mimeType = uploaded.mimeType;
+        sizeBytes = uploaded.sizeBytes;
+        storedUrl = uploaded.fileUrl;
       }
 
       const parsed = CreateDocumentSchema.safeParse({
@@ -211,8 +274,11 @@ export function UploadDialog({
         type,
         fileUrl: resolvedUrl,
         uploadToken,
+        mimeType,
+        sizeBytes,
       });
       if (!parsed.success) {
+        if (storedUrl) void discardDocumentUpload(storedUrl, uploadToken);
         const fieldErrors: FieldErrors = {};
         for (const issue of parsed.error.issues) {
           const key = issue.path[0];
@@ -232,6 +298,7 @@ export function UploadDialog({
         body: JSON.stringify(parsed.data),
       });
       if (!res.ok) {
+        if (storedUrl) void discardDocumentUpload(storedUrl, uploadToken);
         const reason = ((await res.json().catch(() => null)) as {
           reason?: string;
         } | null)?.reason;
@@ -243,9 +310,11 @@ export function UploadDialog({
         );
         return;
       }
+      storedUrl = null;
       reset();
       onUploaded();
     } catch (e) {
+      if (storedUrl) void discardDocumentUpload(storedUrl, uploadToken);
       toast.error((e as Error).message ?? t("toastUploadError"));
     } finally {
       setSaving(false);
@@ -268,15 +337,11 @@ export function UploadDialog({
 
         <div className="space-y-3">
           <div>
-            <label htmlFor="up-patient" className="mb-1 block text-xs font-medium">
-              {t("columns.patient")} (ID)
-            </label>
-            <Input
-              id="up-patient"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              placeholder="cmXXX..."
-              aria-invalid={!!errors.patientId}
+            <PatientPicker
+              value={patient}
+              onChangePatient={setPatient}
+              label={t("columns.patient")}
+              disabled={saving}
             />
             {errors.patientId ? (
               <p className="mt-1 text-xs text-destructive">{errors.patientId}</p>

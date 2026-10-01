@@ -14,6 +14,7 @@ import {
   useMiniAppLiveEvents,
 } from "../_hooks/use-miniapp-live-events";
 import { FamilySwitcher } from "./family-switcher";
+import { useActiveContext } from "../_hooks/use-active-context";
 
 // Focused flows own the bottom edge (wizard footer, NPS/pre-visit CTAs,
 // native MainButton on account-delete / family-add), so the tab bar steps
@@ -255,14 +256,19 @@ function MiniAppTabBar({
 }) {
   const t = useT();
   const tg = useTelegramWebApp();
+  // Home and the visits list stay on the card chosen in the switcher (audit
+  // MA-18); the profile is always the owner's own account.
+  const { onBehalfOf } = useActiveContext();
+  const ctx = onBehalfOf ? `?onBehalfOf=${encodeURIComponent(onBehalfOf)}` : "";
   const tabs = [
-    { href: base, label: t.tabs.home, icon: Home, exact: true },
+    { href: base, query: ctx, label: t.tabs.home, icon: Home, exact: true },
     {
       href: `${base}/appointments`,
+      query: ctx,
       label: t.tabs.appointments,
       icon: CalendarDays,
     },
-    { href: `${base}/profile`, label: t.tabs.profile, icon: UserRound },
+    { href: `${base}/profile`, query: "", label: t.tabs.profile, icon: UserRound },
   ];
   return (
     <nav
@@ -277,12 +283,12 @@ function MiniAppTabBar({
       }}
     >
       <div className="mx-auto grid h-[3.75rem] max-w-[430px] grid-cols-3 px-2">
-        {tabs.map(({ href, label, icon: Icon, exact }) => {
+        {tabs.map(({ href, query, label, icon: Icon, exact }) => {
           const active = exact ? pathname === href : pathname.startsWith(href);
           return (
             <Link
               key={href}
-              href={href}
+              href={`${href}${query}`}
               onClick={() => {
                 if (!active) tg.haptic.selection();
               }}

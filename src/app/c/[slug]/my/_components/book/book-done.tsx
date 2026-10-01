@@ -221,6 +221,8 @@ export function BookDone() {
                   await attachCase.mutateAsync({
                     appointmentId: id,
                     create: true,
+                    // A relative's visit and cases are hers (MA-18).
+                    onBehalfOf,
                   });
                   tg.haptic.notification("success");
                   clearCaseChoices(id);
@@ -250,6 +252,7 @@ export function BookDone() {
                     await attachCase.mutateAsync({
                       appointmentId: id,
                       caseId: c.id,
+                      onBehalfOf,
                     });
                     tg.haptic.notification("success");
                     clearCaseChoices(id);

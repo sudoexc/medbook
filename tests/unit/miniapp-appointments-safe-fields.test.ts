@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Audit MA-10: the Mini App appointment routes spread the whole Appointment
@@ -151,6 +151,8 @@ vi.mock("@/lib/prisma", () => {
       time: "11:00",
       ...(args?.data?.date ? { date: args.data.date } : {}),
     })),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+    findUniqueOrThrow: vi.fn(async () => ({ ...FULL_ROW, time: "11:00" })),
   };
   const tx = {
     appointment,
@@ -191,6 +193,11 @@ vi.mock("@/server/appointments/cancel", () => ({
 vi.mock("@/server/services/appointments", () => ({
   computeEndDate: (d: Date, min: number) => new Date(d.getTime() + min * 60_000),
   detectConflicts: vi.fn(async () => ({ ok: true })),
+  isOfferedSlotStart: vi.fn(async () => true),
+}));
+vi.mock("@/server/pricing/recompute-appointment-price", () => ({
+  recomputeAppointmentPrice: vi.fn(),
+  recomputeCaseAppointments: vi.fn(),
 }));
 vi.mock("@/server/notifications/triggers", () => ({ fireTrigger: vi.fn() }));
 vi.mock("@/server/realtime/outbox", () => ({
@@ -214,9 +221,15 @@ function expectNoInternals(obj: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  // The reschedule below lands inside the 14 day booking horizon.
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T03:00:00Z") });
   state.findManyArgs.length = 0;
   // Queue tokens and document links are HMACs over the app secret.
   process.env.APP_SECRET = "test-app-secret";
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("GET /api/miniapp/appointments", () => {
@@ -295,7 +308,7 @@ describe("PATCH / DELETE /api/miniapp/appointments/[id]", () => {
     expectNoInternals(appt);
   });
 
-  it("a move tells the patient and rebuilds the cascade; a same-time edit only tops it up (TG-18)", async () => {
+  it("a move tells the patient and rebuilds the cascade; a same-time PATCH changes and sends nothing (TG-18)", async () => {
     const { fireTrigger } = await import("@/server/notifications/triggers");
     vi.mocked(fireTrigger).mockClear();
     await PATCH(
@@ -315,10 +328,10 @@ describe("PATCH / DELETE /api/miniapp/appointments/[id]", () => {
         body: JSON.stringify({ startAt: FULL_ROW.date.toISOString() }),
       }),
     );
-    expect(fireTrigger).toHaveBeenLastCalledWith({
-      kind: "appointment.updated",
-      appointmentId: "apt_1",
-    });
+    // The shared reschedule kernel (MA-16) answers an unchanged visit
+    // without a write, so nothing is re-sent; a same-time edit of the
+    // doctor or services tops the cascade up (pinned in the kernel tests).
+    expect(fireTrigger).toHaveBeenCalledTimes(1);
   });
 
   it("DELETE answers with patient-safe fields only", async () => {

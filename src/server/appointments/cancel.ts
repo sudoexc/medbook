@@ -14,6 +14,13 @@
  * Terminal-state guard: `COMPLETED` / `NO_SHOW` rows are refused — those
  * don't belong in "cancellable" anyway. Callers translate the reason into a
  * 409 conflict (CRM) or swallow it silently (system retries).
+ *
+ * A PATIENT (Mini App self-cancel) may cancel only a visit that has not
+ * reached the doctor (`PATIENT_CANCELLABLE_STATUSES`, audit MA-15). The ✕ in
+ * the list hides by the status in the phone's cache, which goes stale when
+ * the live stream drops: a tap after «Начать приём» cancelled the visit on
+ * the doctor's table. The status is checked again inside the write, so a
+ * visit the doctor starts between the read and the update stays his.
  */
 
 import type { Appointment } from "@/generated/prisma/client";
@@ -32,6 +39,10 @@ import type {
 import { recomputeCaseAppointments } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { retireVisitRiskActions } from "@/server/actions/in-clinic";
+import {
+  isPatientCancellable,
+  PATIENT_CANCELLABLE_STATUSES,
+} from "@/lib/appointments/patient-reschedule";
 
 export type CancelInput = {
   appointmentId: string;
@@ -54,6 +65,12 @@ export type CancelInput = {
   /** Human-friendly label for audit/toasts. Auto-built from actor info when
    *  omitted. */
   actorLabel?: string;
+  /**
+   * The patient made the decision (refused or will come another day on a
+   * call with reception), though staff carried it out: the patient gets the
+   * «you cancelled» text, not the clinic's apology (audit AC-19).
+   */
+  patientInitiated?: boolean;
   /** Cascade hint: thread upstream correlationId through. New id when omitted. */
   correlationId?: string;
   causedByEventId?: string;
@@ -69,6 +86,9 @@ export type CancelResult =
     }
   | { ok: false; reason: "not_found" | "completed" | "not_cancellable" };
 
+/** The patient's visit moved past cancellable while the cancel was running. */
+class PatientCancelRaced extends Error {}
+
 export async function cancelAppointment(
   input: CancelInput,
 ): Promise<CancelResult> {
@@ -81,6 +101,18 @@ export async function cancelAppointment(
 
   if (before.status === "COMPLETED") {
     return { ok: false, reason: "completed" };
+  }
+
+  // MA-15 — the patient's own cancel. CANCELLED stays an idempotent success
+  // (a double tap), but a no-show is not «already cancelled» for him: telling
+  // the patient «запись отменена» there would be untrue.
+  const byPatient = input.actorRole === "PATIENT";
+  if (
+    byPatient &&
+    before.status !== "CANCELLED" &&
+    !isPatientCancellable(before.status)
+  ) {
+    return { ok: false, reason: "not_cancellable" };
   }
 
   const lateCancelMinutes = Math.max(
@@ -117,16 +149,34 @@ export async function cancelAppointment(
     return null;
   })();
 
-  const { after } = await prisma.$transaction(async (tx) => {
-    const after = await tx.appointment.update({
-      where: { id: input.appointmentId },
-      data: {
-        status: "CANCELLED",
-        queueStatus: "CANCELLED",
-        cancelledAt: now,
-        cancelReason: reason,
-      },
-    });
+  const cancelData = {
+    status: "CANCELLED" as const,
+    queueStatus: "CANCELLED" as const,
+    cancelledAt: now,
+    cancelReason: reason,
+  };
+  const txOut = await prisma.$transaction(async (tx) => {
+    let after: Appointment;
+    if (byPatient) {
+      // Conditional on the status as it is at write time: the doctor may
+      // have started the visit since the read above.
+      const claimed = await tx.appointment.updateMany({
+        where: {
+          id: input.appointmentId,
+          status: { in: [...PATIENT_CANCELLABLE_STATUSES] },
+        },
+        data: cancelData,
+      });
+      if (claimed.count === 0) throw new PatientCancelRaced();
+      after = await tx.appointment.findUniqueOrThrow({
+        where: { id: input.appointmentId },
+      });
+    } else {
+      after = await tx.appointment.update({
+        where: { id: input.appointmentId },
+        data: cancelData,
+      });
+    }
 
     // Cancellation removes this visit as a candidate for the case's "first
     // visit" anchor. Reprice every sibling so the next-earliest active visit
@@ -205,7 +255,21 @@ export async function cancelAppointment(
     await publishViaOutbox(tx, envelope);
 
     return { after };
+  }).catch((e: unknown) => {
+    if (e instanceof PatientCancelRaced) return null;
+    throw e;
   });
+  if (!txOut) {
+    // Lost to a parallel cancel (a double tap): still the patient's success.
+    const fresh = await prisma.appointment.findUnique({
+      where: { id: input.appointmentId },
+    });
+    if (fresh?.status === "CANCELLED") {
+      return { ok: true, appointment: fresh, alreadyCancelled: true, lateCancelMinutes };
+    }
+    return { ok: false, reason: "not_cancellable" };
+  }
+  const { after } = txOut;
 
   // A cancelled visit is no longer «не подтверждена» or «риск пропуска»
   // (audit AC-17): its risk tasks close now, not on the next engine pass,
@@ -214,12 +278,12 @@ export async function cancelAppointment(
   await retireVisitRiskActions(prisma, input.clinicId, after.id, "CANCELLED");
 
   // TZ-notifications-cancel-sync §8.3 — surface-aware variant selection.
-  // Mini-app self-cancel gets the softer "we're around" text; everything
-  // else (CRM, call-centre, system worker) gets the apologetic "sorry,
-  // here's how to rebook" text. Outside the tx because trigger fan-out
-  // talks to the in-process scheduler, not the DB.
+  // Mini-app self-cancel, and a refusal the patient gave on the phone, get
+  // the softer "we're around" text; everything else (CRM, system worker)
+  // gets the apologetic "sorry, here's how to rebook" text. Outside the tx
+  // because trigger fan-out talks to the in-process scheduler, not the DB.
   const cancelKind =
-    surface === "MINIAPP"
+    surface === "MINIAPP" || input.patientInitiated
       ? "appointment.cancelled.by-patient"
       : "appointment.cancelled.by-staff";
   fireTrigger({ kind: cancelKind, appointmentId: after.id });

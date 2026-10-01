@@ -444,3 +444,38 @@ describe("miniAppAttachRefusal", () => {
     expect(miniAppAttachRefusal({ ...base, ...patch }, now)).toBe(reason);
   });
 });
+
+describe("booking from a case's own «Записаться» (audit MA-11)", () => {
+  it("files the visit under the case the patient continued, even with several open cases", async () => {
+    store.cases = [
+      { id: "case_back", patientId: "p1", status: "OPEN", title: "Боли в спине" },
+      { id: "case_head", patientId: "p1", status: "OPEN", title: "Головные боли" },
+    ];
+    store.appts = [
+      { ...appt("first", "2026-09-01T05:00:00Z", "case_head"), status: "COMPLETED" },
+      appt("repeat", "2026-09-10T05:00:00Z"),
+    ];
+    const out = await autoAttachCase({ ...attachInput("repeat"), preferredCaseId: "case_head" });
+    expect(out).toEqual({ kind: "auto", caseId: "case_head" });
+    const repeat = store.appts.find((a) => a.id === "repeat")!;
+    expect(repeat.medicalCaseId).toBe("case_head");
+    // Re-priced like any attach: a follow-up inside the window is free.
+    expect(repeat.priceFinal).toBe(0);
+    expect(store.calls.slice(0, 2)).toEqual(["lock", "read-open-cases"]);
+  });
+
+  it("ignores a case that is closed or not the patient's and falls back to the usual choice", async () => {
+    store.cases = [
+      { id: "case_back", patientId: "p1", status: "OPEN", title: "Боли в спине" },
+      { id: "case_head", patientId: "p1", status: "OPEN", title: "Головные боли" },
+      { id: "case_old", patientId: "p1", status: "RESOLVED", title: "Старое" },
+      { id: "case_other", patientId: "p2", status: "OPEN", title: "Чужое" },
+    ];
+    store.appts = [appt("a1", "2026-09-10T05:00:00Z")];
+    for (const preferredCaseId of ["case_old", "case_other"]) {
+      const out = await autoAttachCase({ ...attachInput("a1"), preferredCaseId });
+      expect(out.kind).toBe("needs_choice");
+      expect(store.appts[0]!.medicalCaseId).toBeNull();
+    }
+  });
+});

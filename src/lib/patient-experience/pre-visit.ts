@@ -45,6 +45,46 @@ export const PreVisitSubmissionSchema = z.object({
 export type PreVisitSubmissionInput = z.infer<typeof PreVisitSubmissionSchema>;
 
 /**
+ * May the questionnaire still be filled for a visit in this status?
+ *
+ * Every visit the patient is still expected at: booked, confirmed, or in
+ * the waiting room (audit MA-09). Phone and kiosk bookings are created
+ * CONFIRMED and reminder answers confirm the rest, so a BOOKED/WAITING-only
+ * gate refused the form, with «запись уже завершена», to most patients
+ * coming tomorrow. Shared by the 24h push, the POST and the screen.
+ */
+export function isPreVisitOpenStatus(status: string): boolean {
+  return isUpcomingVisitStatus(status);
+}
+
+/**
+ * Why the form is closed for a visit, so the screen can say it plainly
+ * instead of «уже завершена» for a cancelled booking. Null when open.
+ */
+export type PreVisitClosedReason =
+  | "cancelled"
+  | "completed"
+  | "no_show"
+  | "in_progress"
+  | "closed";
+
+export function preVisitClosedReason(status: string): PreVisitClosedReason | null {
+  if (isPreVisitOpenStatus(status)) return null;
+  switch (status) {
+    case "CANCELLED":
+      return "cancelled";
+    case "COMPLETED":
+      return "completed";
+    case "NO_SHOW":
+      return "no_show";
+    case "IN_PROGRESS":
+      return "in_progress";
+    default:
+      return "closed";
+  }
+}
+
+/**
  * Eligibility check: whether the worker should enqueue a 24h-before push
  * for this row. Pure helper — no DB access. Used from the worker tick AND
  * the unit tests.
@@ -59,11 +99,11 @@ export function isPreVisitEligible(row: {
   if (row.preVisitNotifiedAt !== null) return false;
   if (row.preVisitSubmittedAt !== null) return false;
   if (!row.patientHasContact) return false;
-  // CONFIRMED too (audit TG-09): every phone booking is confirmed at
+  // CONFIRMED too (audit TG-09, MA-09): every phone booking is confirmed at
   // creation, so leaving it out skipped the bulk of the clinic's visits.
-  // The same shared list gates the Mini App submit, so whatever is sent can
-  // be answered.
-  if (!isUpcomingVisitStatus(row.status)) return false;
+  // The same shared gate covers the Mini App submit, so whatever is sent
+  // can be answered.
+  if (!isPreVisitOpenStatus(row.status)) return false;
   // 23–25h window from now.
   const ms = row.startsAt.getTime() - now.getTime();
   const lower = 23 * 60 * 60 * 1000;

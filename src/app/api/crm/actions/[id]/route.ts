@@ -5,6 +5,7 @@
  * sibling routes (`./snooze`, `./dismiss`, `./done`, `./reopen`).
  */
 import { createApiListHandler } from "@/lib/api-handler";
+import { ACTION_READER_ROLES } from "@/lib/actions/roles";
 import { prisma } from "@/lib/prisma";
 import { ok, notFound, err } from "@/server/http";
 
@@ -15,7 +16,7 @@ function idFromUrl(request: Request): string {
 }
 
 export const GET = createApiListHandler(
-  { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
+  { roles: [...ACTION_READER_ROLES] },
   async ({ request }) => {
     const id = idFromUrl(request);
     const row = await prisma.action.findUnique({ where: { id } });

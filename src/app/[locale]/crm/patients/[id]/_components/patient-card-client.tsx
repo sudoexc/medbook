@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import { SkeletonCard } from "@/components/atoms/skeleton-card";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 import { cn } from "@/lib/utils";
+import { REFERRAL_PROGRAM_LIVE } from "@/lib/patient-experience/referral-reward";
 
 import { usePatient } from "../_hooks/use-patient";
 import { usePatientAppointments } from "../_hooks/use-patient-appointments";
@@ -219,7 +220,11 @@ export function PatientCardClient({ id }: { id: string }) {
                     appointments={appointments}
                   />
                 </div>
-                <PatientReferralCard patientId={patient.id} />
+                {/* MA-19: no referral is ever recorded yet, so the block
+                    could only show zeros. Back once the program is live. */}
+                {REFERRAL_PROGRAM_LIVE ? (
+                  <PatientReferralCard patientId={patient.id} />
+                ) : null}
                 <PatientTimeline patientId={patient.id} />
               </div>
             </div>

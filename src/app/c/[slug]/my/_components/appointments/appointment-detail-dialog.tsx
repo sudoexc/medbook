@@ -21,20 +21,21 @@ import { useSlots } from "../../_hooks/use-slots";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useActiveContext } from "../../_hooks/use-active-context";
 import { useIcsLink } from "../../_hooks/use-ics-link";
-import { bookHref } from "../../_lib/booking-context";
+import { bookHref, myHref } from "../../_lib/booking-context";
+import { miniAppActionErrorText } from "../../_lib/action-errors";
 import { useClinic } from "../../_hooks/use-clinic";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import {
+  isPatientCancellable,
+  patientRescheduleRefusal,
+} from "@/lib/appointments/patient-reschedule";
+import {
+  bookingDayLabelDate,
+  miniAppBookingDays,
+  tashkentSlotStartIso,
+} from "@/lib/appointments/patient-booking";
 import { CancelReasonDialog } from "./cancel-reason-dialog";
-
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
-function applyTimeToDate(dateISO: string, time: string): string {
-  const [y, m, d] = dateISO.split("-").map((v) => Number.parseInt(v, 10));
-  const [h, min] = time.split(":").map((v) => Number.parseInt(v, 10));
-  return new Date(y, (m ?? 1) - 1, d ?? 1, h ?? 0, min ?? 0).toISOString();
-}
 
 export function AppointmentDetailDialog({
   appointment,
@@ -71,22 +72,20 @@ export function AppointmentDetailDialog({
   const cancel = useCancelAppointment();
   const reschedule = useRescheduleAppointment();
 
-  const days = React.useMemo(() => {
-    const arr: { iso: string; day: string; label: string }[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + i);
-      arr.push({
-        iso: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-        day: String(d.getDate()),
-        label: d.toLocaleDateString(lang === "UZ" ? "uz-Latn-UZ" : "ru-RU", {
-          weekday: "short",
-        }),
-      });
-    }
-    return arr;
-  }, [lang]);
+  // Tashkent days, as the booking wizard offers them (MA-17): the phone's
+  // own calendar put a traveller's strip a day off around midnight.
+  const days = React.useMemo(
+    () =>
+      miniAppBookingDays().map((iso) => ({
+        iso,
+        day: String(Number(iso.slice(8, 10))),
+        label: bookingDayLabelDate(iso).toLocaleDateString(
+          lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
+          { weekday: "short", timeZone: "UTC" },
+        ),
+      })),
+    [lang],
+  );
 
   const slots = useSlots({
     doctorId: appointment.doctor.id,
@@ -96,14 +95,15 @@ export function AppointmentDetailDialog({
 
   const onCancelConfirm = async (reason: string | null) => {
     try {
-      await cancel.mutateAsync({ id: appointment.id, reason });
+      await cancel.mutateAsync({ id: appointment.id, reason, onBehalfOf });
       tg.haptic.notification("success");
       tg.showAlert(t.appts.cancelSuccess);
       setCancelOpen(false);
       onClose();
     } catch (e) {
       tg.haptic.notification("error");
-      tg.showAlert((e as Error).message);
+      // The doctor may have started the visit while this sheet was open.
+      tg.showAlert(miniAppActionErrorText(e, t));
     }
   };
 
@@ -112,18 +112,25 @@ export function AppointmentDetailDialog({
     try {
       await reschedule.mutateAsync({
         id: appointment.id,
-        startAt: applyTimeToDate(date, time),
+        // The slot is Tashkent wall clock, whatever the phone's zone.
+        startAt: tashkentSlotStartIso(date, time),
+        onBehalfOf,
       });
       tg.haptic.notification("success");
       tg.showAlert(t.appts.rescheduleSuccess);
       onClose();
     } catch (e) {
       tg.haptic.notification("error");
-      tg.showAlert((e as Error).message);
+      // Reception may queue the patient while this sheet is open.
+      tg.showAlert(miniAppActionErrorText(e, t));
     }
   };
 
-  const editable = !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(appointment.status);
+  // Same rules as the routes (patient-reschedule): cancel until the visit
+  // reaches the doctor; move only a booking that has not reached the clinic.
+  const cancellable = isPatientCancellable(appointment.status);
+  const reschedulable = patientRescheduleRefusal(appointment) === null;
+  const editable = cancellable || reschedulable;
   const completed = appointment.status === "COMPLETED";
 
   // tg.openLink routes through Telegram's browser shim; plain href fallback
@@ -171,6 +178,8 @@ export function AppointmentDetailDialog({
       date: null,
       time: null,
       onBehalfOf,
+      // Skips the service step, so clear a case an earlier run left (MA-11).
+      medicalCaseId: null,
     });
     router.push(bookHref(clinicSlug, "doctor", onBehalfOf));
   };
@@ -207,12 +216,12 @@ export function AppointmentDetailDialog({
             {t.appts.status[appointment.status as keyof typeof t.appts.status] ?? appointment.status}
           </div>
         </MCard>
-        {mode === "view" ? (
+        {mode === "view" || !reschedulable ? (
           appointment.conclusionUrl || editable || completed ? (
             <div className="grid grid-cols-1 gap-2">
               {completed ? (
                 <Link
-                  href={`/c/${clinicSlug}/my/visit/${appointment.id}`}
+                  href={myHref(clinicSlug, `visit/${appointment.id}`, onBehalfOf)}
                   onClick={() => tg.haptic.selection()}
                 >
                   <MButton variant="primary" className="w-full">
@@ -265,19 +274,27 @@ export function AppointmentDetailDialog({
                       </MButton>
                     ) : null}
                   </div>
-                  <MButton
-                    variant="secondary"
-                    onClick={() => setMode("reschedule")}
-                  >
-                    {t.appts.reschedule}
-                  </MButton>
-                  <MButton
-                    variant="danger"
-                    onClick={() => setCancelOpen(true)}
-                    disabled={cancel.isPending}
-                  >
-                    {t.appts.cancel}
-                  </MButton>
+                  {reschedulable ? (
+                    <MButton
+                      variant="secondary"
+                      onClick={() => setMode("reschedule")}
+                    >
+                      {t.appts.reschedule}
+                    </MButton>
+                  ) : (
+                    <p className="text-xs" style={{ color: "var(--tg-hint)" }}>
+                      {t.appts.rescheduleArrived}
+                    </p>
+                  )}
+                  {cancellable ? (
+                    <MButton
+                      variant="danger"
+                      onClick={() => setCancelOpen(true)}
+                      disabled={cancel.isPending}
+                    >
+                      {t.appts.cancel}
+                    </MButton>
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -360,10 +377,14 @@ export function AppointmentDetailDialog({
       isPending={cancel.isPending}
       onClose={() => setCancelOpen(false)}
       onConfirm={onCancelConfirm}
-      onPickReschedule={() => {
-        setCancelOpen(false);
-        setMode("reschedule");
-      }}
+      onPickReschedule={
+        reschedulable
+          ? () => {
+              setCancelOpen(false);
+              setMode("reschedule");
+            }
+          : undefined
+      }
     />
     </>
   );

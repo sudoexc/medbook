@@ -1,14 +1,20 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { resolvePublicClinic } from "@/lib/public-clinic";
+import { doctorServicePrice } from "@/server/services/doctor-service-price";
 
 // GET /api/kiosk/doctors — public, returns active doctors with their active
 // services for the kiosk service picker. Tenant-scoped to the resolved public
 // clinic (?c=<slug> | ?clinicSlug=<slug> | DEFAULT_CLINIC_SLUG). Runs in a
 // SYSTEM context with an explicit clinicId so the anonymous request never sees
 // another tenant's roster. The kiosk reads only `services` here (it takes the
-// cabinet from the schedule board); prices are returned in whole soms because
-// the kiosk multiplies back by 100 before `formatMoney`.
+// cabinet and the queue length from /api/c/<slug>/queue/doctors); prices are
+// returned in whole soms because the kiosk multiplies back by 100 before
+// `formatMoney`.
+//
+// Each service carries its id (audit Q-06): the kiosk sends it with the
+// walk-in, which stores the service and this same doctor's price on the
+// visit. A name alone was shown and then thrown away.
 export async function GET(request: Request) {
   const clinic = await resolvePublicClinic(request);
   if (!clinic) return Response.json([]);
@@ -27,6 +33,7 @@ export async function GET(request: Request) {
             priceOverride: true,
             service: {
               select: {
+                id: true,
                 nameRu: true,
                 nameUz: true,
                 priceBase: true,
@@ -48,10 +55,11 @@ export async function GET(request: Request) {
       services: d.services
         .filter((s) => s.service.isActive)
         .map((s) => ({
+          id: s.service.id,
           nameRu: s.service.nameRu,
           nameUz: s.service.nameUz,
           // DB stores tiins; kiosk expects whole soms and re-applies *100.
-          price: Math.round((s.priceOverride ?? s.service.priceBase) / 100),
+          price: Math.round(doctorServicePrice(s, s.service) / 100),
         })),
     })),
   );

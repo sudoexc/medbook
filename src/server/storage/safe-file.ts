@@ -20,6 +20,11 @@
 
 import { contentDisposition } from "@/lib/content-disposition";
 
+// Re-exported so file-serving routes take every storage header from one
+// module; the helper itself is client-safe and lives in lib (audit AN-26,
+// DC-03).
+export { contentDisposition };
+
 export const IMAGE_TYPES = [
   "image/jpeg",
   "image/png",

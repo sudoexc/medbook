@@ -7,15 +7,18 @@
  * pro-feature surface.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
+import { CALL_CENTER_ROLES } from "@/lib/calls/roles";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, parseQuery } from "@/server/http";
+import { err, ok, parseQuery } from "@/server/http";
 import { CreateCallSchema, QueryCallSchema } from "@/server/schemas/call";
 import { ensureFeature } from "@/server/platform/feature-guard";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import { checkCallRefs } from "@/server/telephony/call-refs";
+import { CALLED_BACK_TAG } from "@/lib/calls/call-state";
 
 export const GET = createApiListHandler(
-  { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"] },
+  { roles: [...CALL_CENTER_ROLES] },
   async ({ request, ctx }) => {
     const block = await ensureFeature(ctx, "hasCallCenter");
     if (block) return block;
@@ -33,6 +36,14 @@ export const GET = createApiListHandler(
         ...(q.to ? { lte: q.to } : {}),
       };
     }
+    // The live queue asks the server for open calls: filtering the latest
+    // 50 rows on the client dropped a ringing call once 50 newer ones had
+    // ended.
+    if (q.open === "true") where.endedAt = null;
+    if (q.open === "false") where.endedAt = { not: null };
+    // The «Пропущенные» list (audit CM-13), by call-back state.
+    if (q.callback === "pending") where.NOT = { tags: { has: CALLED_BACK_TAG } };
+    if (q.callback === "done") where.tags = { has: CALLED_BACK_TAG };
     if (q.q) {
       where.OR = [
         { fromNumber: { contains: q.q } },
@@ -62,10 +73,14 @@ export const GET = createApiListHandler(
 );
 
 export const POST = createApiHandler(
-  { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"], bodySchema: CreateCallSchema },
+  { roles: [...CALL_CENTER_ROLES], bodySchema: CreateCallSchema },
   async ({ request, body, ctx }) => {
     const block = await ensureFeature(ctx, "hasCallCenter");
     if (block) return block;
+    if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
+    // Only this clinic's patient, user and visit (audit CM-09).
+    const problem = await checkCallRefs(prisma, ctx.clinicId, body);
+    if (problem) return err("InvalidReference", 400, { reason: problem });
     const created = await prisma.call.create({
       data: {
         direction: body.direction,

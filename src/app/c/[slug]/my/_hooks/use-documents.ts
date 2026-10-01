@@ -20,7 +20,11 @@ export type MiniAppDocument = {
   seq: number;
 };
 
-export function useDocuments() {
+/**
+ * The active patient's documents: the owner's, or the relative's chosen in
+ * the switcher (audit MA-18; the list used to show the owner's own).
+ */
+export function useDocuments(activePatientId?: string | null) {
   const { request, clinicSlug } = useMiniAppFetch();
   const { state } = useMiniAppAuth();
   // Wait until the auth provider has finished the init-data exchange —
@@ -29,11 +33,14 @@ export function useDocuments() {
   // 401 `missing_init_data`, and the docs page renders empty until the
   // user retries.
   return useQuery<MiniAppDocument[]>({
-    queryKey: ["miniapp", "documents", clinicSlug],
+    queryKey: ["miniapp", "documents", clinicSlug, activePatientId ?? "self"],
     enabled: state.status === "ready",
     queryFn: async ({ signal }) => {
       const body = await request<{ documents: MiniAppDocument[] }>(
         "/api/miniapp/documents",
+        {
+          searchParams: activePatientId ? { onBehalfOf: activePatientId } : undefined,
+        },
       );
       return body.documents;
     },
@@ -57,13 +64,15 @@ export type UploadDocumentError = Error & {
  * the multipart boundary automatically — overriding Content-Type would
  * break the upload.
  */
-export function useUploadDocument() {
+export function useUploadDocument(activePatientId?: string | null) {
   const { clinicSlug, initData, isTelegramContext } = useMiniAppAuth();
   const qc = useQueryClient();
   return useMutation<MiniAppDocument, UploadDocumentError, UploadDocumentInput>({
     mutationFn: async (input) => {
       const url = new URL("/api/miniapp/documents", window.location.origin);
       url.searchParams.set("clinicSlug", clinicSlug);
+      // The file lands on the card shown in the switcher (MA-18).
+      if (activePatientId) url.searchParams.set("onBehalfOf", activePatientId);
       const form = new FormData();
       form.append("file", input.file);
       if (input.title) form.append("title", input.title);

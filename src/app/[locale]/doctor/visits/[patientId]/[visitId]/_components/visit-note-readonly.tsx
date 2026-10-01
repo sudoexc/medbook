@@ -1,4 +1,9 @@
-import { CalendarIcon, ClockIcon, SparklesIcon } from "lucide-react";
+import {
+  CalendarIcon,
+  ClockIcon,
+  FilePenLineIcon,
+  SparklesIcon,
+} from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { formatDate, type Locale } from "@/lib/format";
@@ -20,6 +25,14 @@ type Note = {
   advice: string[];
   bodyMarkdown: string | null;
   aiGenerated: boolean;
+  /** Corrections appended after signing, oldest first (audit DC-06). */
+  amendments: Array<{
+    id: string;
+    reason: string;
+    text: string;
+    createdAt: string;
+    author: string | null;
+  }>;
   appointment: {
     date: string;
     endDate: string;
@@ -71,6 +84,40 @@ export async function VisitNoteReadOnly({ note }: { note: Note }) {
           )}
         </div>
       </section>
+
+      {/* DC-06: a correction outranks the text it corrects, so it sits above
+          the original fields (never merged into them: the signed text stays
+          what the patient holds on paper). */}
+      {note.amendments.length > 0 && (
+        <section className="rounded-2xl border border-info/30 bg-info/5 px-5 py-4">
+          <h3 className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--info)]">
+            <FilePenLineIcon className="size-3.5" />
+            {t("note.amendments")}
+          </h3>
+          <p className="mb-2 text-xs text-muted-foreground">
+            {t("note.amendmentsHint")}
+          </p>
+          <ol className="flex flex-col">
+            {note.amendments.map((a) => (
+              <li
+                key={a.id}
+                className="border-t border-info/20 py-2.5 first:border-t-0 first:pt-0 last:pb-0"
+              >
+                <div className="text-xs font-medium text-muted-foreground">
+                  {day(a.createdAt)} · {hhmm(a.createdAt)}
+                  {a.author ? ` · ${a.author}` : ""}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {t("note.amendmentReason", { reason: a.reason })}
+                </div>
+                <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                  {a.text}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {/* Every diagnosis of the visit: the main one as before, the others
           (up to three since 29.09.2026) under a «Сопутствующие» label, so

@@ -23,15 +23,13 @@ export type MiniAppDoctor = {
     | { service: { id: string; category: string | null; priceBase: number } }
     | { serviceId: string }
   )[];
+  /**
+   * The service a booking with this doctor is made for, decided on the
+   * server (audit MA-08): the admin's pick or the doctor's only active
+   * service. Null: not bookable online, the wizard says to call instead.
+   */
+  onlineServiceId: string | null;
 };
-
-function linkServiceId(
-  link: MiniAppDoctor["services"][number],
-): string | null {
-  if ("service" in link && link.service?.id) return link.service.id;
-  if ("serviceId" in link && link.serviceId) return link.serviceId;
-  return null;
-}
 
 /**
  * Min positive priceBase across a doctor's services. Returns null when no
@@ -51,40 +49,6 @@ export function minDoctorPrice(
     }
   }
   return min;
-}
-
-/**
- * Pick the default service for a doctor — the one we auto-assign to the
- * booking draft when the wizard advances past the doctor step (the API
- * still requires `serviceIds[]`, but the UX only asks the patient to pick
- * a specialty → doctor → slot). Prefers a consultation-category service,
- * then the cheapest one; if only flat IDs are available (legacy shape),
- * returns the first one.
- */
-export function pickDefaultService(
-  links: MiniAppDoctor["services"],
-): string | null {
-  if (!links || links.length === 0) return null;
-  const nested = links.filter(
-    (l): l is { service: { id: string; category: string | null; priceBase: number } } =>
-      "service" in l && !!l.service?.id,
-  );
-  if (nested.length > 0) {
-    const consult = nested.find((l) =>
-      (l.service.category ?? "").toLowerCase().includes("консульт"), // i18n-allow: db-matcher
-    );
-    if (consult) return consult.service.id;
-    const cheapest = [...nested].sort(
-      (a, b) => a.service.priceBase - b.service.priceBase,
-    )[0];
-    return cheapest.service.id;
-  }
-  // Legacy flat shape — pick first available serviceId.
-  for (const l of links) {
-    const id = linkServiceId(l);
-    if (id) return id;
-  }
-  return null;
 }
 
 /**

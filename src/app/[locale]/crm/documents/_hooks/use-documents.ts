@@ -2,6 +2,8 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 
+import type { DocumentSourceValue } from "@/lib/document-guards";
+
 export type DocumentType =
   | "REFERRAL"
   | "PRESCRIPTION"
@@ -19,6 +21,8 @@ export interface DocumentFilters {
   from: string;
   to: string;
   pendingSignature: boolean;
+  /** CD-06: from the patient / uploaded by the clinic / rendered. */
+  source: DocumentSourceValue | "";
 }
 
 export const DEFAULT_FILTERS: DocumentFilters = {
@@ -29,16 +33,24 @@ export const DEFAULT_FILTERS: DocumentFilters = {
   from: "",
   to: "",
   pendingSignature: false,
+  source: "",
 };
 
 export interface DocumentRow {
   id: string;
   title: string;
-  type: DocumentType;
+  // Rendered conclusions come back too; they are labelled, never filed here.
+  type: DocumentType | "CONCLUSION";
   fileUrl: string;
   mimeType: string | null;
   sizeBytes: number | null;
   signedAt: string | null;
+  /** CD-09: voided by ADMIN with a reason, kept as a record. */
+  voidedAt: string | null;
+  voidReason: string | null;
+  source: DocumentSourceValue;
+  visitNoteId: string | null;
+  referralId: string | null;
   createdAt: string;
   patient: { id: string; fullName: string } | null;
   appointment: {
@@ -62,6 +74,7 @@ function buildQs(filters: DocumentFilters, cursor: string | null) {
   if (filters.from) sp.set("from", filters.from);
   if (filters.to) sp.set("to", filters.to);
   if (filters.pendingSignature) sp.set("pendingSignature", "true");
+  if (filters.source) sp.set("source", filters.source);
   if (cursor) sp.set("cursor", cursor);
   sp.set("limit", "50");
   return sp.toString();

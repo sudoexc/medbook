@@ -23,6 +23,8 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ok, err, parseQuery } from "@/server/http";
+import { CLINICAL_FORMS_ISSUING } from "@/lib/clinical-forms-issuing";
+import { formRetired } from "@/server/clinical-forms/retired";
 import {
   CreateLabOrderSchema,
   QueryLabOrdersSchema,
@@ -32,6 +34,9 @@ export const POST = createApiHandler(
   { roles: ["DOCTOR"], bodySchema: CreateLabOrderSchema },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+    // CD-07: issuing new forms is switched off (`@/lib/clinical-forms-issuing`);
+    // the list, print and cancel routes keep serving the ones issued earlier.
+    if (!CLINICAL_FORMS_ISSUING) return formRetired("lab-order");
 
     if (body.testCodes.length === 0 && body.panelCodes.length === 0) {
       return err("BadRequest", 400, { reason: "empty_order" });

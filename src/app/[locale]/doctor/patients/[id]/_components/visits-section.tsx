@@ -22,6 +22,7 @@ import {
   type DoctorPatientVisitRow,
 } from "../../_hooks/use-doctor-patient-visits";
 import { documentHref } from "@/lib/storage-ref";
+import { isPatientDocument } from "@/lib/document-guards";
 
 const RU_MONTHS_SHORT = [
   "янв.",
@@ -142,6 +143,7 @@ export function VisitsSection({
                   <PaperclipIcon className="size-3" />
                   {d.title}
                 </a>
+                {isPatientDocument(d) ? <PatientUploadTag /> : null}
               </li>
             ))}
             {unattached.labs.map((l) => (
@@ -238,6 +240,14 @@ function VisitEntry({
             {isDraft ? (
               <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-text">
                 {t("visits.draft")}
+              </span>
+            ) : null}
+            {/* DC-06: the row shows the conclusion as signed; a correction
+                appended later lives only on the conclusion page, so the row
+                says one exists before the old text is taken as current. */}
+            {(v.amendmentsCount ?? 0) > 0 ? (
+              <span className="shrink-0 rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-[color:var(--info)]">
+                {t("visits.amended")}
               </span>
             ) : null}
           </div>
@@ -337,6 +347,7 @@ function VisitEntry({
                   >
                     {d.title}
                   </a>
+                  {isPatientDocument(d) ? <PatientUploadTag /> : null}
                 </li>
               ))}
             </DetailBlock>
@@ -378,6 +389,19 @@ function VisitEntry({
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * CD-06: a file the patient sent from the Mini App, unchecked by the clinic,
+ * whatever type it carries.
+ */
+function PatientUploadTag() {
+  const t = useTranslations("doctor.patients");
+  return (
+    <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+      {t("visits.fromPatient")}
+    </span>
   );
 }
 

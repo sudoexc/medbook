@@ -115,6 +115,7 @@ vi.mock("@/lib/prisma", () => {
     prisma: {
       patient,
       appointment: { findMany: vi.fn(async () => []) },
+      patientFamily: { findMany: vi.fn(async () => []) },
       $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ patient })),
     },
   };

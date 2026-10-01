@@ -54,6 +54,7 @@ export const ruDict = {
       medsLabel: "Лекарства",
       medsTitle: "Пора принять {drug}",
       medsHint: "{dosage} · в {time}",
+      medsHintDated: "{dosage} · {date} в {time}",
       resultsLabel: "Новый документ",
       resultsTitle: "Заключение готово",
       emptyTitle: "Всё спокойно",
@@ -142,6 +143,7 @@ export const ruDict = {
     pickDoctor: "Выберите специалиста",
     pickSlot: "Выберите дату и время",
     noDoctors: "В этой клинике пока нет доступных врачей",
+    doctorNotOnline: "Онлайн-запись к этому врачу пока не настроена. Запишитесь по телефону клиники.",
     noSpecializations: "В этой клинике пока нет специалистов",
     noSlots: "Свободных слотов нет",
     priceFrom: "от {price}",
@@ -163,6 +165,21 @@ export const ruDict = {
     bookInProgress: "Записываем…",
     errorConflict: "Этот слот уже занят. Выберите другое время.",
     errorBooking: "Не удалось создать запись: {reason}",
+    // Booking and reschedule refusals by code (MA-14, MA-17): the sheet used
+    // to show the raw code («doctor_busy»).
+    errorLimitDoctor:
+      "Вы уже записаны к этому врачу. Если нужно другое время, перенесите эту запись в разделе «Мои записи».",
+    errorLimitTotal:
+      "Через приложение можно держать не больше {count} предстоящих записей. Отмените или перенесите одну из них, чтобы записаться ещё.",
+    errorLimitAccount:
+      "С одного аккаунта через приложение можно держать не больше {count} предстоящих записей на себя и родственников вместе. Отмените или перенесите одну из них, чтобы записаться ещё.",
+    errorRateLimited: "Слишком много попыток записи. Попробуйте через несколько минут.",
+    errorBeyondHorizon: "Онлайн-запись открыта на {days} дней вперёд. Выберите дату поближе.",
+    errorOffGrid: "Это время недоступно для записи. Выберите время из списка.",
+    errorPast: "Это время уже прошло. Выберите другое.",
+    errorOutsideHours: "Врач не принимает в это время. Выберите другое время.",
+    errorUnavailable: "Онлайн-запись к этому врачу сейчас недоступна. Позвоните в клинику.",
+    errorGeneric: "Не получилось. Попробуйте ещё раз.",
     bookingFor: "Запись для",
     contextChanged:
       "Эта запись собиралась для другого человека. Начните заново, чтобы записать нужного.",
@@ -216,6 +233,11 @@ export const ruDict = {
     notReadyTitle: "Заключение готовится",
     notReadyHint:
       "Врач ещё оформляет заключение. Загляните сюда чуть позже — обычно это занимает несколько минут.",
+    // G3-03 — corrections the doctor appended after the 24h edit window.
+    amendmentsTitle: "Исправления врача",
+    amendmentsHint:
+      "Врач дополнил заключение после приёма. Если исправление расходится с текстом выше, верно исправление.",
+    amendmentReason: "Причина: {reason}",
   },
   appts: {
     title: "Мои записи",
@@ -240,6 +262,11 @@ export const ruDict = {
     rescheduleSuccess: "Запись перенесена",
     rescheduleTitle: "Новое время",
     rescheduleSave: "Сохранить новое время",
+    rescheduleArrived:
+      "Вы уже отметились в клинике, поэтому перенести этот визит можно только через регистратуру.",
+    notEditable: "Эту запись уже нельзя изменить. Если нужно, позвоните в клинику.",
+    paymentLocked:
+      "По этой записи уже есть оплата, поэтому услуги в ней меняет регистратура.",
     paid: "Оплачено",
     unpaid: "Не оплачено",
     conclusion: "Заключение",
@@ -280,6 +307,9 @@ export const ruDict = {
     uploadErrorTooLarge: "Файл слишком большой (макс. 10 МБ)",
     uploadErrorMime: "Поддерживаются фото и PDF",
     uploadErrorGeneric: "Не удалось загрузить файл",
+    uploadErrorRateLimited: "Слишком много загрузок за час. Попробуйте позже.",
+    uploadErrorDailyQuota: "Достигнут дневной лимит загрузок (200 МБ). Попробуйте завтра.",
+    uploadErrorTotalQuota: "Достигнут общий лимит документов (1 ГБ). Принесите остальные документы в клинику.",
     types: {
       CONCLUSION: "Заключение",
       REFERRAL: "Направление",
@@ -316,6 +346,7 @@ export const ruDict = {
   treatmentPlan: {
     title: "План лечения",
     progress: "{done} из {total} визитов",
+    visitsDone: "Визитов: {n}",
     nextVisit: "следующий {date}",
     empty: "Нет активного плана лечения",
     bookCta: "Записаться",
@@ -334,6 +365,10 @@ export const ruDict = {
     },
     unlink: "Отвязать",
     confirmUnlink: "Отвязать {name} из семьи?",
+    // The unlink is refused while the relative holds Mini App bookings
+    // ahead (MA-14): they would stop counting toward the account.
+    unlinkHasBookings:
+      "У родственника есть предстоящие записи через приложение. Отвязать можно после этих визитов или после их отмены.",
     activeContext: "Действуем от имени: {name}",
     maxReached: "Можно добавить максимум 5 родственников",
     duplicate: "Этот пациент уже в семье",
@@ -370,7 +405,11 @@ export const ruDict = {
     saving: "Отправляем…",
     submittedAt: "Отправлено: {at}",
     thankYou: "Спасибо! Ваши ответы переданы врачу.",
-    notOpen: "Эта запись уже завершена — анкету заполнять не нужно.",
+    notOpen: "Анкета для этой записи уже закрыта.",
+    closedCancelled: "Эта запись отменена, анкету заполнять не нужно.",
+    closedCompleted: "Приём уже состоялся, анкету заполнять не нужно.",
+    closedNoShow: "Время этой записи прошло, анкету заполнять не нужно.",
+    closedInProgress: "Приём уже идёт. Расскажите всё врачу на месте.",
     notFound: "Запись не найдена.",
     forbidden: "Нет доступа к этой записи.",
     error: "Не удалось отправить. Попробуйте ещё раз.",
@@ -463,6 +502,8 @@ export const ruDict = {
     deleteConfirmHelp:
       "Это нужно, чтобы случайно не удалить аккаунт другого пациента.",
     deleteConfirmMismatch: "Номер не совпадает с указанным в профиле.",
+    deleteConfirmWordLabel: "Номера в профиле нет. Для подтверждения введите слово УДАЛИТЬ",
+    deleteConfirmWordMismatch: "Введите слово УДАЛИТЬ, как написано выше.",
     deleteSubmit: "Удалить через 90 дней",
     deleteSaving: "Создаём запрос…",
     deleteSuccess:

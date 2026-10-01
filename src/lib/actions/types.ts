@@ -63,6 +63,12 @@ export const ACTION_TYPES = [
   // surfaces at the chosen time and lives until a person closes it. Dedupe
   // keyed off the appointment the call was about.
   "PATIENT_CALLBACK",
+  // Audit G3-01 (review) — the patient pressed «Я на месте» in the Mini App
+  // and nobody marked him «Пришёл». The lifecycle sweep no longer turns such
+  // a booking into a no-show; an hour after the slot it hands reception this
+  // task instead, so the visit does not stay a booking with no one deciding.
+  // Dedupe keyed off appointmentId.
+  "SELF_CHECK_IN_UNHANDLED",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -416,6 +422,25 @@ export type PatientCallbackPayload = {
   note: string;
 };
 
+/**
+ * Audit G3-01 (review) — a Mini App check-in nobody answered. Written by the
+ * lifecycle sweep at the auto no-show cutoff (an hour after the slot) in
+ * place of the no-show: the patient said he was here, so only a person may
+ * decide what happened. Lives until a person closes it or the visit leaves
+ * the booking states (`retireMootRiskActions`).
+ */
+export type SelfCheckInUnhandledPayload = {
+  type: "SELF_CHECK_IN_UNHANDLED";
+  appointmentId: string;
+  patientId: string;
+  patientName: string;
+  doctorName: string;
+  /** ISO-8601 datetime of the appointment start (UTC). */
+  appointmentAt: string;
+  /** ISO-8601 instant of the «Я на месте» tap (UTC). */
+  arrivedAt: string;
+};
+
 export type ActionPayload =
   | EmptySlotTomorrowPayload
   | DormantBatchPayload
@@ -432,7 +457,8 @@ export type ActionPayload =
   | VisitFollowUpDuePayload
   | TelegramLinkConflictPayload
   | NoContactCallPayload
-  | PatientCallbackPayload;
+  | PatientCallbackPayload
+  | SelfCheckInUnhandledPayload;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -486,6 +512,8 @@ export function dedupeKeyFor(payload: ActionPayload): string {
       return `NO_CONTACT_CALL:appointmentId=${payload.appointmentId}`;
     case "PATIENT_CALLBACK":
       return `PATIENT_CALLBACK:appointmentId=${payload.appointmentId}`;
+    case "SELF_CHECK_IN_UNHANDLED":
+      return `SELF_CHECK_IN_UNHANDLED:appointmentId=${payload.appointmentId}`;
     default: {
       // Compile-time exhaustiveness guard.
       const _exhaustive: never = payload;
@@ -513,6 +541,34 @@ export function riskDedupeKeysOf(appointmentId: string): string[] {
       ...base,
       doctorName: "",
       daysSinceContact: null,
+    }),
+  ];
+}
+
+/**
+ * Types whose task is about a visit still waiting for its patient, so it
+ * goes once the visit leaves BOOKED / CONFIRMED (`server/actions/in-clinic`):
+ * the risk rows, and a Mini App check-in nobody answered (review of G3-01),
+ * which «Пришёл», «Не пришёл» or a cancel settles just the same. Kept apart
+ * from `RISK_ACTION_TYPES`, which also builds the risk-today call list.
+ */
+export const VISIT_BOUND_ACTION_TYPES = [
+  ...RISK_ACTION_TYPES,
+  "SELF_CHECK_IN_UNHANDLED",
+] as const satisfies readonly ActionType[];
+
+/** Dedupe keys of every `VISIT_BOUND_ACTION_TYPES` row of one appointment. */
+export function visitBoundDedupeKeysOf(appointmentId: string): string[] {
+  return [
+    ...riskDedupeKeysOf(appointmentId),
+    dedupeKeyFor({
+      type: "SELF_CHECK_IN_UNHANDLED",
+      appointmentId,
+      patientId: "",
+      patientName: "",
+      doctorName: "",
+      appointmentAt: "",
+      arrivedAt: "",
     }),
   ];
 }
@@ -549,6 +605,9 @@ export function actionSubjectOf(payload: ActionPayload): string | null {
       return `appointmentId=${payload.appointmentId ?? ""}`;
     case "PATIENT_CALLBACK":
       return `reason=${payload.reason}:callbackAt=${payload.callbackAt}`;
+    // A new tap after the visit moved is a new question for reception.
+    case "SELF_CHECK_IN_UNHANDLED":
+      return `appointmentAt=${payload.appointmentAt}:arrivedAt=${payload.arrivedAt}`;
     case "EMPTY_SLOT_TOMORROW":
     case "DORMANT_BATCH":
     case "OVERDUE_FOLLOW_UP":
@@ -601,6 +660,9 @@ export function defaultSeverity(type: ActionType): ActionSeverity {
     // the day it falls due.
     case "PATIENT_CALLBACK":
       return "high";
+    // The patient may still be sitting in the hall, or was sent home unmet.
+    case "SELF_CHECK_IN_UNHANDLED":
+      return "high";
     case "LOW_DOCTOR_SCHEDULE":
       return "low";
     default: {
@@ -630,6 +692,7 @@ export function defaultDeeplinkPath(type: ActionType): string {
     case "UNCONFIRMED_24H":
     case "NO_SHOW_RISK_HIGH":
     case "PAYMENT_OVERDUE":
+    case "SELF_CHECK_IN_UNHANDLED":
       return "/crm/appointments";
     case "LOW_DOCTOR_SCHEDULE":
       return "/crm/doctors";
@@ -704,7 +767,9 @@ export function actionDeeplinkPath(payload: ActionPayload): string {
     case "UNCONFIRMED_24H":
     case "NO_SHOW_RISK_HIGH":
     case "PAYMENT_OVERDUE":
-      // The visit's drawer: confirm, move, or take the payment right there.
+    case "SELF_CHECK_IN_UNHANDLED":
+      // The visit's drawer: confirm, move, take the payment, or mark the
+      // checked-in patient «Пришёл» / «Не пришёл» right there.
       return appointmentPath(payload.type, payload.appointmentId);
     case "CASE_REPEAT_DUE":
       return entityPath(payload.type, "/crm/cases", payload.caseId);
@@ -771,6 +836,7 @@ export function defaultAssigneeRole(type: ActionType): "ADMIN" | "RECEPTIONIST" 
     case "TELEGRAM_LINK_CONFLICT":
     case "NO_CONTACT_CALL":
     case "PATIENT_CALLBACK":
+    case "SELF_CHECK_IN_UNHANDLED":
       return "RECEPTIONIST";
     default: {
       const _exhaustive: never = type;

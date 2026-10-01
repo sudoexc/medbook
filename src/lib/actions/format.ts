@@ -205,6 +205,14 @@ function valuesFor(
         note: payload.note,
         hasNote: payload.note?.trim() ? "yes" : "no",
       };
+    case "SELF_CHECK_IN_UNHANDLED":
+      return {
+        patientName: payload.patientName,
+        doctorName: payload.doctorName,
+        slotTime: formatHM(payload.appointmentAt),
+        slotDate: formatDM(payload.appointmentAt, locale),
+        arrivedTime: formatHM(payload.arrivedAt),
+      };
     default: {
       const _exhaustive: never = payload;
       throw new Error(

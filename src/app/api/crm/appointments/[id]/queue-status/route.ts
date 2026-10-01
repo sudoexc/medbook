@@ -21,8 +21,8 @@ import {
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 import {
-  canMutateStatus,
   canRoleAdvanceTo,
+  canUseQueueStatusRoute,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import { confirmAppointment } from "@/server/appointments/confirm";
@@ -57,15 +57,19 @@ export const PATCH = createApiHandler(
   {
     // Q-04 — NURSE reads today's appointments and never moves them (the
     // permission matrix); the route used to let her flip any visit to
-    // «Не пришёл» or «Пропущен» from devtools.
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    // «Не пришёл» or «Пропущен» from devtools. CM-08 — the call operator
+    // comes in for «Подтвердить» only (`canUseQueueStatusRoute`).
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"],
     bodySchema: QueueStatusUpdateSchema,
   },
   async ({ request, body, ctx }) => {
     const id = idFromUrl(request);
     if (
       ctx.kind === "TENANT" &&
-      !canMutateStatus(ctx.role as LifecycleRole)
+      !canUseQueueStatusRoute(
+        ctx.role as LifecycleRole,
+        body.queueStatus as AppointmentStatus,
+      )
     ) {
       return forbidden();
     }
@@ -150,7 +154,7 @@ export const PATCH = createApiHandler(
     // Role-ownership: doctors drive IN_PROGRESS / COMPLETED, reception drives
     // the rest. Mirrors `STATE_OWNERS` in `lib/appointments/lifecycle.ts` so a
     // stale tab or scripted call can't bypass the UI gate. NURSE never gets
-    // here (`canMutateStatus` above), so we only need to gate the
+    // here (`canUseQueueStatusRoute` above), so we only need to gate the
     // intersection where the role is otherwise permitted but the target is
     // not theirs to drive.
     const tenantPreCheck = getTenant();

@@ -1379,6 +1379,19 @@
       "deleted": "Hujjat o'chirildi",
       "deleteError": "Hujjatni o'chirib bo'lmadi",
       "deleteForbidden": "Hujjatlarni faqat administrator o'chira oladi",
+      "deleteLocked": "Xulosa, yo'llanma va imzolangan rozilikni o'chirib bo'lmaydi",
+      "patientBadge": "Bemordan",
+      "signedBadge": "Imzolangan",
+      "voidedBadge": "Bekor qilingan",
+      "voidedReason": "Bekor qilingan: {reason}",
+      "voidAria": "Hujjatni bekor qilish",
+      "voidTitle": "«{name}» bekor qilinsinmi?",
+      "voidHint": "Imzolangan hujjat o'chirilmaydi. U kartada «Bekor qilingan» belgisi bilan qoladi, fayl saqlanadi, bemor esa uni Telegramda boshqa ko'rmaydi. Sababini yozing.",
+      "voidReasonPlaceholder": "Sabab, masalan: boshqa bemorning imzosi",
+      "voidBack": "Orqaga",
+      "voidConfirm": "Bekor qilish",
+      "voided": "Hujjat bekor qilindi",
+      "voidError": "Bekor qilib bo'lmadi, qaytadan urinib ko'ring",
       "empty": "Hujjatlar yo'q",
       "emptyDescription": "Fayl yuklang yoki bemorda rozilikni imzolang.",
       "emptyFiltered": "Tanlangan filtrlar bo'yicha hech narsa topilmadi",
@@ -1387,10 +1400,31 @@
       "typeFilterAll": "Barcha turlar",
       "clearFilters": "Filtrlarni tozalash",
       "loadMore": "Yana yuklash",
+      "issuedForms": {
+        "title": "Berilgan retseptlar va kasallik varaqalari",
+        "hint": "Tizimda yangilari endi yozilmaydi. Bu yerda avval berilganlarini qayta chop etish yoki bekor qilish mumkin.",
+        "kindRx": "Retsept",
+        "kindSl": "Kasallik varaqasi",
+        "issuedOn": "{date} berilgan",
+        "period": "{from} dan {to} gacha",
+        "statusActive": "Amal qiladi",
+        "statusExpired": "Muddati o'tgan",
+        "statusCancelled": "Bekor qilingan",
+        "print": "Chop etish",
+        "cancel": "Bekor qilish",
+        "cancelTitle": "{number} bekor qilinsinmi?",
+        "cancelHint": "Hujjat tizimda qoladi, QR kod orqali tekshiruv uning bekor qilinganini ko'rsatadi. Sababini yozing.",
+        "cancelReasonPlaceholder": "Bekor qilish sababi",
+        "cancelBack": "Orqaga",
+        "cancelConfirm": "Bekor qilish",
+        "cancelled": "Hujjat bekor qilindi",
+        "cancelError": "Bekor qilib bo'lmadi, qaytadan urinib ko'ring"
+      },
       "types": {
         "referral": "Yo'llanma",
         "prescription": "Retsept",
         "result": "Natija",
+        "conclusion": "Xulosa",
         "consent": "Rozilik",
         "contract": "Shartnoma",
         "receipt": "Chek",
@@ -1400,6 +1434,15 @@
       "signature": {
         "title": "Bemor imzosi",
         "hint": "Yuqoridagi maydonda imzo chizishni so'rang.",
+        "hintUnbound": "Hujjat tanlanmasa, imzo «Boshqa» sifatida saqlanadi va imzolangan rozilik hisoblanmaydi.",
+        "noPendingConsents": "Bemorda imzo kutayotgan rozilik yo'q. Rozilikni imzolatish uchun avval uni hujjatlarga yuklang.",
+        "consentLabel": "Bemor imzolaydigan hujjat",
+        "consentNone": "Rozilikka bog'lamaslik",
+        "docTitle": "Bemor imzosi {date}",
+        "docTitleFor": "Imzo: {title}",
+        "saved": "Imzo saqlandi",
+        "error": "Imzoni saqlab bo'lmadi. Qaytadan urinib ko'ring.",
+        "errorConsent": "Bu hujjat allaqachon imzolangan yoki imzo kutmayapti",
         "clear": "Tozalash",
         "cancel": "Bekor qilish",
         "save": "Saqlash",
@@ -1754,11 +1797,13 @@
         "remindersOn": "Eslatmalar",
         "daysShort": "{n, plural, one {# kun} other {# kun}}",
         "openEnded": "muddatsiz",
+        "errorNotAuthor": "Tayinlovni faqat uning muallifi yoki administrator o'zgartira yoki o'chira oladi",
         "validation": {
           "drugRequired": "Dori nomini kiriting",
           "dosageRequired": "Dozani kiriting",
           "timesRequired": "Kamida bitta qabul vaqtini qo'shing (HH:mm)",
-          "doctorRequired": "Shifokorni tanlang"
+          "doctorRequired": "Shifokorni tanlang",
+          "timesInvalid": "Vaqtga o'xshamaydi: {values}. Vaqtni 09:00 yoki 9:00 ko'rinishida, 00:00 dan 23:59 gacha kiriting"
         },
         "status": {
           "ACTIVE": "Faol",
@@ -1859,7 +1904,13 @@
     "autoRefresh": "Avtomatik yangilanadi",
     "live": {
       "patientArrived": "Bemor keldi",
-      "fallbackName": "Bemor"
+      "fallbackName": "Bemor",
+      "selfCheckInTitle": "Bemor ilovada belgi qo'ydi: «Men keldim»",
+      "selfCheckInBadge": "Ilovada belgi qo'ydi",
+      "selfCheckInBadgeAt": "Ilovada {time} da belgi qo'ydi",
+      "selfCheckInHint": "Bemor uni kutib olishlarini kutmoqda. U qabulxonaga kelganda «Keldi» tugmasini bosing.",
+      "open": "Ochish",
+      "dismiss": "Tushunarli"
     },
     "walkin": {
       "trigger": "Talon berish",
@@ -2115,6 +2166,7 @@
       "rejectAria": "Rad etish",
       "quickBookAria": "Tezkor yozilish",
       "rejectedToast": "Qo‘ng‘iroq rad etildi",
+      "rejectAnswered": "Qo'ng'iroq allaqachon qabul qilingan, uni rad etib bo'lmaydi",
       "nowLabel": "hozir"
     },
     "tg": {
@@ -2831,6 +2883,21 @@
       "loadError": "Xizmatlarni yuklab bo'lmadi",
       "currencySum": "so'm",
       "minShort": "daq"
+    },
+    "onlineService": {
+      "title": "Onlayn yozilish",
+      "hint": "Bemor Telegram orqali o'zi yoziladigan xizmat. Qabul narxi va davomiyligi shundan olinadi.",
+      "label": "Onlayn yozilish xizmati",
+      "none": "Tanlanmagan",
+      "statusChosen": "Bemorlar «{service}» xizmatiga yoziladi.",
+      "statusOnly": "Shifokorda bitta faol xizmat bor, onlayn yozilish unga bo'ladi: «{service}».",
+      "statusAmbiguous": "Shifokorda bir nechta xizmat bor. Xizmat tanlanmaguncha unga onlayn yozilish mavjud emas.",
+      "statusNone": "Shifokorda faol xizmatlar yo'q, u onlayn yozilishda ko'rinmaydi.",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "Saqlandi",
+      "saveFailed": "Saqlab bo'lmadi",
+      "loadError": "Onlayn yozilish sozlamasini yuklab bo'lmadi"
     },
     "weekdays": {
       "mon": "Dushanba",
@@ -3684,7 +3751,29 @@
       "unknownCaller": "Noma'lum raqam",
       "newCallToast": "{name} dan qo'ng'iroq ({phone})",
       "pollingHint": "Har 5 soniyada yangilanadi",
-      "polling": "Yangilanmoqda"
+      "polling": "Yangilanmoqda",
+      "tabsAriaLabel": "Qo'ng'iroqlar ro'yxatlari"
+    },
+    "missed": {
+      "title": "O'tkazilganlar",
+      "ariaLabel": "Bugungi o'tkazilgan qo'ng'iroqlar",
+      "loading": "Yuklanmoqda…",
+      "emptyTitle": "O'tkazilgan qo'ng'iroqlar yo'q",
+      "emptyDescription": "Bugun hech kim javob bermagan qo'ng'iroqlar shu yerda chiqadi.",
+      "markCalledBack": "Qayta qo'ng'iroq qildim",
+      "calledBack": "Qayta qo'ng'iroq qilindi",
+      "calledBackToast": "Belgilandi: qayta qo'ng'iroq qilindi",
+      "calledBackFailed": "Qo'ng'iroqni belgilab bo'lmadi"
+    },
+    "errors": {
+      "forbiddenTitle": "Qo'ng'iroqlarga ruxsat yo'q",
+      "forbiddenDescription": "Sizning rolingiz Call Center bilan ishlamaydi. Klinika administratoriga murojaat qiling.",
+      "loadFailedTitle": "Qo'ng'iroqlarni yuklab bo'lmadi",
+      "loadFailedDescription": "Ulanishni tekshiring. Ro'yxat o'zi yangilanadi."
+    },
+    "noAccess": {
+      "title": "Call Center'ga ruxsat yo'q",
+      "description": "Call Center administrator, registratura va Call Center operatorlari uchun ochiq. Klinika administratoriga murojaat qiling."
     },
     "active": {
       "ariaLabel": "Faol qo'ng'iroq",
@@ -3710,7 +3799,8 @@
         "ltv": "LTV",
         "visits": "Tashriflar",
         "avgCheck": "O'rtacha chek",
-        "balance": "Balans"
+        "balance": "Balans",
+        "noData": "ma'lumot yo'q"
       },
       "nextAppointment": {
         "ariaLabel": "Keyingi yozuv",
@@ -3766,7 +3856,10 @@
         "markedMissed": "Qo'ng'iroq o'tkazilgan deb belgilandi",
         "sipUnavailable": "Ushbu harakatdan foydalanish uchun SIP-provayderni ulang",
         "scriptCopied": "Skript nusxalandi",
-        "copyFailed": "Nusxa olib bo'lmadi"
+        "copyFailed": "Nusxa olib bo'lmadi",
+        "alreadyEnded": "Qo'ng'iroq allaqachon yakunlangan",
+        "alreadyAnswered": "Qo'ng'iroq allaqachon qabul qilingan: uni «Tugatish» tugmasi bilan yakunlang",
+        "endFailed": "Qo'ng'iroqni yakunlab bo'lmadi"
       }
     },
     "status": {
@@ -3784,6 +3877,7 @@
       "title": "Tasdiqlanishi kerak",
       "subtitle": "{count, plural, =0 {Tasdiqlanmagan yozuvlar yo'q} other {{count} ta yozuv tasdiqlanishini kutmoqda}}",
       "loading": "Yuklanmoqda…",
+      "loadError": "Tasdiqlanadigan yozuvlarni yuklab bo'lmadi",
       "call": "Qo'ng'iroq qilish",
       "open": "Yozuvni ochish",
       "confirm": "Tasdiqlash",
@@ -5328,6 +5422,7 @@
     "uploadHint": "Fayl klinikaning xavfsiz omboriga yuklanadi",
     "pendingSignatures": "Imzolashni kutmoqda",
     "signed": "Imzolangan",
+    "voided": "Bekor qilingan",
     "signedToast": "Hujjat imzolangan deb belgilandi",
     "signError": "Hujjatni belgilab bo'lmadi",
     "empty": "Hujjatlar topilmadi",
@@ -5335,6 +5430,11 @@
       "search": "Qidirish: nom, bemor, telefon",
       "type": "Turi",
       "typeAll": "Barcha turlar",
+      "source": "Manba",
+      "sourceAll": "Barcha manbalar",
+      "sourceStaff": "Klinika yuklagan",
+      "sourcePatient": "Bemordan",
+      "sourceSystem": "Tizim shakllantirgan",
       "patient": "Bemor",
       "doctor": "Shifokor",
       "from": "Dan",
@@ -5358,6 +5458,7 @@
       "PRESCRIPTION": "Retsept",
       "INVOICE": "Hisob",
       "RESULT": "Natija",
+      "CONCLUSION": "Xulosa",
       "CONTRACT": "Shartnoma",
       "RECEIPT": "Kvitansiya",
       "OTHER": "Boshqa"
@@ -5437,6 +5538,10 @@
     "recomputeSuccess": "Tayyor: yaratildi {created}, yangilandi {updated}",
     "recomputeError": "Qayta hisoblab bo'lmadi: {reason}",
     "loadMore": "Yana ko'rsatish",
+    "noAccess": {
+      "title": "Vazifalar markaziga ruxsat yo'q",
+      "description": "Vazifalar markazi administrator, registratura va Call Center operatorlari uchun ochiq."
+    },
     "tabs": {
       "OPEN": "Ochiq",
       "SNOOZED": "Keyinga",
@@ -5591,6 +5696,11 @@
         "label": "Bemorga qayta qo'ng'iroq",
         "title": "{reason, select, RETURN_LATER {{patientName}: qo'ng'iroq qiling, keyinroq kelmoqchi edi} other {{patientName}: kelishilganidek qayta qo'ng'iroq qiling}}",
         "body": "{hasNote, select, yes {«{note}». } other {}}{reason, select, RETURN_LATER {{slotDate} {slotTime} dagi yozuv bemor iltimosi bilan bekor qilindi. Qo'ng'iroq qilib, qulay kunga yozing.} other {{slotDate} {slotTime} dagi yozuv bo'yicha qo'ng'iroq. Shifokor: {doctorName}.}}"
+      },
+      "SELF_CHECK_IN_UNHANDLED": {
+        "label": "Belgi qo'ydi, lekin qabul qilinmadi",
+        "title": "{patientName}: ilovada {arrivedTime} da belgi qo'ydi, lekin «Keldi» belgilanmagan",
+        "body": "Yozuv {slotDate} {slotTime}, shifokor {doctorName}. Bemor «Men keldim» tugmasini bosdi, lekin navbatga qo'yilmadi, shuning uchun yozuv kelmadi deb belgilanmadi. Nima bo'lganini aniqlang va yozuvni yoping: «Keldi», «Kelmadi» yoki ko'chirish."
       }
     },
     "dashboard": {
@@ -5725,6 +5835,7 @@
         "priorityLow": "Past",
         "priorityCritical": "Tanqidiy",
         "empty": "Ustuvor amallar yo'q",
+        "loadError": "Vazifalarni yuklab bo'lmadi. Ro'yxat o'zi yangilanadi.",
         "categories": {
           "calls": {
             "title": "Tasdiqlash va qo'ng'iroqlar",
@@ -6520,6 +6631,8 @@
       },
       "cds": {
         "checking": "Mosligi tekshirilmoqda…",
+        "unavailable": "Allergiya va o‘zaro ta’sir tekshiruvi ishlamayapti. Tayinlovlar hozir tekshirilmagan.",
+        "retry": "Qayta urinish",
         "noConflicts": "Nizolar topilmadi",
         "recognizedCount": "aniqlandi: {count}",
         "unmatchedCount": "aniqlanmadi: {count}",
@@ -6574,6 +6687,7 @@
         "manualBadge": "qo‘lda",
         "remindOn": "Bemorga eslatmalar yoqilgan",
         "remindOff": "Eslatmalarsiz",
+        "remindNoTimes": "Qabul vaqti tanlanmagan, eslatmalar bo‘lmaydi",
         "deleteRow": "Tayinlovni o‘chirish",
         "dose": "Doza",
         "form": "Shakli va dozasi",
@@ -7103,6 +7217,8 @@
         "advice": "Tavsiyalar",
         "labTests": "{n} tekshiruv",
         "openConclusion": "Xulosani ochish",
+        "fromPatient": "bemordan",
+        "amended": "Tuzatishlar bor",
         "type": {
           "repeat": "Takroriy",
           "consultation": "Konsultatsiya"
@@ -7349,7 +7465,14 @@
         "errSignFailed": "Xulosani imzolab bo‘lmadi. Uni «Xulosalar» bo‘limida ochib, qayta urinib ko‘ring.",
         "errNotActive": "Qabul endi davom etmayapti: u bekor qilingan yoki kelmadi deb belgilangan. Xulosa imzolanmadi.",
         "errFollowUpDatePast": "Xulosa imzolanmadi: nazorat tashrifi kuni allaqachon kelgan. Xulosani ochib, yangi sanani tanlang.",
-        "errNotToday": "Qabul bugunga emas. Uni faqat qabul kunida boshlash mumkin."
+        "errNotToday": "Qabul bugunga emas. Uni faqat qabul kunida boshlash mumkin.",
+        "errCancelledByPatient": "Bu yozuvni bemorning o'zi bekor qilgan. Uni qaytarib bo'lmaydi: kelmoqchi bo'lsa, uni qaytadan yozing.",
+        "errDoctorBusy": "Bu vaqt boshqa yozuv bilan band. Qabulni unga qaytarib bo'lmaydi.",
+        "errCabinetBusy": "Bu vaqtda kabinet boshqa yozuv bilan band. Qabulni unga qaytarib bo'lmaydi."
+      },
+      "restoreNotice": {
+        "patient": "{name}, yozuvingiz tiklandi: {date} kuni soat {time} da, shifokor {doctor}. Rejalar o'zgargan bo'lsa, uni klinika ilovasida bekor qiling.",
+        "templateName": "Yozuv tiklandi"
       },
       "liveQueue": {
         "title": "Jonli navbat",
@@ -7433,6 +7556,9 @@
         "aiGenerated": "AI ishtirokida shakllantirilgan",
         "diagnosisIcd10": "Tashxis (XKK-10)",
         "additionalDiagnoses": "Yondosh tashxislar",
+        "amendments": "Tuzatishlar",
+        "amendmentsHint": "Xulosa imzolangandan keyin tuzatilgan. Quyidagi asl matn imzolangan holicha qoldirilgan.",
+        "amendmentReason": "Sababi: {reason}",
         "complaints": "Shikoyatlar",
         "anamnesis": "Anamnez",
         "examination": "Ko‘rik",
@@ -7467,6 +7593,7 @@
         "diagnosisInfo": "Tashxis haqida batafsil",
         "conclusion": "Xulosa",
         "noConclusion": "Xulosa yo‘q",
+        "amended": "Tuzatishlar bor",
         "loadMore": "Ko‘proq ko‘rsatish"
       },
       "menu": {
@@ -7536,6 +7663,7 @@
         "subheading": "Har bir hodisa turi uchun bildirishnomalarni qaysi kanallar orqali olishni tanlang. O'zgarishlar avtomatik saqlanadi.",
         "eventColumn": "Hodisa",
         "telegramHint": "<strong>Telegram</strong> kanali faqat siz «Xavfsizlik» bo'limida botni o'z hisobingizga bog'lagan bo'lsangiz ishlaydi.",
+        "notConnected": "Yangi qabullar, tahlil natijalari va eslatmalar haqidagi bildirishnomalar hamda Email va Telegram kanallari hali ulanmagan. Ular ishga tushganda, almashtirgichlar shu yerda paydo bo'ladi.",
         "channels": {
           "inApp": "Tizimda",
           "email": "Email",
@@ -7858,6 +7986,8 @@
         "cancel": "Bekor qilish",
         "save": "Tuzatishni saqlash",
         "created": "Tuzatish qo‘shildi — u chop etish shaklida va bemor PDF hujjatida ko‘rinadi.",
+        "patientNotice": "{name}, shifokor {doctor} {date} kungi qabul xulosasiga tuzatish kiritdi. Uni o‘qish uchun klinika ilovasini oching.",
+        "patientNoticeTemplateName": "Shifokor xulosasidagi tuzatish",
         "errorWindowOpen": "Tahrirlash oynasi (24 soat) hali ochiq — xulosani bevosita tahrirlang.",
         "errorNotFinalized": "Tuzatishlar faqat yakunlangan xulosalar uchun mavjud.",
         "errorForbidden": "Tuzatishni faqat xulosa muallifi qo‘sha oladi.",
@@ -7953,6 +8083,8 @@
       },
       "row": {
         "uploadedBy": "yuklagan: {name}",
+        "fromPatient": "bemordan, klinika tekshirmagan",
+        "voided": "Bekor qilingan",
         "moreActions": "Boshqa amallar",
         "closeMenu": "Menyuni yopish",
         "download": "Yuklab olish",
@@ -7982,6 +8114,7 @@
         "uploadError": "Faylni yuklab bo‘lmadi. Aloqani tekshirib, yana urinib ko‘ring",
         "errorForbidden": "Faqat o‘zingiz yuklagan hujjatlarni tahrirlash mumkin",
         "errorReadOnly": "Bu hujjat qabul asosida tizim tomonidan shakllantirilgan — uni bevosita o‘zgartirib bo‘lmaydi",
+        "errorSigned": "Imzolangan hujjatni almashtirib, turini o‘zgartirib yoki o‘chirib bo‘lmaydi",
         "errorGeneric": "Saqlab bo‘lmadi. Yana urinib ko‘ring"
       },
       "upload": {
@@ -8219,6 +8352,11 @@
       "nothingToSend": "Yuborish uchun hujjat yoʻq — avval qabulni yakunlang",
       "botNotConfigured": "Klinikada Telegram-bot sozlanmagan",
       "sendFailed": "Yuborib boʻlmadi, yana urinib koʻring",
+      "sendFiles": "Fayllarni Telegramga yuborish",
+      "conclusionRendering": "Xulosa hali tayyorlanmoqda. Bir daqiqadan soʻng qayta urinib koʻring.",
+      "sentWithoutConclusionUnsigned": "Qabul imzolanmagan, xulosa yuborilmadi. Yuborilgan fayllar: {n}",
+      "sentWithoutConclusionMissing": "Bemor uchun xulosa yoʻq, faqat fayllar yuborildi: {n}",
+      "sentConclusionFailed": "Xulosani yuborib boʻlmadi. Yuborilgan fayllar: {n}",
       "linkTitle": "Telegram ulash",
       "linkHint": "Bemor QR-kodni telefon kamerasi bilan skanerlaydi va Start bosadi — ulanish oʻzi amalga oshadi",
       "linkedNow": "Telegram ulandi — yuborish mumkin",

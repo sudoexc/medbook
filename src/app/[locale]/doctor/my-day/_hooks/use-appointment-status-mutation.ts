@@ -440,6 +440,16 @@ function messageFor(
   if (raw === "not_today") {
     return t("statusToast.errNotToday");
   }
+  // AP-11: «Вернуть» on a cancelled visit or a no-show.
+  if (raw === "cancelled_by_patient") {
+    return t("statusToast.errCancelledByPatient");
+  }
+  if (raw === "doctor_busy") {
+    return t("statusToast.errDoctorBusy");
+  }
+  if (raw === "cabinet_busy") {
+    return t("statusToast.errCabinetBusy");
+  }
   if (args.call) return t("statusToast.errCallFailed");
   return args.revert
     ? t("statusToast.errRevertFailed")

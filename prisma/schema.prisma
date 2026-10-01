@@ -196,6 +196,16 @@ enum DocumentType {
   OTHER
 }
 
+// Who put a document in the chart (audit CD-06). `uploadedById = null` used to
+// stand in for «from the patient», but the conclusion and referral workers
+// write null too, so every rendered conclusion carried the «От пациента»
+// badge and a patient's own scan looked like a clinical result.
+enum DocumentSource {
+  STAFF
+  PATIENT
+  SYSTEM
+}
+
 enum LeadStatus {
   NEW
   CONTACTED
@@ -791,6 +801,7 @@ model User {
   userSessions                UserSession[]
   loginSources                StaffLoginSource[]
   assignedConvs               Conversation[]          @relation("ConversationAssignee")
+  conversationReads           ConversationRead[]
   calls                       Call[]                  @relation("CallOperator")
   sentMessages                Message[]               @relation("MessageSender")
   uploadedDocuments           Document[]              @relation("DocumentUploader")
@@ -910,6 +921,17 @@ model Doctor {
   // create, editable by the admin; existing rows get theirs from
   // scripts/fix-q12-ticket-prefixes.ts. Null prints the bare number.
   ticketPrefix String?
+
+  // The service a Mini App booking with this doctor is made for (audit
+  // MA-08), picked by the admin on the doctor's «Услуги» tab. The wizard
+  // asks the patient for a doctor and a time, not a service, and used to
+  // guess one (a «консульт» category, else the cheapest), archived services
+  // included. Honoured only while it is one of the doctor's ACTIVE linked
+  // services; unset, a doctor with exactly one active service books that
+  // one, and a doctor with several is not bookable online until the admin
+  // picks (src/lib/doctors/online-service.ts). Null on existing rows.
+  onlineServiceId String?
+  onlineService   Service? @relation("DoctorOnlineService", fields: [onlineServiceId], references: [id], onDelete: SetNull)
 
   services            ServiceOnDoctor[]
   schedules           DoctorSchedule[]
@@ -1704,6 +1726,7 @@ model Service {
   doctors             ServiceOnDoctor[]
   appointmentServices AppointmentService[]
   primaryAppointments Appointment[]        @relation("AppointmentPrimaryService")
+  onlineForDoctors    Doctor[]             @relation("DoctorOnlineService")
 
   @@unique([clinicId, code])
   @@index([clinicId, isActive])
@@ -2509,9 +2532,21 @@ model Document {
   sizeBytes     Int?
   uploadedById  String?
   uploadedBy    User?        @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  // STAFF: uploaded in the CRM or the cabinet. PATIENT: sent from the Mini
+  // App, unverified by the clinic. SYSTEM: rendered by a worker from its
+  // source (conclusion, referral). Badges and filters key off this field.
+  source        DocumentSource @default(STAFF)
   // CONSENT/CONTRACT signature capture. NULL = awaiting signature; the
   // "ожидают подписи" filter keys off this. Stamped by POST .../[id]/sign.
   signedAt      DateTime?
+  // A signed record is never deleted (audit CD-09). One filed by mistake
+  // (another patient's signature, «Отметить подписанным» pressed by error) is
+  // voided by ADMIN with a reason instead (POST .../[id]/void): the row and
+  // its file stay for the audit trail, the CRM shows it as voided and the
+  // patient's Mini App no longer lists it.
+  voidedAt      DateTime?
+  voidedById    String?
+  voidReason    String?
   createdAt     DateTime     @default(now())
 
   @@index([clinicId, patientId, createdAt])
@@ -2626,11 +2661,33 @@ model Conversation {
   updatedAt        DateTime             @updatedAt
 
   messages Message[]
+  reads    ConversationRead[]
 
   @@unique([clinicId, externalId])
   @@index([clinicId, status, lastMessageAt])
   @@index([clinicId, assignedToId, status])
   @@index([clinicId, patientId])
+}
+
+/// Audit DC-10 — when a doctor last read a thread he does not own.
+///
+/// `Conversation.unreadCount` is the clinic's front desk counter: one number
+/// per thread, zeroed by whoever opens it. A doctor opening his patient's
+/// thread zeroed it for reception too, and the question sat unanswered with
+/// no unread mark on the desk. A doctor now reads into this row instead (the
+/// shared counter moves only on a thread assigned to him), and his own
+/// badge counts the inbound messages after it
+/// (`server/conversations/doctor-unread.ts`).
+model ConversationRead {
+  clinicId       String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime
+
+  @@id([conversationId, userId])
+  @@index([clinicId, userId])
 }
 
 model Message {

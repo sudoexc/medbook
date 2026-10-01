@@ -17,9 +17,11 @@ import { toast } from "@/components/ui/sonner";
 
 import {
   canEditDocument,
+  canReplaceOrDeleteDocument,
   RenameDocumentDialog,
   ReplaceDocumentFileDialog,
 } from "../../_components/document-edit-dialogs";
+import { isPatientDocument, isVoidedDocument } from "@/lib/document-guards";
 import { useDoctorProfile } from "../../settings/_hooks/use-doctor-profile";
 import { useDocumentsFilters } from "../_hooks/documents-context";
 import {
@@ -184,6 +186,8 @@ function DocumentRow({
   // Own uploads only; conclusions / worker-rendered PDFs stay read-only.
   // Server enforces the same rules — this just hides buttons that would 403.
   const editable = canEditDocument(doc, myUserId);
+  // A signed consent keeps its file and cannot be deleted (CD-09).
+  const replaceable = editable && canReplaceOrDeleteDocument(doc);
 
   // Broad key (no filters) so every filtered variant of the list refreshes.
   const invalidateList = () =>
@@ -202,7 +206,9 @@ function DocumentRow({
         toast.error(
           res.status === 403
             ? t("edit.errorForbidden")
-            : t("row.deleteError", { detail: res.status }),
+            : res.status === 409
+              ? t("edit.errorSigned")
+              : t("row.deleteError", { detail: res.status }),
         );
         return;
       }
@@ -250,6 +256,11 @@ function DocumentRow({
           <div className="truncate text-xs text-muted-foreground">
             {t("row.uploadedBy", { name: doc.uploadedBy.name })}
           </div>
+        ) : isPatientDocument(doc) ? (
+          // CD-06: the patient's own file, not checked by the clinic.
+          <div className="truncate text-xs font-medium text-amber-700 dark:text-amber-300">
+            {t("row.fromPatient")}
+          </div>
         ) : null}
       </div>
 
@@ -262,6 +273,15 @@ function DocumentRow({
         >
           {t(TYPE_LABEL_KEY[doc.type])}
         </span>
+        {/* CD-09: voided by ADMIN, kept as a record but not valid. */}
+        {isVoidedDocument(doc) ? (
+          <div
+            className="mt-1 text-[11px] font-medium text-destructive"
+            title={doc.voidReason ?? undefined}
+          >
+            {t("row.voided")}
+          </div>
+        ) : null}
       </div>
 
       <div className="min-w-0">
@@ -314,26 +334,30 @@ function DocumentRow({
                     <PencilIcon className="size-4 text-muted-foreground" />
                     {t("row.rename")}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setReplaceOpen(true);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-foreground transition-colors hover:bg-muted"
-                  >
-                    <RefreshCwIcon className="size-4 text-muted-foreground" />
-                    {t("row.replace")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    disabled={busy}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
-                  >
-                    <Trash2Icon className="size-4" />
-                    {busy ? t("row.deleting") : t("row.delete")}
-                  </button>
+                  {replaceable ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setReplaceOpen(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-foreground transition-colors hover:bg-muted"
+                      >
+                        <RefreshCwIcon className="size-4 text-muted-foreground" />
+                        {t("row.replace")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={busy}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
+                      >
+                        <Trash2Icon className="size-4" />
+                        {busy ? t("row.deleting") : t("row.delete")}
+                      </button>
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </div>

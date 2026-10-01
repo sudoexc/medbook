@@ -23,11 +23,14 @@ backfill-patient-visit-stats.ts
 close-stale-in-progress-visits.ts
 fix-ac03-event-task-lifetimes.ts
 fix-ac09-lost-callbacks.ts
+fix-cm10-call-states.ts
 fix-an01-fx-rate-convention.ts
 fix-an02-link-payments-to-visits.ts
 fix-an17-stale-dormant-since.ts
 fix-cd02-drug-photo-urls.ts
 fix-ct03-registry-brand-homes.ts
+fix-g1-03-miniapp-audit-clinic.ts
+fix-g301-stale-check-ins.ts
 fix-g4-06-reference-dosing-instructions.ts
 fix-g4-12-phenazepam-atc.ts
 fix-p4-register-compositions.ts

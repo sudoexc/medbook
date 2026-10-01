@@ -8,6 +8,7 @@
  * whoever scans holds the paper; the page only vouches for it.
  */
 import { prisma } from "@/lib/prisma";
+import { runUnscoped } from "@/lib/tenant-context";
 
 const TYPE_LABELS: Record<string, string> = {
   CONCLUSION: "Заключение врача",
@@ -28,20 +29,29 @@ export async function GET(request: Request) {
     "application/json",
   );
 
-  const doc = await prisma.document.findFirst({
-    where: { verifyToken: token },
-    include: {
-      clinic: { select: { nameRu: true, phone: true } },
-      patient: { select: { fullName: true } },
-      visitNote: {
-        select: {
-          finalizedAt: true,
-          doctor: { select: { nameRu: true } },
+  // Anonymous capability-URL endpoint, like /api/verify/recipe: the clinic is
+  // unknown until the row is found, so the read cannot be tenant-scoped, and
+  // the fail-closed Prisma extension threw on it (500 on every scan, audit
+  // MA-06). The unguessable verifyToken IS the authorization; the answer is
+  // masked by construction (no content, patient as initials).
+  const doc = await runUnscoped(
+    "public document verify: lookup Document by unguessable verifyToken",
+    () =>
+      prisma.document.findFirst({
+        where: { verifyToken: token },
+        include: {
+          clinic: { select: { nameRu: true, phone: true } },
+          patient: { select: { fullName: true } },
+          visitNote: {
+            select: {
+              finalizedAt: true,
+              doctor: { select: { nameRu: true } },
+            },
+          },
+          referral: { select: { fromDoctor: { select: { name: true } } } },
         },
-      },
-      referral: { select: { fromDoctor: { select: { name: true } } } },
-    },
-  });
+      }),
+  );
 
   if (!doc) {
     return wantsJson

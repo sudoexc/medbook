@@ -25,10 +25,12 @@ import { getQueue } from "@/server/queue";
 
 import { startAnalyticsRefreshWorker } from "./analytics-refresh";
 import { startAppointmentLifecycleSweepWorker } from "./appointment-lifecycle-sweep";
+import { startCallSweepWorker } from "./call-sweep";
 import { startDataExportWorker } from "./data-export";
 import { startScheduledReportsWorker } from "./scheduled-reports";
 import { registerDsarScheduler } from "./data-deletion";
 import { startMedicationReminderWorker } from "./medication-reminder";
+import { startMedicationReminderFollowUpWorker } from "./medication-reminder-followup";
 import { startNotificationsSendWorker } from "./notifications-send";
 import { startNotificationsSchedulerWorker } from "./notifications-scheduler";
 import { startOutboxPumperWorker } from "./outbox-pumper";
@@ -38,6 +40,7 @@ import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
 import { startReferralDocumentWorker } from "./referral-document";
+import { CLINICAL_FORMS_ISSUING } from "@/lib/clinical-forms-issuing";
 import { startStaffMessagesSendWorker } from "./staff-messages-send";
 import { startVisitNoteHandoutWorker } from "./visit-note-handout";
 import { startVoiceSoapWorker } from "./voice-soap";
@@ -75,6 +78,11 @@ async function main() {
   // for what only time changes; a completed visit refreshes its patient
   // at once (runCompletionEffects).
   const patientSegments = startPatientSegmentsWorker();
+
+  // Audit CM-01 — a call whose PBX hangup never arrived is closed (RINGING
+  // after 10 minutes as missed, ANSWERED after 4 hours as ended) so no ghost
+  // call sits first in the call-center queue. Every 2 minutes.
+  const callSweep = startCallSweepWorker();
 
   // Phase 13 Wave 2 — Action Center recompute every 15 minutes. Iterates
   // active clinics and fires the 10 detectors per clinic via runActionEngine.
@@ -115,6 +123,11 @@ async function main() {
   //                          push (TG + parallel INAPP). Idempotent via
   //                          (prescriptionId, scheduledFor) unique key.
   const medicationReminder = startMedicationReminderWorker();
+  //   medication-reminder-followup  5-minute sweep (audit MA-13) — expires
+  //                          doses left unanswered past the open window and
+  //                          brings snoozed ones back as PENDING with a new
+  //                          push once «Отложить» has run out.
+  const medicationFollowUp = startMedicationReminderFollowUpWorker();
 
   // Doctor cabinet P1.1 — Conclusion → patient delivery.
   //   visit-note-handout   30s sweep — for every FINALIZED VisitNote that
@@ -135,7 +148,12 @@ async function main() {
   //                        the Mini App and carries to the next clinic.
   //                        Idempotent on the @unique Document.referralId; durable
   //                        for the same reason as visit-note-handout.
-  const referralDocument = startReferralDocumentWorker();
+  //                        Not started while issuing referrals is switched off
+  //                        (audit CD-07): with no new referrals it only polled
+  //                        the database every 30 s for nothing.
+  const referralDocument = CLINICAL_FORMS_ISSUING
+    ? startReferralDocumentWorker()
+    : null;
 
   // Phase 17 Wave 3 — DSAR (Data Subject Access Requests).
   //   dsar:export      drains export jobs (bundle PII → encrypt → MinIO →
@@ -194,13 +212,15 @@ async function main() {
     trialExpiry.stop();
     lifecycleSweep.stop();
     patientSegments.stop();
+    callSweep.stop();
     actionEngine.stop();
     revenue.stop();
     preVisit.stop();
     postVisitNps.stop();
     medicationReminder.stop();
+    medicationFollowUp.stop();
     visitNoteHandout.stop();
-    referralDocument.stop();
+    referralDocument?.stop();
     dsarScheduler.stop();
     analyticsRefresh.stop();
     scheduledReports.stop();

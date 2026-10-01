@@ -9,7 +9,10 @@
  */
 import { z } from "zod";
 
-const HHmm = z.string().regex(/^\d{2}:\d{2}$/, "invalid_time");
+// 00:00 to 23:59 (audit PT-12): «25:99» used to pass and never fired.
+const HHmm = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "invalid_time");
 
 export const PrescriptionScheduleSchema = z.object({
   times: z.array(HHmm).min(1, "times_required").max(8, "times_too_many"),

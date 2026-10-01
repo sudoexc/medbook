@@ -7,6 +7,10 @@
  * pre-visit questionnaire and the visit rating, TG-15 for medication
  * reminders). `update: {}` keeps an admin's edits, the switched-off flag
  * included: a template turned off stays off.
+ *
+ * `activeOnCreate` decides only how a brand-new row starts: a patient
+ * message the clinic has not chosen to send yet (a restored visit, an
+ * amended conclusion) appears in the settings switched off (G3-03).
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -25,6 +29,7 @@ export type EnsuredTemplate = {
 export async function ensureClinicTemplate(
   clinicId: string,
   tpl: DefaultTemplate,
+  opts: { activeOnCreate?: boolean } = {},
 ): Promise<EnsuredTemplate> {
   const select = {
     id: true,
@@ -50,7 +55,7 @@ export async function ensureClinicTemplate(
           bodyRu: tpl.bodyRu,
           bodyUz: tpl.bodyUz,
           variables: tpl.variables,
-          isActive: true,
+          isActive: opts.activeOnCreate ?? true,
         },
         update: {},
         select,

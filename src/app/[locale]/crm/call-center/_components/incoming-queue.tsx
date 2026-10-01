@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/atoms/empty-state";
 
 import type { CallRow } from "../_hooks/types";
 import { CallBubble } from "./call-bubble";
+import { CallsErrorState } from "./calls-error-state";
 
 /**
  * Left column — ringing queue.
@@ -26,12 +27,18 @@ export function IncomingQueue({
   onSelect,
   isLoading,
   isFetching,
+  error,
+  showHeader = true,
 }: {
   rows: CallRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   isLoading?: boolean;
   isFetching?: boolean;
+  /** A failed load is shown as such, never as «Сейчас тихо» (audit CM-08). */
+  error?: Error | null;
+  /** The page's tab bar already names the list and its count. */
+  showHeader?: boolean;
 }) {
   const t = useTranslations("callCenter.queue");
 
@@ -57,24 +64,28 @@ export function IncomingQueue({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <PhoneIncomingIcon className="size-4 text-primary" aria-hidden />
-          <h2 className="text-sm font-semibold">{t("title")}</h2>
-          {isFetching && !isLoading ? (
-            <span
-              className="size-1.5 animate-pulse rounded-full bg-primary"
-              aria-label={t("polling")}
-            />
-          ) : null}
-        </div>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-          {rows.length}
-        </span>
-      </header>
+      {showHeader ? (
+        <header className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <PhoneIncomingIcon className="size-4 text-primary" aria-hidden />
+            <h2 className="text-sm font-semibold">{t("title")}</h2>
+            {isFetching && !isLoading ? (
+              <span
+                className="size-1.5 animate-pulse rounded-full bg-primary"
+                aria-label={t("polling")}
+              />
+            ) : null}
+          </div>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+            {rows.length}
+          </span>
+        </header>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {isLoading && rows.length === 0 ? (
+        {error && rows.length === 0 ? (
+          <CallsErrorState error={error} />
+        ) : isLoading && rows.length === 0 ? (
           <p className="px-3 py-4 text-xs text-muted-foreground">{t("loading")}</p>
         ) : rows.length === 0 ? (
           <div className="flex h-full items-center justify-center px-3 py-6">

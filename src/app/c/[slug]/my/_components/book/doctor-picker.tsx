@@ -4,11 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Star } from "lucide-react";
 
-import {
-  minDoctorPrice,
-  pickDefaultService,
-  useDoctors,
-} from "../../_hooks/use-doctors";
+import { minDoctorPrice, useDoctors } from "../../_hooks/use-doctors";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useActiveContext } from "../../_hooks/use-active-context";
 import { bookHref } from "../../_lib/booking-context";
@@ -47,42 +43,46 @@ export function DoctorPicker() {
   // «Записаться на контроль» seeds the draft with the PAST visit's doctor,
   // who may have been deactivated since — the roster (isActive-filtered)
   // then renders no card for them, yet the invisible selection would let
-  // the patient continue straight into a slot-screen dead end. Clear it.
+  // the patient continue straight into a slot-screen dead end. Clear it,
+  // and likewise a doctor who cannot be booked online (no service set).
   React.useEffect(() => {
     if (!doctors.data || !draft.doctorId) return;
-    if (!filtered.some((d) => d.id === draft.doctorId)) {
+    if (!filtered.some((d) => d.id === draft.doctorId && d.onlineServiceId)) {
       setDraft({ doctorId: null, date: null, time: null });
     }
   }, [doctors.data, filtered, draft.doctorId, setDraft]);
 
-  // Continue only with a doctor that actually exists on the roster — the
-  // seeded-but-invisible selection must not count.
-  const canContinue = filtered.some((d) => d.id === draft.doctorId);
+  // Continue only with a doctor that actually exists on the roster and can
+  // be booked online — the seeded-but-invisible selection must not count.
+  const selected = filtered.find((d) => d.id === draft.doctorId) ?? null;
+  const canContinue = !!selected?.onlineServiceId;
 
   const goNext = React.useCallback(() => {
-    if (!canContinue) return;
-    // Auto-assign a sensible default service so the API body stays valid —
-    // the wizard UX is specialty-first but the booking endpoint still
-    // requires serviceIds. `pickDefaultService` prefers a consultation
-    // category, else the cheapest, to avoid surfacing premium procedure
-    // prices to a patient who just wants a first visit.
-    const doctor = filtered.find((d) => d.id === draft.doctorId);
-    const defaultService = doctor ? pickDefaultService(doctor.services) : null;
+    if (!selected?.onlineServiceId) return;
+    // The booking needs a service the wizard never asks for: the one the
+    // server resolved for this doctor (admin's pick or his only active
+    // service, audit MA-08), never a guess from categories and prices.
     setDraft({
-      serviceIds: defaultService ? [defaultService] : [],
+      serviceIds: [selected.onlineServiceId],
       date: null,
       time: null,
       onBehalfOf,
     });
     router.push(bookHref(clinicSlug, "slot", onBehalfOf));
-  }, [canContinue, draft.doctorId, filtered, setDraft, router, clinicSlug, onBehalfOf]);
+  }, [selected, setDraft, router, clinicSlug, onBehalfOf]);
 
+  // Back to the entry step keeps the case the booking continues (MA-11):
+  // the service step re-reads it from the URL.
   React.useEffect(() => {
     const off = tg.setBackButton(() =>
-      router.push(bookHref(clinicSlug, "service", onBehalfOf)),
+      router.push(
+        bookHref(clinicSlug, "service", onBehalfOf, {
+          caseId: draft.medicalCaseId,
+        }),
+      ),
     );
     return off;
-  }, [tg, router, clinicSlug, onBehalfOf]);
+  }, [tg, router, clinicSlug, onBehalfOf, draft.medicalCaseId]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
 
@@ -101,6 +101,9 @@ export function DoctorPicker() {
         <div className="space-y-2">
           {filtered.map((d) => {
             const active = draft.doctorId === d.id;
+            // Several services and no online one picked by the clinic: say
+            // so instead of booking a guessed service (MA-08).
+            const bookable = d.onlineServiceId !== null;
             const name = lang === "UZ" ? d.nameUz : d.nameRu;
             const spec = lang === "UZ" ? d.specializationUz : d.specializationRu;
             const rating =
@@ -114,11 +117,14 @@ export function DoctorPicker() {
               <button
                 key={d.id}
                 type="button"
+                disabled={!bookable}
+                aria-disabled={!bookable}
                 onClick={() => {
+                  if (!bookable) return;
                   tg.haptic.selection();
                   setDraft({ doctorId: d.id, date: null, time: null });
                 }}
-                className="flex w-full items-start gap-3 rounded-2xl p-3 text-left ma-press active:scale-[0.99]"
+                className="flex w-full items-start gap-3 rounded-2xl p-3 text-left ma-press active:scale-[0.99] disabled:opacity-60 disabled:active:scale-100"
                 style={{
                   backgroundColor: active
                     ? "color-mix(in oklch, var(--tg-accent) 8%, var(--tg-section-bg))"
@@ -192,8 +198,16 @@ export function DoctorPicker() {
                       </span>
                     ) : null}
                   </div>
+                  {!bookable ? (
+                    <div
+                      className="mt-1.5 text-xs"
+                      style={{ color: "var(--tg-hint)" }}
+                    >
+                      {t.book.doctorNotOnline}
+                    </div>
+                  ) : null}
                 </div>
-                {active ? <CheckCircle /> : null}
+                {active && bookable ? <CheckCircle /> : null}
               </button>
             );
           })}

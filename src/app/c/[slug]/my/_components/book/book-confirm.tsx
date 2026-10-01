@@ -27,18 +27,11 @@ import {
   formatSum,
 } from "../mini-ui";
 import { PhoneConfirm } from "../phone-confirm";
+import { miniAppActionErrorText } from "../../_lib/action-errors";
+import { tashkentSlotStartIso } from "@/lib/appointments/patient-booking";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
 import { WizardFooter } from "./wizard-footer";
-
-function applyTimeToDate(dateISO: string, time: string): string {
-  // The wizard picks a Tashkent wall-clock "HH:mm" against a YYYY-MM-DD;
-  // both inputs are TZ-agnostic until we anchor them. Construct the instant
-  // explicitly at +05:00 so the booking is identical whether the patient's
-  // device is in Tashkent, Bishkek, or Berlin — `new Date(y,m,d,h,min)` would
-  // honour the browser's local TZ and skew the booked instant for travellers.
-  return new Date(`${dateISO}T${time}:00+05:00`).toISOString();
-}
 
 export function BookConfirm() {
   const t = useT();
@@ -130,7 +123,10 @@ export function BookConfirm() {
   const submit = React.useCallback(async () => {
     if (!canSubmit || !draft.date || !draft.time || !draft.doctorId) return;
     try {
-      const startAt = applyTimeToDate(draft.date, draft.time);
+      // The wizard picks a Tashkent wall-clock "HH:mm" against a YYYY-MM-DD;
+      // anchored at +05:00 so the booking is identical whether the phone is
+      // in Tashkent, Bishkek or Berlin.
+      const startAt = tashkentSlotStartIso(draft.date, draft.time);
       const appt = await book.mutateAsync({
         doctorId: draft.doctorId,
         serviceIds: draft.serviceIds,
@@ -139,6 +135,7 @@ export function BookConfirm() {
         ...(onBehalfOf ? {} : { patientName: name.trim() }),
         lang,
         onBehalfOf,
+        medicalCaseId: draft.medicalCaseId,
         idempotencyKey: idemKeyRef.current ?? undefined,
       });
       tg.haptic.notification("success");
@@ -159,10 +156,8 @@ export function BookConfirm() {
       router.push(bookHref(clinicSlug, "done", onBehalfOf, { id: appt.id }));
     } catch (e) {
       tg.haptic.notification("error");
-      const err = e as Error & { status?: number; data?: { reason?: string } };
-      const reason = err.data?.reason ?? err.message;
-      if (err.status === 409) tg.showAlert(t.book.errorConflict);
-      else tg.showAlert(t.book.errorBooking.replace("{reason}", reason));
+      // A readable reason per code (MA-14): a limit is not «слот занят».
+      tg.showAlert(miniAppActionErrorText(e, t));
     }
   }, [
     canSubmit,
@@ -175,8 +170,7 @@ export function BookConfirm() {
     clinicSlug,
     tg,
     onBehalfOf,
-    t.book.errorConflict,
-    t.book.errorBooking,
+    t,
   ]);
 
   React.useEffect(() => {

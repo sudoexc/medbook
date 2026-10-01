@@ -25,6 +25,7 @@ import { bookHref } from "../../_lib/booking-context";
 import { useClinic } from "../../_hooks/use-clinic";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import { hasArrivedForVisit } from "@/lib/appointments/patient-reschedule";
 import { CancelReasonDialog } from "./cancel-reason-dialog";
 
 function pad(n: number) {
@@ -119,11 +120,16 @@ export function AppointmentDetailDialog({
       onClose();
     } catch (e) {
       tg.haptic.notification("error");
-      tg.showAlert((e as Error).message);
+      // Reception may queue the patient while this sheet is open.
+      const code = (e as Error).message;
+      tg.showAlert(code === "not_reschedulable" ? t.appts.rescheduleArrived : code);
     }
   };
 
   const editable = !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(appointment.status);
+  // An arrived visit can still be cancelled but only reception moves it
+  // (the PATCH refuses with not_reschedulable, see patient-reschedule).
+  const reschedulable = editable && !hasArrivedForVisit(appointment);
   const completed = appointment.status === "COMPLETED";
 
   // tg.openLink routes through Telegram's browser shim; plain href fallback
@@ -209,7 +215,7 @@ export function AppointmentDetailDialog({
             {t.appts.status[appointment.status as keyof typeof t.appts.status] ?? appointment.status}
           </div>
         </MCard>
-        {mode === "view" ? (
+        {mode === "view" || !reschedulable ? (
           appointment.conclusionUrl || editable || completed ? (
             <div className="grid grid-cols-1 gap-2">
               {completed ? (
@@ -267,12 +273,18 @@ export function AppointmentDetailDialog({
                       </MButton>
                     ) : null}
                   </div>
-                  <MButton
-                    variant="secondary"
-                    onClick={() => setMode("reschedule")}
-                  >
-                    {t.appts.reschedule}
-                  </MButton>
+                  {reschedulable ? (
+                    <MButton
+                      variant="secondary"
+                      onClick={() => setMode("reschedule")}
+                    >
+                      {t.appts.reschedule}
+                    </MButton>
+                  ) : (
+                    <p className="text-xs" style={{ color: "var(--tg-hint)" }}>
+                      {t.appts.rescheduleArrived}
+                    </p>
+                  )}
                   <MButton
                     variant="danger"
                     onClick={() => setCancelOpen(true)}
@@ -362,10 +374,14 @@ export function AppointmentDetailDialog({
       isPending={cancel.isPending}
       onClose={() => setCancelOpen(false)}
       onConfirm={onCancelConfirm}
-      onPickReschedule={() => {
-        setCancelOpen(false);
-        setMode("reschedule");
-      }}
+      onPickReschedule={
+        reschedulable
+          ? () => {
+              setCancelOpen(false);
+              setMode("reschedule");
+            }
+          : undefined
+      }
     />
     </>
   );

@@ -242,6 +242,8 @@ export const uzDict = {
     rescheduleSuccess: "Yozuv ko‘chirildi",
     rescheduleTitle: "Yangi vaqt",
     rescheduleSave: "Yangi vaqtni saqlash",
+    rescheduleArrived:
+      "Siz klinikada belgilangansiz, shuning uchun bu tashrifni faqat qabulxona orqali ko‘chirish mumkin.",
     paid: "To‘langan",
     unpaid: "To‘lanmagan",
     conclusion: "Xulosa",

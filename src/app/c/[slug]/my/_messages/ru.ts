@@ -242,6 +242,8 @@ export const ruDict = {
     rescheduleSuccess: "Запись перенесена",
     rescheduleTitle: "Новое время",
     rescheduleSave: "Сохранить новое время",
+    rescheduleArrived:
+      "Вы уже отметились в клинике, поэтому перенести этот визит можно только через регистратуру.",
     paid: "Оплачено",
     unpaid: "Не оплачено",
     conclusion: "Заключение",

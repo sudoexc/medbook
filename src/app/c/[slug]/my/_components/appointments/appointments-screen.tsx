@@ -28,6 +28,7 @@ import { bookHref } from "../../_lib/booking-context";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import { hasArrivedForVisit } from "@/lib/appointments/patient-reschedule";
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
 import { CancelReasonDialog } from "./cancel-reason-dialog";
 
@@ -310,13 +311,17 @@ export function AppointmentsScreen() {
             tg.showAlert((e as Error).message);
           }
         }}
-        onPickReschedule={() => {
-          if (!cancelTarget) return;
-          const target = cancelTarget;
-          setCancelTarget(null);
-          setSelectedMode("reschedule");
-          setSelected(target);
-        }}
+        // «Перенести вместо отмены» only where the patient may move the visit.
+        onPickReschedule={
+          cancelTarget && !hasArrivedForVisit(cancelTarget)
+            ? () => {
+                const target = cancelTarget;
+                setCancelTarget(null);
+                setSelectedMode("reschedule");
+                setSelected(target);
+              }
+            : undefined
+        }
       />
     </div>
   );

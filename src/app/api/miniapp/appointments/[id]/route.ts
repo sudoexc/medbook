@@ -22,6 +22,7 @@ import {
   detectConflicts,
 } from "@/server/services/appointments";
 import { tashkentComponents } from "@/lib/booking-validation";
+import { hasArrivedForVisit } from "@/lib/appointments/patient-reschedule";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { cancelAppointment } from "@/server/appointments/cancel";
 import {
@@ -81,6 +82,14 @@ export const PATCH = createMiniAppHandler(
         return err("not_cancellable", 409);
       }
       return ok({ appointment: toMiniAppAppointmentSummary(result.appointment) });
+    }
+
+    // An arrived visit (live queue, skipped, or «Я на месте») is not the
+    // patient's to move: the update below leaves every queue column as it
+    // is, so the ticket would leave today's queue and TV and turn up
+    // tomorrow already queued. Reception moves it; cancel above stays open.
+    if (hasArrivedForVisit(before)) {
+      return err("not_reschedulable", 409);
     }
 
     const doctorId = body.doctorId ?? before.doctorId;

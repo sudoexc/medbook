@@ -29,6 +29,15 @@ export const MINIAPP_MAX_ACTIVE_BOOKINGS = 3;
 /** Of those, booked visits ahead with one and the same doctor. */
 export const MINIAPP_MAX_ACTIVE_BOOKINGS_PER_DOCTOR = 1;
 
+/**
+ * Mini App bookings ahead one Telegram account may hold for itself and every
+ * relative it books for together. The per-patient caps alone let an account
+ * multiply its slots by adding relatives (each a new card), so the account
+ * is capped too: enough for a parent booking herself, a child and a
+ * grandmother, not for a doctor's week.
+ */
+export const MINIAPP_MAX_ACTIVE_BOOKINGS_PER_ACCOUNT = 6;
+
 /** The Tashkent days the patient may pick, today first. */
 export function miniAppBookingDays(now: Date | number = Date.now()): string[] {
   const today = tashkentDateOf(now);

@@ -11,6 +11,7 @@ import type { Dict } from "../_components/mini-i18n";
 import {
   MINIAPP_BOOKING_HORIZON_DAYS,
   MINIAPP_MAX_ACTIVE_BOOKINGS,
+  MINIAPP_MAX_ACTIVE_BOOKINGS_PER_ACCOUNT,
 } from "@/lib/appointments/patient-booking";
 
 type ActionError = {
@@ -25,9 +26,16 @@ export function miniAppActionErrorText(e: unknown, t: Dict): string {
   const code = reason ?? error ?? err.message ?? "";
   switch (code) {
     case "booking_limit":
-      return err.data?.limit === "patient_doctor"
-        ? t.book.errorLimitDoctor
-        : t.book.errorLimitTotal.replace("{count}", String(MINIAPP_MAX_ACTIVE_BOOKINGS));
+      if (err.data?.limit === "patient_doctor") return t.book.errorLimitDoctor;
+      if (err.data?.limit === "account_total") {
+        return t.book.errorLimitAccount.replace(
+          "{count}",
+          String(MINIAPP_MAX_ACTIVE_BOOKINGS_PER_ACCOUNT),
+        );
+      }
+      return t.book.errorLimitTotal.replace("{count}", String(MINIAPP_MAX_ACTIVE_BOOKINGS));
+    case "has_upcoming_bookings":
+      return t.family.unlinkHasBookings;
     case "rate_limited":
       return t.book.errorRateLimited;
     case "beyond_horizon":

@@ -29,8 +29,10 @@ import { runWithTenant } from "@/lib/tenant-context";
 
 import { isAllowedToReceive } from "./consent-gate";
 import {
+  type DefaultTemplate,
   MANUAL_APPOINTMENT_REMINDER_KEY,
   MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
+  VISIT_NOTE_AMENDED_KEY,
 } from "./default-templates";
 import { recordPatientNoChannel } from "./no-channel-action";
 import { skipsWhenConfirmed } from "./rules";
@@ -114,6 +116,10 @@ export const TRIGGER_KEYS = [
   // referrer that they've earned a discount. Idempotency:
   // `ReferralReward(referrerPatientId, referredPatientId)` unique key.
   "referral.reward-earned",
+  // Audit G3-03 — the doctor appended a correction to a signed conclusion.
+  // Fired by POST visit-notes/[id]/amendments; a visit corrected twice
+  // tells the patient twice (see `onVisitNoteAmended`).
+  "visit-note.amended",
 ] as const;
 
 export type TriggerKey = (typeof TRIGGER_KEYS)[number];
@@ -461,6 +467,9 @@ function whereForTrigger(
       return { key: "medication.reminder" };
     case "referral.reward-earned":
       return { key: "referral.reward-earned" };
+    case "visit-note.amended":
+      // No dedicated enum: a MANUAL-trigger row matched by its slug.
+      return { key: VISIT_NOTE_AMENDED_KEY };
     default:
       return null;
   }
@@ -736,19 +745,25 @@ export async function materializeForAppointmentsBulk(
 }
 
 /**
- * The clinic's manual-reminder template, created from the default on first
+ * The clinic's row of a default template, created from the default on first
  * use. Clinics are not seeded automatically, and a button that silently found
  * no template is exactly how «Напомнить всем» came to send nothing (AP-02).
- * `update: {}` keeps an admin's edits (text, `isActive`) untouched.
+ * `update: {}` keeps an admin's edits (text, `isActive`) untouched;
+ * `activeOnCreate` decides only how a brand-new row starts, so a patient
+ * message the clinic has not chosen to send yet can appear in the settings
+ * switched off (G3-03).
  */
-async function ensureManualReminderTemplate(clinicId: string): Promise<{
+export async function ensureClinicTemplate(
+  clinicId: string,
+  tpl: DefaultTemplate,
+  opts: { activeOnCreate: boolean },
+): Promise<{
   id: string;
   bodyRu: string;
   bodyUz: string;
   channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
   isActive: boolean;
 }> {
-  const tpl = MANUAL_APPOINTMENT_REMINDER_TEMPLATE;
   const select = {
     id: true,
     bodyRu: true,
@@ -768,10 +783,11 @@ async function ensureManualReminderTemplate(clinicId: string): Promise<{
           channel: tpl.channel,
           category: tpl.category,
           trigger: tpl.trigger,
+          triggerConfig: (tpl.triggerConfig ?? undefined) as never,
           bodyRu: tpl.bodyRu,
           bodyUz: tpl.bodyUz,
           variables: tpl.variables,
-          isActive: true,
+          isActive: opts.activeOnCreate,
         },
         update: {},
         select,
@@ -789,6 +805,13 @@ async function ensureManualReminderTemplate(clinicId: string): Promise<{
   return row as typeof row & {
     channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
   };
+}
+
+/** «Напомнить всем» is pressed by staff on purpose: its row starts active. */
+function ensureManualReminderTemplate(clinicId: string) {
+  return ensureClinicTemplate(clinicId, MANUAL_APPOINTMENT_REMINDER_TEMPLATE, {
+    activeOnCreate: true,
+  });
 }
 
 export type ManualReminderResult = {
@@ -1094,6 +1117,92 @@ export async function onAppointmentThankYou(
     "appointment.thank-you",
     new Date(),
   );
+}
+
+export type VisitNoteAmendedResult = {
+  /** Rows created (the Telegram message and its in-app mirror). */
+  queued: number;
+  /** Why nothing was queued. */
+  skipped?: "no_appointment" | "template_off" | "pending" | "no_channel";
+};
+
+/**
+ * Audit G3-03 — «врач внёс исправление в заключение», through the clinic's
+ * `visit-note.amended` template like every other patient message, so the
+ * clinic switches it on or off in /crm/settings/notifications. No active
+ * template, no message.
+ *
+ * Not one notice per visit, unlike the cascade: a conclusion corrected again
+ * days later is news again. Only a notice still waiting to go out absorbs a
+ * new correction, since it already sends the patient to the visit screen
+ * that lists every correction.
+ */
+export async function onVisitNoteAmended(
+  appointmentId: string,
+): Promise<VisitNoteAmendedResult> {
+  const appt = await loadAppointment(appointmentId);
+  if (!appt) return { queued: 0, skipped: "no_appointment" };
+  const tpl = await findTemplateFor(appt.clinicId, "visit-note.amended");
+  if (!tpl) return { queued: 0, skipped: "template_off" };
+  const pending = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.findFirst({
+      where: {
+        clinicId: appt.clinicId,
+        patientId: appt.patientId,
+        appointmentId: appt.id,
+        templateId: tpl.templateId,
+        status: { in: ["QUEUED", "SENDING"] },
+      },
+      select: { id: true },
+    }),
+  );
+  if (pending) return { queued: 0, skipped: "pending" };
+  const recipient = pickRecipient(tpl.channel, appt.patient);
+  if (!recipient) {
+    // Same compensator as every trigger: reception calls the patient.
+    await recordPatientNoChannel({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      patientName: appt.patient.fullName,
+      triggerKey: "visit-note.amended",
+      appointmentId: appt.id,
+      appointmentAt: appt.date,
+    });
+    return { queued: 0, skipped: "no_channel" };
+  }
+  const body = renderAppointmentBody(tpl, appt);
+  const now = new Date();
+  await createSend({
+    clinicId: appt.clinicId,
+    patientId: appt.patientId,
+    appointmentId: appt.id,
+    templateId: tpl.templateId,
+    channel: tpl.channel,
+    recipient,
+    body,
+    scheduledFor: now,
+  });
+  let queued = 1;
+  // The Mini App inbox mirror, as for every trigger (see the bulk path).
+  if (
+    appt.patient.telegramId &&
+    tpl.channel !== "INAPP" &&
+    tpl.channel !== "VISIT" &&
+    tpl.channel !== "CALL"
+  ) {
+    await createSend({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      appointmentId: appt.id,
+      templateId: tpl.templateId,
+      channel: "INAPP",
+      recipient: appt.patientId,
+      body,
+      scheduledFor: now,
+    });
+    queued += 1;
+  }
+  return { queued };
 }
 
 /**

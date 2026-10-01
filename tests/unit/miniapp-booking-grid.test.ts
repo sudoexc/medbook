@@ -10,6 +10,9 @@
  *     «10:00» picked in Moscow is 05:00Z, not 07:00Z.
  *   - A patient holds at most 3 booked visits ahead, 1 per doctor; visits
  *     already under way and live-queue tickets do not count.
+ *   - The Telegram account as a whole (owner and linked relatives) holds at
+ *     most 6 Mini App bookings ahead, and a relative still holding some
+ *     cannot be unlinked, so adding and dropping relatives frees nothing.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +26,10 @@ import {
   MINIAPP_BOOKING_HORIZON_DAYS,
   tashkentSlotStartIso,
 } from "@/lib/appointments/patient-booking";
-import { miniAppBookingLimitRefusal } from "@/server/miniapp/booking-limits";
+import {
+  hasMiniAppBookingsAhead,
+  miniAppBookingLimitRefusal,
+} from "@/server/miniapp/booking-limits";
 
 const MON_9_TO_13 = [{ start: "09:00", end: "13:00" }];
 
@@ -131,11 +137,32 @@ describe("booking horizon and Tashkent days", () => {
 
 describe("miniAppBookingLimitRefusal", () => {
   const now = new Date("2026-10-01T05:00:00Z");
-  function client(rows: Array<{ doctorId: string }>) {
+  function client(
+    rows: Array<{ doctorId: string }>,
+    account: { linked?: string[]; online?: number } = {},
+  ) {
     const findMany = vi.fn(async () => rows);
-    return { c: { appointment: { findMany } } as never, findMany };
+    const count = vi.fn(async () => account.online ?? 0);
+    const familyFindMany = vi.fn(async () =>
+      (account.linked ?? ["p_mama"]).map((linkedPatientId) => ({ linkedPatientId })),
+    );
+    return {
+      c: {
+        appointment: { findMany, count },
+        patientFamily: { findMany: familyFindMany },
+      } as never,
+      findMany,
+      count,
+      familyFindMany,
+    };
   }
-  const args = { clinicId: "c1", patientId: "p_mama", doctorId: "d1", now };
+  const args = {
+    clinicId: "c1",
+    patientId: "p_mama",
+    ownerPatientId: "p_owner",
+    doctorId: "d1",
+    now,
+  };
 
   it("a 4th booked visit ahead is refused", async () => {
     const { c } = client([{ doctorId: "d2" }, { doctorId: "d3" }, { doctorId: "d4" }]);
@@ -172,5 +199,80 @@ describe("miniAppBookingLimitRefusal", () => {
     // Queued or on the table: under way, not «ahead», so the doctor's
     // «запишитесь на контроль» can be booked from the hall.
     expect(and).toContainEqual({ status: { in: ["BOOKED", "CONFIRMED"] } });
+  });
+
+  // Review of MA-14: counted per card only, one account multiplied its
+  // slots by adding relatives (5 cards × 3 bookings + its own 3).
+  it("the whole account, relatives included, holds at most 6 Mini App bookings ahead", async () => {
+    const { c, count, familyFindMany } = client([], {
+      linked: ["p_mama", "p_son", "p_daughter"],
+      online: 6,
+    });
+    expect(await miniAppBookingLimitRefusal(c, args)).toEqual({
+      reason: "booking_limit",
+      limit: "account_total",
+    });
+    // The account's cards are read in the booking transaction.
+    expect(familyFindMany).toHaveBeenCalledWith({
+      where: { clinicId: "c1", ownerPatientId: "p_owner" },
+      select: { linkedPatientId: true },
+    });
+    const where = (count.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]
+      .where;
+    expect(where).toMatchObject({
+      clinicId: "c1",
+      patientId: { in: ["p_owner", "p_mama", "p_son", "p_daughter"] },
+      // Only the Mini App's own bookings: reception's phone bookings do not
+      // eat the account's online allowance.
+      channel: "TELEGRAM",
+    });
+    expect(where.AND as Array<Record<string, unknown>>).toContainEqual({
+      status: { in: ["BOOKED", "CONFIRMED"] },
+    });
+  });
+
+  it("five account bookings leave room for a sixth", async () => {
+    const { c } = client([], { online: 5 });
+    expect(await miniAppBookingLimitRefusal(c, args)).toBeNull();
+  });
+
+  it("the owner booking for himself is counted with his relatives too", async () => {
+    const { c, count } = client([], { linked: ["p_mama"], online: 6 });
+    expect(
+      await miniAppBookingLimitRefusal(c, { ...args, patientId: "p_owner" }),
+    ).toEqual({ reason: "booking_limit", limit: "account_total" });
+    const where = (count.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]
+      .where;
+    expect(where.patientId).toEqual({ in: ["p_owner", "p_mama"] });
+  });
+
+  it("a relative unlinked while the booking ran is not booked outside the account", async () => {
+    const { c, count } = client([], { linked: [] });
+    expect(await miniAppBookingLimitRefusal(c, args)).toEqual({
+      reason: "on_behalf_of_not_linked",
+    });
+    expect(count).not.toHaveBeenCalled();
+  });
+});
+
+describe("hasMiniAppBookingsAhead", () => {
+  const now = new Date("2026-10-01T05:00:00Z");
+
+  it("is true while the card holds a Mini App booking ahead", async () => {
+    const count = vi.fn(async () => 1);
+    const c = { appointment: { count } } as never;
+    expect(
+      await hasMiniAppBookingsAhead(c, { clinicId: "c1", patientId: "p_mama", now }),
+    ).toBe(true);
+    const where = (count.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]
+      .where;
+    expect(where).toMatchObject({ clinicId: "c1", patientId: "p_mama", channel: "TELEGRAM" });
+  });
+
+  it("is false with none", async () => {
+    const c = { appointment: { count: vi.fn(async () => 0) } } as never;
+    expect(
+      await hasMiniAppBookingsAhead(c, { clinicId: "c1", patientId: "p_mama", now }),
+    ).toBe(false);
   });
 });

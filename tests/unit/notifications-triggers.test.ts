@@ -12,13 +12,15 @@
  * added `appointment.reminder-5d` for the 5d/3d/1d/3h cascade.
  * `appointment.rescheduled` closes the silent-move gap: a reschedule now
  * notifies the patient of the new time and rebuilds the cascade around it.
+ * Audit G3-03 added `visit-note.amended` (the doctor corrected a signed
+ * conclusion), sent through the clinic's own template.
  */
 import { describe, it, expect } from "vitest";
 
 import { TRIGGER_KEYS } from "@/server/notifications/triggers";
 
 describe("TRIGGER_KEYS", () => {
-  it("exposes all 24 triggers in the documented order", () => {
+  it("exposes all 25 triggers in the documented order", () => {
     expect([...TRIGGER_KEYS]).toEqual([
       "appointment.created",
       "appointment.thank-you",
@@ -44,10 +46,11 @@ describe("TRIGGER_KEYS", () => {
       "appointment.nps-request",
       "medication.reminder",
       "referral.reward-earned",
+      "visit-note.amended",
     ]);
   });
 
-  it("is a tuple-const (readonly) length 24", () => {
-    expect(TRIGGER_KEYS.length).toBe(24);
+  it("is a tuple-const (readonly) length 25", () => {
+    expect(TRIGGER_KEYS.length).toBe(25);
   });
 });

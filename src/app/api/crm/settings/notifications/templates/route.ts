@@ -6,14 +6,29 @@
  *
  * Per-clinic scoping is enforced by the tenant-scope Prisma extension (the
  * createApiListHandler wraps the inner handler in `runWithTenant`).
+ *
+ * The «исправление в заключении» message (audit G3-03) is provisioned here,
+ * switched off, so the admin finds it in the list and decides when patients
+ * start getting it; otherwise its row would appear only after the first
+ * amendment.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
+import { ensureAmendmentNoticeTemplate } from "@/server/visit-notes/amendment-notice";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN"] },
-  async () => {
+  async ({ ctx }) => {
+    // A view-only impersonation reads, never writes.
+    if (ctx.kind === "TENANT" && ctx.impersonation?.mode !== "VIEW_ONLY") {
+      try {
+        await ensureAmendmentNoticeTemplate(ctx.clinicId);
+      } catch (e) {
+        // A provisioning hiccup must not hide the clinic's templates.
+        console.error("[settings/notifications] amendment template", e);
+      }
+    }
     const rows = await prisma.notificationTemplate.findMany({
       orderBy: [{ category: "asc" }, { trigger: "asc" }, { key: "asc" }],
       select: {

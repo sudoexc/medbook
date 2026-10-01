@@ -186,10 +186,14 @@ export type BookTx =
   | Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /** Why a `guard` refused the booking. */
-export type BookGuardRefusal = {
-  reason: "booking_limit";
-  limit: "patient_total" | "patient_doctor";
-};
+export type BookGuardRefusal =
+  | {
+      reason: "booking_limit";
+      limit: "patient_total" | "patient_doctor" | "account_total";
+    }
+  // The relative the Mini App books for was unlinked from the account while
+  // the booking ran (seen on the Serializable retry).
+  | { reason: "on_behalf_of_not_linked" };
 
 export type BookedAppointmentProjection = {
   id: string;

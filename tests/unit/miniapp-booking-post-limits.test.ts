@@ -5,7 +5,9 @@
  * start off the grid or past the horizon answers 400; a service the doctor
  * does not offer answers 404. Also: no more than 3 services per booking, a
  * per-account attempt budget (429), the limit counted for the RELATIVE the
- * booking is for, and no referral reward lookup while the program is off.
+ * booking is for, a cap on the whole account's Mini App bookings ahead
+ * (relatives included), and no referral reward lookup while the program is
+ * off.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +17,7 @@ const state = vi.hoisted(() => ({
   bookInputs: [] as Array<Record<string, unknown>>,
   bookResult: null as Record<string, unknown> | null,
   owner: "p_owner",
+  relatives: [] as string[],
 }));
 
 vi.mock("@/server/miniapp/handler", () => {
@@ -61,6 +64,10 @@ vi.mock("@/server/miniapp/active-patient", () => ({
     preferredLang: "RU",
     ownerPatientId: state.owner,
   })),
+  getFamilyAllowedPatientIds: vi.fn(async (_clinicId: string, owner: string) => [
+    owner,
+    ...state.relatives,
+  ]),
 }));
 vi.mock("@/server/miniapp/idempotency", () => ({
   withIdempotency: (_r: Request, _s: unknown, fn: () => Promise<Response>) => fn(),
@@ -116,6 +123,7 @@ beforeEach(() => {
   state.onGrid = true;
   state.bookInputs = [];
   state.bookResult = null;
+  state.relatives = [];
   // A fresh Telegram account per test: the attempt budget is per account.
   owner += 1;
   state.owner = `p_owner_${owner}`;
@@ -189,6 +197,37 @@ describe("POST /api/miniapp/appointments limits", () => {
     const where = (findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]
       .where;
     expect(where.patientId).toBe("p_mama");
+  });
+
+  // Review of MA-14: the per-card limits multiplied with every relative
+  // the account added, so the account as a whole is capped too.
+  it("the guard caps the whole account, relatives included", async () => {
+    state.relatives = ["p_mama", "p_son", "p_daughter", "p_wife", "p_dad"];
+    await book({ onBehalfOf: "p_son" });
+    const guard = state.bookInputs[0]!.guard as (tx: unknown) => Promise<unknown>;
+    // The son holds nothing yet; the account already holds 6 online bookings.
+    const count = vi.fn(async () => 6);
+    expect(await guard({ appointment: { findMany: vi.fn(async () => []), count } })).toEqual({
+      reason: "booking_limit",
+      limit: "account_total",
+    });
+    const where = (count.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]
+      .where;
+    expect(where.patientId).toEqual({ in: [state.owner, ...state.relatives] });
+  });
+
+  it("the account limit is a 409 the Mini App can name", async () => {
+    state.bookResult = { ok: false, reason: "booking_limit", limit: "account_total" };
+    const res = await book({});
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ reason: "booking_limit", limit: "account_total" });
+  });
+
+  it("a relative unlinked while the booking ran is a 403, as before it", async () => {
+    state.bookResult = { ok: false, reason: "on_behalf_of_not_linked" };
+    const res = await book({ onBehalfOf: "p_mama" });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "on_behalf_of_not_linked" });
   });
 
   it("MA-19: no referral reward is looked up while the program is off", async () => {

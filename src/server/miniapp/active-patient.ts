@@ -13,6 +13,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { BookTx } from "@/server/appointments/book";
 
 export type ActivePatientCtx = {
   clinicId: string;
@@ -73,14 +74,17 @@ export async function resolveActivePatient(input: {
 
 /**
  * Cheap fan-out — the set of patient ids the TG owner may legitimately read
- * / write on. Used by the SSE filter (Phase M3) and any list-handler that
- * returns "all my + family" data.
+ * / write on. Used by the SSE filter (Phase M3), any list-handler that
+ * returns "all my + family" data, and the booking limits, which pass their
+ * transaction as `db` so the account's cards are read in the same snapshot
+ * as its bookings.
  */
 export async function getFamilyAllowedPatientIds(
   clinicId: string,
   ownerPatientId: string,
+  db: BookTx = prisma,
 ): Promise<string[]> {
-  const links = await prisma.patientFamily.findMany({
+  const links = await db.patientFamily.findMany({
     where: { clinicId, ownerPatientId },
     select: { linkedPatientId: true },
   });

@@ -10,13 +10,22 @@
  *   - `visit-note.amended` is delivered to the patient's stream and
  *     refreshes the visit screen and the visits list;
  *   - the patient gets «врач внёс исправление» in Telegram (and the Mini App
- *     inbox), as a transactional message.
+ *     inbox), as a transactional message, through the clinic's own
+ *     `visit-note.amended` template. Review: it used to be queued with no
+ *     template, so the clinic could not switch it off; the row is now
+ *     created switched off and nothing goes until the clinic turns it on.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   note: null as Record<string, unknown> | null,
   sends: [] as Array<Record<string, unknown>>,
+  // The clinic's `visit-note.amended` row, as the database holds it.
+  template: null as Record<string, unknown> | null,
+  upserts: [] as Array<Record<string, unknown>>,
+  appt: null as Record<string, unknown> | null,
+  pending: null as Record<string, unknown> | null,
+  noChannel: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/server/miniapp/handler", () => {
@@ -46,15 +55,39 @@ vi.mock("@/server/miniapp/active-patient", () => ({
 vi.mock("@/lib/tenant-context", () => ({
   runWithTenant: <T,>(_ctx: unknown, fn: () => T) => fn(),
 }));
+vi.mock("@/server/notifications/no-channel-action", () => ({
+  recordPatientNoChannel: vi.fn(async (args: Record<string, unknown>) => {
+    state.noChannel.push(args);
+  }),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     visitNote: {
       findFirst: vi.fn(async () => state.note),
     },
+    notificationTemplate: {
+      // ensureClinicTemplate: creates the row when missing, never updates it.
+      upsert: vi.fn(async (args: { create: Record<string, unknown> }) => {
+        state.upserts.push(args);
+        if (!state.template) state.template = { id: "tpl_amend", ...args.create };
+        return state.template;
+      }),
+      // findTemplateFor: only an active row of this slug.
+      findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+        const t = state.template;
+        if (!t || where.isActive !== true || t.isActive !== true) return null;
+        if (where.key !== t.key) return null;
+        return t;
+      }),
+    },
+    appointment: {
+      findUnique: vi.fn(async () => state.appt),
+    },
     notificationSend: {
-      createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
-        state.sends.push(...data);
-        return { count: data.length };
+      findFirst: vi.fn(async () => state.pending),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        state.sends.push(data);
+        return { id: `snd_${state.sends.length}`, ...data };
       }),
     },
   },
@@ -62,9 +95,12 @@ vi.mock("@/lib/prisma", () => ({
 
 import { GET as visitSummary } from "@/app/api/miniapp/visit-summary/[appointmentId]/route";
 import {
-  amendmentNoticeText,
+  amendmentNoticeTemplate,
   queueAmendmentNotice,
 } from "@/server/visit-notes/amendment-notice";
+import { VISIT_NOTE_AMENDED_KEY } from "@/server/notifications/default-templates";
+import { TRIGGER_KEYS } from "@/server/notifications/triggers";
+import { render } from "@/server/notifications/template";
 import { MINIAPP_DELIVERABLE_TYPES } from "@/app/api/miniapp/events/route";
 import { MINIAPP_INVALIDATION_MAP } from "@/app/c/[slug]/my/_hooks/use-miniapp-live-events";
 import { EVENT_TYPES, parseEvent } from "@/server/realtime/events";
@@ -72,6 +108,11 @@ import { EVENT_TYPES, parseEvent } from "@/server/realtime/events";
 beforeEach(() => {
   state.note = null;
   state.sends = [];
+  state.template = null;
+  state.upserts = [];
+  state.appt = null;
+  state.pending = null;
+  state.noChannel = [];
 });
 
 describe("the Mini App visit summary", () => {
@@ -140,73 +181,199 @@ describe("the live refresh", () => {
 describe("the patient's message", () => {
   const visitDate = new Date("2026-09-29T05:00:00Z");
 
-  it("ru and uz texts name the doctor and the visit date, with no dash", () => {
-    const ru = amendmentNoticeText({
-      locale: "ru",
-      patientName: "Karimova Dilnoza Aliyevna",
-      doctorName: "Султанов Азиз",
-      visitDate,
+  it("the default text is the next-intl message with the template's placeholders, ru and uz, no dash", () => {
+    const tpl = amendmentNoticeTemplate();
+    expect(tpl).toMatchObject({
+      key: VISIT_NOTE_AMENDED_KEY,
+      channel: "TG",
+      category: "TRANSACTIONAL",
+      trigger: "MANUAL",
     });
-    expect(ru).toContain("Dilnoza");
-    expect(ru).toContain("Султанов Азиз");
-    expect(ru).toContain("29.09.2026");
-    expect(ru).toMatch(/исправление в заключение/);
-    const uz = amendmentNoticeText({
-      locale: "uz",
-      patientName: "Karimova Dilnoza",
-      doctorName: "Sultanov Aziz",
-      visitDate,
+    const ctx = {
+      patient: { firstName: "Dilnoza" },
+      appointment: { doctor: "Султанов Азиз", date: "29 сентября 2026 г." },
+    };
+    // The date renders as «29 сентября 2026 г.», so it never ends a sentence.
+    expect(render(tpl.bodyRu, ctx)).toBe(
+      "Dilnoza, в заключение по приёму 29 сентября 2026 г. врач Султанов Азиз внёс исправление. Откройте приложение клиники, чтобы его прочитать.",
+    );
+    const uz = render(tpl.bodyUz, {
+      ...ctx,
+      appointment: { doctor: "Sultanov Aziz", date: "29.09.2026" },
     });
     expect(uz).toContain("Sultanov Aziz");
     expect(uz).toMatch(/tuzatish kiritdi/);
-    for (const text of [ru, uz]) expect(text).not.toMatch(/[—–]/);
+    expect(tpl.nameRu).toBe("Исправление в заключении врача");
+    expect(tpl.nameUz).not.toBe("");
+    for (const text of [tpl.bodyRu, tpl.bodyUz, tpl.nameRu, tpl.nameUz]) {
+      expect(text).not.toMatch(/[—–]/);
+    }
   });
 
-  function note(patient: Record<string, unknown>) {
+  it("is a registered trigger", () => {
+    expect(TRIGGER_KEYS).toContain("visit-note.amended");
+  });
+
+  function note(patient: Record<string, unknown> = {}) {
     return {
       appointmentId: "apt_1",
-      finalizedAt: new Date("2026-09-29T06:00:00Z"),
+      patient: { marketingOptOut: false, deletedAt: null, ...patient },
+    };
+  }
+  function appt(patient: Record<string, unknown> = {}) {
+    return {
+      id: "apt_1",
+      clinicId: "c1",
+      patientId: "p1",
+      date: visitDate,
+      time: "10:00",
+      endDate: new Date("2026-09-29T05:30:00Z"),
+      status: "COMPLETED",
+      confirmedAt: null,
       patient: {
         id: "p1",
         fullName: "Karimova Dilnoza",
+        phone: "+998901112233",
         telegramId: "777",
+        preferredChannel: "TG",
         preferredLang: "UZ",
-        marketingOptOut: false,
-        deletedAt: null,
+        birthDate: null,
         ...patient,
       },
       doctor: { nameRu: "Султанов Азиз", nameUz: "Sultanov Aziz" },
-      appointment: { date: visitDate },
+      primaryService: null,
+      cabinet: null,
+      clinic: {
+        id: "c1",
+        nameRu: "Неврофакс",
+        nameUz: "Neurofax",
+        phone: "+998712000000",
+        addressRu: null,
+        timezone: "Asia/Tashkent",
+      },
     };
   }
+  /** The clinic switched the message on in /crm/settings/notifications. */
+  function switchedOn() {
+    state.template = { id: "tpl_amend", ...amendmentNoticeTemplate(), isActive: true };
+  }
 
-  it("queues Telegram and the Mini App inbox, in the patient's language", async () => {
-    state.note = note({});
-    expect(await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).toEqual({ queued: 2 });
+  it("a clinic that has not switched it on sends nothing, and the row appears switched off", async () => {
+    state.note = note();
+    state.appt = appt();
+    expect(await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).toEqual({
+      queued: 0,
+      skipped: "template_off",
+    });
+    expect(state.sends).toHaveLength(0);
+    const up = state.upserts[0] as {
+      where: { clinicId_key: { clinicId: string; key: string } };
+      create: Record<string, unknown>;
+      update: Record<string, unknown>;
+    };
+    expect(up.where.clinicId_key).toEqual({ clinicId: "c1", key: VISIT_NOTE_AMENDED_KEY });
+    expect(up.create.isActive).toBe(false);
+    // The admin's text and switch are never overwritten.
+    expect(up.update).toEqual({});
+  });
+
+  it("switched on: Telegram and the Mini App inbox, in the patient's language", async () => {
+    switchedOn();
+    state.note = note();
+    state.appt = appt();
+    expect(await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).toEqual({
+      queued: 2,
+    });
     expect(state.sends.map((s) => s.channel).sort()).toEqual(["INAPP", "TG"]);
     const tg = state.sends.find((s) => s.channel === "TG")!;
     expect(tg).toMatchObject({
       clinicId: "c1",
       patientId: "p1",
       appointmentId: "apt_1",
+      templateId: "tpl_amend",
       recipient: "777",
       status: "QUEUED",
     });
     expect(String(tg.body)).toContain("Sultanov Aziz");
+    expect(String(tg.body)).toMatch(/tuzatish kiritdi/);
+  });
+
+  it("the admin's edited text is what goes out", async () => {
+    switchedOn();
+    state.template = {
+      ...state.template!,
+      bodyRu: "{{patient.firstName}}, врач уточнил заключение.",
+    };
+    state.note = note();
+    state.appt = appt({ preferredLang: "RU" });
+    await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" });
+    // `patient.firstName` is the first word of the card, as in every template.
+    expect(state.sends[0]!.body).toBe("Karimova, врач уточнил заключение.");
+  });
+
+  it("switched off again by the clinic: nothing goes", async () => {
+    switchedOn();
+    state.template = { ...state.template!, isActive: false };
+    state.note = note();
+    state.appt = appt();
+    expect((await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).queued).toBe(0);
+    expect(state.sends).toHaveLength(0);
   });
 
   it("is transactional: a marketing opt-out still hears about the correction", async () => {
+    switchedOn();
     state.note = note({ marketingOptOut: true });
+    state.appt = appt();
     expect((await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).queued).toBe(2);
   });
 
-  it("a card without Telegram gets the inbox only; a deleted card nothing", async () => {
-    state.note = note({ telegramId: null });
-    expect((await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).queued).toBe(1);
-    expect(state.sends.map((s) => s.channel)).toEqual(["INAPP"]);
-    state.sends = [];
+  it("a deleted card gets nothing", async () => {
+    switchedOn();
     state.note = note({ deletedAt: new Date() });
+    state.appt = appt();
     expect((await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).queued).toBe(0);
     expect(state.sends).toHaveLength(0);
+  });
+
+  it("a card without Telegram: reception gets the call task, as for every message", async () => {
+    switchedOn();
+    state.note = note();
+    state.appt = appt({ telegramId: null });
+    expect(await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).toEqual({
+      queued: 0,
+      skipped: "no_channel",
+    });
+    expect(state.sends).toHaveLength(0);
+    expect(state.noChannel).toEqual([
+      expect.objectContaining({
+        patientId: "p1",
+        triggerKey: "visit-note.amended",
+        appointmentId: "apt_1",
+      }),
+    ]);
+  });
+
+  it("a notice still waiting to go out covers a second correction; a sent one does not", async () => {
+    switchedOn();
+    state.note = note();
+    state.appt = appt();
+    state.pending = { id: "snd_waiting" };
+    expect(await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).toEqual({
+      queued: 0,
+      skipped: "pending",
+    });
+    const { prisma } = await import("@/lib/prisma");
+    const where = (
+      prisma.notificationSend.findFirst as unknown as {
+        mock: { calls: Array<[{ where: Record<string, unknown> }]> };
+      }
+    ).mock.calls.at(-1)![0].where;
+    expect(where).toMatchObject({
+      appointmentId: "apt_1",
+      templateId: "tpl_amend",
+      status: { in: ["QUEUED", "SENDING"] },
+    });
+    state.pending = null;
+    expect((await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" })).queued).toBe(2);
   });
 });

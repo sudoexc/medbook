@@ -7745,6 +7745,7 @@
         "save": "Tuzatishni saqlash",
         "created": "Tuzatish qo‘shildi — u chop etish shaklida va bemor PDF hujjatida ko‘rinadi.",
         "patientNotice": "{name}, shifokor {doctor} {date} kungi qabul xulosasiga tuzatish kiritdi. Uni o‘qish uchun klinika ilovasini oching.",
+        "patientNoticeTemplateName": "Shifokor xulosasidagi tuzatish",
         "errorWindowOpen": "Tahrirlash oynasi (24 soat) hali ochiq — xulosani bevosita tahrirlang.",
         "errorNotFinalized": "Tuzatishlar faqat yakunlangan xulosalar uchun mavjud.",
         "errorForbidden": "Tuzatishni faqat xulosa muallifi qo‘sha oladi.",

@@ -72,6 +72,14 @@ export const MANUAL_APPOINTMENT_REMINDER_TEMPLATE: DefaultTemplate = {
   variables: COMMON_VARS,
 };
 
+/**
+ * Slug of «врач внёс исправление в заключение» (audit G3-03). Its default
+ * text lives in the next-intl messages and the row is created switched off
+ * (`src/server/visit-notes/amendment-notice.ts`): patient Telegram messages
+ * are turned on one at a time, by the clinic.
+ */
+export const VISIT_NOTE_AMENDED_KEY = "visit-note.amended";
+
 export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
   // ── Reminder cascade (5d / 3d / 1d / 3h) — TZ-risk-outcomes §7 ────────
   {

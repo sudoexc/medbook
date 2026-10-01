@@ -18,8 +18,9 @@
  * Limits (audit MA-14): at most `MINIAPP_MAX_SERVICES_PER_BOOKING` services,
  * all offered by the doctor; a start the picker offers (the doctor's 20
  * minute grid, inside the 14 day horizon); a few booked visits ahead per
- * patient, one per doctor (409 `booking_limit`); and a short-window budget
- * of attempts per Telegram account (429 `rate_limited`).
+ * patient, one per doctor, and a cap on the Mini App bookings ahead of the
+ * whole account, relatives included (409 `booking_limit`); and a
+ * short-window budget of attempts per Telegram account (429 `rate_limited`).
  *
  * `patientPhone` is accepted from old clients and IGNORED (audit PH-01,
  * MA-04). Writing it into the card let anyone claim a stranger's number
@@ -238,6 +239,8 @@ export const POST = createMiniAppHandler(
         miniAppBookingLimitRefusal(tx, {
           clinicId: ctx.clinicId,
           patientId: active.patientId,
+          // The account cap spans the owner and every relative (MA-14).
+          ownerPatientId: ctx.patientId,
           doctorId: body.doctorId,
           now,
         }),
@@ -286,6 +289,9 @@ export const POST = createMiniAppHandler(
           return err("bad_channel", 422);
         case "booking_limit":
           return conflict("booking_limit", { limit: result.limit });
+        case "on_behalf_of_not_linked":
+          // Unlinked while this booking ran; the same answer as above.
+          return err("on_behalf_of_not_linked", 403);
       }
     }
 

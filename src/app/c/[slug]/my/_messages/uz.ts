@@ -171,6 +171,8 @@ export const uzDict = {
       "Siz bu shifokorga allaqachon yozilgansiz. Boshqa vaqt kerak bo‘lsa, «Mening yozuvlarim» bo‘limida shu yozuvni ko‘chiring.",
     errorLimitTotal:
       "Ilova orqali {count} tadan ortiq kutilayotgan yozuv bo‘lishi mumkin emas. Yana yozilish uchun ulardan birini bekor qiling yoki ko‘chiring.",
+    errorLimitAccount:
+      "Bitta akkauntdan ilova orqali o‘zingiz va qarindoshlaringiz uchun birgalikda {count} tadan ortiq kutilayotgan yozuv bo‘lishi mumkin emas. Yana yozilish uchun ulardan birini bekor qiling yoki ko‘chiring.",
     errorRateLimited: "Yozilishga juda ko‘p urinish bo‘ldi. Bir necha daqiqadan keyin qayta urinib ko‘ring.",
     errorBeyondHorizon: "Onlayn yozilish {days} kun oldinga ochiq. Yaqinroq sanani tanlang.",
     errorOffGrid: "Bu vaqtga yozilib bo‘lmaydi. Ro‘yxatdan vaqt tanlang.",
@@ -360,6 +362,10 @@ export const uzDict = {
     },
     unlink: "Uzish",
     confirmUnlink: "{name}ni oiladan uzasizmi?",
+    // The unlink is refused while the relative holds Mini App bookings
+    // ahead (MA-14): they would stop counting toward the account.
+    unlinkHasBookings:
+      "Qarindoshingizning ilova orqali kutilayotgan yozuvlari bor. Bu tashriflardan keyin yoki ular bekor qilingandan keyin uzish mumkin.",
     activeContext: "Kim uchun: {name}",
     maxReached: "Eng ko‘pi bilan 5 ta qarindosh qo‘shsa bo‘ladi",
     duplicate: "Bu bemor allaqachon oilada",

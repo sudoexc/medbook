@@ -310,6 +310,17 @@ export const ALLOWED_KEYS_BY_TRIGGER: Record<string, string[]> = {
     "percent",
     "clinic.name",
   ],
+  // Audit G3-03 — the doctor corrected a signed conclusion. Rendered with
+  // the corrected visit's appointment context (`onVisitNoteAmended`).
+  "visit-note.amended": [
+    "patient.name",
+    "patient.firstName",
+    "appointment.date",
+    "appointment.time",
+    "appointment.doctor",
+    "clinic.name",
+    "clinic.phone",
+  ],
 };
 
 export const TRIGGER_KEYS = Object.keys(ALLOWED_KEYS_BY_TRIGGER);

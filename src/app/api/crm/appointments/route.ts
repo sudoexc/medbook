@@ -276,6 +276,9 @@ export const POST = createApiHandler(
         case "booking_limit":
           // Unreachable: only the Mini App passes a booking guard.
           return conflict("booking_limit", { limit: result.limit });
+        case "on_behalf_of_not_linked":
+          // Unreachable: only the Mini App passes a booking guard.
+          return err("on_behalf_of_not_linked", 403);
       }
     }
 

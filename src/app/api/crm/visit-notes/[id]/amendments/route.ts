@@ -23,9 +23,10 @@
  * Reaching the patient (audit G3-03): the amendment commits together with a
  * `visit-note.amended` outbox event, so the visit screen open in the Mini App
  * refetches and shows the «Исправления» block (the visit summary carries
- * the amendments), and the patient is sent a message that the doctor
- * corrected his conclusion. Before, it existed only inside the re-rendered
- * PDF and nobody was told.
+ * the amendments), and, once the clinic has switched the `visit-note.amended`
+ * message on in /crm/settings/notifications (it starts off), the patient is
+ * sent a message that the doctor corrected his conclusion. Before, it
+ * existed only inside the re-rendered PDF and nobody was told.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";

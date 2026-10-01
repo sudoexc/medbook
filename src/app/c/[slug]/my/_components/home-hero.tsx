@@ -49,6 +49,7 @@ import { useLabs } from "../_hooks/use-labs";
 import { useMiniAppLiveStatus } from "../_hooks/use-miniapp-live-events";
 import { useMinuteClock } from "../_hooks/use-minute-clock";
 import { countUnseenLabs, readLabsSeenAt } from "../_lib/labs-unseen";
+import { myHref } from "../_lib/booking-context";
 import { formatDateISO, formatTimeISO, MErrorInline } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { tashkentDateOf } from "@/lib/tashkent-time";
@@ -366,7 +367,7 @@ function AppointmentHero({
   return (
     <>
     <Link
-      href={`/c/${slug}/my/appointments`}
+      href={myHref(slug, "appointments", onBehalfOf)}
       onClick={() => tg.haptic.selection()}
       className="block"
     >
@@ -537,9 +538,10 @@ function ResultsHero({ slug, appt }: { slug: string; appt: MiniAppAppointment })
   const t = useT();
   const lang = useLang();
   const tg = useTelegramWebApp();
+  const { onBehalfOf } = useActiveContext();
   return (
     <Link
-      href={`/c/${slug}/my/visit/${appt.id}`}
+      href={myHref(slug, `visit/${appt.id}`, onBehalfOf)}
       onClick={() => tg.haptic.selection()}
       className="block"
     >
@@ -587,9 +589,10 @@ function ResultsHero({ slug, appt }: { slug: string; appt: MiniAppAppointment })
 function LabsHero({ slug, count }: { slug: string; count: number }) {
   const t = useT();
   const tg = useTelegramWebApp();
+  const { onBehalfOf } = useActiveContext();
   return (
     <Link
-      href={`/c/${slug}/my/labs`}
+      href={myHref(slug, "labs", onBehalfOf)}
       onClick={() => tg.haptic.selection()}
       className="block"
     >
@@ -720,7 +723,8 @@ export function HomeHero({
   const upcoming = useAppointments("upcoming", onBehalfOf);
   const past = useAppointments("past", onBehalfOf);
   const meds = useMedications(onBehalfOf);
-  const labs = useLabs();
+  // The relative's results in her context, never the owner's (MA-18).
+  const labs = useLabs(onBehalfOf);
   // Ticks every minute instead of freezing at mount: the Mini App webview is
   // suspended, not unmounted, so a screen left open past midnight kept
   // claiming a visit was «завтра» on the day it actually happened.
@@ -771,8 +775,8 @@ export function HomeHero({
     : undefined;
 
   const unseenLabs = React.useMemo(
-    () => countUnseenLabs(labs.data, readLabsSeenAt(slug)),
-    [labs.data, slug],
+    () => countUnseenLabs(labs.data, readLabsSeenAt(slug, onBehalfOf)),
+    [labs.data, slug, onBehalfOf],
   );
 
   // Same-geometry skeleton — no layout jump when data lands (П7).
@@ -878,7 +882,7 @@ export function HomeHero({
   if (primary !== "meds" && primary !== "empty" && dueReminder) {
     secondary = (
       <SlimRow
-        href={`/c/${slug}/my/medications`}
+        href={myHref(slug, "medications", onBehalfOf)}
         icon={Pill}
         color={ORANGE}
         text={reminderRowText(dueReminder, t)}
@@ -902,7 +906,7 @@ export function HomeHero({
           : t.home.inDays.replace("{n}", String(diff));
     secondary = (
       <SlimRow
-        href={`/c/${slug}/my/appointments`}
+        href={myHref(slug, "appointments", onBehalfOf)}
         icon={CalendarDays}
         color="var(--tg-accent)"
         text={
@@ -916,7 +920,7 @@ export function HomeHero({
   } else if (primary !== "results" && freshConclusion) {
     secondary = (
       <SlimRow
-        href={`/c/${slug}/my/visit/${freshConclusion.id}`}
+        href={myHref(slug, `visit/${freshConclusion.id}`, onBehalfOf)}
         icon={FileText}
         color={GREEN}
         text={t.home.hero.resultsTitle}
@@ -927,7 +931,7 @@ export function HomeHero({
     // when the queue / today's visit owns the hero.
     secondary = (
       <SlimRow
-        href={`/c/${slug}/my/labs`}
+        href={myHref(slug, "labs", onBehalfOf)}
         icon={FlaskConical}
         color={GREEN}
         text={

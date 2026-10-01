@@ -12,7 +12,9 @@
  * without our custom headers. The URL carries `t`, a link for THIS document
  * the documents / visits lists mint (audit MA-07: it used to carry the
  * patient's initData, the key to the whole account). A request with the
- * initData header is still served.
+ * initData header is still served, for the owner or a relative he acts for
+ * (`?onBehalfOf=`, family link checked, audit MA-18); a link names the
+ * patient it was minted for.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -24,6 +26,7 @@ import {
 } from "@/server/miniapp/handler";
 import { fetchObject } from "@/server/storage/minio";
 import { expiredMiniAppLinkPage } from "@/server/miniapp/link-page";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { isClinicOwnedKey, storageKeyFromUrl } from "@/lib/storage-ref";
 
 /**
@@ -52,7 +55,19 @@ export async function GET(
   } else {
     const resolved = await resolveMiniAppContext(request);
     if (!resolved.ok) return resolved.response;
-    owner = { clinicId: resolved.ctx.clinicId, patientId: resolved.ctx.patientId };
+    const { ctx } = resolved;
+    const acting = await runWithTenant({ kind: "SYSTEM" }, () =>
+      resolveActivePatient({
+        ctx: {
+          clinicId: ctx.clinicId,
+          patientId: ctx.patientId,
+          preferredLang: ctx.patient.preferredLang,
+        },
+        onBehalfOf: new URL(request.url).searchParams.get("onBehalfOf"),
+      }),
+    );
+    if (!acting.ok) return err(acting.reason, 403);
+    owner = { clinicId: ctx.clinicId, patientId: acting.patientId };
   }
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {

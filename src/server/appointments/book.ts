@@ -169,6 +169,26 @@ export type BookInput = {
 
   /** When set, runs `autoAttachCase` after the booking commits (mini-app path). */
   autoAttachCaseOptions?: Omit<AutoAttachCaseInput, "appointmentId" | "audit">;
+
+  /**
+   * A last check run inside the booking transaction, before the row is
+   * written (the Mini App's per-patient limits, audit MA-14). Under the
+   * transaction's Serializable isolation two racing bookings cannot both
+   * pass a count; the loser is checked again after the conflict and gets
+   * the refusal rather than «doctor busy».
+   */
+  guard?: (tx: BookTx) => Promise<BookGuardRefusal | null>;
+};
+
+/** Either the prisma singleton or the booking transaction's client. */
+export type BookTx =
+  | typeof prisma
+  | Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/** Why a `guard` refused the booking. */
+export type BookGuardRefusal = {
+  reason: "booking_limit";
+  limit: "patient_total" | "patient_doctor";
 };
 
 export type BookedAppointmentProjection = {
@@ -220,7 +240,8 @@ export type BookResult =
         | "bad_start_at"
         | "bad_channel";
       until?: string;
-    };
+    }
+  | ({ ok: false } & BookGuardRefusal);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Implementation
@@ -364,7 +385,8 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
         eventId: string;
         recomputed: RecomputedSnapshot | null;
       }
-    | { kind: "conflict"; reason: string; until?: string };
+    | { kind: "conflict"; reason: string; until?: string }
+    | { kind: "guard"; refusal: BookGuardRefusal };
 
   try {
     txResult = await prisma.$transaction(
@@ -375,6 +397,10 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
         );
         if (!c.ok) {
           return { kind: "conflict" as const, reason: c.reason, until: c.until };
+        }
+        if (input.guard) {
+          const refusal = await input.guard(tx);
+          if (refusal) return { kind: "guard" as const, refusal };
         }
 
         // Claim the lead only while it has no visit yet: two operators booking
@@ -670,6 +696,12 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
       (isAdapterErr && msgIndicatesConflict) ||
       msgIndicatesConflict;
     if (isWriteConflict) {
+      // A racing booking of the same patient that pushed him over his limit
+      // surfaces as a serialization failure too: say so, not «busy».
+      if (input.guard) {
+        const refusal = await input.guard(prisma);
+        if (refusal) return { ok: false, ...refusal };
+      }
       const c = await detectConflicts({
         doctorId: input.doctorId,
         cabinetId,
@@ -705,6 +737,9 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
     throw e;
   }
 
+  if (txResult.kind === "guard") {
+    return { ok: false, ...txResult.refusal };
+  }
   if (txResult.kind === "conflict") {
     return {
       ok: false,

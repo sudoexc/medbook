@@ -1,4 +1,8 @@
 /**
+ * What the patient may still do with a visit from the Mini App: move it
+ * (review of audit MA-20, MA-17) or cancel it (MA-15). The route and the
+ * sheet read the same rules.
+ *
  * Whether the patient has already arrived for a visit, so the Mini App may no
  * longer move it (review of audit MA-20).
  *
@@ -44,4 +48,55 @@ export function hasArrivedForVisit(row: ArrivalSnapshot): boolean {
   if (ARRIVED_STATUSES.has(row.status)) return true;
   if (row.queueStatus && ARRIVED_STATUSES.has(row.queueStatus)) return true;
   return row.arrivedAt != null;
+}
+
+/**
+ * What a patient may cancel from the Mini App (audit MA-15): a visit that
+ * has not reached the doctor. A queued or skipped patient may still leave
+ * (the desk then stops waiting for him), but a visit on the table is the
+ * doctor's: cancelling it dropped the current patient from his queue and
+ * left the started exam on a cancelled row. Finished visits are history.
+ * The list in the sheet (✕) reads the same set, so a stale cache can only
+ * show a button the server then refuses, never the other way round.
+ */
+export const PATIENT_CANCELLABLE_STATUSES = [
+  "BOOKED",
+  "CONFIRMED",
+  "WAITING",
+  "SKIPPED",
+] as const satisfies readonly AppointmentStatus[];
+
+const PATIENT_CANCELLABLE: ReadonlySet<string> = new Set(PATIENT_CANCELLABLE_STATUSES);
+
+export function isPatientCancellable(status: string): boolean {
+  return PATIENT_CANCELLABLE.has(status);
+}
+
+/** Booked visits the patient may still move himself (audit MA-17). */
+const PATIENT_RESCHEDULABLE: ReadonlySet<string> = new Set<AppointmentStatus>([
+  "BOOKED",
+  "CONFIRMED",
+]);
+
+/**
+ * Why the patient may not move this visit himself, or null when he may.
+ *
+ *   - `not_editable`: the visit is over, cancelled, missed or on the table;
+ *     there is nothing left to move.
+ *   - `not_reschedulable`: the patient is in the live flow (a walk-in
+ *     ticket, queued, skipped, «Я на месте»). Its queue columns would travel
+ *     to the new day, so reception moves it.
+ *
+ * A live-queue row (channel WALKIN) is refused even if reception put it back
+ * to BOOKED: it holds no slot, and moving it would put a ticket of today's
+ * queue onto another day's schedule.
+ */
+export function patientRescheduleRefusal(
+  row: ArrivalSnapshot & { channel?: string | null },
+): "not_editable" | "not_reschedulable" | null {
+  if (row.status === "WAITING" || row.status === "SKIPPED") return "not_reschedulable";
+  if (!PATIENT_RESCHEDULABLE.has(row.status)) return "not_editable";
+  if (hasArrivedForVisit(row)) return "not_reschedulable";
+  if (row.channel === "WALKIN") return "not_reschedulable";
+  return null;
 }

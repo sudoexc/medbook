@@ -217,6 +217,49 @@ export async function detectConflicts(
 export const DEFAULT_SLOT_STEP_MIN = 20;
 
 /**
+ * Whether a start of `startMinutes` (Tashkent minutes of the day) lasting
+ * `durationMin` is one `findAvailableSlots` builds from these windows: inside
+ * a window, on its grid counted from the window's own start, and ending by
+ * the window's end. Pure, for the tests.
+ */
+export function slotOnWindowGrid(
+  windows: ReadonlyArray<{ start: string; end: string }>,
+  startMinutes: number,
+  durationMin: number,
+  stepMin: number = DEFAULT_SLOT_STEP_MIN,
+): boolean {
+  return windows.some((w) => {
+    const start = hhmmToMinutes(w.start);
+    const end = hhmmToMinutes(w.end);
+    return (
+      startMinutes >= start &&
+      startMinutes + durationMin <= end &&
+      (startMinutes - start) % stepMin === 0
+    );
+  });
+}
+
+/**
+ * Whether the patient's own booking starts at a time the slot picker offers
+ * (audit MA-14): the Mini App API used to take any instant, so a scripted
+ * 10:07 booking left 13 unbookable minutes on each side, and a doctor with
+ * no schedule (where `detectConflicts` checks no hours) could be booked at
+ * 03:00. Staff bookings are not held to the grid.
+ */
+export async function isOfferedSlotStart(
+  args: { doctorId: string; startAt: Date; durationMin: number; stepMin?: number },
+  client: PrismaLike = prisma,
+): Promise<boolean> {
+  if (args.startAt.getTime() % 60_000 !== 0) return false;
+  const comp = tashkentComponents(args.startAt);
+  const windows = workingWindowsFor(
+    await loadActiveScheduleRows(client, args.doctorId),
+    comp.date,
+  );
+  return slotOnWindowGrid(windows, comp.minutes, args.durationMin, args.stepMin);
+}
+
+/**
  * Return every free "HH:mm" slot for a given doctor/date on a 20-min grid.
  *
  * Two-lanes model (docs/TZ-two-lanes.md): the schedule lane is bounded ONLY by

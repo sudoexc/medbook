@@ -9,6 +9,11 @@
  * Patient uploads land with `uploadedById = null`; the CRM uses that null as
  * the proxy for "this came from the patient" (staff uploads always carry a
  * User id), so we avoid a schema migration for the patient-upload flag.
+ *
+ * Both verbs act for the patient chosen in the family switcher
+ * (`?onBehalfOf=`, family link checked, audit MA-18): the list used to
+ * show the owner's documents under his mother's name, and her conclusion
+ * links opened nothing.
  */
 import { randomUUID } from "node:crypto";
 
@@ -28,6 +33,7 @@ import {
   resolveMiniAppContext,
 } from "@/server/miniapp/handler";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { uploadObject } from "@/server/storage/minio";
 
 // 10 MB cap — covers a high-res phone photo (typical 3-5 MB) with room for
@@ -68,9 +74,18 @@ function extFromName(name: string | null): string | null {
   return m ? m[1] : null;
 }
 
-export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
+export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
+  const acting = await resolveActivePatient({
+    ctx: {
+      clinicId: ctx.clinicId,
+      patientId: ctx.patientId,
+      preferredLang: ctx.patient.preferredLang,
+    },
+    onBehalfOf: new URL(request.url).searchParams.get("onBehalfOf"),
+  });
+  if (!acting.ok) return err(acting.reason, 403);
   const docs = await prisma.document.findMany({
-    where: { clinicId: ctx.clinicId, patientId: ctx.patientId },
+    where: { clinicId: ctx.clinicId, patientId: acting.patientId },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -102,7 +117,7 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
     fileUrl: miniAppDocumentUrl({
       clinicId: ctx.clinicId,
       clinicSlug: ctx.clinicSlug,
-      patientId: ctx.patientId,
+      patientId: acting.patientId,
       documentId: d.id,
     }),
   }));
@@ -113,6 +128,19 @@ export async function POST(request: Request): Promise<Response> {
   const resolved = await resolveMiniAppContext(request);
   if (!resolved.ok) return resolved.response;
   const { ctx } = resolved;
+  // The card the file lands on: the owner's or his relative's.
+  const acting = await runWithTenant({ kind: "SYSTEM" }, () =>
+    resolveActivePatient({
+      ctx: {
+        clinicId: ctx.clinicId,
+        patientId: ctx.patientId,
+        preferredLang: ctx.patient.preferredLang,
+      },
+      onBehalfOf: new URL(request.url).searchParams.get("onBehalfOf"),
+    }),
+  );
+  if (!acting.ok) return err(acting.reason, 403);
+  const patientId = acting.patientId;
 
   let form: FormData;
   try {
@@ -190,7 +218,7 @@ export async function POST(request: Request): Promise<Response> {
       const row = await tx.document.create({
         data: {
           clinicId: ctx.clinicId,
-          patientId: ctx.patientId,
+          patientId,
           type,
           title,
           fileUrl: uploaded.url,
@@ -215,15 +243,15 @@ export async function POST(request: Request): Promise<Response> {
           role: "PATIENT",
           userId: null,
           patientId: ctx.patientId,
-          onBehalfOfPatientId: null,
+          onBehalfOfPatientId: acting.isOnBehalfOf ? patientId : null,
           label: `patient:${ctx.patientId}`,
         },
         surface: "MINIAPP",
-        tenantScope: { clinicId: ctx.clinicId, patientId: ctx.patientId },
+        tenantScope: { clinicId: ctx.clinicId, patientId },
         type: "document.created",
         payload: {
           documentId: row.id,
-          patientId: ctx.patientId,
+          patientId,
           documentType: row.type,
         },
       });
@@ -235,7 +263,8 @@ export async function POST(request: Request): Promise<Response> {
       entityId: created.id,
       meta: {
         clinicId: ctx.clinicId,
-        patientId: ctx.patientId,
+        patientId,
+        actorPatientId: ctx.patientId,
         sizeBytes: file.size,
         mimeType: mime,
         type,

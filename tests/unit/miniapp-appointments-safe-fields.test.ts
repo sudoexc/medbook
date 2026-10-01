@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Audit MA-10: the Mini App appointment routes spread the whole Appointment
@@ -147,6 +147,8 @@ vi.mock("@/lib/prisma", () => {
     }),
     findFirst: vi.fn(async () => ({ ...FULL_ROW })),
     update: vi.fn(async () => ({ ...FULL_ROW, time: "11:00" })),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+    findUniqueOrThrow: vi.fn(async () => ({ ...FULL_ROW, time: "11:00" })),
   };
   const tx = {
     appointment,
@@ -187,6 +189,11 @@ vi.mock("@/server/appointments/cancel", () => ({
 vi.mock("@/server/services/appointments", () => ({
   computeEndDate: (d: Date, min: number) => new Date(d.getTime() + min * 60_000),
   detectConflicts: vi.fn(async () => ({ ok: true })),
+  isOfferedSlotStart: vi.fn(async () => true),
+}));
+vi.mock("@/server/pricing/recompute-appointment-price", () => ({
+  recomputeAppointmentPrice: vi.fn(),
+  recomputeCaseAppointments: vi.fn(),
 }));
 vi.mock("@/server/notifications/triggers", () => ({ fireTrigger: vi.fn() }));
 vi.mock("@/server/realtime/outbox", () => ({
@@ -210,9 +217,15 @@ function expectNoInternals(obj: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  // The reschedule below lands inside the 14 day booking horizon.
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T03:00:00Z") });
   state.findManyArgs.length = 0;
   // Queue tokens and document links are HMACs over the app secret.
   process.env.APP_SECRET = "test-app-secret";
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("GET /api/miniapp/appointments", () => {

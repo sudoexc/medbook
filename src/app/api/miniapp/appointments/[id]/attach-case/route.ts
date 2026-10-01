@@ -9,8 +9,11 @@
  *   - "продолжение лечения" / existing case      → body.caseId = "..."
  *
  * Patient-scoped: the appointment AND the case must both belong to the
- * authenticated patient. A failure here is non-fatal client-side — the
- * appointment is already booked; the patient just won't have a case linked.
+ * acting patient: the authenticated owner, or a relative he booked for
+ * (`?onBehalfOf=`, family link checked, audit MA-18; the booking answers
+ * «needs_choice» for a relative too, and the pick used to 404). A failure
+ * here is non-fatal client-side — the appointment is already booked; the
+ * patient just won't have a case linked.
  *
  * Only the visit the patient just booked and is filing is accepted: still
  * case-less, booked in the Mini App, BOOKED/CONFIRMED, in the future, with no
@@ -29,6 +32,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { conflict, err, notFound, ok } from "@/server/http";
 import { createMiniAppHandler } from "@/server/miniapp/handler";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import {
   attachAppointmentToCase,
   auditFreeRepeats,
@@ -45,6 +49,7 @@ const Body = z
     create: z.boolean().optional(),
     title: z.string().trim().min(1).max(120).optional(),
     primaryComplaint: z.string().trim().max(1000).optional(),
+    onBehalfOf: z.string().min(1).max(64).optional(),
   })
   .refine((v) => v.caseId || v.create, {
     message: "caseId_or_create_required",
@@ -66,6 +71,17 @@ export const POST = createMiniAppHandler(
   { bodySchema: Body },
   async ({ request, body, ctx }) => {
     const appointmentId = appointmentIdFromUrl(request);
+    const acting = await resolveActivePatient({
+      ctx: {
+        clinicId: ctx.clinicId,
+        patientId: ctx.patientId,
+        preferredLang: ctx.patient.preferredLang,
+      },
+      onBehalfOf:
+        new URL(request.url).searchParams.get("onBehalfOf") ?? body.onBehalfOf ?? null,
+    });
+    if (!acting.ok) return err(acting.reason, 403);
+    const patientId = acting.patientId;
 
     const who: CaseAttachAuditActor = {
       clinicId: ctx.clinicId,
@@ -73,20 +89,20 @@ export const POST = createMiniAppHandler(
         role: "PATIENT",
         userId: null,
         patientId: ctx.patientId,
-        onBehalfOfPatientId: null,
+        onBehalfOfPatientId: acting.isOnBehalfOf ? patientId : null,
         label: `patient:${ctx.patientId}`,
       },
       surface: "MINIAPP",
     };
 
     const out = await prisma.$transaction(async (tx): Promise<AttachOutcome> => {
-      await lockPatientCases(tx, ctx.patientId);
+      await lockPatientCases(tx, patientId);
 
       const appt = await tx.appointment.findFirst({
         where: {
           id: appointmentId,
           clinicId: ctx.clinicId,
-          patientId: ctx.patientId,
+          patientId,
         },
         select: {
           id: true,
@@ -104,7 +120,8 @@ export const POST = createMiniAppHandler(
 
       // Branch 1 — create a brand-new case from the patient's wording.
       if (body.create) {
-        const isUz = ctx.patient.preferredLang === "UZ";
+        // The case is the relative's, so is its title's language.
+        const isUz = acting.preferredLang === "UZ";
         const dStr = appt.date.toLocaleDateString(
           isUz ? "uz-Latn-UZ" : "ru-RU",
           {
@@ -120,7 +137,7 @@ export const POST = createMiniAppHandler(
         const c = await tx.medicalCase.create({
           data: {
             clinicId: ctx.clinicId,
-            patientId: ctx.patientId,
+            patientId,
             title: body.title?.trim() || fallbackTitle,
             primaryDoctorId: appt.doctorId,
             primaryComplaint: body.primaryComplaint?.trim() || null,
@@ -143,7 +160,7 @@ export const POST = createMiniAppHandler(
         where: {
           id: body.caseId!,
           clinicId: ctx.clinicId,
-          patientId: ctx.patientId,
+          patientId,
         },
         select: { id: true, title: true, status: true },
       });

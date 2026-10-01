@@ -273,6 +273,9 @@ export const POST = createApiHandler(
           return err("BadStartAt", 400, { reason: "bad_start_at" });
         case "bad_channel":
           return err("BadChannel", 422, { reason: "bad_channel" });
+        case "booking_limit":
+          // Unreachable: only the Mini App passes a booking guard.
+          return conflict("booking_limit", { limit: result.limit });
       }
     }
 

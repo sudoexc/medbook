@@ -121,6 +121,12 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
     ["miniapp", "appointments"],
     ["miniapp", "visit-summary"],
   ],
+  // G3-03 — the doctor corrected a signed conclusion: an open visit screen
+  // shows the «Исправления» block within seconds, not after a reload.
+  "visit-note.amended": [
+    ["miniapp", "visit-summary"],
+    ["miniapp", "appointments"],
+  ],
   // P1.2 — a doctor flipping a lab result to REVIEWED makes it visible to the
   // patient for the first time, so refresh the labs screen without a manual pull.
   "lab.result.reviewed": [["miniapp", "labs"]],

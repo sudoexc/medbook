@@ -114,6 +114,8 @@ export const MINIAPP_DELIVERABLE_TYPES: ReadonlySet<EventType> = new Set<EventTy
   "prescription.created",
   "prescription.updated",
   "visit-note.finalized",
+  // G3-03 — a correction to a signed conclusion the patient reads.
+  "visit-note.amended",
   "lab.result.reviewed",
   "referral.created",
   "document.created",

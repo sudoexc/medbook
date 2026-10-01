@@ -16,6 +16,16 @@ export type VisitSummary = {
    */
   additionalDiagnosisNames?: string[];
   handoutMarkdown: string | null;
+  /**
+   * G3-03 — corrections the doctor appended after the 24h edit window,
+   * oldest first. Optional: a server on the previous build omits it.
+   */
+  amendments?: Array<{
+    id: string;
+    reason: string;
+    text: string;
+    createdAt: string;
+  }>;
   doctor: {
     id: string;
     nameRu: string;

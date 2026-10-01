@@ -657,6 +657,8 @@ describe("the Mini App", () => {
       conclusionDocument: null,
       doctor: { id: "doc_1" },
       appointment: { date: new Date("2026-09-29T05:00:00.000Z"), time: "10:00" },
+      // G3-03 — the summary carries the doctor's later corrections.
+      amendments: [],
       ...over,
     };
   }

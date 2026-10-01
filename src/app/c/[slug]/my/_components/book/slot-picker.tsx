@@ -15,22 +15,19 @@ import { SkeletonBlock } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
 import { WizardFooter } from "./wizard-footer";
+import {
+  bookingDayLabelDate,
+  miniAppBookingDays,
+} from "@/lib/appointments/patient-booking";
 
-const DAYS_AHEAD = 14;
 const INITIAL_SLOTS = 9;
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function formatIsoDate(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
+// Labels of a strip day: `d` is noon UTC of the Tashkent date, read in UTC,
+// so the phone's own zone never shows the neighbouring day.
 function weekdayShort(d: Date, lang: "RU" | "UZ"): string {
   const base = d.toLocaleDateString(
     lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
-    { weekday: "short" },
+    { weekday: "short", timeZone: "UTC" },
   );
   return base.replace(".", "");
 }
@@ -38,7 +35,7 @@ function weekdayShort(d: Date, lang: "RU" | "UZ"): string {
 function monthShort(d: Date, lang: "RU" | "UZ"): string {
   const base = d.toLocaleDateString(
     lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
-    { month: "short" },
+    { month: "short", timeZone: "UTC" },
   );
   return base.replace(".", "");
 }
@@ -61,21 +58,21 @@ export function SlotPicker() {
     ? minDoctorPrice(selectedDoctor.services)
     : null;
 
-  const days = React.useMemo(() => {
-    const arr: { iso: string; weekday: string; day: number; month: string }[] = [];
-    for (let i = 0; i < DAYS_AHEAD; i++) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + i);
-      arr.push({
-        iso: formatIsoDate(d),
-        weekday: weekdayShort(d, lang),
-        day: d.getDate(),
-        month: monthShort(d, lang),
-      });
-    }
-    return arr;
-  }, [lang]);
+  // The clinic's days, the same horizon the booking API holds to (MA-14):
+  // a phone in another zone used to start the strip on the wrong day.
+  const days = React.useMemo(
+    () =>
+      miniAppBookingDays().map((iso) => {
+        const d = bookingDayLabelDate(iso);
+        return {
+          iso,
+          weekday: weekdayShort(d, lang),
+          day: d.getUTCDate(),
+          month: monthShort(d, lang),
+        };
+      }),
+    [lang],
+  );
 
   const selectedDate = draft.date ?? days[0].iso;
   const stripRef = React.useRef<HTMLDivElement | null>(null);

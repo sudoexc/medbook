@@ -3,7 +3,8 @@
 /**
  * P1.2 — patient lab-results hook.
  *
- * GET `/api/miniapp/labs` → the active patient's REVIEWED lab results. The
+ * GET `/api/miniapp/labs` → the active patient's REVIEWED lab results: the
+ * owner's, or the relative's chosen in the switcher (audit MA-18). The
  * query key `["miniapp","labs",clinicSlug]` is what `lab.result.reviewed`
  * invalidates (see `use-miniapp-live-events`), so a doctor flipping a result
  * to REVIEWED refreshes this screen live without a manual pull.
@@ -27,17 +28,20 @@ export type MiniAppLabResult = {
   attachmentUrl: string | null;
 };
 
-export function useLabs() {
+export function useLabs(activePatientId?: string | null) {
   const { request, clinicSlug } = useMiniAppFetch();
   const { state } = useMiniAppAuth();
   // Wait for the init-data exchange (same rationale as `useDocuments`): firing
   // before the SDK boots sends an empty init-data header and 401s.
   return useQuery<MiniAppLabResult[]>({
-    queryKey: ["miniapp", "labs", clinicSlug],
+    queryKey: ["miniapp", "labs", clinicSlug, activePatientId ?? "self"],
     enabled: state.status === "ready",
     queryFn: async () => {
       const body = await request<{ labs: MiniAppLabResult[] }>(
         "/api/miniapp/labs",
+        {
+          searchParams: activePatientId ? { onBehalfOf: activePatientId } : undefined,
+        },
       );
       return body.labs;
     },

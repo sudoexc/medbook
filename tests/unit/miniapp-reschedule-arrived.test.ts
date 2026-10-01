@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Review of audit MA-20: live-queue visits now sit in «Предстоящие», and the
@@ -31,6 +31,9 @@ const WALKIN_ROW = {
   arrivedAt: null as Date | null,
   priceBase: 100,
   priceFinal: 100,
+  medicalCaseId: null,
+  services: [{ serviceId: "s1" }],
+  payments: [],
 };
 
 const state = vi.hoisted(() => ({
@@ -59,6 +62,7 @@ vi.mock("@/server/miniapp/handler", () => {
 
 const mocks = vi.hoisted(() => ({
   update: vi.fn(),
+  updateMany: vi.fn(),
   transaction: vi.fn(),
   doctorFindFirst: vi.fn(),
   detectConflicts: vi.fn(),
@@ -70,7 +74,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => {
   const appointment = {
     findFirst: vi.fn(async () => (state.row ? { ...state.row } : null)),
+    findUnique: vi.fn(async () => (state.row ? { ...state.row } : null)),
+    findUniqueOrThrow: vi.fn(async () => ({ ...state.row })),
     update: mocks.update,
+    updateMany: mocks.updateMany,
   };
   const tx = {
     appointment,
@@ -94,6 +101,11 @@ vi.mock("@/server/appointments/cancel", () => ({
 vi.mock("@/server/services/appointments", () => ({
   computeEndDate: (d: Date, min: number) => new Date(d.getTime() + min * 60_000),
   detectConflicts: mocks.detectConflicts,
+  isOfferedSlotStart: vi.fn(async () => true),
+}));
+vi.mock("@/server/pricing/recompute-appointment-price", () => ({
+  recomputeAppointmentPrice: vi.fn(),
+  recomputeCaseAppointments: vi.fn(),
 }));
 vi.mock("@/server/notifications/triggers", () => ({ fireTrigger: mocks.fireTrigger }));
 vi.mock("@/server/realtime/outbox", () => ({
@@ -115,11 +127,17 @@ function patch(id: string, body: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Inside the 14 day booking horizon of the moves below.
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T03:00:00Z") });
   state.row = { ...WALKIN_ROW };
   mocks.update.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
     ...state.row,
     ...args.data,
   }));
+  mocks.updateMany.mockImplementation(async (args: { data: Record<string, unknown> }) => {
+    state.row = { ...state.row, ...args.data };
+    return { count: 1 };
+  });
   mocks.doctorFindFirst.mockResolvedValue({ id: "d2" });
   mocks.detectConflicts.mockResolvedValue({ ok: true });
   mocks.publishViaOutbox.mockResolvedValue({ eventId: "ev1" });
@@ -129,8 +147,13 @@ beforeEach(() => {
   }));
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 function expectNothingMoved() {
   expect(mocks.update).not.toHaveBeenCalled();
+  expect(mocks.updateMany).not.toHaveBeenCalled();
   expect(mocks.transaction).not.toHaveBeenCalled();
   expect(mocks.publishViaOutbox).not.toHaveBeenCalled();
   expect(mocks.fireTrigger).not.toHaveBeenCalled();
@@ -191,8 +214,8 @@ describe("Mini App PATCH refuses to move an arrived visit", () => {
     };
     const res = await patch("apt_w", { startAt: "2026-10-02T05:00:00.000Z" });
     expect(res.status).toBe(200);
-    expect(mocks.update).toHaveBeenCalledTimes(1);
-    const data = mocks.update.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
+    const data = mocks.updateMany.mock.calls[0]![0].data as Record<string, unknown>;
     expect(data.date).toEqual(new Date("2026-10-02T05:00:00.000Z"));
     expect(data.time).toBe("10:00");
   });

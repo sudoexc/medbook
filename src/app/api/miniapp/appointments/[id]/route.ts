@@ -1,43 +1,42 @@
 /**
- * PATCH/DELETE /api/miniapp/appointments/[id]?clinicSlug=…
+ * PATCH/DELETE /api/miniapp/appointments/[id]?clinicSlug=…[&onBehalfOf=…]
  *
  * Reschedule (startAt, doctorId?, serviceIds?) or cancel the patient's own
- * appointment. Both verbs are scoped to the authenticated patient — a
- * patient cannot touch another patient's rows.
+ * appointment, or one of a relative he acts for (`onBehalfOf`, checked
+ * against the family link like every Mini App write, audit MA-18). A patient
+ * cannot touch anybody else's rows: the visit must belong to the acting
+ * patient, and a relative's only to his family owner.
  *
- * Phase M2 — both verbs now publish through the outbox:
- *   • cancel → delegates to shared `cancelAppointment` (Phase B.2 kernel),
- *     which emits `appointment.cancelled` + audit row.
- *   • reschedule → emits `appointment.updated` + `queue.updated` envelopes
- *     inside the same tx as the appointment row mutation.
+ * Phase M2 — both verbs publish through the outbox:
+ *   • cancel → shared `cancelAppointment` kernel (appointment.cancelled +
+ *     audit row), which refuses a visit already on the doctor's table
+ *     (audit MA-15);
+ *   • reschedule → shared `reschedulePatientAppointment` kernel (MA-16,
+ *     MA-17): what may move, the grid, the horizon, prices and reminders.
  */
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { conflict, err, notFound, ok } from "@/server/http";
-import { createMiniAppHandler } from "@/server/miniapp/handler";
+import { err, notFound, ok } from "@/server/http";
+import { createMiniAppHandler, type MiniAppContext } from "@/server/miniapp/handler";
 import { toMiniAppAppointmentSummary } from "@/server/miniapp/appointment-view";
-import {
-  computeEndDate,
-  detectConflicts,
-} from "@/server/services/appointments";
-import { tashkentComponents } from "@/lib/booking-validation";
-import { hasArrivedForVisit } from "@/lib/appointments/patient-reschedule";
-import { fireTrigger } from "@/server/notifications/triggers";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { cancelAppointment } from "@/server/appointments/cancel";
-import {
-  newCorrelationId,
-  publishViaOutbox,
-} from "@/server/realtime/outbox";
-import type { EventEnvelopeInput } from "@/server/realtime/envelope";
+import { reschedulePatientAppointment } from "@/server/appointments/patient-reschedule";
+import { MINIAPP_MAX_SERVICES_PER_BOOKING } from "@/lib/appointments/patient-booking";
 
 const PatchBody = z
   .object({
     startAt: z.string().datetime().optional(),
-    doctorId: z.string().optional(),
-    serviceIds: z.array(z.string()).optional(),
+    doctorId: z.string().min(1).max(64).optional(),
+    serviceIds: z
+      .array(z.string().min(1).max(64))
+      .max(MINIAPP_MAX_SERVICES_PER_BOOKING)
+      .optional(),
     cancel: z.boolean().optional(),
     cancelReason: z.string().max(500).optional(),
+    // Older clients send the relative in the body; the query wins.
+    onBehalfOf: z.string().min(1).max(64).optional(),
   })
   .refine(
     (v) => v.startAt || v.doctorId || v.serviceIds || v.cancel,
@@ -49,210 +48,106 @@ function idFromUrl(request: Request): string {
   return parts[parts.length - 1] ?? "";
 }
 
+/**
+ * The acting patient (owner or linked relative) and the visit, which must be
+ * his. Null visit → 404: a stranger's id and a missing one look the same.
+ */
+async function resolveOwnVisit(
+  request: Request,
+  ctx: MiniAppContext,
+  bodyOnBehalfOf?: string,
+): Promise<
+  | { ok: true; patientId: string; onBehalfOfPatientId: string | null; id: string }
+  | { ok: false; response: Response }
+> {
+  const id = idFromUrl(request);
+  const onBehalfOf =
+    new URL(request.url).searchParams.get("onBehalfOf") ?? bodyOnBehalfOf ?? null;
+  const acting = await resolveActivePatient({
+    ctx: {
+      clinicId: ctx.clinicId,
+      patientId: ctx.patientId,
+      preferredLang: ctx.patient.preferredLang,
+    },
+    onBehalfOf,
+  });
+  if (!acting.ok) return { ok: false, response: err(acting.reason, 403) };
+  const visit = await prisma.appointment.findFirst({
+    where: { id, clinicId: ctx.clinicId, patientId: acting.patientId },
+    select: { id: true },
+  });
+  if (!visit) return { ok: false, response: notFound() };
+  return {
+    ok: true,
+    patientId: acting.patientId,
+    onBehalfOfPatientId: acting.isOnBehalfOf ? acting.patientId : null,
+    id: visit.id,
+  };
+}
+
+async function cancelOwnVisit(
+  ctx: MiniAppContext,
+  visit: { id: string; onBehalfOfPatientId: string | null },
+  reason: string | null,
+): Promise<Response> {
+  const result = await cancelAppointment({
+    appointmentId: visit.id,
+    clinicId: ctx.clinicId,
+    actorId: null,
+    actorRole: "PATIENT",
+    actorPatientId: ctx.patientId,
+    actorOnBehalfOfPatientId: visit.onBehalfOfPatientId,
+    actorLabel: `patient:${ctx.patientId}`,
+    surface: "MINIAPP",
+    reason,
+  });
+  if (!result.ok) {
+    if (result.reason === "not_found") return notFound();
+    if (result.reason === "completed") return err("not_editable", 409);
+    return err("not_cancellable", 409);
+  }
+  return ok({ appointment: toMiniAppAppointmentSummary(result.appointment) });
+}
+
 export const PATCH = createMiniAppHandler(
   { bodySchema: PatchBody },
   async ({ request, body, ctx }) => {
-    const id = idFromUrl(request);
-    const before = await prisma.appointment.findFirst({
-      where: { id, clinicId: ctx.clinicId, patientId: ctx.patientId },
-    });
-    if (!before) return notFound();
-    if (
-      before.status === "COMPLETED" ||
-      before.status === "IN_PROGRESS" ||
-      before.status === "CANCELLED"
-    ) {
-      return err("not_editable", 409);
-    }
+    const visit = await resolveOwnVisit(request, ctx, body.onBehalfOf);
+    if (!visit.ok) return visit.response;
 
     if (body.cancel) {
-      const result = await cancelAppointment({
-        appointmentId: id,
-        clinicId: ctx.clinicId,
-        actorId: null,
-        actorRole: "PATIENT",
-        actorPatientId: ctx.patientId,
-        actorLabel: `patient:${ctx.patientId}`,
-        surface: "MINIAPP",
-        reason: body.cancelReason ?? null,
-      });
-      if (!result.ok) {
-        if (result.reason === "not_found") return notFound();
-        if (result.reason === "completed") return err("not_editable", 409);
-        return err("not_cancellable", 409);
-      }
-      return ok({ appointment: toMiniAppAppointmentSummary(result.appointment) });
+      return cancelOwnVisit(ctx, visit, body.cancelReason?.trim() || null);
     }
 
-    // An arrived visit (live queue, skipped, or «Я на месте») is not the
-    // patient's to move: the update below leaves every queue column as it
-    // is, so the ticket would leave today's queue and TV and turn up
-    // tomorrow already queued. Reception moves it; cancel above stays open.
-    if (hasArrivedForVisit(before)) {
-      return err("not_reschedulable", 409);
-    }
-
-    const doctorId = body.doctorId ?? before.doctorId;
-    // Changing the doctor is NEW work directed at them — validate like the
-    // POST path's bookAppointment kernel does: must exist, belong to THIS
-    // clinic (the FK alone accepts any tenant's doctor), and be active.
-    // Keeping the same doctor is exempt so existing appointments of
-    // deactivated doctors stay reschedulable (time/services).
-    if (doctorId !== before.doctorId) {
-      const target = await prisma.doctor.findFirst({
-        where: { id: doctorId, clinicId: ctx.clinicId, isActive: true },
-        select: { id: true },
-      });
-      if (!target) return err("doctor_not_found", 404);
-    }
-    let startAt = before.date;
-    let endAt = before.endDate;
-    let durationMin = before.durationMin;
-    let priceBase = before.priceBase ?? 0;
-
-    if (body.serviceIds && body.serviceIds.length > 0) {
-      const services = await prisma.service.findMany({
-        where: {
-          id: { in: body.serviceIds },
-          clinicId: ctx.clinicId,
-          isActive: true,
-        },
-        select: { id: true, priceBase: true, durationMin: true },
-      });
-      if (services.length !== body.serviceIds.length) {
-        return err("service_not_found", 404);
-      }
-      durationMin = services.reduce((a, s) => a + s.durationMin, 0) || 30;
-      priceBase = services.reduce((a, s) => a + s.priceBase, 0);
-    }
-    if (body.startAt) {
-      const next = new Date(body.startAt);
-      if (Number.isNaN(next.getTime())) return err("bad_start_at", 400);
-      startAt = next;
-      endAt = computeEndDate(startAt, durationMin);
-    } else if (body.serviceIds) {
-      endAt = computeEndDate(startAt, durationMin);
-    }
-
-    const c = await detectConflicts({
-      doctorId,
-      cabinetId: before.cabinetId,
-      startAt,
-      endAt,
-      excludeId: id,
-      currentStartAt: before.date,
+    const result = await reschedulePatientAppointment({
+      clinicId: ctx.clinicId,
+      appointmentId: visit.id,
+      patientId: visit.patientId,
+      actor: {
+        role: "PATIENT",
+        userId: null,
+        patientId: ctx.patientId,
+        onBehalfOfPatientId: visit.onBehalfOfPatientId,
+        label: `patient:${ctx.patientId}`,
+      },
+      startAt: body.startAt ? new Date(body.startAt) : undefined,
+      doctorId: body.doctorId,
+      serviceIds: body.serviceIds,
     });
-    if (!c.ok) {
-      return conflict(c.reason, c.until ? { until: c.until } : undefined);
+    if (!result.ok) {
+      if (result.status === 404 && result.reason === "NotFound") return notFound();
+      // 409 keeps the `{ error: code }` shape the sheet maps to a text; a
+      // slot clash also names when the doctor is free again.
+      return err(result.reason, result.status, result.until ? { until: result.until } : undefined);
     }
-
-    // Display column must be Tashkent wall clock — prod runs UTC, so
-    // `getHours()` would skew the stored "HH:mm" by −5h (same rule as
-    // registerWalkin and the CRM create path).
-    const time = tashkentComponents(startAt).time;
-    const correlationId = newCorrelationId();
-
-    const updated = await prisma.$transaction(async (tx) => {
-      if (body.serviceIds) {
-        await tx.appointmentService.deleteMany({
-          where: { appointmentId: id },
-        });
-        const services = await tx.service.findMany({
-          where: { id: { in: body.serviceIds } },
-          select: { id: true, priceBase: true },
-        });
-        const priceMap = new Map(services.map((s) => [s.id, s.priceBase]));
-        await tx.appointmentService.createMany({
-          data: body.serviceIds.map((sid) => ({
-            clinicId: ctx.clinicId,
-            appointmentId: id,
-            serviceId: sid,
-            priceSnap: priceMap.get(sid) ?? 0,
-            quantity: 1,
-          })),
-        });
-      }
-      const after = await tx.appointment.update({
-        where: { id },
-        data: {
-          doctorId,
-          serviceId: body.serviceIds?.[0] ?? before.serviceId,
-          date: startAt,
-          time,
-          durationMin,
-          endDate: endAt,
-          priceBase,
-          priceService: priceBase,
-          priceFinal: priceBase,
-        },
-      });
-
-      // Phase M2 — emit reschedule envelopes from the same tx. The
-      // appointment.updated payload carries the previous date so subscribers
-      // can render a "moved from → to" diff; we follow it with queue.updated
-      // because the doctor's queue position may shift on a date change.
-      const baseEnvelope = {
-        correlationId,
-        actor: {
-          role: "PATIENT" as const,
-          userId: null,
-          patientId: ctx.patientId,
-          onBehalfOfPatientId: null,
-          label: `patient:${ctx.patientId}`,
-        },
-        surface: "MINIAPP" as const,
-        tenantScope: {
-          clinicId: ctx.clinicId,
-          doctorId: after.doctorId,
-          patientId: after.patientId,
-          appointmentId: after.id,
-        },
-      } as const;
-      const updatedEnvelope: EventEnvelopeInput = {
-        ...baseEnvelope,
-        type: "appointment.updated",
-        payload: {
-          appointmentId: after.id,
-          doctorId: after.doctorId,
-          patientId: after.patientId,
-          cabinetId: after.cabinetId,
-          status: after.status,
-          date: after.date.toISOString(),
-          previousDate: before.date.toISOString(),
-        },
-      };
-      const { eventId: updatedEventId } = await publishViaOutbox(
-        tx,
-        updatedEnvelope,
-      );
-      const queueEnvelope: EventEnvelopeInput = {
-        ...baseEnvelope,
-        causedByEventId: updatedEventId,
-        type: "queue.updated",
-        payload: {
-          appointmentId: after.id,
-          doctorId: after.doctorId,
-          queueStatus: after.queueStatus,
-        },
-      };
-      await publishViaOutbox(tx, queueEnvelope);
-
-      return after;
-    });
-
-    fireTrigger({ kind: "appointment.updated", appointmentId: id });
-    // Patient-safe fields only (audit MA-10): `updated` is the full row.
-    return ok({ appointment: toMiniAppAppointmentSummary(updated) });
+    // Patient-safe fields only (audit MA-10): the kernel returns the full row.
+    return ok({ appointment: toMiniAppAppointmentSummary(result.appointment) });
   },
 );
 
 export const DELETE = createMiniAppHandler({}, async ({ request, ctx }) => {
-  const id = idFromUrl(request);
-  const before = await prisma.appointment.findFirst({
-    where: { id, clinicId: ctx.clinicId, patientId: ctx.patientId },
-    select: { id: true },
-  });
-  if (!before) return notFound();
+  const visit = await resolveOwnVisit(request, ctx);
+  if (!visit.ok) return visit.response;
 
   // The patient may send `{ reason }` per TZ §5.3 to record WHY they cancelled.
   // The body is optional — older clients (and the detail-dialog cancel button
@@ -273,20 +168,5 @@ export const DELETE = createMiniAppHandler({}, async ({ request, ctx }) => {
     // so the cancellation itself still goes through.
   }
 
-  const result = await cancelAppointment({
-    appointmentId: id,
-    clinicId: ctx.clinicId,
-    actorId: null,
-    actorRole: "PATIENT",
-    actorPatientId: ctx.patientId,
-    actorLabel: `patient:${ctx.patientId}`,
-    surface: "MINIAPP",
-    reason,
-  });
-  if (!result.ok) {
-    if (result.reason === "not_found") return notFound();
-    if (result.reason === "completed") return err("not_editable", 409);
-    return err("not_cancellable", 409);
-  }
-  return ok({ appointment: toMiniAppAppointmentSummary(result.appointment) });
+  return cancelOwnVisit(ctx, visit, reason);
 });

@@ -21,21 +21,21 @@ import { useSlots } from "../../_hooks/use-slots";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useActiveContext } from "../../_hooks/use-active-context";
 import { useIcsLink } from "../../_hooks/use-ics-link";
-import { bookHref } from "../../_lib/booking-context";
+import { bookHref, myHref } from "../../_lib/booking-context";
+import { miniAppActionErrorText } from "../../_lib/action-errors";
 import { useClinic } from "../../_hooks/use-clinic";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
-import { hasArrivedForVisit } from "@/lib/appointments/patient-reschedule";
+import {
+  isPatientCancellable,
+  patientRescheduleRefusal,
+} from "@/lib/appointments/patient-reschedule";
+import {
+  bookingDayLabelDate,
+  miniAppBookingDays,
+  tashkentSlotStartIso,
+} from "@/lib/appointments/patient-booking";
 import { CancelReasonDialog } from "./cancel-reason-dialog";
-
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
-function applyTimeToDate(dateISO: string, time: string): string {
-  const [y, m, d] = dateISO.split("-").map((v) => Number.parseInt(v, 10));
-  const [h, min] = time.split(":").map((v) => Number.parseInt(v, 10));
-  return new Date(y, (m ?? 1) - 1, d ?? 1, h ?? 0, min ?? 0).toISOString();
-}
 
 export function AppointmentDetailDialog({
   appointment,
@@ -72,22 +72,20 @@ export function AppointmentDetailDialog({
   const cancel = useCancelAppointment();
   const reschedule = useRescheduleAppointment();
 
-  const days = React.useMemo(() => {
-    const arr: { iso: string; day: string; label: string }[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + i);
-      arr.push({
-        iso: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-        day: String(d.getDate()),
-        label: d.toLocaleDateString(lang === "UZ" ? "uz-Latn-UZ" : "ru-RU", {
-          weekday: "short",
-        }),
-      });
-    }
-    return arr;
-  }, [lang]);
+  // Tashkent days, as the booking wizard offers them (MA-17): the phone's
+  // own calendar put a traveller's strip a day off around midnight.
+  const days = React.useMemo(
+    () =>
+      miniAppBookingDays().map((iso) => ({
+        iso,
+        day: String(Number(iso.slice(8, 10))),
+        label: bookingDayLabelDate(iso).toLocaleDateString(
+          lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
+          { weekday: "short", timeZone: "UTC" },
+        ),
+      })),
+    [lang],
+  );
 
   const slots = useSlots({
     doctorId: appointment.doctor.id,
@@ -97,14 +95,15 @@ export function AppointmentDetailDialog({
 
   const onCancelConfirm = async (reason: string | null) => {
     try {
-      await cancel.mutateAsync({ id: appointment.id, reason });
+      await cancel.mutateAsync({ id: appointment.id, reason, onBehalfOf });
       tg.haptic.notification("success");
       tg.showAlert(t.appts.cancelSuccess);
       setCancelOpen(false);
       onClose();
     } catch (e) {
       tg.haptic.notification("error");
-      tg.showAlert((e as Error).message);
+      // The doctor may have started the visit while this sheet was open.
+      tg.showAlert(miniAppActionErrorText(e, t));
     }
   };
 
@@ -113,7 +112,9 @@ export function AppointmentDetailDialog({
     try {
       await reschedule.mutateAsync({
         id: appointment.id,
-        startAt: applyTimeToDate(date, time),
+        // The slot is Tashkent wall clock, whatever the phone's zone.
+        startAt: tashkentSlotStartIso(date, time),
+        onBehalfOf,
       });
       tg.haptic.notification("success");
       tg.showAlert(t.appts.rescheduleSuccess);
@@ -121,15 +122,15 @@ export function AppointmentDetailDialog({
     } catch (e) {
       tg.haptic.notification("error");
       // Reception may queue the patient while this sheet is open.
-      const code = (e as Error).message;
-      tg.showAlert(code === "not_reschedulable" ? t.appts.rescheduleArrived : code);
+      tg.showAlert(miniAppActionErrorText(e, t));
     }
   };
 
-  const editable = !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(appointment.status);
-  // An arrived visit can still be cancelled but only reception moves it
-  // (the PATCH refuses with not_reschedulable, see patient-reschedule).
-  const reschedulable = editable && !hasArrivedForVisit(appointment);
+  // Same rules as the routes (patient-reschedule): cancel until the visit
+  // reaches the doctor; move only a booking that has not reached the clinic.
+  const cancellable = isPatientCancellable(appointment.status);
+  const reschedulable = patientRescheduleRefusal(appointment) === null;
+  const editable = cancellable || reschedulable;
   const completed = appointment.status === "COMPLETED";
 
   // tg.openLink routes through Telegram's browser shim; plain href fallback
@@ -220,7 +221,7 @@ export function AppointmentDetailDialog({
             <div className="grid grid-cols-1 gap-2">
               {completed ? (
                 <Link
-                  href={`/c/${clinicSlug}/my/visit/${appointment.id}`}
+                  href={myHref(clinicSlug, `visit/${appointment.id}`, onBehalfOf)}
                   onClick={() => tg.haptic.selection()}
                 >
                   <MButton variant="primary" className="w-full">
@@ -285,13 +286,15 @@ export function AppointmentDetailDialog({
                       {t.appts.rescheduleArrived}
                     </p>
                   )}
-                  <MButton
-                    variant="danger"
-                    onClick={() => setCancelOpen(true)}
-                    disabled={cancel.isPending}
-                  >
-                    {t.appts.cancel}
-                  </MButton>
+                  {cancellable ? (
+                    <MButton
+                      variant="danger"
+                      onClick={() => setCancelOpen(true)}
+                      disabled={cancel.isPending}
+                    >
+                      {t.appts.cancel}
+                    </MButton>
+                  ) : null}
                 </>
               ) : null}
             </div>

@@ -21,6 +21,8 @@ import { SkeletonList } from "./skeleton";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { useT } from "./mini-i18n";
 import { useDocuments, useUploadDocument } from "../_hooks/use-documents";
+import { useActiveContext } from "../_hooks/use-active-context";
+import { myHref } from "../_lib/booking-context";
 import { resolveScreenState } from "../_lib/screen-state";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
@@ -34,14 +36,18 @@ export function DocumentsScreen() {
   // `<a target="_blank">` opens in a fresh tab without our custom headers.
   // Each `fileUrl` already carries a short-lived link for that one document
   // (minted by the list); initData never goes into a URL (audit MA-07).
-  const docs = useDocuments();
-  const upload = useUploadDocument();
+  // The card in the family switcher: list and upload both act on it (MA-18).
+  const { onBehalfOf } = useActiveContext();
+  const docs = useDocuments(onBehalfOf);
+  const upload = useUploadDocument(onBehalfOf);
   const tg = useTelegramWebApp();
 
   React.useEffect(() => {
-    const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
+    const off = tg.setBackButton(() =>
+      router.push(myHref(clinicSlug, "", onBehalfOf)),
+    );
     return off;
-  }, [tg, router, clinicSlug]);
+  }, [tg, router, clinicSlug, onBehalfOf]);
 
   React.useEffect(() => {
     const off = tg.setMainButton({ visible: false });

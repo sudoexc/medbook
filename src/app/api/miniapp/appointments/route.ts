@@ -15,6 +15,12 @@
  * side-effect, and (c) translating the kernel's discriminated `BookResult`
  * back into the mini-app's existing JSON shape.
  *
+ * Limits (audit MA-14): at most `MINIAPP_MAX_SERVICES_PER_BOOKING` services,
+ * all offered by the doctor; a start the picker offers (the doctor's 20
+ * minute grid, inside the 14 day horizon); a few booked visits ahead per
+ * patient, one per doctor (409 `booking_limit`); and a short-window budget
+ * of attempts per Telegram account (429 `rate_limited`).
+ *
  * `patientPhone` is accepted from old clients and IGNORED (audit PH-01,
  * MA-04). Writing it into the card let anyone claim a stranger's number
  * (walk-in and CRM lookups trusted it), and a number another card already
@@ -38,10 +44,25 @@ import { queueTicketToken } from "@/server/appointments/public-ticket";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
 import { getMetrics } from "@/server/observability/metrics";
 import { miniAppAppointmentScopeWhere } from "@/server/miniapp/appointment-scope";
+import {
+  allowMiniAppBookingAttempt,
+  miniAppBookingLimitRefusal,
+} from "@/server/miniapp/booking-limits";
+import { isOfferedSlotStart } from "@/server/services/appointments";
+import {
+  isWithinBookingHorizon,
+  MINIAPP_MAX_SERVICES_PER_BOOKING,
+} from "@/lib/appointments/patient-booking";
+import { REFERRAL_PROGRAM_LIVE } from "@/lib/patient-experience/referral-reward";
 
 const BookBody = z.object({
-  doctorId: z.string().min(1),
-  serviceIds: z.array(z.string()).min(1),
+  doctorId: z.string().min(1).max(64),
+  // The wizard sends the doctor's one online service; ten services in one
+  // booking used to close the doctor's whole day (MA-14).
+  serviceIds: z
+    .array(z.string().min(1).max(64))
+    .min(1)
+    .max(MINIAPP_MAX_SERVICES_PER_BOOKING),
   startAt: z.string().datetime(),
   patientName: z.string().trim().min(1).optional(),
   // Ignored — see the header.
@@ -136,6 +157,11 @@ export const POST = createMiniAppHandler(
         request,
         { clinicId: ctx.clinicId, patientId: ctx.patientId },
         async () => {
+    // Counted per Telegram account, inside the idempotency wrapper so a
+    // replayed double tap is not an extra attempt.
+    if (!allowMiniAppBookingAttempt(ctx.clinicId, ctx.patientId)) {
+      return err("rate_limited", 429);
+    }
     const active = await resolveActivePatient({
       ctx: {
         clinicId: ctx.clinicId,
@@ -149,7 +175,30 @@ export const POST = createMiniAppHandler(
     const startAt = new Date(body.startAt);
     if (Number.isNaN(startAt.getTime())) return err("bad_start_at", 400);
 
-    // Optional profile update: sync name/lang from the booking form — but
+    // Only services this doctor offers (audit MA-08). The wizard sends the
+    // doctor's online service; a crafted or stale body naming another one
+    // would book him at a price and length that are not his.
+    const wanted = Array.from(new Set(body.serviceIds));
+    const linked = await prisma.serviceOnDoctor.count({
+      where: { doctorId: body.doctorId, serviceId: { in: wanted } },
+    });
+    if (linked !== wanted.length) return err("service_not_found", 404);
+
+    // Only a start the picker offers (MA-14): the 14 days of the strip, the
+    // doctor's grid and hours for the length of these services.
+    const now = new Date();
+    if (!isWithinBookingHorizon(startAt, now)) return err("beyond_horizon", 400);
+    const services = await prisma.service.findMany({
+      where: { id: { in: wanted }, clinicId: ctx.clinicId, isActive: true },
+      select: { durationMin: true },
+    });
+    const durationMin = services.reduce((a, sv) => a + sv.durationMin, 0) || 30;
+    if (!(await isOfferedSlotStart({ doctorId: body.doctorId, startAt, durationMin }))) {
+      return err("off_grid", 400);
+    }
+
+    // Optional profile update (after every refusal above, so a refused
+    // booking changes nothing): sync name/lang from the booking form — but
     // ONLY when booking for self. When acting on behalf of a relative,
     // the form fields belong to the relative; we skip this so the owner's
     // TG-tied profile stays intact, and we don't risk clobbering a relative
@@ -171,16 +220,7 @@ export const POST = createMiniAppHandler(
       }
     }
 
-    // Only services this doctor offers (audit MA-08). The wizard sends the
-    // doctor's online service; a crafted or stale body naming another one
-    // would book him at a price and length that are not his.
-    const wanted = Array.from(new Set(body.serviceIds));
-    const linked = await prisma.serviceOnDoctor.count({
-      where: { doctorId: body.doctorId, serviceId: { in: wanted } },
-    });
-    if (linked !== wanted.length) return err("service_not_found", 404);
-
-    const primaryServiceId = body.serviceIds[0] ?? null;
+    const primaryServiceId = wanted[0] ?? null;
     const preferredLang = body.lang ?? active.preferredLang;
 
     const result = await bookAppointment({
@@ -189,10 +229,18 @@ export const POST = createMiniAppHandler(
       doctorId: body.doctorId,
       startAt,
       serviceId: primaryServiceId,
-      services: body.serviceIds.map((sid) => ({ serviceId: sid, quantity: 1 })),
+      services: wanted.map((sid) => ({ serviceId: sid, quantity: 1 })),
       channel: "TELEGRAM",
       comments: body.comments ?? null,
-      applyReferralReward: true,
+      // Hidden until the program is built end to end (audit MA-19).
+      applyReferralReward: REFERRAL_PROGRAM_LIVE,
+      guard: (tx) =>
+        miniAppBookingLimitRefusal(tx, {
+          clinicId: ctx.clinicId,
+          patientId: active.patientId,
+          doctorId: body.doctorId,
+          now,
+        }),
       autoAttachCaseOptions: {
         clinicId: ctx.clinicId,
         patientId: active.patientId,
@@ -236,6 +284,8 @@ export const POST = createMiniAppHandler(
           // Unreachable from this route (channel is hardcoded TELEGRAM) —
           // kept for switch exhaustiveness over BookResult.
           return err("bad_channel", 422);
+        case "booking_limit":
+          return conflict("booking_limit", { limit: result.limit });
       }
     }
 

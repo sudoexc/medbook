@@ -56,6 +56,11 @@ const state = {
   noteUpdateData: [] as Array<Record<string, unknown>>,
   viewerDoctorId: "doc_1",
   audits: 0,
+  /** Envelopes published through the outbox (G3-03). */
+  events: [] as Array<Record<string, unknown>>,
+  /** Patient notices queued (G3-03). */
+  notices: [] as Array<Record<string, unknown>>,
+  noticeFails: false,
 };
 
 function makeNote(overrides: Partial<Note> = {}): Note {
@@ -163,6 +168,22 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/server/realtime/outbox", () => ({
+  newCorrelationId: () => "corr_1",
+  publishViaOutbox: vi.fn(async (_tx: unknown, env: Record<string, unknown>) => {
+    state.events.push(env);
+    return { eventId: `ev_${state.events.length}` };
+  }),
+}));
+
+vi.mock("@/server/visit-notes/amendment-notice", () => ({
+  queueAmendmentNotice: vi.fn(async (args: Record<string, unknown>) => {
+    if (state.noticeFails) throw new Error("telegram down");
+    state.notices.push(args);
+    return { queued: 2 };
+  }),
+}));
+
 // ----- helpers -------------------------------------------------------------
 
 async function loadRoute() {
@@ -188,6 +209,9 @@ beforeEach(() => {
   state.noteUpdateData = [];
   state.viewerDoctorId = "doc_1";
   state.audits = 0;
+  state.events = [];
+  state.notices = [];
+  state.noticeFails = false;
 });
 
 // ----- tests ---------------------------------------------------------------
@@ -219,6 +243,45 @@ describe("POST /api/crm/visit-notes/[id]/amendments", () => {
     expect(state.note!.handoutStaleAt).toBeInstanceOf(Date);
 
     expect(state.audits).toBe(1);
+  });
+
+  // G3-03 — the correction reaches the patient: an event the Mini App's
+  // visit screen refreshes on, and a message telling him about it.
+  it("publishes visit-note.amended for the patient's visit and queues the notice", async () => {
+    const { POST } = await loadRoute();
+    const res = await POST(postReq({ reason: "опечатка", text: "Верно: 5 мг" }));
+    expect(res.status).toBe(201);
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0]).toMatchObject({
+      type: "visit-note.amended",
+      surface: "DOCTOR_CABINET",
+      tenantScope: { clinicId: "c1", patientId: "p1", appointmentId: "apt_1", doctorId: "doc_1" },
+      payload: {
+        visitNoteId: "vn_1",
+        appointmentId: "apt_1",
+        patientId: "p1",
+        amendmentId: "am_1",
+      },
+    });
+    expect(state.notices).toEqual([{ clinicId: "c1", visitNoteId: "vn_1" }]);
+  });
+
+  it("a notice that fails does not undo the correction", async () => {
+    const { POST } = await loadRoute();
+    state.noticeFails = true;
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const res = await POST(postReq({ reason: "r", text: "t" }));
+    expect(res.status).toBe(201);
+    expect(state.amendments).toHaveLength(1);
+    err.mockRestore();
+  });
+
+  it("refused amendments publish nothing and tell nobody", async () => {
+    const { POST } = await loadRoute();
+    state.note = makeNote({ finalizedAt: ONE_HOUR_AGO });
+    expect((await POST(postReq({ reason: "r", text: "t" }))).status).toBe(409);
+    expect(state.events).toHaveLength(0);
+    expect(state.notices).toHaveLength(0);
   });
 
   it("rejects a doctor who is not the note's author with 403", async () => {

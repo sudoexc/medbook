@@ -9,7 +9,7 @@
  *     the visit landed wherever the open-case guess put it. The booking POST
  *     now forwards it to the case-attach step as the preferred case.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   nextWhere: null as Record<string, unknown> | null,
@@ -59,6 +59,8 @@ vi.mock("@/lib/prisma", () => ({
     },
     patient: { update: vi.fn() },
     serviceOnDoctor: { count: vi.fn(async () => 1) },
+    // Its length, for the slot-grid check (MA-14).
+    service: { findMany: vi.fn(async () => [{ durationMin: 30 }]) },
   },
 }));
 
@@ -75,6 +77,10 @@ vi.mock("@/server/miniapp/idempotency", () => ({
 }));
 vi.mock("@/server/observability/metrics", () => ({
   getMetrics: () => ({ bookingDuration: { observe: () => undefined } }),
+}));
+// The start is one the picker offers (MA-14 grid, tested on its own).
+vi.mock("@/server/services/appointments", () => ({
+  isOfferedSlotStart: vi.fn(async () => true),
 }));
 vi.mock("@/server/appointments/book", () => ({
   bookAppointment: vi.fn(async (input: Record<string, unknown>) => {
@@ -127,6 +133,14 @@ describe("GET /api/miniapp/treatment-plan", () => {
 });
 
 describe("POST /api/miniapp/appointments with the case from the plan card", () => {
+  // The booked start lies inside the 14 day booking horizon (MA-14).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T03:00:00Z") });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("hands the case to the case-attach step as the preferred one", async () => {
     const res = await book(
       new Request("http://x/api/miniapp/appointments?clinicSlug=neurofax", {

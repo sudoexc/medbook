@@ -16,19 +16,30 @@
  * annotation and is deliberately NOT selected — same boundary as never
  * shipping a visit note's clinical `bodyMarkdown`.
  *
- * Scope: `clinicId + patientId` from the resolved Mini App context. Unlike
- * `/medications` there is no `onBehalfOf` family branch — a lab result is a
- * single-owner clinical record, identical to `/documents`.
+ * Scope: `clinicId` + the acting patient: the owner, or a relative he acts
+ * for (`?onBehalfOf=`, family link checked), like `/medications` and the
+ * visit summary (audit MA-18). The route used to ignore the switcher, so the
+ * home screen in «Мама» said «новые анализы» and opened the son's results.
  */
 import { prisma } from "@/lib/prisma";
-import { ok } from "@/server/http";
+import { err, ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 
-export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
+export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
+  const acting = await resolveActivePatient({
+    ctx: {
+      clinicId: ctx.clinicId,
+      patientId: ctx.patientId,
+      preferredLang: ctx.patient.preferredLang,
+    },
+    onBehalfOf: new URL(request.url).searchParams.get("onBehalfOf"),
+  });
+  if (!acting.ok) return err(acting.reason, 403);
   const rows = await prisma.labResult.findMany({
     where: {
       clinicId: ctx.clinicId,
-      patientId: ctx.patientId,
+      patientId: acting.patientId,
       status: "REVIEWED",
     },
     // Most-recently-reviewed first; `receivedAt` (always stamped) breaks ties
@@ -57,6 +68,7 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
     },
   });
 
+  // Read by the owner, so in his language.
   const lang = ctx.patient.preferredLang;
   const labs = rows.map((r) => {
     const profile = r.doctor.doctor;

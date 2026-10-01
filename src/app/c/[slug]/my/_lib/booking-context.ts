@@ -32,6 +32,21 @@ export function bookHref(
 }
 
 /**
+ * URL of any other Mini App screen that keeps the active relative (audit
+ * MA-18). `path` is relative to `/c/<slug>/my` («labs», «visit/<id>», "" for
+ * home). The home screen's links used to drop the context: in «Мама» the
+ * hero showed her visit and the tap opened the owner's list.
+ */
+export function myHref(
+  clinicSlug: string,
+  path: string,
+  onBehalfOf: string | null | undefined,
+): string {
+  const base = `/c/${clinicSlug}/my${path ? `/${path}` : ""}`;
+  return onBehalfOf ? `${base}?onBehalfOf=${encodeURIComponent(onBehalfOf)}` : base;
+}
+
+/**
  * True when the draft was assembled for the person the confirm screen is
  * about to book. A draft saved before this field existed counts as «self».
  */

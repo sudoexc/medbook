@@ -11,7 +11,7 @@
  */
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CalendarPlus, FileText, Hourglass } from "lucide-react";
+import { CalendarPlus, FileText, Hourglass, PenLine } from "lucide-react";
 
 import {
   parseHandoutBlocks,
@@ -22,7 +22,7 @@ import { useT, useLang } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useActiveContext } from "../_hooks/use-active-context";
-import { bookHref } from "../_lib/booking-context";
+import { bookHref, myHref } from "../_lib/booking-context";
 import { useBookingDraft } from "../_hooks/use-booking-draft";
 import { useVisitSummary } from "../_hooks/use-visit-summary";
 
@@ -128,8 +128,9 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
   const query = useVisitSummary(appointmentId, onBehalfOf);
 
   React.useEffect(() => {
-    return tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
-  }, [tg, router, clinicSlug]);
+    // Back home on the same card (MA-18).
+    return tg.setBackButton(() => router.push(myHref(clinicSlug, "", onBehalfOf)));
+  }, [tg, router, clinicSlug, onBehalfOf]);
   React.useEffect(() => {
     return tg.setMainButton({ visible: false });
   }, [tg]);
@@ -170,6 +171,7 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
 
   const blocks = parseHandoutBlocks(summary.handoutMarkdown);
   const additionalDiagnoses = summary.additionalDiagnosisNames ?? [];
+  const amendments = summary.amendments ?? [];
   const doctorName = lang === "UZ" ? summary.doctor.nameUz : summary.doctor.nameRu;
   const specialization =
     lang === "UZ"
@@ -231,6 +233,42 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
       {blocks.length > 0 ? (
         <MCard className="mb-3">
           <HandoutBlocks blocks={blocks} />
+        </MCard>
+      ) : null}
+
+      {/* G3-03 — the signed text above stays as issued; the doctor's later
+          corrections follow it, as on the PDF. */}
+      {amendments.length > 0 ? (
+        <MCard
+          className="mb-3"
+          style={{ borderLeft: "3px solid var(--tg-accent)" }}
+        >
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <PenLine
+              className="h-4 w-4 shrink-0"
+              style={{ color: "var(--tg-accent)" }}
+              aria-hidden
+            />
+            {t.visit.amendmentsTitle}
+          </div>
+          <div className="mt-1 text-xs" style={{ color: "var(--tg-hint)" }}>
+            {t.visit.amendmentsHint}
+          </div>
+          <div className="mt-3 space-y-3">
+            {amendments.map((a) => (
+              <div key={a.id}>
+                <div className="text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
+                  {formatDateISO(a.createdAt, lang)}
+                </div>
+                <p className="mt-0.5 whitespace-pre-line text-sm leading-relaxed">
+                  {a.text}
+                </p>
+                <div className="mt-0.5 text-xs" style={{ color: "var(--tg-hint)" }}>
+                  {t.visit.amendmentReason.replace("{reason}", a.reason)}
+                </div>
+              </div>
+            ))}
+          </div>
         </MCard>
       ) : null}
 

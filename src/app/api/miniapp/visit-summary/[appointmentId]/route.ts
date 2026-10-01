@@ -12,6 +12,11 @@
  * `followUpNote` is intentionally NOT returned: it is reception-internal
  * (same rule as the appointments list route). The patient sees only the
  * computed follow-up date, and whether the doctor named that very day.
+ *
+ * `amendments` are the doctor's corrections appended after the 24h edit
+ * window (audit G3-03), oldest first. The signed text above them stays as
+ * issued, exactly like the PDF; without them the screen kept showing a dose
+ * the doctor had corrected.
  */
 import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
@@ -65,6 +70,10 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
         },
       },
       appointment: { select: { date: true, time: true } },
+      amendments: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, reason: true, text: true, createdAt: true },
+      },
     },
   });
   if (!note) return ok({ summary: null });
@@ -83,6 +92,12 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
         note.additionalDiagnoses,
       ).map((d) => d.name),
       handoutMarkdown: note.patientHandoutMarkdown,
+      amendments: note.amendments.map((a) => ({
+        id: a.id,
+        reason: a.reason,
+        text: a.text,
+        createdAt: a.createdAt.toISOString(),
+      })),
       doctor: note.doctor,
       ...miniAppFollowUp(note, note.appointment.date),
       // A link for this one conclusion, never initData (MA-07).

@@ -16,7 +16,7 @@ import { useMedications } from "../_hooks/use-medications";
 import { useLabs } from "../_hooks/use-labs";
 import { useMinuteClock } from "../_hooks/use-minute-clock";
 import { countUnseenLabs, readLabsSeenAt } from "../_lib/labs-unseen";
-import { bookHref } from "../_lib/booking-context";
+import { bookHref, myHref } from "../_lib/booking-context";
 import { MCard, MSpinner, formatTimeISO } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { HomeHero } from "./home-hero";
@@ -199,10 +199,11 @@ function HomeContent({ slug }: { slug: string }) {
   // Labs used to have no entry point anywhere in the app — a doctor could
   // mark a result REVIEWED and the patient had literally no link to reach it.
   // The tile is the permanent door; the count is the nudge.
-  const labs = useLabs();
+  // The card in the family switcher, never the owner's behind her name (MA-18).
+  const labs = useLabs(onBehalfOf);
   const unseenLabs = React.useMemo(
-    () => countUnseenLabs(labs.data, readLabsSeenAt(slug)),
-    [labs.data, slug],
+    () => countUnseenLabs(labs.data, readLabsSeenAt(slug, onBehalfOf)),
+    [labs.data, slug, onBehalfOf],
   );
   const labsHint = labs.data
     ? unseenLabs > 0
@@ -264,7 +265,7 @@ function HomeContent({ slug }: { slug: string }) {
       <TreatmentPlanCard slug={slug} animate={animate} />
       <div className="grid grid-cols-2 gap-3">
         <BentoTile
-          href={`/c/${slug}/my/medications`}
+          href={myHref(slug, "medications", onBehalfOf)}
           title={t.home.bento.meds}
           hint={medsHint}
           icon={Pill}
@@ -274,7 +275,7 @@ function HomeContent({ slug }: { slug: string }) {
           animate={animate}
         />
         <BentoTile
-          href={`/c/${slug}/my/documents`}
+          href={myHref(slug, "documents", onBehalfOf)}
           title={t.home.bento.docs}
           hint={t.home.bento.docsHint}
           icon={FileText}
@@ -284,7 +285,7 @@ function HomeContent({ slug }: { slug: string }) {
           animate={animate}
         />
         <BentoTile
-          href={`/c/${slug}/my/labs`}
+          href={myHref(slug, "labs", onBehalfOf)}
           title={t.home.bento.labs}
           hint={labsHint}
           icon={FlaskConical}

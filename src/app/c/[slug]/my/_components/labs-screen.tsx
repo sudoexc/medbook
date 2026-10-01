@@ -21,6 +21,8 @@ import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { getLabFlagTone } from "./mini-app-tokens";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useLabs, type MiniAppLabResult } from "../_hooks/use-labs";
+import { useActiveContext } from "../_hooks/use-active-context";
+import { myHref } from "../_lib/booking-context";
 import { formatDate } from "@/lib/format";
 
 function LabCard({ lab }: { lab: MiniAppLabResult }) {
@@ -87,11 +89,15 @@ export function LabsScreen() {
   const router = useRouter();
   const { clinicSlug } = useMiniAppAuth();
   const tg = useTelegramWebApp();
-  const query = useLabs();
+  // The card in the family switcher (audit MA-18).
+  const { onBehalfOf } = useActiveContext();
+  const query = useLabs(onBehalfOf);
 
   React.useEffect(() => {
-    return tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
-  }, [tg, router, clinicSlug]);
+    return tg.setBackButton(() =>
+      router.push(myHref(clinicSlug, "", onBehalfOf)),
+    );
+  }, [tg, router, clinicSlug, onBehalfOf]);
 
   // Clear the home-screen "new results" badge once the list actually renders.
   // Gated on a successful load so a failed fetch can't mark unread results as
@@ -99,8 +105,8 @@ export function LabsScreen() {
   const loaded = query.isSuccess;
   React.useEffect(() => {
     if (!loaded) return;
-    writeLabsSeenAt(clinicSlug, Date.now());
-  }, [loaded, clinicSlug]);
+    writeLabsSeenAt(clinicSlug, Date.now(), onBehalfOf);
+  }, [loaded, clinicSlug, onBehalfOf]);
 
   const screenState = resolveScreenState({
     isLoading: query.isLoading,

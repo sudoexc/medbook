@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { formatDate, type Locale } from "@/lib/format";
+import { REFERRAL_PROGRAM_LIVE } from "@/lib/patient-experience/referral-reward";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
 import { KioskDeviceCard } from "./kiosk-device-card";
@@ -534,6 +535,9 @@ export function ClinicSettingsClient() {
                 {t("clinic.fields.npsAlertThresholdHint")}
               </p>
             </div>
+            {/* MA-19: no referral can be earned yet, so the percentage
+                would change nothing. Shown again once the program is live. */}
+            {REFERRAL_PROGRAM_LIVE ? (
             <div>
               <Label htmlFor="referralRewardPercent">
                 {t("clinic.fields.referralRewardPercent")}
@@ -559,6 +563,7 @@ export function ClinicSettingsClient() {
                 {t("clinic.fields.referralRewardPercentHint")}
               </p>
             </div>
+            ) : null}
             <div className="flex flex-col">
               <Label htmlFor="medicationRemindersEnabled">
                 {t("clinic.fields.medicationRemindersEnabled")}

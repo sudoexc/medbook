@@ -120,6 +120,11 @@ export const EVENT_TYPES = [
   // the reception list and the note panel.
   "visit-note.draftSaved",
   "visit-note.finalized",
+  // Audit G3-03 — the doctor appended a correction to a signed conclusion
+  // (past its 24h edit window). The patient's visit screen in the Mini App
+  // must show it at once; it used to reach only the re-rendered PDF. Audited
+  // by the route itself, so not by the pumper.
+  "visit-note.amended",
   // Phase M2 — mini-app patient-driven mutations. CRM surfaces (patient card,
   // notifications inbox, family panel, NPS dashboard, pre-visit drawer) need
   // to react in realtime when the patient touches them from TG.
@@ -541,6 +546,8 @@ export const VisitNotePayload = z
     changedFields: z.array(z.string()).optional(),
     /** Lifecycle marker for `finalized`. */
     finalizedAt: z.string().datetime({ offset: true }).optional(),
+    /** The correction an `amended` event announces. */
+    amendmentId: z.string().min(1).optional(),
   })
   .passthrough();
 export type VisitNoteEventPayload = z.infer<typeof VisitNotePayload>;
@@ -739,6 +746,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("cds.override.recorded", CdsOverrideEventPayload),
   makeEvent("visit-note.draftSaved", VisitNotePayload),
   makeEvent("visit-note.finalized", VisitNotePayload),
+  makeEvent("visit-note.amended", VisitNotePayload),
   makeEvent("patient.familyLinked", PatientFamilyPayload),
   makeEvent("patient.familyUnlinked", PatientFamilyPayload),
   makeEvent("patient.profileUpdated", PatientProfileUpdatedPayload),

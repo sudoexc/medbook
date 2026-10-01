@@ -165,6 +165,19 @@ export const uzDict = {
     bookInProgress: "Yozib qo‘yilmoqda…",
     errorConflict: "Bu vaqt band. Boshqa vaqtni tanlang.",
     errorBooking: "Yozuv yaratilmadi: {reason}",
+    // Booking and reschedule refusals by code (MA-14, MA-17): the sheet used
+    // to show the raw code («doctor_busy»).
+    errorLimitDoctor:
+      "Siz bu shifokorga allaqachon yozilgansiz. Boshqa vaqt kerak bo‘lsa, «Mening yozuvlarim» bo‘limida shu yozuvni ko‘chiring.",
+    errorLimitTotal:
+      "Ilova orqali {count} tadan ortiq kutilayotgan yozuv bo‘lishi mumkin emas. Yana yozilish uchun ulardan birini bekor qiling yoki ko‘chiring.",
+    errorRateLimited: "Yozilishga juda ko‘p urinish bo‘ldi. Bir necha daqiqadan keyin qayta urinib ko‘ring.",
+    errorBeyondHorizon: "Onlayn yozilish {days} kun oldinga ochiq. Yaqinroq sanani tanlang.",
+    errorOffGrid: "Bu vaqtga yozilib bo‘lmaydi. Ro‘yxatdan vaqt tanlang.",
+    errorPast: "Bu vaqt allaqachon o‘tib ketgan. Boshqasini tanlang.",
+    errorOutsideHours: "Shifokor bu vaqtda qabul qilmaydi. Boshqa vaqtni tanlang.",
+    errorUnavailable: "Bu shifokorga onlayn yozilish hozircha mavjud emas. Klinikaga qo‘ng‘iroq qiling.",
+    errorGeneric: "Bo‘lmadi. Qayta urinib ko‘ring.",
     bookingFor: "Kim uchun yozuv",
     contextChanged:
       "Bu yozuv boshqa odam uchun tayyorlangan edi. Kerakli odamni yozish uchun qaytadan boshlang.",
@@ -218,6 +231,11 @@ export const uzDict = {
     notReadyTitle: "Xulosa tayyorlanmoqda",
     notReadyHint:
       "Shifokor xulosani hali rasmiylashtirmoqda. Birozdan keyin qayta kiring — odatda bu bir necha daqiqa oladi.",
+    // G3-03 — corrections the doctor appended after the 24h edit window.
+    amendmentsTitle: "Shifokor tuzatishlari",
+    amendmentsHint:
+      "Shifokor qabuldan keyin xulosaga tuzatish kiritdi. Agar tuzatish yuqoridagi matndan farq qilsa, tuzatish to‘g‘ri hisoblanadi.",
+    amendmentReason: "Sababi: {reason}",
   },
   appts: {
     title: "Mening yozuvlarim",
@@ -244,6 +262,9 @@ export const uzDict = {
     rescheduleSave: "Yangi vaqtni saqlash",
     rescheduleArrived:
       "Siz klinikada belgilangansiz, shuning uchun bu tashrifni faqat qabulxona orqali ko‘chirish mumkin.",
+    notEditable: "Bu yozuvni endi o‘zgartirib bo‘lmaydi. Kerak bo‘lsa, klinikaga qo‘ng‘iroq qiling.",
+    paymentLocked:
+      "Bu yozuv bo‘yicha to‘lov qilingan, shuning uchun undagi xizmatlarni qabulxona o‘zgartiradi.",
     paid: "To‘langan",
     unpaid: "To‘lanmagan",
     conclusion: "Xulosa",

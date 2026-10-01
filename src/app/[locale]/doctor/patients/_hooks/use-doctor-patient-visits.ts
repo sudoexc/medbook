@@ -23,6 +23,8 @@ export type DoctorPatientVisitRow = {
   visitNoteId: string | null;
   /** DRAFT | FINALIZED — a draft visit was never signed off. */
   noteStatus: string | null;
+  /** Corrections appended after signing (DC-06); optional for an older server. */
+  amendmentsCount?: number;
   /** Artefacts the visit produced, so the history can show them inline
       instead of forcing the doctor into separate flat tabs. */
   documents: {

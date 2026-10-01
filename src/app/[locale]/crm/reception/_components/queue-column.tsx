@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
 import { splitReceptionLanes } from "@/lib/queue-ordering";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { SelfCheckInBadge } from "@/components/atoms/self-check-in-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -321,6 +322,8 @@ function QueueItem({
                 (locale === "uz" ? row.doctor.nameUz : row.doctor.nameRu)}
             </span>
             {showRisk && ai ? <NoShowRiskPill ai={ai} /> : null}
+            {/* G3-01: checked in from the Mini App, not yet «Пришёл». */}
+            <SelfCheckInBadge row={row} className="h-5 px-1.5 text-[10px]" />
             {/* The live lane carries no clock — `date` is an arrival stamp,
                 not a slot, and printing it invited reading walk-ins as
                 scheduled. How long they have waited is the number that

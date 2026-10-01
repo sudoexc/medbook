@@ -69,6 +69,36 @@ export function parseSchedule(
 }
 
 /**
+ * The reminder times a person typed («9:00, 21:00»), as the schedule stores
+ * them (audit PT-12). The case form used to keep only strings that already
+ * were `HH:mm`: «9:00» vanished without a word, so «08:00, 9:00» reminded at
+ * 08:00 only, while «25:99» went through. A time is one or two hour digits,
+ * `:` or `.`, two minute digits, within 00:00 to 23:59; it comes back
+ * zero-padded, sorted and without repeats. Whatever does not read as a time
+ * is returned in `invalid`, for the form to name.
+ */
+export function parseTimesInput(input: string): {
+  times: string[];
+  invalid: string[];
+} {
+  const times = new Set<string>();
+  const invalid: string[] = [];
+  for (const token of input.split(/[,;\s]+/)) {
+    const raw = token.trim();
+    if (!raw) continue;
+    const m = /^(\d{1,2})[:.](\d{2})$/.exec(raw);
+    const h = m ? Number(m[1]) : NaN;
+    const min = m ? Number(m[2]) : NaN;
+    if (!m || h > 23 || min > 59) {
+      invalid.push(raw);
+      continue;
+    }
+    times.add(`${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
+  }
+  return { times: [...times].sort(), invalid };
+}
+
+/**
  * For a given (now, tz) pair return the local-clock hour string `HH:00`.
  * Used to compare against schedule.times[] which are stored as HH:mm in
  * the clinic's timezone.

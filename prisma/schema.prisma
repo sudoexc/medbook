@@ -794,6 +794,7 @@ model User {
   userSessions                UserSession[]
   loginSources                StaffLoginSource[]
   assignedConvs               Conversation[]          @relation("ConversationAssignee")
+  conversationReads           ConversationRead[]
   calls                       Call[]                  @relation("CallOperator")
   sentMessages                Message[]               @relation("MessageSender")
   uploadedDocuments           Document[]              @relation("DocumentUploader")
@@ -2647,11 +2648,33 @@ model Conversation {
   updatedAt        DateTime             @updatedAt
 
   messages Message[]
+  reads    ConversationRead[]
 
   @@unique([clinicId, externalId])
   @@index([clinicId, status, lastMessageAt])
   @@index([clinicId, assignedToId, status])
   @@index([clinicId, patientId])
+}
+
+/// Audit DC-10 — when a doctor last read a thread he does not own.
+///
+/// `Conversation.unreadCount` is the clinic's front desk counter: one number
+/// per thread, zeroed by whoever opens it. A doctor opening his patient's
+/// thread zeroed it for reception too, and the question sat unanswered with
+/// no unread mark on the desk. A doctor now reads into this row instead (the
+/// shared counter moves only on a thread assigned to him), and his own
+/// badge counts the inbound messages after it
+/// (`server/conversations/doctor-unread.ts`).
+model ConversationRead {
+  clinicId       String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime
+
+  @@id([conversationId, userId])
+  @@index([clinicId, userId])
 }
 
 model Message {

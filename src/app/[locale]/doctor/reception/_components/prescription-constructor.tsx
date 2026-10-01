@@ -60,6 +60,7 @@ import {
   formatPrescriptionLine,
   type PrescriptionLocale,
 } from "@/lib/catalogs/prescription-format";
+import { reminderStateOf } from "@/lib/catalogs/dosing-times";
 
 import { useFormLabel } from "../../_components/drug-detail";
 
@@ -991,6 +992,10 @@ function PrescriptionRowItem({
     () => normalizeForms(row.drug?.forms),
     [row.drug?.forms],
   );
+  // VW-11: the bell follows the finalize bridge, which reminds only on a
+  // row with a time of day. A blue bell on a row without one promised
+  // reminders the patient never got.
+  const reminder = reminderStateOf(row);
 
   return (
     <li
@@ -1044,12 +1049,27 @@ function PrescriptionRowItem({
               onClick={() =>
                 onChange((cur) => ({ remindPatient: !cur.remindPatient }))
               }
-              title={row.remindPatient ? t("rx.remindOn") : t("rx.remindOff")}
+              title={
+                reminder === "on"
+                  ? t("rx.remindOn")
+                  : reminder === "noTimes"
+                    ? t("rx.remindNoTimes")
+                    : t("rx.remindOff")
+              }
+              aria-label={
+                reminder === "on"
+                  ? t("rx.remindOn")
+                  : reminder === "noTimes"
+                    ? t("rx.remindNoTimes")
+                    : t("rx.remindOff")
+              }
               className={cn(
                 "inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
-                row.remindPatient
+                reminder === "on"
                   ? "text-primary hover:bg-primary/10"
-                  : "text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground",
+                  : reminder === "noTimes"
+                    ? "text-warning-text hover:bg-warning/10"
+                    : "text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground",
               )}
             >
               {row.remindPatient ? (
@@ -1110,7 +1130,7 @@ function PrescriptionRowItem({
 
           {/* Times of day */}
           <LabeledRow label={t("rx.timesLabel")}>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {TIMES.map((tm) => {
                 const active = row.timesOfDay.includes(tm);
                 return (
@@ -1127,6 +1147,11 @@ function PrescriptionRowItem({
                   </SegChip>
                 );
               })}
+              {reminder === "noTimes" ? (
+                <span className="text-[11px] text-warning-text">
+                  {t("rx.remindNoTimes")}
+                </span>
+              ) : null}
             </div>
           </LabeledRow>
 

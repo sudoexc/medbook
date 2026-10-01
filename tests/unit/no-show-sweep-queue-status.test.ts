@@ -31,6 +31,7 @@ type Row = {
   queueOrder: number | null;
   queuedAt: Date | null;
   medicalCaseId?: string | null;
+  arrivedAt?: Date | null;
 };
 
 const h = vi.hoisted(() => ({
@@ -150,6 +151,7 @@ function row(over: Partial<Row>): Row {
     completedAt: null,
     queueOrder: null,
     queuedAt: null,
+    arrivedAt: null,
     ...over,
   };
 }
@@ -402,5 +404,95 @@ describe("AP-04: the auto no-show has the effects of every no-show", () => {
 
     expect(state.rows[0].status).toBe("CONFIRMED");
     expect(h.recomputeCase).not.toHaveBeenCalled();
+  });
+});
+
+describe("G3-01: a patient who checked in from the Mini App is not a no-show", () => {
+  it("a booking with «Я на месте» is left alone, and gets no message", async () => {
+    state.rows = [
+      row({ id: "checked_in", arrivedAt: new Date(Date.now() - 2.5 * HOUR) }),
+      row({ id: "absent" }),
+    ];
+
+    await tick();
+
+    const byId = Object.fromEntries(state.rows.map((r) => [r.id, r]));
+    expect(byId.checked_in).toMatchObject({ status: "CONFIRMED", queueStatus: "CONFIRMED" });
+    expect(byId.absent).toMatchObject({ status: "NO_SHOW" });
+    expect(h.fireTrigger).not.toHaveBeenCalledWith({
+      kind: "appointment.no-show",
+      appointmentId: "checked_in",
+    });
+  });
+
+  it("a check-in landing between the scan and the write wins", async () => {
+    state.rows = [row({ id: "late_tap" })];
+    const { prisma } = await import("@/lib/prisma");
+    const findMany = vi.mocked(prisma.appointment.findMany) as unknown as {
+      mockImplementationOnce: (fn: () => Promise<unknown>) => void;
+    };
+    findMany.mockImplementationOnce(async () => []); // stale-visit scan
+    findMany.mockImplementationOnce(async () => {
+      const scanned = state.rows.map((r) => ({ ...r }));
+      state.rows[0].arrivedAt = new Date();
+      return scanned;
+    });
+
+    await tick();
+
+    expect(state.rows[0].status).toBe("CONFIRMED");
+    expect(h.fireTrigger).not.toHaveBeenCalled();
+  });
+
+  it("no «вы опаздываете» either", async () => {
+    const start = new Date(Date.now() - 30 * 60_000);
+    state.rows = [
+      row({
+        id: "in_hall",
+        date: start,
+        endDate: new Date(start.getTime() + 30 * 60_000),
+        arrivedAt: new Date(start.getTime() - 5 * 60_000),
+      }),
+      row({
+        id: "on_the_way",
+        date: start,
+        endDate: new Date(start.getTime() + 30 * 60_000),
+      }),
+      // The tick reaches the running-late pass only with a stale row too.
+      row({ id: "stale" }),
+    ];
+
+    await tick();
+
+    expect(h.fireTrigger).not.toHaveBeenCalledWith({
+      kind: "appointment.running-late",
+      appointmentId: "in_hall",
+    });
+    // The control: a patient who did not check in is still nudged.
+    expect(h.fireTrigger).toHaveBeenCalledWith({
+      kind: "appointment.running-late",
+      appointmentId: "on_the_way",
+    });
+  });
+
+  it("the scan filter and the pure selector agree", () => {
+    expect(autoNoShowWhere(new Date())).toMatchObject({ arrivedAt: null });
+    const old = new Date(Date.now() - 5 * HOUR);
+    const picked = selectAutoNoShows(
+      [
+        {
+          id: "x",
+          clinicId: "c1",
+          doctorId: "doc_1",
+          status: "BOOKED",
+          channel: "PHONE",
+          date: new Date(old.getTime() - 30 * 60_000),
+          endDate: old,
+          arrivedAt: old,
+        },
+      ],
+      new Date(),
+    );
+    expect(picked).toEqual([]);
   });
 });

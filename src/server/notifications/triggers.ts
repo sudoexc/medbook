@@ -35,6 +35,10 @@ import {
   VISIT_NOTE_AMENDED_KEY,
 } from "./default-templates";
 import { recordPatientNoChannel } from "./no-channel-action";
+import {
+  APPOINTMENT_RESTORED_KEY,
+  restoreNoticeTemplate,
+} from "@/server/appointments/restore-notice";
 import { skipsWhenConfirmed } from "./rules";
 import { render } from "./template";
 
@@ -76,6 +80,10 @@ export const TRIGGER_KEYS = [
   // so the patient was reminded of a slot that no longer exists and got
   // nothing at all for the new one.
   "appointment.rescheduled",
+  // Audit AP-11 — the doctor undid a cancellation or a no-show: «ваша запись
+  // восстановлена». A MANUAL-trigger row matched by its slug, created
+  // switched off (`server/appointments/restore-notice.ts`).
+  "appointment.restored",
   // TZ-notifications-cancel-sync §3 — fired by appointment-lifecycle-sweep
   // when `isRunningLate(row, now)` and no NotificationSend exists for this
   // (appointment, template) pair.
@@ -431,6 +439,9 @@ function whereForTrigger(
           { key: "appointment.cancelled" },
         ],
       };
+    case "appointment.restored":
+      // No dedicated enum: a MANUAL-trigger row matched by its slug.
+      return { key: APPOINTMENT_RESTORED_KEY };
     case "appointment.rescheduled":
       // Enum first; slug fallback for clinics that hand-seeded a row before
       // the enum existed.
@@ -1332,6 +1343,44 @@ export async function onAppointmentRescheduled(
 }
 
 /**
+ * Creates the clinic's «запись восстановлена» row, switched off, when it has
+ * none yet, so the admin finds it in the settings and decides when patients
+ * start getting it (patient Telegram messages are switched on one by one).
+ * Never touches an existing row.
+ */
+export function ensureAppointmentRestoredTemplate(clinicId: string) {
+  return ensureClinicTemplate(clinicId, restoreNoticeTemplate(), {
+    activeOnCreate: false,
+  });
+}
+
+/** Statuses a restored visit can be in: a booking again. */
+const RESTORED_STATUSES: ReadonlySet<string> = new Set(["BOOKED", "CONFIRMED"]);
+
+/**
+ * Audit AP-11 — the doctor undid a cancellation or a no-show. The patient was
+ * told the visit was off and every queued reminder was cancelled, so:
+ *   1. «ваша запись восстановлена», through the clinic's template (no active
+ *      template, no message), only while the visit is still ahead: a patient
+ *      who came late and is in the clinic needs no message about it;
+ *   2. the reminder cascade rebuilt for the bands still ahead (the cancelled
+ *      rows stay cancelled; the idempotency gate counts only live ones).
+ * A visit that was dropped again in the meantime gets neither.
+ */
+export async function onAppointmentRestored(
+  appointmentId: string,
+  now: Date = new Date(),
+): Promise<void> {
+  const appt = await loadAppointment(appointmentId);
+  if (!appt || !RESTORED_STATUSES.has(appt.status)) return;
+  await ensureAppointmentRestoredTemplate(appt.clinicId);
+  if (appt.date.getTime() > now.getTime()) {
+    await materializeForAppointment(appointmentId, "appointment.restored", now);
+  }
+  await scheduleAppointmentReminders(appointmentId);
+}
+
+/**
  * Scheduler tick: materialise reminders whose time is approaching. Also
  * runs birthday and payment.due triggers once per tick.
  *
@@ -2011,6 +2060,8 @@ export type FireTriggerPayload =
   // only tops up the cascade and cannot undo reminders already rendered
   // against the previous time.
   | { kind: "appointment.rescheduled"; appointmentId: string }
+  // AP-11 — a cancellation or a no-show undone (see onAppointmentRestored).
+  | { kind: "appointment.restored"; appointmentId: string }
   | { kind: "appointment.updated"; appointmentId: string }
   // Auto-messages widget — fired when a visit lands in COMPLETED so the
   // patient gets a "Спасибо за визит". Best-effort + idempotent.
@@ -2082,6 +2133,10 @@ export function fireTrigger(payload: FireTriggerPayload): void {
         }
         case "appointment.rescheduled": {
           await onAppointmentRescheduled(payload.appointmentId);
+          return;
+        }
+        case "appointment.restored": {
+          await onAppointmentRestored(payload.appointmentId);
           return;
         }
         case "appointment.updated": {

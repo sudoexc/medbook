@@ -21,20 +21,25 @@ import {
   type ParsedPrescription,
 } from "@/lib/catalogs/conclusion-parse";
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
+import { timesOfDayFromText } from "@/lib/catalogs/dosing-times";
 
 import type {
   VisitNoteRow,
   VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
 
-function toDraft(p: ParsedPrescription): VisitPrescriptionDraft {
+/** A recognised line as a structured row draft. Exported for the tests. */
+export function draftFromParsed(p: ParsedPrescription): VisitPrescriptionDraft {
   return {
     drugId: null,
     displayName: p.displayName,
     form: null,
     strength: p.strength,
     dose: p.strength ?? "1",
-    timesOfDay: [],
+    // VW-11: the line says how often («2 раза в день» → утро и вечер), so the
+    // row starts with those slots and the patient is actually reminded; the
+    // bridge sends no reminder for a row without a time of day.
+    timesOfDay: timesOfDayFromText(p.instruction),
     mealRelation: p.mealRelation,
     durationDays: p.durationDays,
     instructionRu: p.instruction,
@@ -84,7 +89,7 @@ export function ParsedFromTextCard({
         </div>
         <button
           type="button"
-          onClick={() => onAdopt(candidates.map(toDraft))}
+          onClick={() => onAdopt(candidates.map(draftFromParsed))}
           className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
         >
           <PlusIcon className="size-3" />
@@ -112,12 +117,12 @@ export function ParsedFromTextCard({
                 ) : null}
               </span>
               <span className="block truncate text-[11px] text-muted-foreground">
-                {formatPrescriptionLine(toDraft(p), "ru")}
+                {formatPrescriptionLine(draftFromParsed(p), "ru")}
               </span>
             </div>
             <button
               type="button"
-              onClick={() => onAdopt([toDraft(p)])}
+              onClick={() => onAdopt([draftFromParsed(p)])}
               title={t("parsedRx.addOne")}
               className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors hover:bg-primary/20"
             >

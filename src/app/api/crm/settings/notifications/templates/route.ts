@@ -10,12 +10,14 @@
  * The «исправление в заключении» message (audit G3-03) is provisioned here,
  * switched off, so the admin finds it in the list and decides when patients
  * start getting it; otherwise its row would appear only after the first
- * amendment.
+ * amendment. The same for «запись восстановлена» (audit AP-11), sent when
+ * a doctor undoes a cancellation or a no-show.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
 import { ensureAmendmentNoticeTemplate } from "@/server/visit-notes/amendment-notice";
+import { ensureAppointmentRestoredTemplate } from "@/server/notifications/triggers";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN"] },
@@ -27,6 +29,11 @@ export const GET = createApiListHandler(
       } catch (e) {
         // A provisioning hiccup must not hide the clinic's templates.
         console.error("[settings/notifications] amendment template", e);
+      }
+      try {
+        await ensureAppointmentRestoredTemplate(ctx.clinicId);
+      } catch (e) {
+        console.error("[settings/notifications] restored template", e);
       }
     }
     const rows = await prisma.notificationTemplate.findMany({

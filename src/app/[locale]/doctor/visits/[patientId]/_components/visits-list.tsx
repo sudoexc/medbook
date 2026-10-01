@@ -79,6 +79,8 @@ type VisitRow = {
   advice: string[];
   hasVisitNote: boolean;
   visitNoteId: string | null;
+  /** Corrections appended after signing (DC-06); optional for an older server. */
+  amendmentsCount?: number;
 };
 
 type Response = {
@@ -415,6 +417,13 @@ function TableCard({
                         <div className="font-medium text-foreground tabular-nums">
                           {v.visitNoteId?.slice(-6).toUpperCase() ?? ""}
                         </div>
+                        {/* DC-06: corrections never rewrite the note, so the
+                            row must say they exist. */}
+                        {(v.amendmentsCount ?? 0) > 0 ? (
+                          <div className="text-[10px] font-semibold text-[color:var(--info)]">
+                            {t("table.amended")}
+                          </div>
+                        ) : null}
                       </div>
                     </Link>
                   ) : (

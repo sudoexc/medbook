@@ -296,7 +296,10 @@ describe("a thread opened by id (audit G6-07)", () => {
     expect(state.findFirstWhere).toMatchObject({
       id: "conv_1",
       clinicId: "clinic_A",
-      AND: [{ OR: expect.arrayContaining([{ patientId: null }, { assignedToId: "u1" }]) }],
+      // DC-10: a stranger's unlinked thread is the desk's, not his.
+      AND: [{ OR: expect.arrayContaining([{ assignedToId: "u1" }]) }],
     });
+    const or = (state.findFirstWhere as { AND: { OR: unknown[] }[] }).AND[0]!.OR;
+    expect(or).not.toContainEqual({ patientId: null });
   });
 });

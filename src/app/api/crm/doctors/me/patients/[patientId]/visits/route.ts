@@ -47,6 +47,12 @@ type VisitRow = {
   visitNoteId: string | null;
   /** DRAFT | FINALIZED. A draft means the visit was never signed off. */
   noteStatus: string | null;
+  /**
+   * Corrections appended to the signed conclusion (audit DC-06). They never
+   * rewrite the note, so the history row has to say they exist or the doctor
+   * reads the uncorrected text as current.
+   */
+  amendmentsCount: number;
   /** What this visit produced — documents, lab orders, structured meds. */
   documents: {
     id: string;
@@ -153,6 +159,7 @@ export const GET = createApiListHandler(
               },
               orderBy: { sortOrder: "asc" },
             },
+            _count: { select: { amendments: true } },
           },
         },
         // What the visit produced. Both hang off appointmentId, so a visit
@@ -244,6 +251,7 @@ export const GET = createApiListHandler(
         hasVisitNote: a.visitNote !== null && a.visitNote !== undefined,
         visitNoteId: a.visitNote?.id ?? null,
         noteStatus: a.visitNote?.status ?? null,
+        amendmentsCount: a.visitNote?._count.amendments ?? 0,
         documents: a.documents.map((d) => ({
           id: d.id,
           title: d.title,

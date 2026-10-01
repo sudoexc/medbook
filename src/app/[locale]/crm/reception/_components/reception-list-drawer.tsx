@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { isLiveLane } from "@/lib/queue-ordering";
 import { receptionQueueSheet } from "@/lib/reception-kpi";
 import { Badge } from "@/components/ui/badge";
+import { SelfCheckInBadge } from "@/components/atoms/self-check-in-badge";
 import {
   Sheet,
   SheetContent,
@@ -328,6 +329,8 @@ function DrawerRow({
             <span className="shrink-0">· {t("cabinetShort", { num: cabinet })}</span>
           ) : null}
         </div>
+        {/* G3-01: checked in from the Mini App, not yet «Пришёл». */}
+        <SelfCheckInBadge row={row} className="mt-1.5 h-5 px-1.5 text-[10px]" />
         {meta ? (
           <div className="mt-1.5 flex items-center gap-2 text-[11px]">
             <span className="inline-flex items-center gap-1 rounded-md bg-success/10 px-1.5 py-0.5 font-medium text-success">

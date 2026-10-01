@@ -10,6 +10,11 @@
  * Each field follows the naming `<event>_<channel>` (see Prisma model). The
  * UI sends ONE cell at a time as the toggle flips — no batched form.
  *
+ * Only the cells listed in `WIRED_DOCTOR_PREF_CELLS` (lib/doctor-notification-
+ * prefs) are honoured by anything and offered in the tab (audit DC-09); the
+ * row keeps the whole matrix so a delivery added later starts from the
+ * doctor's saved choice.
+ *
  * Audit: DOCTOR_NOTIFICATION_PREFS_UPDATED with `meta.changed` = the field
  * names. Audit fires on every PATCH (even a single-cell flip) — that's the
  * point: we need a full history of toggles, not just sessions.

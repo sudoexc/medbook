@@ -61,6 +61,13 @@ import {
 } from "@/server/visit-notes/revisions";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
+import {
+  REVIVED_BOOKING_RESET,
+  cancelledByPatient,
+  isSlotClash,
+  restoredStatusOf,
+  revivesBooking,
+} from "@/server/appointments/revert-restore";
 
 /** Who may record a risk-today outcome: the roles of its endpoint (and
  *  SUPER_ADMIN, whom the handler lets through every role list). */
@@ -224,6 +231,35 @@ export const PATCH = createApiHandler(
           got: body.status,
         });
       }
+      // AP-11 — undoing a cancellation or a no-show puts the visit back on
+      // the calendar (see revert-restore). Not a visit the patient cancelled
+      // himself: bringing it back is a new booking made with him. And not
+      // over someone else's booking: the freed slot may be taken, which used
+      // to surface as a 500 from the overlap constraint. A walk-in holds no
+      // slot (the constraints skip it too).
+      const revives = revivesBooking(fromStatus);
+      if (revives) {
+        if (
+          fromStatus === "CANCELLED" &&
+          (await cancelledByPatient(id, ctx.clinicId))
+        ) {
+          return conflict("cancelled_by_patient");
+        }
+        if (before.channel !== "WALKIN") {
+          const c = await detectConflicts({
+            doctorId: before.doctorId,
+            cabinetId: before.cabinetId,
+            startAt: before.date,
+            endAt: before.endDate,
+            excludeId: id,
+            // The slot keeps its time: a revert is not a move into the past.
+            currentStartAt: before.date,
+          });
+          if (!c.ok && isSlotClash(c.reason)) {
+            return conflict(c.reason, c.until ? { until: c.until } : undefined);
+          }
+        }
+      }
       // Reverting COMPLETED → IN_PROGRESS re-opens the visit, so it must obey
       // the same single-active-visit rule as the forward "Начать приём" path —
       // otherwise a doctor can complete one patient, start the next, then
@@ -241,9 +277,14 @@ export const PATCH = createApiHandler(
       // matching timestamp. We deliberately do NOT touch endDate / durationMin
       // (the COMPLETED branch may have shrunk them; restoring is best-effort
       // and we don't store the original anyway — re-completing will reshrink).
+      // A revived booking comes back as it was before it was dropped:
+      // confirmed if the patient had confirmed it (BOOKED with a confirmedAt
+      // was a state no other path writes), and out of the live queue.
+      const target = revives ? restoredStatusOf(before) : expected;
       const revertData: Record<string, unknown> = {
-        status: expected,
-        queueStatus: expected,
+        status: target,
+        queueStatus: target,
+        ...(revives ? REVIVED_BOOKING_RESET : {}),
       };
       if (fromStatus === "IN_PROGRESS") {
         revertData.startedAt = null;
@@ -340,9 +381,7 @@ export const PATCH = createApiHandler(
         // or NO_SHOW → BOOKED) because the case timeline now has a new
         // active sibling. SKIPPED → WAITING does not affect repricing
         // (SKIPPED already counts as active for free-repeat purposes).
-        const unkill =
-          fromStatus === "CANCELLED" || fromStatus === "NO_SHOW";
-        if (unkill && row.medicalCaseId) {
+        if (revives && row.medicalCaseId) {
           await recomputeCaseAppointments(tx, row.medicalCaseId);
         }
         const actorUserId = ctx.userId || null;
@@ -360,7 +399,15 @@ export const PATCH = createApiHandler(
           alsoQueueUpdate: row.queueStatus !== before.queueStatus,
         });
         return row;
-      }));
+      })).catch((e: unknown): typeof SLOT_TAKEN => {
+        // AP-11 — a booking that took the slot after the check above: the
+        // overlap constraint has the last word, and it is a busy doctor.
+        if (isSlotOverlapViolation(e)) return SLOT_TAKEN;
+        throw e;
+      });
+      if (revertOutcome === SLOT_TAKEN) {
+        return conflict("doctor_busy");
+      }
       if (revertOutcome instanceof AnotherVisitInProgressError) {
         return anotherVisitConflict(revertOutcome);
       }
@@ -372,7 +419,7 @@ export const PATCH = createApiHandler(
         entityId: id,
         meta: {
           from: fromStatus,
-          to: expected,
+          to: target,
           doctorUserId: ctx.userId,
           originalStartedAt: before.startedAt,
           originalCompletedAt: before.completedAt,
@@ -398,6 +445,13 @@ export const PATCH = createApiHandler(
         fromStatus === "CANCELLED"
       ) {
         await refreshPatientSegment(before.patientId);
+      }
+      // AP-11 — the cancellation told the patient and cancelled every queued
+      // reminder. The revived visit tells him it is back (the clinic's
+      // «запись восстановлена» message, off until the clinic switches it on)
+      // and rebuilds the reminder cascade for the time still ahead.
+      if (revives) {
+        fireTrigger({ kind: "appointment.restored", appointmentId: id });
       }
 
       return ok(revertedRow);

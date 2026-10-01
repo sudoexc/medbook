@@ -78,7 +78,10 @@ vi.mock("@/lib/prisma", () => ({
     document: { findFirst: vi.fn(async () => null) },
     conversation: {
       aggregate: vi.fn(async () => ({ _sum: { unreadCount: 0 } })),
+      // DC-10: the badge is the doctor's own unread (doctor-unread.ts).
+      findMany: vi.fn(async () => []),
     },
+    message: { groupBy: vi.fn(async () => []) },
     doctorSchedule: { findMany: vi.fn(async () => []) },
     prescription: { findMany: db.prescriptionFindMany },
   },

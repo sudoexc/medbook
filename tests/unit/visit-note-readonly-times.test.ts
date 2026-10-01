@@ -34,6 +34,7 @@ const note = {
   advice: [],
   bodyMarkdown: null,
   aiGenerated: false,
+  amendments: [],
   appointment: {
     date: "2026-09-30T05:00:00.000Z",
     endDate: "2026-09-30T05:30:00.000Z",

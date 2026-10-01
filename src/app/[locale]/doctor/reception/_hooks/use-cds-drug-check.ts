@@ -106,8 +106,26 @@ export function cdsDrugCheckKey(args: Args) {
   ] as const;
 }
 
-async function fetchCheck(args: Args): Promise<CdsResult> {
-  const res = await fetch("/api/crm/cds/drug-check", {
+/**
+ * The drug check did not answer (audit VW-13). Thrown, never folded into an
+ * empty result: an empty result reads as «nothing to warn about», and the
+ * card then showed the same silence as for a drug outside the catalog while
+ * the allergy and interaction check had simply not run.
+ */
+export class CdsCheckUnavailableError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`cds drug-check ${status}`);
+    this.name = "CdsCheckUnavailableError";
+    this.status = status;
+  }
+}
+
+export async function fetchCheck(
+  args: Args,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CdsResult> {
+  const res = await fetchImpl("/api/crm/cds/drug-check", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -120,15 +138,7 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
       visitNoteId: args.visitNoteId ?? null,
     }),
   });
-  if (!res.ok) {
-    return {
-      warnings: [],
-      resolvedDrugs: [],
-      unresolvedLines: [],
-      noInteractionData: [],
-      noPregnancyData: [],
-    };
-  }
+  if (!res.ok) throw new CdsCheckUnavailableError(res.status);
   return (await res.json()) as CdsResult;
 }
 

@@ -242,6 +242,14 @@ function VisitEntry({
                 {t("visits.draft")}
               </span>
             ) : null}
+            {/* DC-06: the row shows the conclusion as signed; a correction
+                appended later lives only on the conclusion page, so the row
+                says one exists before the old text is taken as current. */}
+            {(v.amendmentsCount ?? 0) > 0 ? (
+              <span className="shrink-0 rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-[color:var(--info)]">
+                {t("visits.amended")}
+              </span>
+            ) : null}
           </div>
           <AdditionalDiagnosesLine
             diagnoses={v.additionalDiagnoses}

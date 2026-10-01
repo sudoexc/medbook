@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
+import { parseTimesInput } from "@/lib/patient-experience/medication-schedule";
 
 import {
   type CasePrescriptionRow,
@@ -73,11 +74,34 @@ const STATUS_VARIANT: Record<
   CANCELLED: "muted",
 };
 
+// PT-12: «9:00» is a time too, and a value that is not one is named, not
+// silently dropped (lib/patient-experience/medication-schedule).
 function parseTimes(input: string): string[] {
-  return input
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => /^\d{2}:\d{2}$/.test(s));
+  return parseTimesInput(input).times;
+}
+
+/**
+ * A failed write as the person should read it: the server's `reason` when
+ * the form knows it (a doctor editing a colleague's prescription), else the
+ * raw code as before.
+ */
+class PrescriptionWriteError extends Error {
+  readonly reason: string | null;
+  constructor(message: string, reason: string | null) {
+    super(message);
+    this.reason = reason;
+  }
+}
+
+async function writeError(res: Response): Promise<PrescriptionWriteError> {
+  const j = (await res.json().catch(() => null)) as {
+    error?: string;
+    reason?: string;
+  } | null;
+  return new PrescriptionWriteError(
+    j?.error ?? `HTTP ${res.status}`,
+    j?.reason ?? null,
+  );
 }
 
 function formatTimes(arr: string[]): string {
@@ -90,6 +114,12 @@ export type PrescriptionsCardProps = {
   defaultDoctorId: string | null;
   prescriptions: CasePrescriptionRow[];
   doctors: Doctor[];
+  /**
+   * PT-12: only an admin writes on behalf of a doctor. A doctor's
+   * prescription is always his own (the server ignores any other author),
+   * so the picker that pretended otherwise is not shown to him.
+   */
+  canChooseAuthor?: boolean;
 };
 
 export function PrescriptionsCard({
@@ -98,6 +128,7 @@ export function PrescriptionsCard({
   defaultDoctorId,
   prescriptions,
   doctors,
+  canChooseAuthor = true,
 }: PrescriptionsCardProps) {
   const t = useTranslations("cases.detail.prescriptions");
   const locale = useLocale();
@@ -107,6 +138,11 @@ export function PrescriptionsCard({
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
     null,
   );
+
+  const errorText = (e: Error): string =>
+    e instanceof PrescriptionWriteError && e.reason === "not_author"
+      ? t("errorNotAuthor")
+      : e.message;
 
   const invalidate = React.useCallback(() => {
     qc.invalidateQueries({ queryKey: caseKey(caseId) });
@@ -122,7 +158,8 @@ export function PrescriptionsCard({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          doctorId: input.doctorId,
+          // A doctor is always the author himself; only an admin names one.
+          ...(canChooseAuthor ? { doctorId: input.doctorId } : {}),
           drugName: input.drugName,
           dosage: input.dosage,
           schedule: {
@@ -134,12 +171,7 @@ export function PrescriptionsCard({
           status: input.status,
         }),
       });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw await writeError(res);
       return res.json();
     },
     onSuccess: () => {
@@ -147,7 +179,7 @@ export function PrescriptionsCard({
       setForm(null);
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(errorText(err)),
   });
 
   const patchMutation = useMutation({
@@ -171,12 +203,7 @@ export function PrescriptionsCard({
           }),
         },
       );
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw await writeError(res);
       return res.json();
     },
     onSuccess: () => {
@@ -184,7 +211,7 @@ export function PrescriptionsCard({
       setForm(null);
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(errorText(err)),
   });
 
   const deleteMutation = useMutation({
@@ -193,19 +220,14 @@ export function PrescriptionsCard({
         `/api/crm/cases/${caseId}/prescriptions/${id}`,
         { method: "DELETE", credentials: "include" },
       );
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw await writeError(res);
       return res.json();
     },
     onSuccess: () => {
       toast.success(t("deleted"));
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(errorText(err)),
   });
 
   const startCreate = () => {
@@ -228,7 +250,7 @@ export function PrescriptionsCard({
 
   const submit = () => {
     if (!form) return;
-    const times = parseTimes(form.times);
+    const { times, invalid } = parseTimesInput(form.times);
     if (!form.drugName.trim()) {
       toast.error(t("validation.drugRequired"));
       return;
@@ -237,11 +259,15 @@ export function PrescriptionsCard({
       toast.error(t("validation.dosageRequired"));
       return;
     }
+    if (invalid.length > 0) {
+      toast.error(t("validation.timesInvalid", { values: invalid.join(", ") }));
+      return;
+    }
     if (times.length === 0) {
       toast.error(t("validation.timesRequired"));
       return;
     }
-    if (!form.id && !form.doctorId) {
+    if (canChooseAuthor && !form.id && !form.doctorId) {
       toast.error(t("validation.doctorRequired"));
       return;
     }
@@ -384,7 +410,7 @@ export function PrescriptionsCard({
                   placeholder={t("fields.daysPlaceholder")}
                 />
               </div>
-              {!form.id && (
+              {!form.id && canChooseAuthor && (
                 <div>
                   <Label htmlFor="rx-doctor">{t("fields.doctor")}</Label>
                   <select

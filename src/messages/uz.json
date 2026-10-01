@@ -1759,11 +1759,13 @@
         "remindersOn": "Eslatmalar",
         "daysShort": "{n, plural, one {# kun} other {# kun}}",
         "openEnded": "muddatsiz",
+        "errorNotAuthor": "Tayinlovni faqat uning muallifi yoki administrator o'zgartira yoki o'chira oladi",
         "validation": {
           "drugRequired": "Dori nomini kiriting",
           "dosageRequired": "Dozani kiriting",
           "timesRequired": "Kamida bitta qabul vaqtini qo'shing (HH:mm)",
-          "doctorRequired": "Shifokorni tanlang"
+          "doctorRequired": "Shifokorni tanlang",
+          "timesInvalid": "Vaqtga o'xshamaydi: {values}. Vaqtni 09:00 yoki 9:00 ko'rinishida, 00:00 dan 23:59 gacha kiriting"
         },
         "status": {
           "ACTIVE": "Faol",
@@ -1864,7 +1866,13 @@
     "autoRefresh": "Avtomatik yangilanadi",
     "live": {
       "patientArrived": "Bemor keldi",
-      "fallbackName": "Bemor"
+      "fallbackName": "Bemor",
+      "selfCheckInTitle": "Bemor ilovada belgi qo'ydi: «Men keldim»",
+      "selfCheckInBadge": "Ilovada belgi qo'ydi",
+      "selfCheckInBadgeAt": "Ilovada {time} da belgi qo'ydi",
+      "selfCheckInHint": "Bemor uni kutib olishlarini kutmoqda. U qabulxonaga kelganda «Keldi» tugmasini bosing.",
+      "open": "Ochish",
+      "dismiss": "Tushunarli"
     },
     "walkin": {
       "trigger": "Talon berish",
@@ -6489,6 +6497,8 @@
       },
       "cds": {
         "checking": "Mosligi tekshirilmoqda…",
+        "unavailable": "Allergiya va o‘zaro ta’sir tekshiruvi ishlamayapti. Tayinlovlar hozir tekshirilmagan.",
+        "retry": "Qayta urinish",
         "noConflicts": "Nizolar topilmadi",
         "recognizedCount": "aniqlandi: {count}",
         "unmatchedCount": "aniqlanmadi: {count}",
@@ -6543,6 +6553,7 @@
         "manualBadge": "qo‘lda",
         "remindOn": "Bemorga eslatmalar yoqilgan",
         "remindOff": "Eslatmalarsiz",
+        "remindNoTimes": "Qabul vaqti tanlanmagan, eslatmalar bo‘lmaydi",
         "deleteRow": "Tayinlovni o‘chirish",
         "dose": "Doza",
         "form": "Shakli va dozasi",
@@ -7073,6 +7084,7 @@
         "labTests": "{n} tekshiruv",
         "openConclusion": "Xulosani ochish",
         "fromPatient": "bemordan",
+        "amended": "Tuzatishlar bor",
         "type": {
           "repeat": "Takroriy",
           "consultation": "Konsultatsiya"
@@ -7319,7 +7331,14 @@
         "errSignFailed": "Xulosani imzolab bo‘lmadi. Uni «Xulosalar» bo‘limida ochib, qayta urinib ko‘ring.",
         "errNotActive": "Qabul endi davom etmayapti: u bekor qilingan yoki kelmadi deb belgilangan. Xulosa imzolanmadi.",
         "errFollowUpDatePast": "Xulosa imzolanmadi: nazorat tashrifi kuni allaqachon kelgan. Xulosani ochib, yangi sanani tanlang.",
-        "errNotToday": "Qabul bugunga emas. Uni faqat qabul kunida boshlash mumkin."
+        "errNotToday": "Qabul bugunga emas. Uni faqat qabul kunida boshlash mumkin.",
+        "errCancelledByPatient": "Bu yozuvni bemorning o'zi bekor qilgan. Uni qaytarib bo'lmaydi: kelmoqchi bo'lsa, uni qaytadan yozing.",
+        "errDoctorBusy": "Bu vaqt boshqa yozuv bilan band. Qabulni unga qaytarib bo'lmaydi.",
+        "errCabinetBusy": "Bu vaqtda kabinet boshqa yozuv bilan band. Qabulni unga qaytarib bo'lmaydi."
+      },
+      "restoreNotice": {
+        "patient": "{name}, yozuvingiz tiklandi: {date} kuni soat {time} da, shifokor {doctor}. Rejalar o'zgargan bo'lsa, uni klinika ilovasida bekor qiling.",
+        "templateName": "Yozuv tiklandi"
       },
       "liveQueue": {
         "title": "Jonli navbat",
@@ -7403,6 +7422,9 @@
         "aiGenerated": "AI ishtirokida shakllantirilgan",
         "diagnosisIcd10": "Tashxis (XKK-10)",
         "additionalDiagnoses": "Yondosh tashxislar",
+        "amendments": "Tuzatishlar",
+        "amendmentsHint": "Xulosa imzolangandan keyin tuzatilgan. Quyidagi asl matn imzolangan holicha qoldirilgan.",
+        "amendmentReason": "Sababi: {reason}",
         "complaints": "Shikoyatlar",
         "anamnesis": "Anamnez",
         "examination": "Ko‘rik",
@@ -7437,6 +7459,7 @@
         "diagnosisInfo": "Tashxis haqida batafsil",
         "conclusion": "Xulosa",
         "noConclusion": "Xulosa yo‘q",
+        "amended": "Tuzatishlar bor",
         "loadMore": "Ko‘proq ko‘rsatish"
       },
       "menu": {
@@ -7506,6 +7529,7 @@
         "subheading": "Har bir hodisa turi uchun bildirishnomalarni qaysi kanallar orqali olishni tanlang. O'zgarishlar avtomatik saqlanadi.",
         "eventColumn": "Hodisa",
         "telegramHint": "<strong>Telegram</strong> kanali faqat siz «Xavfsizlik» bo'limida botni o'z hisobingizga bog'lagan bo'lsangiz ishlaydi.",
+        "notConnected": "Yangi qabullar, tahlil natijalari va eslatmalar haqidagi bildirishnomalar hamda Email va Telegram kanallari hali ulanmagan. Ular ishga tushganda, almashtirgichlar shu yerda paydo bo'ladi.",
         "channels": {
           "inApp": "Tizimda",
           "email": "Email",

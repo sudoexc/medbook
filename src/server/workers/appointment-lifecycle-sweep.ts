@@ -37,6 +37,14 @@
  *     so a row whose `status` drifted behind a WAITING `queueStatus` is
  *     left alone too.
  *
+ *   - Nor a booking whose patient checked in from the Mini App («Я на
+ *     месте», `arrivedAt`) and was never marked «Пришёл» (audit G3-01). He
+ *     was in the hall, told «вас встретят»; the desk just did not react.
+ *     A no-show and its «вы не пришли» message would be both false and an
+ *     insult. The row stays a booking, its «Отметился в приложении» badge
+ *     stays on reception's lists (`lib/appointments/self-check-in`), and a
+ *     person decides. The running-late text skips him for the same reason.
+ *
  * The flip is a guess, not a verdict: a patient who walks in later the same
  * clinic day can still be checked in with «Пришёл», which the audit row
  * written below makes possible (`canArriveAfterAutoNoShow`).
@@ -106,6 +114,8 @@ export type SweepCandidate = {
   queueStatus?: AppointmentStatus;
   /** The case the visit belongs to; a no-show reprices it (AP-04). */
   medicalCaseId?: string | null;
+  /** Mini App check-in: the patient said he was here (G3-01). */
+  arrivedAt?: Date | null;
 };
 
 /**
@@ -121,6 +131,8 @@ export function autoNoShowWhere(cutoff: Date) {
     queueStatus: { in: [...SWEEP_STATUSES] },
     channel: { not: "WALKIN" as const },
     endDate: { lt: cutoff },
+    // G3-01: a patient who checked in from the Mini App came.
+    arrivedAt: null,
   };
 }
 
@@ -139,6 +151,7 @@ export function selectAutoNoShows<T extends SweepCandidate>(
     if (!SWEEP_STATUSES.includes(row.status)) continue;
     if (row.queueStatus && !SWEEP_STATUSES.includes(row.queueStatus)) continue;
     if (row.channel === "WALKIN") continue;
+    if (row.arrivedAt) continue;
     if (row.endDate.getTime() < cutoff) {
       out.push(row);
     }
@@ -296,6 +309,7 @@ async function tick(): Promise<void> {
         endDate: true,
         channel: true,
         medicalCaseId: true,
+        arrivedAt: true,
       },
       // Bound the batch so a long outage backlog doesn't blow the event
       // loop on first tick. 500 stale rows per tick × every 10 min drains
@@ -329,6 +343,8 @@ async function tick(): Promise<void> {
               id: row.id,
               status: row.status,
               queueStatus: { in: [...SWEEP_STATUSES] },
+              // A check-in that landed between the scan and now wins too.
+              arrivedAt: null,
             },
             data: { ...NO_SHOW_FIELDS },
           });
@@ -416,6 +432,9 @@ async function tick(): Promise<void> {
       where: {
         status: { in: ["BOOKED", "CONFIRMED"] as AppointmentStatus[] },
         date: { gte: lateWindowStart, lt: lateWindowEnd },
+        // G3-01: «вы опаздываете» to a patient sitting in the hall after his
+        // Mini App check-in is the same insult as the no-show message.
+        arrivedAt: null,
       },
       select: {
         id: true,

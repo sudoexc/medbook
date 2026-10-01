@@ -1,11 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { useTranslations } from "next-intl";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
-import { useLiveEvents } from "@/hooks/use-live-events";
 import { AI_ENABLED } from "@/lib/ai-enabled";
 import { isUpcomingVisitStatus } from "@/lib/appointments/active-statuses";
 import { tashkentDayWindow, tashkentToday } from "@/lib/tashkent-time";
@@ -400,7 +397,6 @@ export function useAiQueueScores() {
  * event types; TanStack Query then refetches as needed.
  */
 export function useReceptionRealtime(): void {
-  const t = useTranslations("reception");
   useLiveQueryInvalidation({
     events: [
       "appointment.created",
@@ -409,8 +405,8 @@ export function useReceptionRealtime(): void {
       "appointment.cancelled",
       "appointment.moved",
       "queue.updated",
-      // Wave 3c — mini-app self check-in. No status change, but the desk
-      // list may render an "arrived" hint derived from fresh data.
+      // Wave 3c — mini-app self check-in. No status change, but the lists
+      // render the «Отметился в приложении» badge from `arrivedAt` (G3-01).
       "patient.arrived",
     ],
     queryKeys: [
@@ -431,21 +427,9 @@ export function useReceptionRealtime(): void {
     events: ["tg.message.new", "tg.conversation.updated"],
     queryKey: ["reception", "conversations"],
   });
-  // Self check-in deserves an active ping, not just a silent refetch — the
-  // receptionist should look up and greet the person who just walked in.
-  useLiveEvents(
-    (event) => {
-      if (event.type !== "patient.arrived") return;
-      const name =
-        event.payload.patientName?.trim() || t("live.fallbackName");
-      toast(t("live.patientArrived"), {
-        description: event.payload.time
-          ? `${name} · ${event.payload.time}`
-          : name,
-      });
-    },
-    { filter: ["patient.arrived"] },
-  );
+  // The self check-in alert itself lives in the CRM layout now
+  // (GlobalArrivalAlerts, audit G3-01): a four-second toast here was missed
+  // whenever the desk was on another page.
 }
 
 export function computeUpcomingReminders(

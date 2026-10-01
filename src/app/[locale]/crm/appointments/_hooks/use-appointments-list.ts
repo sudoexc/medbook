@@ -85,6 +85,11 @@ export type AppointmentRow = {
   queuePriority: number;
   ticketSeq: number | null;
   queuedAt: string | null;
+  /**
+   * Mini App «Я на месте» (G3-01). The list API returns every scalar column;
+   * optional so a row built by hand (tests, optimistic writes) still types.
+   */
+  arrivedAt?: string | null;
   priceBase: number | null;
   priceService: number | null;
   priceFinal: number | null;

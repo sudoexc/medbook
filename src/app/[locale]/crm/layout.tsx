@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth"
 import { CrmSidebar } from "@/components/layout/crm-sidebar"
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts"
 import { GlobalLeadAlerts } from "@/components/layout/global-lead-alerts"
+import { GlobalArrivalAlerts } from "@/components/layout/global-arrival-alerts"
 import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch"
 import { CrmTopbar } from "@/components/layout/crm-topbar"
 import { ImpersonationBanner } from "@/components/layout/impersonation-banner"
@@ -181,6 +182,16 @@ export default async function CrmLayout({
           session?.user?.role === "SUPER_ADMIN" ||
           session?.user?.role === "RECEPTIONIST" ||
           session?.user?.role === "CALL_OPERATOR"
+        }
+      />
+      {/* Mini App self check-in (audit G3-01): an alert that stays until
+          someone reacts, on every CRM screen, for the roles that check
+          patients in. It used to be a 4-second toast on reception only. */}
+      <GlobalArrivalAlerts
+        canWork={
+          session?.user?.role === "ADMIN" ||
+          session?.user?.role === "SUPER_ADMIN" ||
+          session?.user?.role === "RECEPTIONIST"
         }
       />
       <SessionExpiryWatch />

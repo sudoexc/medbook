@@ -23,7 +23,9 @@
  *     (`NotificationSend`), communication log bodies, call summaries,
  *     recordings and the patient's number on calls, chat messages and the
  *     inbox preview, review comments, the clinical note, the doctors'
- *     reminders about the patient, appointment notes, SOAP drafts, and
+ *     reminders about the patient, the Mini App family links (both ways:
+ *     nobody keeps acting for the erased card or tied to it through
+ *     «Семья»), appointment notes, SOAP drafts, and
  *     every stored FILE of the patient: documents (uploads, scans and
  *     rendered PDFs, rows and objects), chat attachments (objects and
  *     links) and the issued conclusion PDFs of visit-note revisions. A

@@ -10,6 +10,11 @@
  * Returns `ok: false` when `onBehalfOf` references a patient id that is *not*
  * linked to the authenticated owner. Routes translate that to a 403
  * `on_behalf_of_not_linked`.
+ *
+ * A deleted card (`deletedAt`: erased on a DSAR request, or removed by the
+ * clinic) counts as not linked, here and in `getFamilyAllowedPatientIds`
+ * (final review of P5): the erasure also deletes the link, but a link left
+ * to a deleted card must still open nothing of hers, nor take a booking.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -54,6 +59,7 @@ export async function resolveActivePatient(input: {
       clinicId: ctx.clinicId,
       ownerPatientId: ctx.patientId,
       linkedPatientId: target,
+      linkedPatient: { deletedAt: null },
     },
     select: {
       linkedPatient: { select: { id: true, preferredLang: true } },
@@ -85,7 +91,7 @@ export async function getFamilyAllowedPatientIds(
   db: BookTx = prisma,
 ): Promise<string[]> {
   const links = await db.patientFamily.findMany({
-    where: { clinicId, ownerPatientId },
+    where: { clinicId, ownerPatientId, linkedPatient: { deletedAt: null } },
     select: { linkedPatientId: true },
   });
   return [ownerPatientId, ...links.map((l) => l.linkedPatientId)];

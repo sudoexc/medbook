@@ -62,6 +62,14 @@ function clinic(subscription: SubscriptionRowWithPlan | null, active = true): Cl
   return { id: "c_nf", slug: "neurofax", nameRu: "NeuroFax", active, subscription };
 }
 
+/**
+ * Any clinic but the platform owner's: the scheduler never steps NeuroFax
+ * (final review of P5), so the lifecycle's own forecast shows on another.
+ */
+function otherClinic(subscription: SubscriptionRowWithPlan | null): ClinicRow {
+  return { id: "c_b", slug: "clinic-b", nameRu: "Клиника Б", active: true, subscription };
+}
+
 const COUNTS = { maxPatients: 4_210, maxAppointmentsPerMonth: 640 };
 
 describe("the forecast: what the first tick and the later ones do", () => {
@@ -77,9 +85,10 @@ describe("the forecast: what the first tick and the later ones do", () => {
     // The May backfill made every clinic a 30-day Pro TRIAL; the old
     // scheduler turned it PAST_DUE and stopped. This is that row.
     const f = forecastClinic(
-      clinic(sub({ status: "PAST_DUE", trialEndsAt: new Date("2026-05-31T00:00:00Z") })),
+      otherClinic(sub({ status: "PAST_DUE", trialEndsAt: new Date("2026-05-31T00:00:00Z") })),
       NOW,
     );
+    expect(f.platformClinic).toBe(false);
     expect(f.firstTick).toMatchObject({ reason: "grace_started", to: "PAST_DUE" });
     expect(f.steps.map((s) => s.step.to)).toEqual(["PAST_DUE", "CANCELLED"]);
     expect(f.steps[1]!.at.getTime()).toBe(days(GRACE_DAYS).getTime() + 1);
@@ -93,8 +102,20 @@ describe("the forecast: what the first tick and the later ones do", () => {
   });
 
   it("an expired TRIAL moves on the first tick", () => {
-    const f = forecastClinic(clinic(sub({ status: "TRIAL", trialEndsAt: days(-1) })), NOW);
+    const f = forecastClinic(otherClinic(sub({ status: "TRIAL", trialEndsAt: days(-1) })), NOW);
     expect(f.firstTick).toMatchObject({ reason: "trial_expired", to: "PAST_DUE" });
+  });
+
+  it("the same PAST_DUE row on NeuroFax: the scheduler never steps it, the check still fails", () => {
+    const row = clinic(sub({ status: "PAST_DUE", trialEndsAt: new Date("2026-05-31T00:00:00Z") }));
+    const f = forecastClinic(row, NOW);
+    expect(f.platformClinic).toBe(true);
+    expect(f.firstTick).toBeNull();
+    expect(f.steps).toEqual([]);
+    expect(f.finalStatus).toBe("PAST_DUE");
+    expect(quotaOutcomes(f.finalContext, COUNTS).some((o) => o.counted)).toBe(false);
+    // Not pinned is still not safe: the deploy stops and asks for the pin.
+    expect(dailyCoreProblems(row)).toEqual([expect.stringContaining("not ACTIVE")]);
   });
 
   it("a clinic without a subscription is blocked today already", () => {

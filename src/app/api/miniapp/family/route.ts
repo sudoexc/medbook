@@ -52,7 +52,13 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
       },
     }),
     prisma.patientFamily.findMany({
-      where: { ownerPatientId: ctx.patientId, clinicId: ctx.clinicId },
+      // A deleted card (DSAR erasure, removed at the desk) is nobody's
+      // relative any more: not in the switcher (final review of P5).
+      where: {
+        ownerPatientId: ctx.patientId,
+        clinicId: ctx.clinicId,
+        linkedPatient: { deletedAt: null },
+      },
       orderBy: { createdAt: "asc" },
       include: {
         linkedPatient: {
@@ -101,9 +107,14 @@ export const POST = createMiniAppHandler(
     }
 
     // Existing-link count — used by validator for the MAX cap and the
-    // duplicate check.
+    // duplicate check. The links the GET shows: a deleted card's does not
+    // take a place the owner cannot see or free.
     const existingLinks = await prisma.patientFamily.findMany({
-      where: { ownerPatientId: ctx.patientId, clinicId: ctx.clinicId },
+      where: {
+        ownerPatientId: ctx.patientId,
+        clinicId: ctx.clinicId,
+        linkedPatient: { deletedAt: null },
+      },
       select: { linkedPatientId: true },
     });
     const linkedSet = new Set(existingLinks.map((l) => l.linkedPatientId));

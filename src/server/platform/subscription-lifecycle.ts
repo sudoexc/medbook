@@ -33,11 +33,38 @@
  * not Basic: an open-ended subscription set by the platform owner, which no
  * rule here ends and the quota guard never counts. Nothing here can see the
  * production row, so `scripts/subscription-lifecycle-dryrun.ts` checks it
- * (and can pin it) before the release that starts these rules.
+ * (and can pin it) before the release that starts these rules, and the
+ * deploy refuses to start the new app and worker while it fails.
+ *
+ * And in case that check is skipped anyway (a deploy run by hand, step by
+ * step): the scheduler never moves the platform owner's own clinic
+ * (`isPlatformClinic`). Its row was a TRIAL from the May backfill that the
+ * old scheduler left PAST_DUE with no grace date; the new rules would have
+ * started a grace period on the first tick and cancelled it 14 days later,
+ * and a cancelled subscription means Basic limits: the quota guard answers
+ * 402 to reception's patient create, booking and walk-in (final review of
+ * P5). Only the platform owner changes that row, by hand and audited.
  *
  * The planners are pure; the routes and the scheduler load, plan, write and
  * audit.
  */
+
+import { DEFAULT_CLINIC_SLUG } from "@/lib/constants";
+
+/**
+ * The platform owner's own clinic: the one the public site, the lobby TV
+ * and the kiosk serve (`DEFAULT_CLINIC_SLUG`, NeuroFax on production), and
+ * the one the pre-deploy dry run checks by default.
+ */
+export const PLATFORM_CLINIC_SLUG = DEFAULT_CLINIC_SLUG;
+
+/**
+ * Whether a clinic is the platform owner's own, whose subscription no
+ * automatic rule moves (see the header).
+ */
+export function isPlatformClinic(slug: string | null | undefined): boolean {
+  return !!slug && slug === PLATFORM_CLINIC_SLUG;
+}
 
 export const DEFAULT_TRIAL_DAYS = 30;
 export const EXTEND_TRIAL_DAYS = 30;

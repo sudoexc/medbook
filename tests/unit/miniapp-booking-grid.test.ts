@@ -212,9 +212,10 @@ describe("miniAppBookingLimitRefusal", () => {
       reason: "booking_limit",
       limit: "account_total",
     });
-    // The account's cards are read in the booking transaction.
+    // The account's cards are read in the booking transaction, a deleted
+    // card left out (final review of P5).
     expect(familyFindMany).toHaveBeenCalledWith({
-      where: { clinicId: "c1", ownerPatientId: "p_owner" },
+      where: { clinicId: "c1", ownerPatientId: "p_owner", linkedPatient: { deletedAt: null } },
       select: { linkedPatientId: true },
     });
     const where = (count.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]

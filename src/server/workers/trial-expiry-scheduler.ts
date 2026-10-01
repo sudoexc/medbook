@@ -21,7 +21,16 @@
  * cancelled subscription means Basic limits for the API quota guard. So
  * `scripts/subscription-lifecycle-dryrun.ts` runs before this worker
  * starts: it prints what the ticks will do to each clinic and fails unless
- * NeuroFax really is that open-ended ACTIVE (review of 79422ba).
+ * NeuroFax really is that open-ended ACTIVE (review of 79422ba). The deploy
+ * runs it between the migration and the start of the new app and worker
+ * (ops/deploy.sh, docs/operations/DEPLOY.md) and stops when it fails.
+ *
+ * Should that check be skipped all the same, the platform owner's own clinic
+ * (`isPlatformClinic`) is never stepped here: left PAST_DUE by the old
+ * scheduler, it would otherwise get a grace period on the first tick and be
+ * CANCELLED 14 days later, which locks reception out of patient create,
+ * booking and walk-in (402 on Basic limits). The tick says so in the log,
+ * once per worker start, so the owner can pin it with the dry run.
  *
  * Every step writes a SUBSCRIPTION_AUTO_TRANSITION audit row with the
  * subscription as it was (`previous`), which is what the platform owner sees
@@ -44,6 +53,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { getQueue } from "@/server/queue";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
+  isPlatformClinic,
   nextAutoStep,
   snapshotOf,
   type SubscriptionState,
@@ -67,6 +77,8 @@ export type SubscriptionRow = {
   currentPeriodEndsAt?: Date | null;
   graceEndsAt?: Date | null;
   cancelledAt?: Date | null;
+  /** The clinic's slug, read so the platform owner's clinic is left alone. */
+  clinic?: { slug: string } | null;
 };
 
 function stateOfRow(row: SubscriptionRow): SubscriptionState {
@@ -122,6 +134,13 @@ export function nextStatusFor(
   return nextAutoStep(stateOfRow(sub), now)?.to ?? sub.status;
 }
 
+/**
+ * Subscriptions of the platform owner's clinic already reported in this
+ * worker's log, so a row the scheduler would move is named once per worker
+ * start, not every minute.
+ */
+const platformRowsReported = new Set<string>();
+
 async function tick(): Promise<void> {
   const now = new Date();
 
@@ -147,6 +166,7 @@ async function tick(): Promise<void> {
         currentPeriodEndsAt: true,
         graceEndsAt: true,
         cancelledAt: true,
+        clinic: { select: { slug: true } },
       },
     }),
   )) as SubscriptionRow[];
@@ -156,6 +176,18 @@ async function tick(): Promise<void> {
     const before = stateOfRow(row);
     const step = nextAutoStep(before, now);
     if (!step) continue;
+    if (isPlatformClinic(row.clinic?.slug)) {
+      // Never stepped: only the owner changes this row (see the header).
+      if (!platformRowsReported.has(row.id)) {
+        platformRowsReported.add(row.id);
+        console.warn(
+          `[trial-expiry] sub=${row.id} clinic=${row.clinicId} is the platform owner's clinic ` +
+            `(${row.clinic?.slug}), left ${row.status} instead of ${step.reason} -> ${step.to}. ` +
+            `Pin it to an open-ended ACTIVE: scripts/subscription-lifecycle-dryrun.ts with APPLY=1.`,
+        );
+      }
+      continue;
+    }
     const written = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.subscription.updateMany({
         // Planned from this status and grace date; anything else since (a

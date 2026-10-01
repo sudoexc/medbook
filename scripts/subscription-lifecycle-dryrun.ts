@@ -22,6 +22,9 @@
  * Dry run (default, writes nothing; run it with the new worker image after
  * the migration, before `docker compose up -d` starts the new app/worker):
  *   docker compose run --rm --no-deps worker npx tsx scripts/subscription-lifecycle-dryrun.ts
+ * Every deploy runs it there and stops on a non-zero exit code, the old
+ * containers still serving: ops/deploy.sh, and the `[precheck]` step of
+ * _deploy.sh in docs/operations/DEPLOY.md.
  * Pin a clinic to an open-ended ACTIVE subscription (CLINIC is required
  * here; PLAN defaults to the plan it is on, and Basic is refused):
  *   docker compose run --rm --no-deps -e APPLY=1 -e CLINIC=neurofax -e PLAN=pro worker npx tsx scripts/subscription-lifecycle-dryrun.ts
@@ -37,7 +40,10 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
-import { snapshotOf } from "../src/server/platform/subscription-lifecycle";
+import {
+  PLATFORM_CLINIC_SLUG,
+  snapshotOf,
+} from "../src/server/platform/subscription-lifecycle";
 import {
   guardCounts,
   quotaCountQuery,
@@ -60,7 +66,7 @@ const prisma = new PrismaClient({
 
 const APPLY = process.env.APPLY === "1";
 const CLINIC_GIVEN = process.env.CLINIC?.trim() || null;
-const CLINIC = CLINIC_GIVEN ?? "neurofax";
+const CLINIC = CLINIC_GIVEN ?? PLATFORM_CLINIC_SLUG;
 const PLAN = process.env.PLAN?.trim() || null;
 const TAG = "[sub-lifecycle]";
 
@@ -166,7 +172,12 @@ async function report(now: Date): Promise<void> {
           `graceEndsAt ${iso(s.graceEndsAt)}, cancelledAt ${iso(s.cancelledAt)}`,
       );
     }
-    if (f.firstTick) {
+    if (f.platformClinic) {
+      console.log(
+        "  first tick: nothing (the platform owner's clinic: the scheduler never moves it, " +
+          "it stays as it is until it is pinned)",
+      );
+    } else if (f.firstTick) {
       moved += 1;
       console.log(
         `  first tick: ${f.firstTick.reason} -> ${f.firstTick.to}` +

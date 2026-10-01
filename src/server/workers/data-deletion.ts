@@ -12,8 +12,8 @@
  *        - erase everything about the person outside the card
  *          (`scrubPatientPhiCarriers`, audit PT-07): leads and site
  *          requests, notification texts, communication bodies, calls, chat
- *          and its attachments, reviews, the clinical note, reminders, every
- *          stored file;
+ *          and its attachments, reviews, the clinical note, reminders, the
+ *          Mini App family links, every stored file;
  *        - anonymize the card (`buildAnonymizationPayload`);
  *        - mark the job ANONYMIZED and audit PATIENT_ANONYMIZED naming the
  *          erased identity fields.
@@ -198,6 +198,19 @@ async function scrubPatientPhiCarriers(
   // So is a doctor's reminder about him («Позвонить Иванову по МРТ»): the
   // title and body are the whole reminder, nothing is left to keep.
   await prisma.reminder.deleteMany({ where: { patientId } });
+  // Her family links in the Mini App «Семья», both ways (final review of
+  // P5). A son who managed his mother kept the link after her erasure: she
+  // stayed in his switcher, and with `onBehalfOf` he still opened her kept
+  // medical record (visit summary, labs, medications, the plan) and booked
+  // new visits onto the erased card. The relationship itself is about her
+  // too. Her own links as owner go as well: nobody can sign in as her any
+  // more, and a relative's card is not hers to keep tied to.
+  await prisma.patientFamily.deleteMany({
+    where: {
+      clinicId,
+      OR: [{ linkedPatientId: patientId }, { ownerPatientId: patientId }],
+    },
+  });
 
   // Site requests and leads (audit PT-07): linked to the card, or left with
   // the card's number before anyone linked them. A family shares one number

@@ -10,8 +10,14 @@
 > несуществующий `/opt/medbook`, его секреты `SSH_*` не были настроены, а
 > автодеплой по зелёному CI противоречит правилу «деплой — только по явной
 > просьбе владельца». Реальный деплой — **ручной, по SSH, через `_deploy.sh`**
-> (описан ниже). `ops/deploy.sh` в репо близок по содержанию, но продом не
-> используется.
+> (описан ниже). `ops/deploy.sh` в репо делает те же шаги в том же порядке
+> (с 2026-10: миграции и проверка подписок до старта новых контейнеров), но
+> продом не используется.
+>
+> **С релиза P5 (2026-10) в `_deploy.sh` есть шаг `[precheck]`** (проверка
+> подписок, §2 и §3 шаг 0). Скрипт на сервере не в git: если в
+> `/opt/neurofax/_deploy.sh` этого шага ещё нет, перед деплоем заменить его
+> текстом из §2.
 
 ## Оглавление
 
@@ -19,6 +25,7 @@
 - [1. Предусловия: локальная проверка](#1-предусловия-локальная-проверка)
 - [2. Как устроен прод](#2-как-устроен-прод)
 - [3. Пошаговый деплой](#3-пошаговый-деплой)
+  - [Шаг 0. Проверка подписок (precheck)](#шаг-0-проверка-подписок-precheck)
 - [4. Проверка после деплоя](#4-проверка-после-деплоя)
 - [5. Откат](#5-откат)
 - [6. Подводные камни](#6-подводные-камни)
@@ -40,13 +47,15 @@ git push origin main
 #    Код 0 → дальше; код 3 → сначала §3 шаг 1b (перенести правку конфига руками).
 ssh root@167.233.142.75 'cd /opt/neurofax && bash ops/pull-keep-prod-configs.sh'
 
-# 1a. запустить деплой
+# 1a. запустить деплой (в _deploy.sh должен быть шаг [precheck], см. §2)
 ssh root@167.233.142.75 'cd /opt/neurofax && nohup bash _deploy.sh >/dev/null 2>&1 &'
 
 # 2. дождаться результата (5–10 минут; сборка двух образов)
 ssh root@167.233.142.75 \
   'until [ -f /tmp/deploy.done ] || [ -f /tmp/deploy.fail ]; do sleep 10; done; \
    ls /tmp/deploy.done /tmp/deploy.fail 2>/dev/null; tail -5 /tmp/deploy.log'
+#    упал на [precheck] («clinic "neurofax": NOT SAFE»): §3 шаг 0, закрепить
+#    подписку NeuroFax и запустить _deploy.sh ещё раз
 
 # 3. смоук
 curl -fsS https://neurofax.uz/api/health | jq .status   # "ok"
@@ -126,8 +135,8 @@ git add -A && git commit -m "..." && git push origin main
 ### `_deploy.sh` — реальный скрипт деплоя
 
 Лежит в `/opt/neurofax/_deploy.sh`, **untracked** (в репо его нет — при
-`git clone` с нуля его надо восстановить). Актуальное содержимое (снято с
-сервера 2026-08-20):
+`git clone` с нуля его надо восстановить). Содержимое (снято с сервера
+2026-08-20, шаг `[precheck]` добавлен к релизу P5, 2026-10):
 
 ```bash
 #!/usr/bin/env bash
@@ -139,6 +148,8 @@ rm -f /tmp/deploy.done /tmp/deploy.fail
   docker compose build app worker &&
   echo "[migrate]  $(date -u)" &&
   docker compose run --rm worker npx prisma migrate deploy &&
+  echo "[precheck] $(date -u)" &&
+  docker compose run --rm --no-deps worker npx tsx scripts/subscription-lifecycle-dryrun.ts &&
   echo "[recreate] $(date -u)" &&
   docker compose up -d --no-deps --force-recreate app worker &&
   echo "[nginx]    $(date -u)" &&
@@ -147,9 +158,21 @@ rm -f /tmp/deploy.done /tmp/deploy.fail
 } > /tmp/deploy.log 2>&1 || { echo "PIPELINE_FAIL $(date -u)" >> /tmp/deploy.log; touch /tmp/deploy.fail; }
 ```
 
-Пайплайн: **build (app+worker) → миграции через worker → force-recreate
-app+worker → reload nginx**. Лог — `/tmp/deploy.log`, маркеры —
-`/tmp/deploy.done` (в логе `PIPELINE_OK`) или `/tmp/deploy.fail`.
+Пайплайн: **build (app+worker) → миграции через worker → проверка подписок
+→ force-recreate app+worker → reload nginx**. Лог в `/tmp/deploy.log`,
+маркеры: `/tmp/deploy.done` (в логе `PIPELINE_OK`) или `/tmp/deploy.fail`.
+
+`[precheck]` запускает `scripts/subscription-lifecycle-dryrun.ts` из нового
+образа worker, после миграций и до старта нового app и worker. Он ничего не
+пишет: печатает, что первый тик планировщика подписок сделает с каждой
+клиникой, и выходит с кодом 2, если NeuroFax не на бессрочной ACTIVE
+подписке платного тарифа. Тогда цепочка `&&` обрывается, recreate не
+выполняется, старые контейнеры продолжают работать. Зачем: с P5 планировщик
+доводит PAST_DUE до CANCELLED (14 дней льготного периода), а у отменённой
+подписки лимиты Basic, и CRM отвечает 402 на новую карточку пациента, запись
+и живую очередь (больше 50 пациентов, больше 100 записей в месяц).
+Майская миграция `20260501091536` выдала всем клиникам 30-дневный TRIAL, и
+старый планировщик оставил его в PAST_DUE. Что делать при коде 2: §3 шаг 0.
 
 Почему именно так — см. [Подводные камни](#6-подводные-камни).
 
@@ -189,6 +212,33 @@ following files would be overwritten by merge… Aborting») и весь деп�
 
 ## 3. Пошаговый деплой
 
+### Шаг 0. Проверка подписок (precheck)
+
+Один раз, к первому деплою с P5, и каждый раз, когда `_deploy.sh` упал на
+`[precheck]`. Сначала убедиться, что в `/opt/neurofax/_deploy.sh` есть строка
+`[precheck]` (§2); если нет, заменить файл текстом из §2.
+
+Если деплой упал на `[precheck]` (в конце `/tmp/deploy.log` строка
+`clinic "neurofax": NOT SAFE` и причины), новый образ уже собран и миграции
+применены. Закрепить NeuroFax на бессрочной ACTIVE подписке тарифа Pro (Basic
+скрипт не примет), запись идёт в аудит с прежним состоянием (`previous`):
+
+```bash
+ssh root@167.233.142.75 'cd /opt/neurofax && docker compose run --rm --no-deps \
+  -e APPLY=1 -e CLINIC=neurofax -e PLAN=pro \
+  worker npx tsx scripts/subscription-lifecycle-dryrun.ts'
+# в конце: clinic "neurofax": SAFE (open-ended ACTIVE on pro)
+```
+
+Проверить в `/admin/clinics/<id>/billing`: статус ACTIVE, конец периода
+«бессрочно». Потом снова шаг 2 (`_deploy.sh`). Проверить заранее, ничего не
+меняя, можно той же командой без трёх `-e`, но только образом, собранным из
+нового кода и после миграций, то есть после упавшего `_deploy.sh`.
+
+Если проверку всё же пропустили (деплой руками по кусочкам), новый worker
+клинику владельца платформы не трогает и раз за запуск пишет в лог
+`[trial-expiry] … is the platform owner's clinic`: тогда закрепить, как выше.
+
 ```bash
 # Шаг 1 — обновить код на сервере (ff-only: истории расходиться не должно;
 # прод-конфиги под skip-worktree скрипт сохраняет, §2)
@@ -218,7 +268,8 @@ ssh root@167.233.142.75 'tail -30 /tmp/deploy.log'
 Если `DEPLOY_FAIL` — весь вывод упавшего шага уже в `/tmp/deploy.log`.
 Скрипт устроен цепочкой `&&`: упал build → миграции и recreate не выполнялись,
 старые контейнеры продолжают работать (это безопасный отказ). Упали миграции —
-recreate тоже не выполнялся.
+recreate тоже не выполнялся. Упал `[precheck]`: миграции применены, recreate
+не выполнялся, дальше шаг 0.
 
 Git pull сам по себе **ничего не деплоит**: app и worker запекают исходники в
 образ (bind-mount'ов кода нет), без rebuild код не обновится. Изменения только
@@ -416,7 +467,13 @@ ssh root@167.233.142.75 'cd /opt/neurofax && \
 7. **Prisma 7 + `pathe`:** `pathe` добавлен в прямые dependencies package.json
    именно из-за пункта 1 — не удалять «как неиспользуемый».
 
-8. **Коммит меняет skip-worktree файл → голый `git pull` отказывает.**
+8. **Не стартовать новый worker в обход `[precheck]`.** Руками по
+   кусочкам (`up -d --force-recreate worker` сразу после build) первый тик
+   планировщика подписок отработает на всех клиниках без проверки. Порядок
+   всегда: миграции, `scripts/subscription-lifecycle-dryrun.ts` с кодом 0,
+   потом recreate (§2, §3 шаг 0).
+
+9. **Коммит меняет skip-worktree файл → голый `git pull` отказывает.**
    Тянуть только `ops/pull-keep-prod-configs.sh` (§2, §3 шаг 1). Изменение
    конфига на прод само не приезжает: переносить руками (§3 шаг 1b).
 

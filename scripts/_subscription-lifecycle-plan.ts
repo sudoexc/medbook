@@ -3,7 +3,8 @@
  * 79422ba). No database here, so the unit tests pin it:
  *
  *   - `forecastClinic`: what the subscription scheduler will do to a
- *     clinic's row (the first tick, then each later step if nobody acts)
+ *     clinic's row (the first tick, then each later step if nobody acts;
+ *     nothing for the platform owner's own clinic, which it never steps)
  *     and which limits the API quota guard applies before and after;
  *   - `quotaOutcomes`: what `ensureQuotaForApi` answers for those limits and
  *     the clinic's current counts;
@@ -16,6 +17,7 @@
  * `planContextOf`, `guardCounts`, `evaluateLimit`), not copies.
  */
 import {
+  isPlatformClinic,
   lifecycleProjection,
   type AutoStep,
   type SubscriptionState,
@@ -82,6 +84,11 @@ export function quotaOutcomes(
 export type ClinicForecast = {
   /** Every automatic step if nobody acts, the first tick's included. */
   steps: Array<{ at: Date; step: AutoStep }>;
+  /**
+   * The platform owner's own clinic, which the scheduler never steps
+   * (`isPlatformClinic`): no steps, whatever its row says.
+   */
+  platformClinic: boolean;
   /** The step the first tick after the deploy takes, or null. */
   firstTick: AutoStep | null;
   /** Where the row ends up; null for a clinic without a subscription. */
@@ -93,16 +100,25 @@ export type ClinicForecast = {
 
 export function forecastClinic(row: ClinicRow, now: Date): ClinicForecast {
   const sub = row.subscription;
+  const platformClinic = isPlatformClinic(row.slug);
   if (!sub) {
     const ctx = planContextOf(null);
-    return { steps: [], firstTick: null, finalStatus: null, nowContext: ctx, finalContext: ctx };
+    return {
+      steps: [],
+      platformClinic,
+      firstTick: null,
+      finalStatus: null,
+      nowContext: ctx,
+      finalContext: ctx,
+    };
   }
-  const steps = lifecycleProjection(sub, now);
+  const steps = platformClinic ? [] : lifecycleProjection(sub, now);
   const first = steps[0];
   const last = steps[steps.length - 1];
   const finalStatus = last ? last.step.to : sub.status;
   return {
     steps,
+    platformClinic,
     firstTick: first && first.at.getTime() === now.getTime() ? first.step : null,
     finalStatus,
     nowContext: planContextOf(sub),

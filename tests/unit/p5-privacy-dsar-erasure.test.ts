@@ -85,6 +85,7 @@ vi.mock("@/lib/prisma", () => {
       patientClinicalNote: { deleteMany: rec("patientClinicalNote", "deleteMany") },
       eventOutbox: { deleteMany: rec("eventOutbox", "deleteMany") },
       reminder: { deleteMany: rec("reminder", "deleteMany") },
+      patientFamily: { deleteMany: rec("patientFamily", "deleteMany") },
       lead: { updateMany: rec("lead", "updateMany") },
       onlineRequest: { updateMany: rec("onlineRequest", "updateMany") },
       notificationSend: { updateMany: rec("notificationSend", "updateMany") },
@@ -222,6 +223,25 @@ describe("what an erasure reaches", () => {
       birthDate: null,
       phoneVerifiedAt: null,
     });
+  });
+
+  it("the Mini App family links, both ways, pinned to the clinic (final review of P5)", async () => {
+    // A son managed his mother in «Семья»: after her erasure he still saw
+    // her in the switcher and opened her kept record via onBehalfOf.
+    await executeDeletionJob("job_1");
+    expect(callsOf("patientFamily").map((c) => [c.op, c.args])).toEqual([
+      [
+        "deleteMany",
+        {
+          where: {
+            clinicId: "c1",
+            OR: [{ linkedPatientId: "p1" }, { ownerPatientId: "p1" }],
+          },
+        },
+      ],
+    ]);
+    const order = state.calls.map((c) => c.model);
+    expect(order.indexOf("patientFamily")).toBeLessThan(order.indexOf("patient"));
   });
 
   it("a storage failure throws (the job retries) instead of dropping the row", async () => {

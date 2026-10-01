@@ -253,6 +253,8 @@ docker compose run --rm worker npx prisma migrate deploy
 # это устаревший слой build cache внутри образа worker:
 docker compose build --no-cache worker
 docker compose run --rm worker npx prisma migrate deploy
+# проверка подписок до старта нового worker (код 2: DEPLOY.md §3 шаг 0)
+docker compose run --rm --no-deps worker npx tsx scripts/subscription-lifecycle-dryrun.ts
 docker compose up -d --no-deps --force-recreate app worker
 docker exec medbook-nginx-1 nginx -s reload
 ```
@@ -263,6 +265,26 @@ docker exec medbook-nginx-1 nginx -s reload
 docker compose exec -T postgres psql -U medbook -d medbook -tc \
   "SELECT migration_name FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 5;"
 ```
+
+### 3.7 Ресепшн получает 402 «лимит тарифа»
+
+Симптом: новая карточка пациента, запись или талон живой очереди
+отказывают с `plan_limit` (HTTP 402). Так отвечает квота-гард CRM на лимитах
+Basic: у клиники нет подписки, она на тарифе Basic или подписка CANCELLED
+(планировщик отменяет PAST_DUE после 14 дней льготного периода).
+
+```bash
+cd /opt/neurofax
+# что с подписками всех клиник и что сделает планировщик (ничего не пишет)
+docker compose run --rm --no-deps worker npx tsx scripts/subscription-lifecycle-dryrun.ts
+```
+
+Клиника NeuroFax (владелец платформы): закрепить бессрочную ACTIVE подписку
+Pro, `DEPLOY.md` §3 шаг 0. Планировщик её не трогает, но отменить её могли
+руками в админке. Другая клиника: «Тарификация»
+(`/admin/clinics/<id>/billing`): «Восстановить» возвращает отменённую
+подписку (если её срок уже прошёл, то PAST_DUE с новым льготным периодом),
+или перевести её на ACTIVE.
 
 ---
 

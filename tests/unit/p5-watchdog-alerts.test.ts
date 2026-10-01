@@ -79,6 +79,7 @@ function run(env: Record<string, string> = {}): Run {
       HOME: work,
       WATCHDOG_URL: "https://neurofax.test/api/health",
       WATCHDOG_STATE: statePath,
+      WATCHDOG_DISK_STATE: path.join(work, "disk.state"),
       WATCHDOG_TG_BACKOFF: "0",
       WATCHDOG_CERT_HOSTS: "neurofax.test",
       ALERT_TG_TOKEN: TOKEN,
@@ -142,6 +143,9 @@ beforeEach(() => {
     ].join("\n"),
   );
   stub("timeout", 'shift; exec "$@"\n');
+  // The disk alert (CD-04) has its own state: a roomy disk keeps it quiet,
+  // whatever the machine running the tests has left.
+  stub("df", "printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n/dev/sda1 100 10 90 10%% /\\n'\n");
   cert("Certificate will not expire");
   health("200", ALL_OK);
 });

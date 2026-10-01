@@ -46,6 +46,16 @@ import {
   recomputeCaseAppointments,
 } from "@/server/pricing/recompute-appointment-price";
 import { isSlotOverlapViolation } from "@/server/appointments/overlap-violation";
+import {
+  loadDoctorMoveTerms,
+  loadDoctorServiceTerms,
+} from "@/server/doctors/service-terms";
+import {
+  durationAfterDoctorChange,
+  linePricesForDoctor,
+  servicesDurationWith,
+  type EffectiveServiceTerms,
+} from "@/lib/doctor-service-terms";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { Actor, EventEnvelopeInput } from "@/server/realtime/envelope";
@@ -145,14 +155,18 @@ export async function reschedulePatientAppointment(
     // The till already took money against these lines; the desk changes them.
     return fail(409, "has_payment");
   }
+  // Priced and sized as the visit's doctor charges (audit DR-02), the rule
+  // booking and the CRM follow: new lines take his price and length.
   let durationMin = before.durationMin;
+  let newLineTerms: Map<string, EffectiveServiceTerms> | null = null;
   if (servicesChanged && newServiceIds) {
-    const services = await prisma.service.findMany({
-      where: { id: { in: newServiceIds }, clinicId: input.clinicId, isActive: true },
-      select: { id: true, durationMin: true },
+    newLineTerms = await loadDoctorServiceTerms(prisma, {
+      doctorId,
+      serviceIds: newServiceIds,
+      where: { clinicId: input.clinicId, isActive: true },
     });
-    if (services.length !== newServiceIds.length) return fail(404, "service_not_found");
-    durationMin = services.reduce((a, s) => a + s.durationMin, 0) || 30;
+    if (newLineTerms.size !== newServiceIds.length) return fail(404, "service_not_found");
+    durationMin = servicesDurationWith(newServiceIds, newLineTerms) || 30;
   }
   // Only services this doctor offers (MA-08, MA-14): checked whenever the
   // pair changes, never for an untouched visit.
@@ -162,6 +176,28 @@ export async function reschedulePatientAppointment(
       where: { doctorId, serviceId: { in: lineIds } },
     });
     if (linked !== lineIds.length) return fail(404, "service_not_found");
+  }
+
+  // The same services with another doctor (DR-02, as a CRM move does): the
+  // lines take his prices unless money moved on the visit, which freezes
+  // them with the price, and a block sized by the leaving doctor's
+  // durations takes his.
+  let doctorLinePrices: { serviceId: string; priceSnap: number }[] = [];
+  if (doctorChanged && !servicesChanged) {
+    const terms = await loadDoctorMoveTerms(prisma, {
+      appointmentId: before.id,
+      fromDoctorId: before.doctorId,
+      toDoctorId: doctorId,
+    });
+    if (before.payments.length === 0) {
+      doctorLinePrices = linePricesForDoctor(terms.lines, terms.to);
+    }
+    durationMin = durationAfterDoctorChange({
+      durationMin: before.durationMin,
+      serviceIds: terms.serviceIds,
+      from: terms.from,
+      to: terms.to,
+    });
   }
 
   const startAt = input.startAt ?? before.date;
@@ -219,29 +255,31 @@ export async function reschedulePatientAppointment(
 
       if (servicesChanged && newServiceIds) {
         await tx.appointmentService.deleteMany({ where: { appointmentId: before.id } });
-        const rows = await tx.service.findMany({
-          where: { id: { in: newServiceIds } },
-          select: { id: true, priceBase: true },
-        });
-        const priceMap = new Map(rows.map((s) => [s.id, s.priceBase]));
         await tx.appointmentService.createMany({
           data: newServiceIds.map((sid) => ({
             clinicId: input.clinicId,
             appointmentId: before.id,
             serviceId: sid,
-            priceSnap: priceMap.get(sid) ?? 0,
+            priceSnap: newLineTerms?.get(sid)?.price ?? 0,
             quantity: 1,
           })),
+        });
+      }
+      for (const line of doctorLinePrices) {
+        await tx.appointmentService.updateMany({
+          where: { appointmentId: before.id, serviceId: line.serviceId },
+          data: { priceSnap: line.priceSnap },
         });
       }
 
       // Price: new lines are priced like a booking (lines minus the visit's
       // discounts). A move alone touches the price only for a visit in a
-      // case, where the date decides «first vs repeat»; the engine keeps a
-      // paid visit frozen there. A case-less move keeps every price column.
+      // case, where the date decides «first vs repeat», or for one whose new
+      // doctor charges other line prices (DR-02); the engine keeps a paid
+      // visit frozen there. Any other move keeps every price column.
       if (servicesChanged) {
         await recomputeAppointmentPrice(tx, before.id, { servicesEdited: true });
-      } else if (startMoved && before.medicalCaseId) {
+      } else if (doctorLinePrices.length > 0 || (startMoved && before.medicalCaseId)) {
         await recomputeAppointmentPrice(tx, before.id);
       }
       if (before.medicalCaseId && (startMoved || servicesChanged)) {

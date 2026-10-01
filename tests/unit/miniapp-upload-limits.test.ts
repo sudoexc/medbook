@@ -412,14 +412,25 @@ describe("in front of the app", () => {
     const script = path.join(dir, "ops", "watchdog.sh");
     copyFileSync(path.join(process.cwd(), "ops/watchdog.sh"), script);
     const sent = path.join(dir, "sent.log");
-    // curl: the health probe answers healthy; a Telegram send is recorded.
+    // curl: the health probe answers healthy; a Telegram send is recorded
+    // and confirmed (the watchdog keeps its state until Telegram says ok).
     writeFileSync(
       path.join(dir, "bin", "curl"),
       `#!/usr/bin/env bash
-for a in "$@"; do case "$a" in *api.telegram.org*) echo SEND >> "${sent}"; printf '%s\\n' "$*" >> "${sent}.text"; exit 0;; esac; done
+for a in "$@"; do case "$a" in *api.telegram.org*) echo SEND >> "${sent}"; printf '%s\\n' "$*" >> "${sent}.text"; printf '{"ok":true}'; exit 0;; esac; done
 printf '{"db":{"status":"ok"},"redis":{"status":"ok"},"minio":{"status":"ok"},"workers":{"status":"ok"}}\\n200'
 `,
     );
+    // The TLS check (INF-03) sees a certificate far from expiry.
+    writeFileSync(
+      path.join(dir, "bin", "openssl"),
+      `#!/usr/bin/env bash
+cat > /dev/null; [ "$1" = s_client ] && echo CERT || echo "Certificate will not expire"
+`,
+    );
+    writeFileSync(path.join(dir, "bin", "timeout"), `#!/usr/bin/env bash\nshift; exec "$@"\n`);
+    chmodSync(path.join(dir, "bin", "openssl"), 0o755);
+    chmodSync(path.join(dir, "bin", "timeout"), 0o755);
     writeFileSync(
       path.join(dir, "bin", "df"),
       `#!/usr/bin/env bash
@@ -438,6 +449,7 @@ printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n/dev/sda1 10
           WATCHDOG_DISK_STATE: path.join(dir, "disk.state"),
           WATCHDOG_TG_CHAT_ID: "42",
           TELEGRAM_BOT_TOKEN: "t",
+          WATCHDOG_TG_BACKOFF: "0",
           NODE_ENV: "test",
         },
       });

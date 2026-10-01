@@ -49,6 +49,10 @@ vi.mock("@/lib/prisma", () => {
         cabinet: { isActive: true },
       })),
     },
+    // The kernel checks the patient is this clinic's (AP-03) and prices by
+    // the doctor's own terms (DR-02); no override here.
+    patient: { findFirst: vi.fn(async () => ({ id: "p1" })) },
+    serviceOnDoctor: { findMany: vi.fn(async () => []) },
     service: { findMany: vi.fn(async () => [{ id: "s1", priceBase: 100, durationMin: 30 }]) },
     appointment: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {

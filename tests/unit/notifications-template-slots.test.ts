@@ -185,6 +185,8 @@ vi.mock("@/lib/prisma", () => ({
         return { count: data.length };
       }),
     },
+    // The default greeting carries the clinic's own name (ST-08).
+    clinic: { findUnique: vi.fn(async () => ({ nameRu: "Клиника", nameUz: "Klinika" })) },
   },
 }));
 

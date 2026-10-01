@@ -53,9 +53,9 @@ vi.mock("@/server/telegram/send", () => ({
     return { message_id: 1, chat: { id: 1 }, date: 0 };
   }),
 }));
-vi.mock("@/lib/prisma", () => ({
+vi.mock("@/lib/prisma", () => {
   // No notificationSend on purpose: a test send must not write one.
-  prisma: {
+  const prisma = {
     notificationTemplate: {
       findUnique: vi.fn(async () => h.template),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -66,11 +66,16 @@ vi.mock("@/lib/prisma", () => ({
         h.updated.push(data);
         return { ...h.template, ...data };
       }),
+      // Saving switches the slot's other active templates off (TG-22): none.
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(async () => ({ count: 0 })),
     },
     user: { findFirst: vi.fn(async () => h.user) },
     clinic: { findUnique: vi.fn(async () => h.clinic) },
-  },
-}));
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
+  };
+  return { prisma };
+});
 
 import { POST as testSend } from "@/app/api/crm/notifications/templates/[id]/test-send/route";
 import { POST as createTemplate } from "@/app/api/crm/notifications/templates/route";

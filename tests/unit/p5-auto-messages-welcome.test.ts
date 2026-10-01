@@ -44,10 +44,15 @@ vi.mock("@/lib/tenant-context", () => ({
 vi.mock("@/lib/prisma", () => {
   const notificationTemplate = {
     findMany: vi.fn(async () => Object.values(h.templates)),
+    // The live template of the widget's event (TG-22): none here, so the
+    // widget edits its own rows.
+    findFirst: vi.fn(async () => null),
     findUnique: vi.fn(
       async ({ where }: { where: { id?: string; clinicId_key?: { key: string } } }) => {
-        if (where.id) return h.byId;
-        return h.templates[where.clinicId_key!.key] ?? null;
+        // By id: the template editor's row, or the widget's switch looking up
+        // the row it just wrote (TG-22, no slot rivals here).
+        if (!where.clinicId_key) return h.byId;
+        return h.templates[where.clinicId_key.key] ?? null;
       },
     ),
     update: vi.fn(

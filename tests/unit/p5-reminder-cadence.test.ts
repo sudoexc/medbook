@@ -136,8 +136,14 @@ describe("the template scripts and docs", () => {
   it("findTemplateFor resolves two templates on one band the same way every time", () => {
     const src = read("src/server/notifications/triggers.ts");
     const body = src.slice(src.indexOf("async function findTemplateFor("));
-    const call = body.slice(0, body.indexOf("if (!row) return null;"));
-    expect(call).toMatch(/orderBy: \[\{ createdAt: "asc" \}, \{ id: "asc" \}\]/);
+    const call = body.slice(0, body.indexOf("if (!row) continue;"));
+    // The shared pick order of a slot (TG-22): the dispatcher, the daily
+    // passes and the widget resolve the same template, run after run.
+    expect(call).toMatch(/orderBy: TEMPLATE_PICK_ORDER/);
+    const events = read("src/server/notifications/template-events.ts");
+    expect(events).toMatch(
+      /TEMPLATE_PICK_ORDER = \[\s*\{ updatedAt: "desc" as const \},\s*\{ id: "asc" as const \},\s*\]/,
+    );
   });
 
   it.each(["docs/operations/NEW-CLINIC.md", "docs/operations/GO-LIVE.md"])(

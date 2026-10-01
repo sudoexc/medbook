@@ -26,6 +26,8 @@ type Row = Record<string, unknown> & {
 const state = vi.hoisted(() => ({
   rows: {} as Record<string, Row>,
   linked: true,
+  // Per-doctor terms (DR-02): `${doctorId}:${serviceId}` → override.
+  overrides: {} as Record<string, { priceOverride: number | null; durationMinOverride: number | null }>,
   onGrid: true,
   statusAtWrite: null as string | null,
   updateMany: [] as Array<{ where: Record<string, unknown>; data: Record<string, unknown> }>,
@@ -132,6 +134,12 @@ vi.mock("@/lib/prisma", () => {
       count: vi.fn(async ({ where }: { where: { serviceId: { in: string[] } } }) =>
         state.linked ? where.serviceId.in.length : 0,
       ),
+      findMany: vi.fn(
+        async ({ where }: { where: { doctorId: string; serviceId: { in: string[] } } }) =>
+          where.serviceId.in
+            .filter((sid) => state.overrides[`${where.doctorId}:${sid}`])
+            .map((sid) => ({ serviceId: sid, ...state.overrides[`${where.doctorId}:${sid}`]! })),
+      ),
     },
     service: {
       findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
@@ -152,6 +160,14 @@ vi.mock("@/lib/prisma", () => {
               freeRepeatDays: null,
             });
           }
+        },
+      ),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: { appointmentId: string; serviceId: string }; data: { priceSnap: number } }) => {
+          for (const l of state.rows[where.appointmentId]!.lines) {
+            if (l.serviceId === where.serviceId) l.priceSnap = data.priceSnap;
+          }
+          return { count: 1 };
         },
       ),
     },
@@ -208,6 +224,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   state.rows = { apt_1: booking() };
   state.linked = true;
+  state.overrides = {};
   state.onGrid = true;
   state.statusAtWrite = null;
   state.updateMany = [];
@@ -282,6 +299,38 @@ describe("MA-16 prices on a move", () => {
     expect(res.ok).toBe(true);
     expect(state.rows.apt_1!.priceFinal).toBe(250_000);
     expect(state.rows.apt_1!.serviceId).toBe("s2");
+  });
+});
+
+describe("DR-02 the doctor's own price and length", () => {
+  it("new services take the doctor's price and duration", async () => {
+    state.overrides = { "d1:s2": { priceOverride: 400_000, durationMinOverride: 45 } };
+    const res = await move({ serviceIds: ["s2"] });
+    expect(res.ok).toBe(true);
+    expect(state.rows.apt_1!.lines).toEqual([
+      expect.objectContaining({ serviceId: "s2", priceSnap: 400_000 }),
+    ]);
+    expect(state.updateMany[0]!.data).toMatchObject({ durationMin: 45 });
+    expect(state.rows.apt_1!.priceFinal).toBe(350_000);
+  });
+
+  it("a move to another doctor reprices the lines at his price and takes his length", async () => {
+    state.overrides = { "d2:s1": { priceOverride: 500_000, durationMinOverride: 60 } };
+    const res = await move({ doctorId: "d2" });
+    expect(res.ok).toBe(true);
+    expect(state.rows.apt_1!.lines[0]!.priceSnap).toBe(500_000);
+    expect(state.updateMany[0]!.data).toMatchObject({ doctorId: "d2", durationMin: 60 });
+    // The visit's own discount stays and applies on top.
+    expect(state.rows.apt_1!.priceFinal).toBe(450_000);
+  });
+
+  it("money on the visit freezes its lines and price on a doctor change", async () => {
+    state.rows = { apt_1: booking({ payments: [{ status: "PAID" }] }) };
+    state.overrides = { "d2:s1": { priceOverride: 500_000, durationMinOverride: null } };
+    const res = await move({ doctorId: "d2" });
+    expect(res.ok).toBe(true);
+    expect(state.rows.apt_1!.lines[0]!.priceSnap).toBe(300_000);
+    expect(state.rows.apt_1!.priceFinal).toBe(250_000);
   });
 });
 

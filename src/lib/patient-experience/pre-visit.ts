@@ -12,6 +12,8 @@
  */
 import { z } from "zod";
 
+import { isUpcomingVisitStatus } from "@/lib/appointments/active-statuses";
+
 export type PreVisitData = {
   complaints: string;
   allergies: string[];
@@ -59,13 +61,9 @@ export function isPreVisitEligible(row: {
   if (!row.patientHasContact) return false;
   // CONFIRMED too (audit TG-09): every phone booking is confirmed at
   // creation, so leaving it out skipped the bulk of the clinic's visits.
-  if (
-    row.status !== "BOOKED" &&
-    row.status !== "CONFIRMED" &&
-    row.status !== "WAITING"
-  ) {
-    return false;
-  }
+  // The same shared list gates the Mini App submit, so whatever is sent can
+  // be answered.
+  if (!isUpcomingVisitStatus(row.status)) return false;
   // 23–25h window from now.
   const ms = row.startsAt.getTime() - now.getTime();
   const lower = 23 * 60 * 60 * 1000;

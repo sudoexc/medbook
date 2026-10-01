@@ -36,6 +36,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { UPCOMING_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 import { isPreVisitEligible } from "@/lib/patient-experience/pre-visit";
 
 import { onPreVisitQuestionnaire } from "@/server/notifications/triggers";
@@ -68,7 +69,8 @@ export async function runPreVisitTick(now: Date = new Date()): Promise<{
       where: {
         date: { gte: lower, lte: upper },
         // CONFIRMED: phone and kiosk bookings are confirmed at creation.
-        status: { in: ["BOOKED", "CONFIRMED", "WAITING"] },
+        // The Mini App submit accepts the same list.
+        status: { in: [...UPCOMING_VISIT_STATUSES] },
         preVisitNotifiedAt: null,
         preVisitSubmittedAt: null,
         // Phase 17 Wave 1 — never poke a soft-deleted patient. Marketing

@@ -32,6 +32,7 @@ import { loadPatientFinance } from "@/server/patient/finance";
 import { paidNetTiyin } from "@/server/services/ltv-compute";
 
 import { isAllowedToReceive } from "./consent-gate";
+import { LIVE_SEND_STATUSES } from "./delivery-state";
 import {
   MANUAL_APPOINTMENT_REMINDER_KEY,
   MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
@@ -578,8 +579,8 @@ function isPointlessForConfirmed(
 }
 
 /**
- * Idempotency gate: skip if a queued/sent row already exists for this
- * (patientId, appointmentId?, templateId).
+ * Idempotency gate: skip if a queued, in-flight or sent row already exists
+ * for this (patientId, appointmentId?, templateId).
  */
 async function alreadyScheduled(params: {
   clinicId: string;
@@ -594,7 +595,7 @@ async function alreadyScheduled(params: {
         patientId: params.patientId,
         appointmentId: params.appointmentId ?? null,
         templateId: params.templateId,
-        status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
+        status: { in: [...LIVE_SEND_STATUSES] },
       },
       select: { id: true },
     }),
@@ -698,7 +699,9 @@ export async function materializeForAppointmentsBulk(
             where: {
               appointmentId: { in: apptIds },
               templateId: { in: tplIds },
-              status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
+              // SENDING too: a row interrupted mid-send is not a reason to
+              // build a second one (the sweep re-sends the first).
+              status: { in: [...LIVE_SEND_STATUSES] },
             },
             select: { appointmentId: true, templateId: true },
           }),
@@ -889,7 +892,7 @@ export async function materializeManualReminders(params: {
           where: {
             appointmentId: { in: appts.map((a) => a.id) },
             templateId: tpl.id,
-            status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+            status: { in: [...LIVE_SEND_STATUSES] },
           },
           select: { appointmentId: true },
         }),
@@ -1576,7 +1579,7 @@ async function runBirthdays(now: Date = new Date()): Promise<number> {
             patientId: { in: patients.map((p) => p.id) },
             templateId: tpl.id,
             appointmentId: null,
-            status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+            status: { in: [...LIVE_SEND_STATUSES] },
             createdAt: { gte: since },
           },
           select: { patientId: true },
@@ -1721,7 +1724,7 @@ async function runPaymentsDue(now: Date = new Date()): Promise<number> {
             where: {
               appointmentId: { in: visits.map((v) => v.id) },
               templateId: { in: tplIdsByClinic.get(clinic.id) ?? [] },
-              status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+              status: { in: [...LIVE_SEND_STATUSES] },
             },
             select: { appointmentId: true },
           }),
@@ -1900,7 +1903,7 @@ async function runCaseRepeatReminders(now: Date = new Date()): Promise<number> {
           notificationSends: {
             none: {
               templateId: { in: tplIds },
-              status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+              status: { in: [...LIVE_SEND_STATUSES] },
             },
           },
         },

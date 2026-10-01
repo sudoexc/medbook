@@ -25,10 +25,11 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import {
-  MAX_DELIVERY_ATTEMPTS,
+  LIVE_SEND_STATUSES,
   SENDING_STALE_MS,
   deliveryAttemptKey,
   pinnedAnchor,
+  stuckSendingVerdict,
 } from "@/server/notifications/delivery-state";
 import { recordPatientNoChannel } from "@/server/notifications/no-channel-action";
 import {
@@ -187,7 +188,9 @@ export async function runDynamicReminders(
             where: {
               appointmentId: { in: apptIds },
               templateId: { in: tplIds },
-              status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
+              // SENDING too: a row interrupted mid-send is not a reason to
+              // build a second one (the sweep re-sends the first).
+              status: { in: [...LIVE_SEND_STATUSES] },
             },
             select: { appointmentId: true, templateId: true },
           }),
@@ -358,7 +361,10 @@ export async function dispatchDue(now: Date = new Date()): Promise<number> {
  * Whether the patient got the message is unknown, so the abandoned attempt
  * counts as a failed one: the row goes back to QUEUED, due now, while it has
  * attempts left, and to FAILED (staff can still «Повторить») when it has
- * none. A late duplicate is the lesser evil next to a lost reminder.
+ * none. A late duplicate is the lesser evil next to a lost reminder, but
+ * only while the message is still timely: a row abandoned more than an hour
+ * ago (`SENDING_REQUEUE_MAX_AGE_MS`), such as one stuck since before this
+ * sweep existed, is failed too, never sent days late on its own.
  * Rows claimed before `claimedAt` existed fall back to `scheduledFor`.
  */
 export async function sweepStuckSending(
@@ -392,13 +398,17 @@ export async function sweepStuckSending(
     const attempts = row.retryCount + 1;
     // Conditional on the claim we saw: a worker that does finish late wins.
     const guard = { id: row.id, status: "SENDING" as const, claimedAt: row.claimedAt };
-    if (attempts >= MAX_DELIVERY_ATTEMPTS) {
+    const verdict = stuckSendingVerdict(row, now);
+    if (verdict !== "requeue") {
       const res = await runWithTenant({ kind: "SYSTEM" }, () =>
         prisma.notificationSend.updateMany({
           where: guard,
           data: {
             status: "FAILED",
-            failedReason: "delivery interrupted (worker restarted mid-send)",
+            failedReason:
+              verdict === "too_old"
+                ? "delivery interrupted long ago (worker restarted mid-send), not resent automatically"
+                : "delivery interrupted (worker restarted mid-send)",
             failedAt: now,
             retryCount: attempts,
             claimedAt: null,

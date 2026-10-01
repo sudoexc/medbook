@@ -246,4 +246,42 @@ describe("sweepStuckSending", () => {
     );
     expect((await sweepStuckSending(NOW)).requeued).toBe(1);
   });
+
+  // Review of TG-12: a broadcast or a reminder stuck weeks ago by an earlier
+  // deploy must not go out now, months late, on the first tick.
+  it("fails a legacy SENDING row stuck for weeks instead of re-sending it", async () => {
+    const { sweepStuckSending } = await import("@/server/workers/notifications-scheduler");
+    state.sends.push(
+      row({
+        status: "SENDING",
+        claimedAt: null,
+        body: "Скидка до 1 июля",
+        scheduledFor: new Date(NOW.getTime() - 40 * 24 * 3_600_000),
+      }),
+    );
+    expect(await sweepStuckSending(NOW)).toEqual({ requeued: 0, failed: 1 });
+    const s = state.sends[0]!;
+    expect(s.status).toBe("FAILED");
+    expect((s.failedAt as Date).getTime()).toBe(NOW.getTime());
+    expect(s.failedReason).toContain("not resent automatically");
+    // Not due again: the dispatch loop does not pick it up.
+    await dispatchDueNow();
+    expect(state.enqueued).toEqual([]);
+  });
+
+  it("fails a claimed row abandoned more than an hour ago, requeues one from 50 minutes ago", async () => {
+    const { sweepStuckSending } = await import("@/server/workers/notifications-scheduler");
+    state.sends.push(
+      row({ id: "old", status: "SENDING", claimedAt: new Date(NOW.getTime() - 61 * 60_000) }),
+      row({ id: "recent", status: "SENDING", claimedAt: new Date(NOW.getTime() - 50 * 60_000) }),
+    );
+    expect(await sweepStuckSending(NOW)).toEqual({ requeued: 1, failed: 1 });
+    expect(state.sends.find((s) => s.id === "old")!.status).toBe("FAILED");
+    expect(state.sends.find((s) => s.id === "recent")!.status).toBe("QUEUED");
+  });
 });
+
+async function dispatchDueNow() {
+  const { dispatchDue } = await import("@/server/workers/notifications-scheduler");
+  await dispatchDue(NOW);
+}

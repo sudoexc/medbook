@@ -15,8 +15,34 @@
  */
 export const SENDING_STALE_MS = 10 * 60 * 1000;
 
+/**
+ * How long after its claim an abandoned row is still put back in the queue
+ * by the sweep. The sweep runs every minute, so a row a deploy interrupted
+ * is back in the queue about ten minutes after its claim. A row older than
+ * this was abandoned while the worker stayed down, or before the sweep
+ * existed (weeks ago, for some): its text («ждём вас завтра», «скидка до
+ * 1 июля») may no longer be true, so it is failed for staff to «Повторить»
+ * on purpose instead of going out late on its own.
+ */
+export const SENDING_REQUEUE_MAX_AGE_MS = 60 * 60 * 1000;
+
 /** Delivery attempts a row gets before it lands in FAILED. */
 export const MAX_DELIVERY_ATTEMPTS = 3;
+
+/**
+ * Statuses of a row that is, or was, on its way to the patient. Every
+ * «is this message already scheduled» gate counts all of them. SENDING
+ * belongs here: a row interrupted mid-send (a deploy) used to be invisible
+ * to the cascade's gates, so the next tick built a second row and the
+ * stuck-row sweep then re-sent the first one as well.
+ */
+export const LIVE_SEND_STATUSES = [
+  "QUEUED",
+  "SENDING",
+  "SENT",
+  "DELIVERED",
+  "READ",
+] as const;
 
 type ClaimState = {
   status: string;
@@ -44,6 +70,22 @@ export function isStaleSending(row: ClaimState, now: Date): boolean {
  */
 export function isRetryable(row: ClaimState, now: Date): boolean {
   return row.status === "FAILED" || isStaleSending(row, now);
+}
+
+/**
+ * What the sweep does with a stale SENDING row: queue it again, or fail it
+ * because it has no attempts left or was abandoned too long ago
+ * (`SENDING_REQUEUE_MAX_AGE_MS`). Legacy rows without `claimedAt` are aged
+ * by their due moment, as in `isStaleSending`.
+ */
+export function stuckSendingVerdict(
+  row: Omit<ClaimState, "status"> & { retryCount: number },
+  now: Date,
+): "requeue" | "out_of_attempts" | "too_old" {
+  const since = row.claimedAt ?? row.scheduledFor;
+  if (now.getTime() - since.getTime() > SENDING_REQUEUE_MAX_AGE_MS) return "too_old";
+  if (row.retryCount + 1 >= MAX_DELIVERY_ATTEMPTS) return "out_of_attempts";
+  return "requeue";
 }
 
 /**

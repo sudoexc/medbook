@@ -25,6 +25,7 @@ import {
 import { useT, useLang } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import { isUpcomingVisitStatus } from "@/lib/appointments/active-statuses";
 import { useActiveContext } from "../_hooks/use-active-context";
 import { usePreVisit, useSubmitPreVisit } from "../_hooks/use-pre-visit";
 
@@ -75,11 +76,10 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
     setHydrated(true);
   }, [hydrated, query.data]);
 
-  const canSubmit =
-    complaints.trim().length > 0 &&
-    !submit.isPending &&
-    query.data?.appointment.status !== "COMPLETED" &&
-    query.data?.appointment.status !== "CANCELLED";
+  // The server's gate, so the button is never live for a visit the POST
+  // would refuse (a SKIPPED or IN_PROGRESS visit used to pass here).
+  const isOpen = isUpcomingVisitStatus(query.data?.appointment.status ?? "");
+  const canSubmit = complaints.trim().length > 0 && !submit.isPending && isOpen;
 
   const submittedAt = query.data?.submittedAt ?? null;
 
@@ -151,6 +151,12 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
           .replace("{date}", dateStr)
           .replace("{doctor}", doctorName)}
       </MCard>
+
+      {!isOpen ? (
+        <MCard className="mb-4 text-sm" style={{ color: "var(--tg-hint)" }}>
+          {t.preVisit.notOpen}
+        </MCard>
+      ) : null}
 
       {submittedAt ? (
         <MCard

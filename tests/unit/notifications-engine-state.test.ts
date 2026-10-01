@@ -14,12 +14,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import {
+  LIVE_SEND_STATUSES,
+  SENDING_REQUEUE_MAX_AGE_MS,
   SENDING_STALE_MS,
   deliveryAttemptKey,
   isRetryable,
   isStaleSending,
   pinnedAnchor,
   reminderAnchorMs,
+  stuckSendingVerdict,
 } from "@/server/notifications/delivery-state";
 
 const NOW = new Date("2026-10-01T10:00:00.000Z");
@@ -54,6 +57,32 @@ describe("isRetryable / isStaleSending", () => {
 
   it("uses a ten minute timeout", () => {
     expect(SENDING_STALE_MS).toBe(10 * 60_000);
+  });
+});
+
+describe("stuckSendingVerdict (TG-12 review)", () => {
+  it("requeues a recent abandoned row while it has attempts left", () => {
+    expect(stuckSendingVerdict({ claimedAt: minutesAgo(11), scheduledFor: minutesAgo(11), retryCount: 0 }, NOW)).toBe("requeue");
+    expect(stuckSendingVerdict({ claimedAt: minutesAgo(11), scheduledFor: minutesAgo(11), retryCount: 2 }, NOW)).toBe("out_of_attempts");
+  });
+
+  it("fails a row abandoned over an hour ago, whatever its attempts", () => {
+    expect(SENDING_REQUEUE_MAX_AGE_MS).toBe(60 * 60_000);
+    expect(stuckSendingVerdict({ claimedAt: minutesAgo(61), scheduledFor: minutesAgo(61), retryCount: 0 }, NOW)).toBe("too_old");
+    expect(stuckSendingVerdict({ claimedAt: minutesAgo(59), scheduledFor: minutesAgo(59), retryCount: 0 }, NOW)).toBe("requeue");
+  });
+
+  it("ages a legacy row (no claimedAt) by its due moment", () => {
+    expect(stuckSendingVerdict({ claimedAt: null, scheduledFor: minutesAgo(30 * 24 * 60), retryCount: 0 }, NOW)).toBe("too_old");
+    expect(stuckSendingVerdict({ claimedAt: null, scheduledFor: minutesAgo(30), retryCount: 0 }, NOW)).toBe("requeue");
+  });
+});
+
+describe("LIVE_SEND_STATUSES", () => {
+  it("counts a row being sent as scheduled, a failed or cancelled one as not", () => {
+    expect(LIVE_SEND_STATUSES).toContain("SENDING");
+    expect(LIVE_SEND_STATUSES).not.toContain("FAILED");
+    expect(LIVE_SEND_STATUSES).not.toContain("CANCELLED");
   });
 });
 

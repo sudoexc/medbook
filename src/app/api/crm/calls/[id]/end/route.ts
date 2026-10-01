@@ -16,8 +16,12 @@
  *   MISSED → status MISSED, an inbound call takes direction MISSED, no
  *            duration, so it is counted and listed for a call back.
  * The write is guarded on `endedAt: null`; a call already closed answers 409
- * `call_already_ended`. `call.ended` / `call.missed` is published so every
- * operator's queue drops the call at once.
+ * `call_already_ended`. MISSED on a call somebody answered answers 409
+ * `call_answered` (the webhook ignores a «missed» on an answered call too):
+ * it would have counted a real conversation as missed, listed it for a call
+ * back and lost its talk time, since the PBX hangup that follows finds the
+ * call over. «Завершить» closes such a call. `call.ended` / `call.missed` is
+ * published so every operator's queue drops the call at once.
  */
 import { createApiHandler } from "@/lib/api-handler";
 import { CALL_CENTER_ROLES } from "@/lib/calls/roles";
@@ -31,6 +35,7 @@ import {
   isCallOver,
   missedUpdate,
   operatorEndUpdate,
+  wasCallAnswered,
 } from "@/lib/calls/call-state";
 
 function idFromUrl(request: Request): string {
@@ -58,6 +63,7 @@ export const POST = createApiHandler(
         status: true,
         answeredAt: true,
         endedAt: true,
+        tags: true,
         sipCallId: true,
         fromNumber: true,
         toNumber: true,
@@ -66,21 +72,35 @@ export const POST = createApiHandler(
     });
     if (!before) return notFound();
     if (isCallOver(before)) return conflict("call_already_ended");
+    const missed = body.outcome === "MISSED";
+    if (missed && wasCallAnswered(before)) return conflict("call_answered");
 
     const now = new Date();
-    const data =
-      body.outcome === "MISSED"
-        ? missedUpdate(before, now)
-        : operatorEndUpdate(before, now);
+    const data = missed
+      ? missedUpdate(before, now)
+      : operatorEndUpdate(before, now);
     const res = await prisma.call.updateMany({
-      where: { id, endedAt: null },
+      // The PBX's answer can land between the read above and this write
+      // (it always sets answeredAt): a missed close must not overwrite it.
+      where: { id, endedAt: null, ...(missed ? { answeredAt: null } : {}) },
       data: {
         ...data,
         // The operator who closed an unassigned call handled it.
         ...(before.operatorId ? {} : { operatorId: ctx.userId }),
       },
     });
-    if (res.count === 0) return conflict("call_already_ended");
+    if (res.count === 0) {
+      // Still live after a refused missed close means it was just answered.
+      const current = missed
+        ? await prisma.call.findUnique({
+            where: { id },
+            select: { status: true, endedAt: true },
+          })
+        : null;
+      return conflict(
+        current && !isCallOver(current) ? "call_answered" : "call_already_ended",
+      );
+    }
 
     const after = await prisma.call.findUnique({
       where: { id },

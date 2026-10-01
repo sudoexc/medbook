@@ -76,6 +76,20 @@ export function wasCallAnswered(
   );
 }
 
+/**
+ * «Пропуск» (and the reception's reject) may close this call as missed: it
+ * is still live and nobody has picked it up. An answered call is a
+ * conversation that happened; closing it as missed put it on the missed
+ * badge and the call back list and dropped its talk time (the PBX hangup
+ * that follows finds it over). The webhook ignores a «missed» on an
+ * answered call for the same reason; «Завершить» is the way to close it.
+ */
+export function canMarkCallMissed(
+  row: Pick<CallLifecycleRow, "status" | "answeredAt" | "endedAt" | "tags">,
+): boolean {
+  return !isCallOver(row) && !wasCallAnswered(row);
+}
+
 /** Seconds of conversation, or null when the answer moment is unknown. */
 export function talkSeconds(answeredAt: Dateish, endedAt: Date): number | null {
   const from = toDate(answeredAt);

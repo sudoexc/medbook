@@ -37,6 +37,8 @@ const h = vi.hoisted(() => ({
   events: [] as Array<{ clinicId: string; type: string; payload: unknown }>,
   audits: [] as string[],
   lastFindManyWhere: null as Record<string, unknown> | null,
+  /** Runs inside updateMany before its guard: a webhook landing mid-request. */
+  beforeUpdateMany: null as null | (() => void),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -83,9 +85,17 @@ vi.mock("@/lib/prisma", () => {
           return [];
         }),
         updateMany: vi.fn(
-          async ({ where, data }: { where: { id: string; endedAt?: null }; data: Record<string, unknown> }) => {
+          async ({
+            where,
+            data,
+          }: {
+            where: { id: string; endedAt?: null; answeredAt?: null };
+            data: Record<string, unknown>;
+          }) => {
+            h.beforeUpdateMany?.();
             const row = h.calls.get(where.id);
             if (!row || (where.endedAt === null && row.endedAt !== null)) return { count: 0 };
+            if (where.answeredAt === null && row.answeredAt !== null) return { count: 0 };
             h.calls.set(where.id, { ...row, ...data });
             return { count: 1 };
           },
@@ -168,6 +178,7 @@ beforeEach(() => {
   h.events = [];
   h.audits = [];
   h.lastFindManyWhere = null;
+  h.beforeUpdateMany = null;
 });
 
 describe("CM-07 — POST /api/crm/calls/[id]/end", () => {
@@ -202,6 +213,43 @@ describe("CM-07 — POST /api/crm/calls/[id]/end", () => {
     expect(row.durationSec).toBeGreaterThanOrEqual(89);
     expect(row.durationSec).toBeLessThanOrEqual(91);
     expect(h.events.map((e) => e.type)).toEqual(["call.ended"]);
+  });
+
+  it("«Пропуск» on an answered call answers 409 and the conversation stays", async () => {
+    const answeredAt = new Date(Date.now() - 60_000);
+    h.calls.set("c_5", call("c_5", { status: "ANSWERED", answeredAt, tags: ["answered"] }));
+    const res = await end("c_5", "MISSED");
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain("call_answered");
+    expect(h.calls.get("c_5")).toMatchObject({
+      status: "ANSWERED",
+      direction: "IN",
+      answeredAt,
+      endedAt: null,
+    });
+    expect(h.events).toEqual([]);
+    expect(h.audits).toEqual([]);
+  });
+
+  it("a legacy row answered only by its tag is not marked missed either", async () => {
+    h.calls.set("c_6", call("c_6", { status: null, tags: ["answered"] }));
+    const res = await end("c_6", "MISSED");
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain("call_answered");
+    expect(h.calls.get("c_6")!.endedAt).toBeNull();
+  });
+
+  it("an answer that lands mid-request is not overwritten by «Пропуск»", async () => {
+    h.calls.set("c_7", call("c_7"));
+    const answeredAt = new Date();
+    h.beforeUpdateMany = () => {
+      h.calls.set("c_7", { ...h.calls.get("c_7")!, status: "ANSWERED", answeredAt });
+    };
+    const res = await end("c_7", "MISSED");
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain("call_answered");
+    expect(h.calls.get("c_7")).toMatchObject({ status: "ANSWERED", direction: "IN", endedAt: null });
+    expect(h.events).toEqual([]);
   });
 
   it("a call already over answers 409 and is left as it was", async () => {

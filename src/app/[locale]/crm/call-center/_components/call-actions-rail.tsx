@@ -15,6 +15,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
+import { canMarkCallMissed } from "@/lib/calls/call-state";
 import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 
@@ -46,6 +47,11 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
     !call?.endedAt &&
     status !== "ended" &&
     status !== "missed";
+  // «Пропуск» only while nobody has picked the call up: an answered call is
+  // a conversation, the server refuses to count it as missed (409
+  // `call_answered`), and «Завершить» closes it with its talk time.
+  const answered = canEnd && call !== null && !canMarkCallMissed(call);
+  const canMarkMissed = canEnd && !answered;
 
   // «Завершить» closes the call as a conversation, «Пропуск» as a missed
   // call to return: the server writes status, direction and duration.
@@ -57,10 +63,13 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
         outcome === "MISSED" ? t("toasts.markedMissed") : t("toasts.hangupDone"),
       );
     } catch (e) {
+      const reason = e instanceof EndCallError ? e.reason : null;
       toast.error(
-        e instanceof EndCallError && e.reason === "call_already_ended"
+        reason === "call_already_ended"
           ? t("toasts.alreadyEnded")
-          : t("toasts.endFailed"),
+          : reason === "call_answered"
+            ? t("toasts.alreadyAnswered")
+            : t("toasts.endFailed"),
       );
     }
   };
@@ -107,7 +116,8 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             label={t("controls.markMissed")}
             icon={<PhoneMissedIcon className="size-5" />}
             tone="warning"
-            disabled={!canEnd || endCall.isPending}
+            disabled={!canMarkMissed || endCall.isPending}
+            title={answered ? t("toasts.alreadyAnswered") : undefined}
             onClick={() => void onEnd("MISSED")}
           />
           <ControlTile

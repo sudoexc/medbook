@@ -17,6 +17,7 @@ import {
 } from "@/server/telephony/sip-event";
 import {
   CALLED_BACK_TAG,
+  canMarkCallMissed,
   hangupUpdate,
   isCallOver,
   missedUpdate,
@@ -157,6 +158,26 @@ describe("CM-07 / CM-10 — how a call closes", () => {
     expect(isCallOver({ status: "RINGING", endedAt: null })).toBe(false);
     expect(isCallOver({ status: "RINGING", endedAt: end })).toBe(true);
     expect(isCallOver({ status: "MISSED", endedAt: null })).toBe(true);
+  });
+
+  it("«Пропуск» and the reception reject only for a live call nobody answered", () => {
+    expect(canMarkCallMissed(live)).toBe(true);
+    // The PBX reported the answer: a conversation, «Завершить» closes it.
+    expect(canMarkCallMissed({ ...live, status: "ANSWERED", answeredAt: "2026-04-22T10:01:00Z" })).toBe(false);
+    expect(canMarkCallMissed({ ...live, status: "ANSWERED" })).toBe(false);
+    expect(canMarkCallMissed({ ...live, answeredAt: new Date("2026-04-22T10:01:00Z") })).toBe(false);
+    // Rows kept before the status column carry the answer as a tag.
+    expect(canMarkCallMissed({ ...live, status: null, tags: ["answered"] })).toBe(false);
+    expect(canMarkCallMissed({ ...live, endedAt: end })).toBe(false);
+  });
+
+  it("the rail's «Пропуск» and the reception reject are off for an answered call", () => {
+    const rail = src("src/app/[locale]/crm/call-center/_components/call-actions-rail.tsx");
+    expect(rail).toContain("canMarkCallMissed(call)");
+    expect(rail).toContain("disabled={!canMarkMissed || endCall.isPending}");
+    const widget = src("src/app/[locale]/crm/reception/_components/calls-widget.tsx");
+    expect(widget).toContain("canMarkCallMissed(row)");
+    expect(widget).toContain("disabled={!canReject || endCall.isPending}");
   });
 });
 

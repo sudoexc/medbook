@@ -91,11 +91,14 @@ export type CabinetRef = {
 export type CallRow = {
   id: string;
   direction: "IN" | "OUT" | "MISSED";
+  status: "RINGING" | "ANSWERED" | "ENDED" | "MISSED" | null;
   fromNumber: string;
   toNumber: string;
   durationSec: number | null;
   summary: string | null;
+  tags: string[];
   createdAt: string;
+  answeredAt: string | null;
   endedAt: string | null;
   patient: {
     id: string;

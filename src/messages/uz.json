@@ -2077,6 +2077,7 @@
       "rejectAria": "Rad etish",
       "quickBookAria": "Tezkor yozilish",
       "rejectedToast": "Qo‘ng‘iroq rad etildi",
+      "rejectAnswered": "Qo'ng'iroq allaqachon qabul qilingan, uni rad etib bo'lmaydi",
       "nowLabel": "hozir"
     },
     "tg": {
@@ -3716,6 +3717,7 @@
         "scriptCopied": "Skript nusxalandi",
         "copyFailed": "Nusxa olib bo'lmadi",
         "alreadyEnded": "Qo'ng'iroq allaqachon yakunlangan",
+        "alreadyAnswered": "Qo'ng'iroq allaqachon qabul qilingan: uni «Tugatish» tugmasi bilan yakunlang",
         "endFailed": "Qo'ng'iroqni yakunlab bo'lmadi"
       }
     },

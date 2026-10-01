@@ -26,6 +26,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { monthWindow } from "@/server/billing/quota-rule";
 
 export type UsageSnapshot = {
   patientCount: number;
@@ -34,25 +35,9 @@ export type UsageSnapshot = {
   asOf: Date;
 };
 
-/**
- * Pure helper. Given `now`, return `[start, end)` where `start` is the first
- * instant of the calendar month containing `now` and `end` is the first
- * instant of the next month. Half-open interval matches the way Prisma's
- * `gte` + `lt` operators line up.
- *
- * Uses UTC to keep test fixtures deterministic; the clinic-tz nuance can
- * land in a follow-up wave when the dashboard exposes localized billing
- * cycles. For Wave 1 the goal is consistent counting, not localized boundaries.
- */
-export function monthWindow(now: Date): { start: Date; end: Date } {
-  const start = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
-  );
-  const end = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0),
-  );
-  return { start, end };
-}
+// `monthWindow` lives with the rest of the quota rule (quota-rule.ts) so
+// the prisma-free pre-deploy dry run can import it; re-exported for callers.
+export { monthWindow };
 
 const BYTES_PER_MB = 1_048_576;
 

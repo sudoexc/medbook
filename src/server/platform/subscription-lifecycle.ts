@@ -26,9 +26,14 @@
  *     brings that back, never a fresh trial;
  *   - the scheduler (`nextAutoStep`) closes every state: an expired trial or
  *     paid period becomes PAST_DUE with a grace period, an expired grace
- *     period becomes CANCELLED.
- * NeuroFax runs ACTIVE with no `currentPeriodEndsAt`: an open-ended
- * subscription set by the platform owner, which no rule here ends.
+ *     period becomes CANCELLED;
+ *   - the admin's raw status override (`planStatusOverride`) never sets a
+ *     state the scheduler would undo on its next tick.
+ * NeuroFax must run ACTIVE with no `currentPeriodEndsAt` on a plan that is
+ * not Basic: an open-ended subscription set by the platform owner, which no
+ * rule here ends and the quota guard never counts. Nothing here can see the
+ * production row, so `scripts/subscription-lifecycle-dryrun.ts` checks it
+ * (and can pin it) before the release that starts these rules.
  *
  * The planners are pure; the routes and the scheduler load, plan, write and
  * audit.
@@ -309,25 +314,117 @@ export function nextAutoStep(sub: SubscriptionState, now: Date): AutoStep | null
 }
 
 /**
- * Status-side defaults for the admin's raw PATCH (status override): entering
- * PAST_DUE starts a grace period unless one is given, leaving it clears the
- * grace date, leaving CANCELLED clears the cancellation date.
+ * When the scheduler's rule for this state next becomes due, or null when
+ * it never does (an open-ended trial or ACTIVE, CANCELLED). A PAST_DUE row
+ * with no grace date is due at once (`nextAutoStep` gives it one).
  */
-export function statusOverrideExtras(
-  before: SubscriptionState,
-  nextStatus: SubscriptionStatus,
-  now: Date,
-): SubscriptionWrite {
-  if (nextStatus === before.status) return {};
-  const extras: SubscriptionWrite = {};
-  if (nextStatus === "PAST_DUE") {
-    extras.graceEndsAt = addDays(now, GRACE_DAYS);
-  } else {
-    extras.graceEndsAt = null;
+function nextDueAt(sub: SubscriptionState): Date | null {
+  // nextAutoStep compares with a strict `<`: due one instant after the date.
+  const after = (d: Date | null) => (d ? new Date(d.getTime() + 1) : null);
+  switch (sub.status) {
+    case "TRIAL":
+      return after(sub.trialEndsAt);
+    case "ACTIVE":
+      return after(sub.currentPeriodEndsAt);
+    case "PAST_DUE":
+      return after(sub.graceEndsAt);
+    case "CANCELLED":
+    default:
+      return null;
   }
-  if (nextStatus === "CANCELLED") extras.cancelledAt = now;
-  else if (before.status === "CANCELLED") extras.cancelledAt = null;
-  return extras;
+}
+
+/**
+ * Every step the scheduler will take on a subscription if nobody acts, from
+ * `now` on, each at the moment it becomes due (`now` for a step already
+ * due, which the first tick after a deploy takes). The pre-deploy dry run
+ * (scripts/subscription-lifecycle-dryrun.ts) prints it, so the platform
+ * owner sees which rows the new lifecycle will move and where each one ends
+ * up (review of 79422ba: it went live on the existing rows unseen).
+ */
+export function lifecycleProjection(
+  sub: SubscriptionState,
+  now: Date,
+): Array<{ at: Date; step: AutoStep }> {
+  const out: Array<{ at: Date; step: AutoStep }> = [];
+  let state = sub;
+  let at = now;
+  // TRIAL → PAST_DUE → CANCELLED is at most two steps and two waits.
+  for (let i = 0; i < 8; i += 1) {
+    const step = nextAutoStep(state, at);
+    if (step) {
+      out.push({ at, step });
+      state = { ...state, ...step.data };
+      continue;
+    }
+    const due = nextDueAt(state);
+    if (!due || due.getTime() <= at.getTime()) break;
+    at = due;
+  }
+  return out;
+}
+
+/** The status and dates of the admin's raw PATCH, as sent: undefined when left out, null to clear. */
+export type StatusOverridePatch = {
+  status?: SubscriptionStatus;
+  trialEndsAt?: Date | null;
+  currentPeriodEndsAt?: Date | null;
+};
+
+/**
+ * The admin's raw status override (PATCH «Сменить статус»), planned with
+ * the lifecycle dates kept consistent: entering PAST_DUE starts a grace
+ * period, leaving it clears the grace date, leaving CANCELLED clears the
+ * cancellation date.
+ *
+ * The override must also hold. The scheduler goes by dates, not by who set
+ * the status, so a TRIAL whose `trialEndsAt` had already passed, or an
+ * ACTIVE whose paid period had ended (`markInvoicePaid` sets one), went back
+ * to PAST_DUE on the next tick while the toast said the change worked
+ * (review of 79422ba). So:
+ *   - TRIAL needs a trial end in the future, sent with the status or
+ *     already on the row; otherwise it is refused (`trial_ended`):
+ *     «Продлить триал» is the one rule that grants trial days;
+ *   - ACTIVE over a paid period that already ended clears that date: the
+ *     owner says it is paid (outside the CRM, the manual path the pay page
+ *     describes), and it stays ACTIVE until someone sets a new period end.
+ *     A period end sent with the status that is already past is refused
+ *     (`period_end_past`).
+ */
+export function planStatusOverride(
+  before: SubscriptionState,
+  patch: StatusOverridePatch,
+  now: Date,
+): LifecyclePlan {
+  const next = patch.status;
+  if (next === undefined || next === before.status) return { ok: true, data: {} };
+  const t = now.getTime();
+  const data: SubscriptionWrite = {
+    graceEndsAt: next === "PAST_DUE" ? addDays(now, GRACE_DAYS) : null,
+  };
+  if (next === "CANCELLED") data.cancelledAt = now;
+  else if (before.status === "CANCELLED") data.cancelledAt = null;
+
+  if (next === "TRIAL") {
+    const trialEndsAt =
+      patch.trialEndsAt !== undefined ? patch.trialEndsAt : before.trialEndsAt;
+    if (!trialEndsAt || trialEndsAt.getTime() <= t) {
+      return { ok: false, reason: "trial_ended" };
+    }
+  }
+  if (next === "ACTIVE") {
+    if (patch.currentPeriodEndsAt !== undefined) {
+      if (patch.currentPeriodEndsAt && patch.currentPeriodEndsAt.getTime() <= t) {
+        return { ok: false, reason: "period_end_past" };
+      }
+    } else if (
+      before.currentPeriodEndsAt &&
+      before.currentPeriodEndsAt.getTime() <= t
+    ) {
+      data.currentPeriodEndsAt = null;
+    }
+  }
+  return { ok: true, data };
 }
 
 export function trialEndFor(now: Date, days: number): Date {

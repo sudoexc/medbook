@@ -15,8 +15,11 @@
  *     Updates plan / status / trialEndsAt / currentPeriodEndsAt / cancelledAt.
  *     Body validated by `PatchSubscriptionSchema`. 409 `NoSubscription` when
  *     there is none. A status override keeps the lifecycle dates consistent
- *     (`statusOverrideExtras`): entering PAST_DUE starts a grace period,
- *     leaving it clears the grace date.
+ *     (`planStatusOverride`): entering PAST_DUE starts a grace period,
+ *     leaving it clears the grace date, and a TRIAL whose trial already
+ *     ended is refused (409 `trial_ended`) while an ACTIVE over an ended
+ *     paid period becomes open-ended, so the scheduler does not undo the
+ *     override a minute later.
  *
  * `clinicId` is read from the URL path (positional segment 4 — `/api/admin/
  * clinics/[id]/subscription`). The companion sub-paths `/extend-trial` and
@@ -33,7 +36,8 @@ import {
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   createSubscription,
-  statusOverrideExtras,
+  planStatusOverride,
+  snapshotOf,
 } from "@/server/platform/subscription-lifecycle";
 import {
   loadSubscription,
@@ -160,10 +164,23 @@ export async function PATCH(request: Request): Promise<Response> {
     const existing = await loadSubscription(id);
     if (!existing) return err("NoSubscription", 409, { reason: "no_subscription" });
 
-    const extras =
-      parsed.data.status !== undefined
-        ? statusOverrideExtras(stateOf(existing), parsed.data.status, new Date())
-        : {};
+    const before = stateOf(existing);
+    const override = planStatusOverride(
+      before,
+      {
+        status: parsed.data.status,
+        trialEndsAt: parsed.data.trialEndsAt,
+        currentPeriodEndsAt: parsed.data.currentPeriodEndsAt,
+      },
+      new Date(),
+    );
+    if (!override.ok) {
+      return err("Conflict", 409, {
+        reason: override.reason,
+        subscription: serializeSubscription(existing),
+      });
+    }
+    const extras = override.data;
 
     const updated = await prisma.subscription.update({
       where: { clinicId: id },
@@ -191,7 +208,9 @@ export async function PATCH(request: Request): Promise<Response> {
       action: "subscription.update",
       entityType: "Subscription",
       entityId: updated.id,
-      meta: { changed: Object.keys(parsed.data) },
+      // `previous`: what the override replaced, a cleared paid-period end
+      // included.
+      meta: { changed: Object.keys(parsed.data), previous: snapshotOf(before) },
     });
 
     return ok({ subscription: serializeSubscription(updated) });

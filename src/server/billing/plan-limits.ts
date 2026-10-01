@@ -3,8 +3,9 @@
  *
  * Two layers:
  *
- *   1. `evaluateLimit(current, max, isFreePlan)` — pure, sync, branchy. The
- *      table-test sweet spot. `max=-1` is the "unlimited" sentinel and short-
+ *   1. `evaluateLimit(current, max, isFreePlan)` — pure, sync, branchy (it
+ *      lives in quota-rule.ts with `planContextOf` and `guardCounts`, and is
+ *      re-exported here). The table-test sweet spot. `max=-1` is the "unlimited" sentinel and short-
  *      circuits to `ok`. Below 80% → ok. 80–99% → warn. 100%+ → block on the
  *      Free plan, warn on Pro/Enterprise (warn-only — paying tenants are
  *      never blocked mid-flight; we surface the breach in the billing UI).
@@ -34,12 +35,20 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { getClinicUsage } from "@/server/billing/usage";
 import {
-  DEFAULT_FLAGS,
-  parsePlanFeatures,
-  type FeatureFlags,
-} from "@/lib/feature-flags";
-import { getClinicUsage, monthWindow } from "@/server/billing/usage";
+  evaluateLimit,
+  guardCounts,
+  planContextOf,
+  quotaCountQuery,
+  type GuardQuota,
+  type LimitCheckResult,
+  type PlanContext,
+} from "@/server/billing/quota-rule";
+
+// The pure rule moved to quota-rule.ts (shared with the pre-deploy dry
+// run); re-exported so existing callers keep importing it from here.
+export { evaluateLimit, type LimitCheckResult };
 
 /** Numeric quota keys we evaluate. */
 export type NumericQuota =
@@ -47,86 +56,20 @@ export type NumericQuota =
   | "maxAppointmentsPerMonth"
   | "maxStorageMb";
 
-export type LimitCheckResult =
-  | { ok: true }
-  | {
-      ok: false;
-      kind: "warn" | "block";
-      quota: keyof FeatureFlags;
-      current: number;
-      max: number;
-      pctUsed: number;
-    };
-
-/**
- * Pure helper. Decide warn / block / ok for a given (current, max).
- *
- *   - `max < 0`              → ok (unlimited sentinel)
- *   - `max === 0`            → ok (treated as unlimited too — the quota is
- *                              not enabled on this plan; callers must use a
- *                              boolean flag if they want a hard "off")
- *   - `current < 0.8 * max`  → ok
- *   - `0.8 * max ≤ current < max` → warn
- *   - `current ≥ max`        → block on Free, warn elsewhere
- */
-export function evaluateLimit(
-  current: number,
-  max: number,
-  isFreePlan: boolean,
-  quota: keyof FeatureFlags = "maxPatients",
-): LimitCheckResult {
-  if (max < 0 || max === 0) return { ok: true };
-  const ratio = current / max;
-  const pctUsed = Math.round(ratio * 100);
-  if (ratio < 0.8) return { ok: true };
-  if (ratio < 1) {
-    return { ok: false, kind: "warn", quota, current, max, pctUsed };
-  }
-  return {
-    ok: false,
-    kind: isFreePlan ? "block" : "warn",
-    quota,
-    current,
-    max,
-    pctUsed,
-  };
-}
-
 /**
  * Internal — fetch plan slug + features for one clinic without re-running
  * the tenant-scope extension. Mirrors `getFeatureFlags` but also returns
  * the slug so the composer can decide isFreePlan.
  */
-async function loadPlanContext(clinicId: string): Promise<{
-  flags: FeatureFlags;
-  isFreePlan: boolean;
-}> {
+async function loadPlanContext(clinicId: string): Promise<PlanContext> {
   return runWithTenant({ kind: "SYSTEM" }, async () => {
     const sub = await prisma.subscription.findUnique({
       where: { clinicId },
       include: { plan: true },
     });
-
-    if (!sub) {
-      // No subscription → treat as Basic (free). Hard-block applies.
-      return { flags: { ...DEFAULT_FLAGS }, isFreePlan: true };
-    }
-
-    const slug = sub.plan.slug;
-    const isFreePlan = slug === "basic";
-
-    switch (sub.status) {
-      case "TRIAL":
-      case "ACTIVE":
-      case "PAST_DUE":
-        return { flags: parsePlanFeatures(sub.plan.features), isFreePlan };
-      case "CANCELLED":
-      default:
-        // Cancelled subscription falls back to default (basic) flags but
-        // the slug is still the cancelled plan — for hard-block purposes we
-        // treat them as Free regardless, since they no longer pay.
-        return { flags: { ...DEFAULT_FLAGS }, isFreePlan: true };
-    }
+    // No subscription, or a cancelled one, means Basic limits that block
+    // (`planContextOf`).
+    return planContextOf(sub);
   });
 }
 
@@ -208,18 +151,15 @@ export async function ensureAppointmentLimit(
 /** Current usage of one quota, counted alone (the guard needs one number). */
 async function countFor(
   clinicId: string,
-  quota: "maxPatients" | "maxAppointmentsPerMonth",
+  quota: GuardQuota,
   now: Date,
 ): Promise<number> {
-  return runWithTenant({ kind: "SYSTEM" }, () => {
-    if (quota === "maxPatients") {
-      return prisma.patient.count({ where: { clinicId, deletedAt: null } });
-    }
-    const { start, end } = monthWindow(now);
-    return prisma.appointment.count({
-      where: { clinicId, createdAt: { gte: start, lt: end } },
-    });
-  });
+  const q = quotaCountQuery(clinicId, quota, now);
+  return runWithTenant({ kind: "SYSTEM" }, () =>
+    q.model === "patient"
+      ? prisma.patient.count({ where: q.where })
+      : prisma.appointment.count({ where: q.where }),
+  );
 }
 
 /**
@@ -236,15 +176,15 @@ async function countFor(
  */
 export async function ensureQuotaForApi(
   clinicId: string,
-  quota: "maxPatients" | "maxAppointmentsPerMonth",
+  quota: GuardQuota,
   now: Date = new Date(),
 ): Promise<Response | null> {
   try {
     const planCtx = await loadPlanContext(clinicId);
-    // Warn-only plans never block: skip the counting entirely.
-    if (!planCtx.isFreePlan) return null;
+    // Warn-only plans (and unlimited quotas) never block: skip the counting
+    // entirely.
+    if (!guardCounts(planCtx, quota)) return null;
     const max = planCtx.flags[quota];
-    if (max <= 0) return null;
     const current = await countFor(clinicId, quota, now);
     const result = evaluateLimit(current, max, true, quota);
     if (result.ok || result.kind === "warn") return null;

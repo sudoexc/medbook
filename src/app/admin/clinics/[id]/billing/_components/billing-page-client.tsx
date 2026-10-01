@@ -144,6 +144,10 @@ const REASON_LABEL: Record<string, string> = {
   no_subscription: "У клиники нет подписки",
   subscription_exists: "Подписка уже есть",
   invalid_plan: "План не найден или отключён",
+  // The status override refuses what the scheduler would undo a minute later.
+  trial_ended:
+    "Срок триала уже прошёл. Чтобы вернуть триал, нажмите «Продлить триал на 30 дней»",
+  period_end_past: "Дата окончания оплаченного периода уже прошла",
 };
 
 const FEATURE_LABEL: Record<keyof FeatureFlags, string> = {
@@ -176,6 +180,32 @@ function formatDate(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * The status and date the server actually saved, for the toast: an
+ * override to ACTIVE over an ended paid period comes back open-ended, and
+ * the owner should read that, not a bare «Статус обновлён».
+ */
+function savedStateText(s: SerializedSubscription): string {
+  switch (s.status) {
+    case "TRIAL":
+      return `${STATUS_LABEL.TRIAL} до ${formatDate(s.trialEndsAt)}`;
+    case "ACTIVE":
+      return s.currentPeriodEndsAt
+        ? `${STATUS_LABEL.ACTIVE}, оплачено до ${formatDate(s.currentPeriodEndsAt)}`
+        : `${STATUS_LABEL.ACTIVE}, бессрочно`;
+    case "PAST_DUE":
+      return `${STATUS_LABEL.PAST_DUE}, льготный период до ${formatDate(s.graceEndsAt)}`;
+    case "CANCELLED":
+    default:
+      return STATUS_LABEL[s.status];
+  }
+}
+
+function savedFrom(body: unknown): string {
+  const s = (body as { subscription?: SerializedSubscription } | null)?.subscription;
+  return s ? savedStateText(s) : "Готово";
 }
 
 function daysBetween(from: Date, to: Date): number {
@@ -261,7 +291,7 @@ export function BillingPageClient({
       "status",
       `/api/admin/clinics/${initial.clinic.id}/subscription`,
       { method: "PATCH", body: JSON.stringify({ status: newStatus }) },
-      "Статус обновлён",
+      savedFrom,
     );
   };
 
@@ -274,13 +304,7 @@ export function BillingPageClient({
         // The date on screen: a second click finds it changed and gets 409.
         body: JSON.stringify({ expectedTrialEndsAt: sub?.trialEndsAt ?? null }),
       },
-      (body) => {
-        const s = (body as { subscription?: SerializedSubscription } | null)
-          ?.subscription;
-        return s
-          ? `${STATUS_LABEL[s.status]} до ${formatDate(s.trialEndsAt)}`
-          : "Готово";
-      },
+      savedFrom,
     );
 
   const onCreate = () => {

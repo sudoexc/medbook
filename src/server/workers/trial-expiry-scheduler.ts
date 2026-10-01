@@ -17,6 +17,12 @@
  * An ACTIVE subscription with no `currentPeriodEndsAt` (the platform owner's
  * open-ended ACTIVE, NeuroFax's) is never touched.
  *
+ * The first tick after a deploy acts on every existing row at once, and a
+ * cancelled subscription means Basic limits for the API quota guard. So
+ * `scripts/subscription-lifecycle-dryrun.ts` runs before this worker
+ * starts: it prints what the ticks will do to each clinic and fails unless
+ * NeuroFax really is that open-ended ACTIVE (review of 79422ba).
+ *
  * Every step writes a SUBSCRIPTION_AUTO_TRANSITION audit row with the
  * subscription as it was (`previous`), which is what the platform owner sees
  * in /admin/audit and what «Восстановить» brings back after an automatic

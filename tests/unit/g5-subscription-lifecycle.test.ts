@@ -11,13 +11,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   GRACE_DAYS,
+  lifecycleProjection,
   nextAutoStep,
   planCancel,
   planExtendTrial,
   planRestore,
+  planStatusOverride,
   snapshotFromMeta,
   snapshotOf,
-  statusOverrideExtras,
   type SubscriptionState,
 } from "@/server/platform/subscription-lifecycle";
 import { canSeePaymentBanner } from "@/components/layout/trial-banner-state";
@@ -165,12 +166,36 @@ describe("G5-02: every state ends", () => {
   });
 
   it("the admin's raw status override keeps the dates consistent", () => {
-    expect(statusOverrideExtras(sub({ status: "ACTIVE" }), "PAST_DUE", NOW)).toEqual({
-      graceEndsAt: days(GRACE_DAYS),
+    expect(planStatusOverride(sub({ status: "ACTIVE" }), { status: "PAST_DUE" }, NOW)).toEqual({
+      ok: true,
+      data: { graceEndsAt: days(GRACE_DAYS) },
     });
     expect(
-      statusOverrideExtras(sub({ status: "CANCELLED", cancelledAt: NOW }), "ACTIVE", NOW),
-    ).toEqual({ graceEndsAt: null, cancelledAt: null });
+      planStatusOverride(sub({ status: "CANCELLED", cancelledAt: NOW }), { status: "ACTIVE" }, NOW),
+    ).toEqual({ ok: true, data: { graceEndsAt: null, cancelledAt: null } });
+    // No status change, nothing added.
+    expect(planStatusOverride(sub({ status: "ACTIVE" }), { status: "ACTIVE" }, NOW)).toEqual({
+      ok: true,
+      data: {},
+    });
+  });
+
+  it("the projection shows every step the scheduler will take if nobody acts", () => {
+    // PAST_DUE with no grace date (a pre-grace row): grace now, cancelled 14 days on.
+    const past = lifecycleProjection(sub({ status: "PAST_DUE" }), NOW);
+    expect(past.map((p) => [p.step.reason, p.step.to])).toEqual([
+      ["grace_started", "PAST_DUE"],
+      ["grace_ended", "CANCELLED"],
+    ]);
+    expect(past[0]!.at).toEqual(NOW);
+    expect(past[1]!.at.getTime()).toBe(days(GRACE_DAYS).getTime() + 1);
+    // A running trial: nothing on the first tick, PAST_DUE after its end.
+    const trial = lifecycleProjection(sub({ trialEndsAt: days(3) }), NOW);
+    expect(trial.map((p) => p.step.to)).toEqual(["PAST_DUE", "CANCELLED"]);
+    expect(trial[0]!.at.getTime()).toBe(days(3).getTime() + 1);
+    // The open-ended ACTIVE never moves, nor does a cancelled row.
+    expect(lifecycleProjection(sub({ status: "ACTIVE" }), NOW)).toEqual([]);
+    expect(lifecycleProjection(sub({ status: "CANCELLED", cancelledAt: NOW }), NOW)).toEqual([]);
   });
 
   it("only the clinic's ADMIN (or an impersonating SUPER_ADMIN) sees the payment banner", () => {
@@ -179,6 +204,83 @@ describe("G5-02: every state ends", () => {
     for (const r of ["RECEPTIONIST", "NURSE", "DOCTOR", "CALL_OPERATOR", null]) {
       expect(canSeePaymentBanner(r)).toBe(false);
     }
+  });
+});
+
+// ── Review of 79422ba: the status override holds ─────────────────────────
+
+/** The row after the PATCH as the route writes it: extras, then the sent fields. */
+function afterOverride(
+  before: SubscriptionState,
+  patch: Parameters<typeof planStatusOverride>[1],
+): SubscriptionState {
+  const plan = planStatusOverride(before, patch, NOW);
+  if (!plan.ok) throw new Error(plan.reason);
+  return { ...before, ...plan.data, ...patch } as SubscriptionState;
+}
+
+describe("the admin's status override is not undone by the next tick", () => {
+  it("TRIAL over a trial that already ended is refused: «Продлить триал» grants trial days", () => {
+    const pastDue = sub({ status: "PAST_DUE", trialEndsAt: days(-3), graceEndsAt: days(11) });
+    expect(planStatusOverride(pastDue, { status: "TRIAL" }, NOW)).toEqual({
+      ok: false,
+      reason: "trial_ended",
+    });
+    // No trial end at all is refused too: a trial always ends.
+    expect(
+      planStatusOverride(sub({ status: "CANCELLED", cancelledAt: NOW }), { status: "TRIAL" }, NOW),
+    ).toEqual({ ok: false, reason: "trial_ended" });
+    // A date sent with the status that is already past is the same refusal.
+    expect(
+      planStatusOverride(pastDue, { status: "TRIAL", trialEndsAt: days(-1) }, NOW),
+    ).toMatchObject({ ok: false, reason: "trial_ended" });
+  });
+
+  it("TRIAL with a trial end in the future holds", () => {
+    const pastDue = sub({ status: "PAST_DUE", trialEndsAt: days(-3), graceEndsAt: days(11) });
+    const sent = afterOverride(pastDue, { status: "TRIAL", trialEndsAt: days(10) });
+    expect(sent).toMatchObject({ status: "TRIAL", graceEndsAt: null });
+    expect(nextAutoStep(sent, NOW)).toBeNull();
+    const kept = afterOverride(
+      sub({ status: "ACTIVE", trialEndsAt: days(5) }),
+      { status: "TRIAL" },
+    );
+    expect(nextAutoStep(kept, NOW)).toBeNull();
+  });
+
+  it("ACTIVE over an ended paid period becomes open-ended instead of PAST_DUE a minute later", () => {
+    const lapsed = sub({ status: "PAST_DUE", currentPeriodEndsAt: days(-20), graceEndsAt: days(-6) });
+    expect(planStatusOverride(lapsed, { status: "ACTIVE" }, NOW)).toEqual({
+      ok: true,
+      data: { graceEndsAt: null, currentPeriodEndsAt: null },
+    });
+    const after = afterOverride(lapsed, { status: "ACTIVE" });
+    expect(after).toMatchObject({ status: "ACTIVE", currentPeriodEndsAt: null });
+    expect(nextAutoStep(after, NOW)).toBeNull();
+  });
+
+  it("ACTIVE keeps a paid period that is still running, and a new one sent with it", () => {
+    const running = sub({ status: "PAST_DUE", currentPeriodEndsAt: days(9), graceEndsAt: days(5) });
+    expect(planStatusOverride(running, { status: "ACTIVE" }, NOW)).toEqual({
+      ok: true,
+      data: { graceEndsAt: null },
+    });
+    const renewed = afterOverride(
+      sub({ status: "PAST_DUE", currentPeriodEndsAt: days(-2) }),
+      { status: "ACTIVE", currentPeriodEndsAt: days(30) },
+    );
+    expect(renewed.currentPeriodEndsAt).toEqual(days(30));
+    expect(nextAutoStep(renewed, NOW)).toBeNull();
+  });
+
+  it("ACTIVE with a period end sent in the past is refused", () => {
+    expect(
+      planStatusOverride(
+        sub({ status: "PAST_DUE" }),
+        { status: "ACTIVE", currentPeriodEndsAt: days(-1) },
+        NOW,
+      ),
+    ).toEqual({ ok: false, reason: "period_end_past" });
   });
 });
 
@@ -422,5 +524,53 @@ describe("G5-03: subscriptions are created explicitly", () => {
     }
     expect(read("src/app/api/platform/clinics/route.ts")).toContain("createSubscription(tx");
     expect(read("src/app/api/public/signup/confirm/route.ts")).toContain("createSubscription(tx");
+  });
+});
+
+describe("the status override PATCH holds through the next tick", () => {
+  const patch = (body: unknown) =>
+    new Request("https://x/api/admin/clinics/c1/subscription", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("TRIAL over an ended trial: 409 trial_ended, the row and the toast stay honest", async () => {
+    const lastWeek = new Date(Date.now() - 7 * DAY);
+    seed({ clinicId: "c1", status: "PAST_DUE", trialEndsAt: lastWeek, graceEndsAt: new Date(Date.now() + 7 * DAY) });
+    const route = await import("@/app/api/admin/clinics/[id]/subscription/route");
+    const res = await route.PATCH(patch({ status: "TRIAL" }));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { reason: string }).reason).toBe("trial_ended");
+    expect(db.subs[0]!.status).toBe("PAST_DUE");
+    expect(db.audits).toHaveLength(0);
+    expect(
+      read("src/app/admin/clinics/[id]/billing/_components/billing-page-client.tsx"),
+    ).toContain("trial_ended:");
+  });
+
+  it("ACTIVE over an ended paid period: saved open-ended, and the scheduler leaves it ACTIVE", async () => {
+    const lastMonth = new Date(Date.now() - 30 * DAY);
+    seed({ clinicId: "c1", status: "PAST_DUE", currentPeriodEndsAt: lastMonth, graceEndsAt: new Date(Date.now() + DAY) });
+    const route = await import("@/app/api/admin/clinics/[id]/subscription/route");
+    const res = await route.PATCH(patch({ status: "ACTIVE" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { subscription: { status: string; currentPeriodEndsAt: unknown } };
+    expect(body.subscription).toMatchObject({ status: "ACTIVE", currentPeriodEndsAt: null });
+    // What it replaced is in the audit row.
+    expect(db.audits[0]).toMatchObject({
+      action: "subscription.update",
+      meta: { previous: { status: "PAST_DUE", currentPeriodEndsAt: lastMonth.toISOString() } },
+    });
+    const { _tickForTests } = await import("@/server/workers/trial-expiry-scheduler");
+    await _tickForTests();
+    expect(db.subs[0]!.status).toBe("ACTIVE");
+    expect(db.audits.filter((a) => a.action === "SUBSCRIPTION_AUTO_TRANSITION")).toHaveLength(0);
+  });
+
+  it("the billing page toast reads the saved state, «бессрочно» included", () => {
+    const src = read("src/app/admin/clinics/[id]/billing/_components/billing-page-client.tsx");
+    expect(src).toContain("бессрочно");
+    expect(src).not.toContain('"Статус обновлён"');
   });
 });

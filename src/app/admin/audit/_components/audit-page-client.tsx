@@ -13,6 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  SELECT_ALL,
+  fromSelectValue,
+  toSelectValue,
+} from "@/lib/select-sentinel";
 
 interface AuditRow {
   id: string;
@@ -94,12 +99,15 @@ export function AuditPageClient() {
   return (
     <div className="space-y-4 p-6">
       <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
-        <Select value={clinicId} onValueChange={setClinicId}>
+        <Select
+          value={toSelectValue(clinicId)}
+          onValueChange={(v) => setClinicId(fromSelectValue(v))}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Все клиники" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Все клиники</SelectItem>
+            <SelectItem value={SELECT_ALL}>Все клиники</SelectItem>
             {clinics.data?.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.nameRu}

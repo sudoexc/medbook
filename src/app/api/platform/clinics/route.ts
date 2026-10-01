@@ -3,7 +3,9 @@
  * POST /api/platform/clinics — create a new clinic + its first ADMIN user.
  *
  * Onboarding model: a clinic without an owner is useless, so creation always
- * provisions one ADMIN account in the same transaction. We generate a temp
+ * provisions one ADMIN account in the same transaction, and its subscription
+ * too: a TRIAL on the plan and for the days chosen in the dialog (audit
+ * G5-03; it used to appear only when someone opened the billing page). We generate a temp
  * password server-side and return it ONCE in the response — it's never stored
  * in plaintext anywhere and never retrievable afterwards. The new admin is
  * forced to set their own password on first login (via mustChangePassword).
@@ -20,6 +22,8 @@ import {
 import { CreateClinicSchema } from "@/server/schemas/platform";
 import { generateTempPassword, hashPassword } from "@/server/auth/password";
 import { applyPlaybook } from "@/server/onboarding/apply-playbook";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { createSubscription } from "@/server/platform/subscription-lifecycle";
 
 export const GET = createPlatformListHandler(async () => {
   const rows = await prisma.clinic.findMany({
@@ -38,6 +42,17 @@ export const GET = createPlatformListHandler(async () => {
       brandColor: true,
       createdAt: true,
       updatedAt: true,
+      // The row menu offers only what applies (audit G5-01): «Восстановить»
+      // for a cancelled subscription, the trial button with the date shown.
+      subscription: {
+        select: {
+          status: true,
+          trialEndsAt: true,
+          currentPeriodEndsAt: true,
+          graceEndsAt: true,
+          plan: { select: { slug: true } },
+        },
+      },
       _count: {
         select: {
           users: true,
@@ -68,6 +83,14 @@ export const POST = createPlatformHandler(
     });
     if (emailTaken) {
       return err("conflict", 409, { reason: "email_taken" });
+    }
+
+    const plan = await prisma.plan.findUnique({
+      where: { slug: body.planSlug },
+      select: { id: true, isActive: true },
+    });
+    if (!plan || !plan.isActive) {
+      return err("ValidationError", 400, { reason: "invalid_plan" });
     }
 
     const tempPassword = generateTempPassword(12);
@@ -103,8 +126,14 @@ export const POST = createPlatformHandler(
           invitedById: userId,
         },
       });
-      return clinic;
+      const subscription = await createSubscription(tx, {
+        clinicId: clinic.id,
+        planId: plan.id,
+        trialDays: body.trialDays,
+      });
+      return { ...clinic, subscription };
     });
+    const { subscription, ...clinicRow } = created;
 
     // Apply the onboarding playbook AFTER the transaction, mirroring the
     // self-service /signup path: a playbook hiccup must not roll back the
@@ -134,9 +163,23 @@ export const POST = createPlatformHandler(
         playbookApplied,
       },
     });
+    await platformAudit({
+      request,
+      userId,
+      clinicId: created.id,
+      action: AUDIT_ACTION.SUBSCRIPTION_CREATED,
+      entityType: "Subscription",
+      entityId: subscription.id,
+      meta: {
+        planId: plan.id,
+        planSlug: body.planSlug,
+        trialEndsAt: subscription.trialEndsAt.toISOString(),
+        source: "clinic_create",
+      },
+    });
     return ok(
       {
-        ...created,
+        ...clinicRow,
         ownerLogin: body.ownerEmail,
         ownerTempPassword: tempPassword,
         playbookApplied,

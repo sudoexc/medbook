@@ -1,25 +1,29 @@
 /**
- * POST /api/admin/clinics/[id]/lifecycle — Phase 19 W4 bulk SUPER_ADMIN ops.
+ * POST /api/admin/clinics/[id]/lifecycle — the /admin/clinics row menu.
  *
- * Body: `{ action: "suspend" | "restore" | "extend-trial" }`.
+ * Body: `{ action: "suspend" | "restore" | "extend-trial",
+ *          expectedTrialEndsAt?: ISO | null }`.
  *
- * - suspend  → flips Subscription.status to CANCELLED, stamps cancelledAt = now,
- *              audits CLINIC_SUSPENDED.
- * - restore  → status TRIAL with trialEndsAt = now + 14d, clears cancelledAt,
- *              audits CLINIC_RESUMED.
- * - extend-trial → adds 30 days to trialEndsAt (creating a TRIAL row when one
- *              doesn't exist), audits CLINIC_TRIAL_EXTENDED.
- *
- * Each branch is intentionally idempotent so a double-click in the row menu
- * doesn't punish the operator with a 409. The dedicated `/cancel` and
- * `/extend-trial` sub-routes are kept untouched — they target the long-form
- * forms, while this route powers the new row context-menu.
+ * Each action is the same function the billing page uses (audit G5-01,
+ * `subscription-admin.ts`):
+ * - suspend      → CANCELLED, audits CLINIC_SUSPENDED with what it was;
+ * - restore      → only for a CANCELLED subscription (409 `not_cancelled`
+ *                  otherwise), back to what it was before the suspension,
+ *                  audits CLINIC_RESUMED. It used to make ANY clinic, a
+ *                  paying one included, a 14-day trial;
+ * - extend-trial → `planExtendTrial`, audits CLINIC_TRIAL_EXTENDED; with
+ *                  `expectedTrialEndsAt` a double click is a 409, not a
+ *                  second month.
+ * A clinic without a subscription gets 409 `NoSubscription` (G5-03).
  */
-import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { ok, err, notFound } from "@/server/http";
-import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
-import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { err } from "@/server/http";
+import { requireSuperAdmin } from "@/server/platform/handler";
+import {
+  cancelResponse,
+  extendTrialResponse,
+  restoreResponse,
+} from "@/server/platform/subscription-admin";
 
 function clinicIdFromUrl(request: Request): string | null {
   try {
@@ -30,30 +34,6 @@ function clinicIdFromUrl(request: Request): string | null {
   } catch {
     return null;
   }
-}
-
-async function ensureSubscription(clinicId: string) {
-  const existing = await prisma.subscription.findUnique({
-    where: { clinicId },
-    include: { plan: true },
-  });
-  if (existing) return existing;
-  const plan =
-    (await prisma.plan.findUnique({ where: { slug: "pro" } })) ??
-    (await prisma.plan.findFirst({
-      where: { isActive: true },
-      orderBy: { sortOrder: "asc" },
-    }));
-  if (!plan) throw new Error("No active plan to seed default subscription");
-  return prisma.subscription.create({
-    data: {
-      clinicId,
-      planId: plan.id,
-      status: "TRIAL",
-      trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-    },
-    include: { plan: true },
-  });
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -68,10 +48,11 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return err("InvalidJson", 400);
   }
-  const action =
-    raw && typeof raw === "object" && "action" in raw
-      ? (raw as { action?: unknown }).action
-      : null;
+  const body = (raw && typeof raw === "object" ? raw : {}) as {
+    action?: unknown;
+    expectedTrialEndsAt?: unknown;
+  };
+  const action = body.action;
   if (
     action !== "suspend" &&
     action !== "restore" &&
@@ -81,87 +62,18 @@ export async function POST(request: Request): Promise<Response> {
       reason: "action must be one of suspend|restore|extend-trial",
     });
   }
+  let expectedTrialEndsAt: Date | null | undefined;
+  if (body.expectedTrialEndsAt === null) expectedTrialEndsAt = null;
+  else if (typeof body.expectedTrialEndsAt === "string") {
+    const d = new Date(body.expectedTrialEndsAt);
+    if (Number.isNaN(d.getTime())) return err("ValidationError", 400);
+    expectedTrialEndsAt = d;
+  }
 
-  return runWithTenant(
-    { kind: "SUPER_ADMIN", userId: gate.userId },
-    async () => {
-      const clinic = await prisma.clinic.findUnique({ where: { id } });
-      if (!clinic) return notFound();
-      const sub = await ensureSubscription(id);
-
-      if (action === "suspend") {
-        const updated = await prisma.subscription.update({
-          where: { clinicId: id },
-          data: {
-            status: "CANCELLED",
-            cancelledAt: new Date(),
-          },
-        });
-        await platformAudit({
-          request,
-          userId: gate.userId,
-          clinicId: id,
-          action: AUDIT_ACTION.CLINIC_SUSPENDED,
-          entityType: "Subscription",
-          entityId: updated.id,
-          meta: { previousStatus: sub.status },
-        });
-        return ok({ ok: true, status: updated.status });
-      }
-
-      if (action === "restore") {
-        const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-        const updated = await prisma.subscription.update({
-          where: { clinicId: id },
-          data: {
-            status: "TRIAL",
-            trialEndsAt,
-            cancelledAt: null,
-          },
-        });
-        await platformAudit({
-          request,
-          userId: gate.userId,
-          clinicId: id,
-          action: AUDIT_ACTION.CLINIC_RESUMED,
-          entityType: "Subscription",
-          entityId: updated.id,
-          meta: {
-            trialEndsAt: trialEndsAt.toISOString(),
-            previousStatus: sub.status,
-          },
-        });
-        return ok({ ok: true, status: updated.status, trialEndsAt });
-      }
-
-      // extend-trial — pivot off whichever date is later (current trial vs now)
-      const base =
-        sub.trialEndsAt && sub.trialEndsAt.getTime() > Date.now()
-          ? sub.trialEndsAt
-          : new Date();
-      const trialEndsAt = new Date(
-        base.getTime() + 30 * 24 * 60 * 60 * 1000,
-      );
-      const updated = await prisma.subscription.update({
-        where: { clinicId: id },
-        data: {
-          status: sub.status === "CANCELLED" ? "TRIAL" : sub.status,
-          trialEndsAt,
-        },
-      });
-      await platformAudit({
-        request,
-        userId: gate.userId,
-        clinicId: id,
-        action: AUDIT_ACTION.CLINIC_TRIAL_EXTENDED,
-        entityType: "Subscription",
-        entityId: updated.id,
-        meta: {
-          trialEndsAt: trialEndsAt.toISOString(),
-          extendedDays: 30,
-        },
-      });
-      return ok({ ok: true, trialEndsAt });
-    },
-  );
+  const args = { request, userId: gate.userId, clinicId: id };
+  return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, () => {
+    if (action === "suspend") return cancelResponse(args);
+    if (action === "restore") return restoreResponse(args);
+    return extendTrialResponse({ ...args, expectedTrialEndsAt });
+  });
 }

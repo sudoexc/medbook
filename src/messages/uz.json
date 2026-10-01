@@ -188,9 +188,9 @@
         "body": "{count, plural, one {# kun qoldi} other {# kun qoldi}}"
       },
       "expired": {
-        "title": "Sinov muddati tugadi",
-        "body": "Premium-funksiyalar imtiyozli muddatda ishlamoqda — obunani to'lab, kirishni saqlab qoling.",
-        "bodyWithDate": "Premium-funksiyalar {date} gacha imtiyozli muddatda ishlamoqda — obunani to'lab, kirishni saqlab qoling."
+        "title": "Obuna to'lanmagan",
+        "body": "Premium-funksiyalar imtiyozli muddatda ishlamoqda, keyin o'chiriladi. Kirishni uzaytirish: «Tarif va hisob-fakturalar» bo'limi.",
+        "bodyWithDate": "Premium-funksiyalar {date} gacha ishlaydi, keyin o'chiriladi. Kirishni uzaytirish: «Tarif va hisob-fakturalar» bo'limi."
       },
       "cta": {
         "openBilling": "Tarifikatsiya"
@@ -1432,6 +1432,41 @@
       "ltv": "LTV",
       "balance": "Balans",
       "openInvoices": "Ochiq hisoblar",
+      "refundedLine": "Qaytarildi {amount}, {date}",
+      "actions": {
+        "correct": "Tuzatish",
+        "refund": "Qaytarish"
+      },
+      "adjust": {
+        "amountTitle": "To'lov summasini tuzatish",
+        "refundTitle": "Bemorga pulni qaytarish",
+        "paymentLine": "{date} dagi {amount} to'lov",
+        "newAmount": "To'g'ri summa (so'm)",
+        "refundAmount": "Qaytarish summasi (so'm)",
+        "refundDate": "Qaytarish sanasi",
+        "amountHint": "To'lov summasi o'sha kungi hisobotlarda ham, bemorning LTV sida ham o'zgaradi.",
+        "refundHint": "Qaytarish shu kungi tushumni kamaytiradi. To'lov kuni o'zgarmaydi.",
+        "refundDateInvalid": "Qaytarish sanasi to'lovdan oldin va bugundan keyin bo'lmasligi kerak",
+        "amountInvalid": "Summani raqamlar bilan kiriting, masalan 150 000",
+        "amountTooLarge": "Bitta to'lov uchun summa juda katta",
+        "refundTooLarge": "Qaytarish to'lov summasidan katta bo'lishi mumkin emas",
+        "preview": "Yoziladi: {amount}",
+        "cancel": "Bekor qilish",
+        "saving": "Saqlanmoqda…",
+        "amountSubmit": "Summani saqlash",
+        "refundSubmit": "Qaytarishni rasmiylashtirish",
+        "amountSaved": "To'lov summasi tuzatildi",
+        "refundSaved": "Qaytarish rasmiylashtirildi",
+        "errors": {
+          "amount_locked_after_refund": "Bu to'lov bo'yicha qaytarish bo'lgan, summani tuzatib bo'lmaydi",
+          "already_refunded": "Bu to'lov bo'yicha qaytarish allaqachon rasmiylashtirilgan",
+          "refund_exceeds_amount": "Qaytarish to'lov summasidan katta bo'lishi mumkin emas",
+          "refund_date_invalid": "Qaytarish sanasi to'lovdan oldin va bugundan keyin bo'lmasligi kerak",
+          "payment_changed": "To'lov hozirgina o'zgartirildi. Sahifani yangilab, tekshiring",
+          "amount_admin_only": "Summani faqat administrator tuzata oladi",
+          "generic": "To'lov o'zgarishlarini saqlab bo'lmadi"
+        }
+      },
       "count": "To'lovlar: {count}",
       "method": {
         "cash": "Naqd",
@@ -1452,6 +1487,9 @@
         "title": "Yangi to'lov",
         "amount": "Summa (so'm)",
         "hint": "Summani so'mda kiriting, tiyinlar avtomatik qo'shiladi.",
+        "amountInvalid": "Summani raqamlar bilan kiriting, masalan 150 000",
+        "amountTooLarge": "Bitta to'lov uchun summa juda katta",
+        "amountPreview": "Yoziladi: {amount}",
         "method": "Usul",
         "cancel": "Bekor qilish",
         "submit": "Qo'shish",
@@ -2374,6 +2412,7 @@
     "error": "Email yoki parol noto'g'ri",
     "networkError": "Tarmoq xatosi. Qayta urinib ko'ring.",
     "tooManyAttempts": "Kirishga urinishlar juda ko'p. Bir necha daqiqa kuting va qayta urinib ko'ring.",
+    "clinicInactive": "Klinika platformada o'chirilgan, xodimlar kira olmaydi. Platforma administratoriga murojaat qiling.",
     "backToSite": "Saytga qaytish"
   },
   "dashboard": {
@@ -5893,7 +5932,8 @@
       "title": "Joriy tarif",
       "price": "Oyiga {price}",
       "trialEndsAt": "Sinov muddati: {date} gacha",
-      "nextBillingAt": "Keyingi to'lov: {date}",
+      "nextBillingAt": "{date} gacha to'langan",
+      "graceEndsAt": "Imtiyozli muddat {date} gacha, keyin premium-funksiyalar o'chiriladi",
       "pendingUpgrade": "{plan} tarifiga o'tish uchun to'lov kutilmoqda"
     },
     "status": {
@@ -5956,7 +5996,8 @@
       "realProviderNote": "«Click/Payme orqali to'lash» tugmasini bosgach, to'lov provayderining sahifasiga o'tasiz. To'lov amalga oshgach, hisob-faktura avtomatik tarzda to'langan deb belgilanadi.",
       "payWithClick": "Click orqali to'lash",
       "payWithPayme": "Payme orqali to'lash",
-      "redirecting": "Yo'naltirilmoqda…"
+      "redirecting": "Yo'naltirilmoqda…",
+      "onlineNotConnected": "Click va Payme orqali onlayn to'lov hozircha ulanmagan. Ushbu tarifga o'tish uchun biz bilan bog'laning: hisob to'langach, tarifni almashtiramiz."
     },
     "errors": {
       "upgrade": "Hisob-fakturani yaratib bo'lmadi ({error}).",
@@ -6063,6 +6104,10 @@
       "saveFailed": "Saqlash imkonsiz",
       "paymentAdded": "To'lov qo'shildi",
       "paymentFailed": "To'lov yaratish imkonsiz",
+      "planLimit": {
+        "maxPatients": "Tarif limitiga yetildi: {max} ta bemor. Yangilarini qo'shish uchun «Tarif va hisob-fakturalar» bo'limida tarifni almashtiring.",
+        "maxAppointmentsPerMonth": "Tarif limitiga yetildi: oyiga {max} ta yozuv. Yozishni davom ettirish uchun «Tarif va hisob-fakturalar» bo'limida tarifni almashtiring."
+      },
       "documentAdded": "Hujjat qo'shildi",
       "documentFailed": "Hujjat yuklash imkonsiz",
       "caseCreateFailed": "Holatni yaratish imkonsiz",

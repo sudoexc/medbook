@@ -1,35 +1,47 @@
 /**
- * Phase 9e — trial-expiry scheduler.
+ * Phase 9e — trial-expiry scheduler, now the whole subscription clock
+ * (audit G5-02).
  *
  * Cron-style poller modeled on `notifications-scheduler.ts`. Every minute it
- * scans every clinic's `Subscription` row, picks the ones whose TRIAL has
- * elapsed (`trialEndsAt < now()`), and flips them to `PAST_DUE`.
+ * scans the subscriptions that may be due and takes one step for each, the
+ * rule being `nextAutoStep` in `server/platform/subscription-lifecycle.ts`:
  *
- * Why `PAST_DUE` and not `CANCELLED`?
+ *   TRIAL,    trialEndsAt passed          → PAST_DUE, grace for GRACE_DAYS
+ *   ACTIVE,   currentPeriodEndsAt passed  → PAST_DUE, grace for GRACE_DAYS
+ *   PAST_DUE, no grace date yet           → grace starts now
+ *   PAST_DUE, graceEndsAt passed          → CANCELLED
  *
- *   `getFeatureFlags` (see `src/lib/feature-flags.ts`, Phase 9b) treats
- *   `PAST_DUE` as a Stripe-style grace period and keeps the clinic's premium
- *   feature flags ON. Flipping to `CANCELLED` would immediately strip access
- *   to Telegram inbox / Call Center / Analytics-Pro mid-flight, which is
- *   hostile UX during the billing-overdue window. The countdown banner
- *   (`<TrialBanner />`) and the admin billing UI (Phase 9c) surface the
- *   warning so the operator can pay before grace period ends.
+ * It used to flip TRIAL to PAST_DUE and stop: PAST_DUE kept every feature
+ * forever and ACTIVE never ended. PAST_DUE is still a grace period with the
+ * plan's features (hostile to strip them mid-day), but now one that ends.
+ * An ACTIVE subscription with no `currentPeriodEndsAt` (the platform owner's
+ * open-ended ACTIVE, NeuroFax's) is never touched.
  *
- * Tenant context: this is a system-level scan across all clinics. We use the
- * same pattern as `notifications-scheduler.ts` — wrap the Prisma calls in
- * `runWithTenant({ kind: "SYSTEM" }, …)` so the tenant-scope extension
- * doesn't try to filter by `clinicId`.
+ * Every step writes a SUBSCRIPTION_AUTO_TRANSITION audit row with the
+ * subscription as it was (`previous`), which is what the platform owner sees
+ * in /admin/audit and what «Восстановить» brings back after an automatic
+ * cancel. The clinic's ADMIN sees the state in the payment banner and the
+ * billing page.
  *
- * Idempotency: re-running the tick is safe. `selectExpiredTrials` only picks
- * rows still in `TRIAL`, so once flipped to `PAST_DUE` they're skipped.
+ * Tenant context: a system-level scan across all clinics under
+ * `runWithTenant({ kind: "SYSTEM" }, …)`.
  *
- * The pure helpers (`selectExpiredTrials`, `nextStatusFor`) are exported for
- * unit testing — the scheduler imports them too, so the production tick path
- * and the test path stay byte-identical.
+ * Idempotency and races: each write is conditional on the status (and grace
+ * date) it was planned from, so a second tick or a concurrent admin action
+ * makes it a no-op instead of a double step.
+ *
+ * `selectExpiredTrials` / `nextStatusFor` stay as the pure helpers they
+ * were, `nextStatusFor` now covering every state.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { getQueue } from "@/server/queue";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
+import {
+  nextAutoStep,
+  snapshotOf,
+  type SubscriptionState,
+} from "@/server/platform/subscription-lifecycle";
 
 export const QUEUE_NAME = "trial-expiry";
 export const JOB_NAME = "scan";
@@ -37,14 +49,30 @@ export const JOB_NAME = "scan";
 /**
  * Minimum row shape needed by the pure helpers. Mirrors
  * `Prisma.Subscription` but kept structural so unit tests don't have to
- * import the generated client.
+ * import the generated client. The lifecycle dates are optional: a row
+ * without them is treated as having none.
  */
 export type SubscriptionRow = {
   id: string;
   clinicId: string;
   status: "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
   trialEndsAt: Date | null;
+  planId?: string;
+  currentPeriodEndsAt?: Date | null;
+  graceEndsAt?: Date | null;
+  cancelledAt?: Date | null;
 };
+
+function stateOfRow(row: SubscriptionRow): SubscriptionState {
+  return {
+    status: row.status,
+    planId: row.planId ?? "",
+    trialEndsAt: row.trialEndsAt,
+    currentPeriodEndsAt: row.currentPeriodEndsAt ?? null,
+    graceEndsAt: row.graceEndsAt ?? null,
+    cancelledAt: row.cancelledAt ?? null,
+  };
+}
 
 /**
  * Pure helper. Given a list of subscriptions and a notion of "now", return
@@ -73,25 +101,19 @@ export function selectExpiredTrials<T extends SubscriptionRow>(
 }
 
 /**
- * Pure helper. Given a subscription row and "now", return the status it
- * should be in:
+ * Pure helper. The status a subscription should be in at `now`:
  *
- *   - TRIAL & expired                → "PAST_DUE" (grace period begins)
- *   - TRIAL & not yet expired        → "TRIAL"
- *   - PAST_DUE / ACTIVE / CANCELLED  → unchanged (idempotent — never
- *                                      double-flip, never resurrect)
- *
- * The function is a no-op for non-TRIAL rows; callers can invoke it on any
- * row without filtering first.
+ *   - TRIAL, trial over                  → "PAST_DUE"
+ *   - ACTIVE, paid period over           → "PAST_DUE"
+ *   - PAST_DUE, grace period over        → "CANCELLED"
+ *   - otherwise (incl. open-ended trial / ACTIVE, PAST_DUE with no grace
+ *     date yet, CANCELLED)               → unchanged
  */
 export function nextStatusFor(
   sub: SubscriptionRow,
   now: Date,
 ): SubscriptionRow["status"] {
-  if (sub.status !== "TRIAL") return sub.status;
-  if (!sub.trialEndsAt) return "TRIAL";
-  if (sub.trialEndsAt.getTime() < now.getTime()) return "PAST_DUE";
-  return "TRIAL";
+  return nextAutoStep(stateOfRow(sub), now)?.to ?? sub.status;
 }
 
 async function tick(): Promise<void> {
@@ -100,43 +122,73 @@ async function tick(): Promise<void> {
   // SYSTEM context bypasses the tenant-scope extension so we see every
   // clinic's subscription. The `Subscription` model is not branch-scoped
   // (it's keyed on `clinicId`), so no `branchId` plumbing is needed.
-  const expired = (await runWithTenant({ kind: "SYSTEM" }, () =>
+  const due = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.subscription.findMany({
-      where: { status: "TRIAL", trialEndsAt: { lt: now } },
+      where: {
+        OR: [
+          { status: "TRIAL", trialEndsAt: { lt: now } },
+          { status: "ACTIVE", currentPeriodEndsAt: { lt: now } },
+          { status: "PAST_DUE", graceEndsAt: null },
+          { status: "PAST_DUE", graceEndsAt: { lt: now } },
+        ],
+      },
       select: {
         id: true,
         clinicId: true,
+        planId: true,
         status: true,
         trialEndsAt: true,
+        currentPeriodEndsAt: true,
+        graceEndsAt: true,
+        cancelledAt: true,
       },
     }),
   )) as SubscriptionRow[];
 
-  if (expired.length === 0) {
-    console.info(`[trial-expiry] tick ok flipped=0`);
-    return;
-  }
-
-  let flipped = 0;
-  for (const row of expired) {
-    // Defense in depth: nextStatusFor is the source of truth for the
-    // transition. The DB `where` already filtered to expired-TRIAL rows,
-    // but nothing prevents another tick racing in between.
-    const next = nextStatusFor(row, now);
-    if (next === row.status) continue;
-    await runWithTenant({ kind: "SYSTEM" }, () =>
-      prisma.subscription.update({
-        where: { id: row.id },
-        data: { status: next },
+  let stepped = 0;
+  for (const row of due) {
+    const before = stateOfRow(row);
+    const step = nextAutoStep(before, now);
+    if (!step) continue;
+    const written = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.subscription.updateMany({
+        // Planned from this status and grace date; anything else since (a
+        // payment, an admin action, another tick) wins.
+        where: { id: row.id, status: row.status, graceEndsAt: before.graceEndsAt },
+        data: step.data,
       }),
     );
-    flipped += 1;
+    if (written.count === 0) continue;
+    stepped += 1;
+    try {
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.auditLog.create({
+          data: {
+            clinicId: row.clinicId,
+            actorRole: null,
+            actorLabel: "system:trial-expiry",
+            action: AUDIT_ACTION.SUBSCRIPTION_AUTO_TRANSITION,
+            entityType: "Subscription",
+            entityId: row.id,
+            meta: {
+              from: row.status,
+              to: step.to,
+              reason: step.reason,
+              previous: snapshotOf(before),
+              graceEndsAt: step.data.graceEndsAt?.toISOString() ?? null,
+            },
+          },
+        }),
+      );
+    } catch (e) {
+      console.warn(`[trial-expiry] audit failed sub=${row.id}`, e);
+    }
     console.info(
-      `[trial-expiry] flipped sub=${row.id} clinic=${row.clinicId} ${row.status} → ${next}`,
+      `[trial-expiry] sub=${row.id} clinic=${row.clinicId} ${row.status} → ${step.to} (${step.reason})`,
     );
   }
 
-  console.info(`[trial-expiry] tick ok flipped=${flipped}/${expired.length}`);
+  console.info(`[trial-expiry] tick ok stepped=${stepped}/${due.length}`);
 }
 
 /**

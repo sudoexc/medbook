@@ -32,6 +32,7 @@ import {
   type PhoneOwnerAnswer,
   type PhoneOwnerSummary,
 } from "@/components/appointments/phone-owner-prompt";
+import { readPlanLimit } from "@/lib/plan-limit";
 
 interface WalkinTicket {
   appointmentId: string;
@@ -64,6 +65,7 @@ export function WalkinTicketDialog({
   onIssued,
 }: WalkinTicketDialogProps) {
   const t = useTranslations("reception.walkin");
+  const tLimit = useTranslations("crmToasts.patient.planLimit");
   const qc = useQueryClient();
 
   const [patient, setPatient] = React.useState<PatientHit | null>(null);
@@ -133,6 +135,9 @@ export function WalkinTicketDialog({
         } | null;
         const owner = readPhoneOwnerMismatch(res.status, j);
         if (owner) throw new PhoneOwnerMismatchError(owner);
+        // The plan's limit, said in words (audit SEC-10).
+        const limit = readPlanLimit(res.status, j);
+        if (limit) throw new Error(tLimit(limit.quota, { max: limit.max }));
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       return (await res.json()) as WalkinTicket;

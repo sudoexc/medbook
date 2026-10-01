@@ -19,6 +19,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   clinicCreateData: null as Record<string, unknown> | null,
+  subscriptionCreateData: null as Record<string, unknown> | null,
   auditRows: [] as Array<Record<string, unknown>>,
 }));
 
@@ -55,6 +56,13 @@ vi.mock("@/lib/prisma", () => {
         ...data,
       })),
     },
+    // The subscription is created with the clinic (audit G5-03).
+    subscription: {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        state.subscriptionCreateData = data;
+        return { id: "sub_new", ...data };
+      }),
+    },
   };
   return {
     prisma: {
@@ -65,6 +73,13 @@ vi.mock("@/lib/prisma", () => {
       user: {
         // Owner-email pre-check → "free".
         findUnique: vi.fn(async () => null),
+      },
+      plan: {
+        findUnique: vi.fn(async ({ where }: { where: { slug: string } }) =>
+          where.slug === "pro" || where.slug === "basic"
+            ? { id: `plan_${where.slug}`, isActive: true }
+            : null,
+        ),
       },
       $transaction: vi.fn(
         async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
@@ -102,6 +117,7 @@ const BASE_BODY = {
 beforeEach(() => {
   vi.clearAllMocks();
   state.clinicCreateData = null;
+  state.subscriptionCreateData = null;
   state.auditRows.length = 0;
 });
 
@@ -169,6 +185,27 @@ describe("POST /api/platform/clinics with playbook", () => {
     expect(body.playbookApplied).toBe(false);
     expect(applyPlaybook).not.toHaveBeenCalled();
     expect(state.clinicCreateData?.onboardingPlaybook).toBeNull();
+  });
+
+  it("creates the clinic's subscription in the same transaction (audit G5-03)", async () => {
+    const t0 = Date.now();
+    const res = await POST(makeRequest({ ...BASE_BODY, planSlug: "basic", trialDays: 14 }));
+    expect(res.status).toBe(201);
+    expect(state.subscriptionCreateData).toMatchObject({
+      clinicId: "clinic_new",
+      planId: "plan_basic",
+      status: "TRIAL",
+    });
+    const ends = (state.subscriptionCreateData!.trialEndsAt as Date).getTime();
+    expect(Math.abs(ends - (t0 + 14 * 24 * 60 * 60 * 1000))).toBeLessThan(5_000);
+    expect(state.auditRows.some((r) => r.action === "SUBSCRIPTION_CREATED")).toBe(true);
+  });
+
+  it("defaults to a 30-day Pro trial and refuses an unknown plan", async () => {
+    await POST(makeRequest(BASE_BODY));
+    expect(state.subscriptionCreateData).toMatchObject({ planId: "plan_pro" });
+    const bad = await POST(makeRequest({ ...BASE_BODY, planSlug: "platinum" }));
+    expect(bad.status).toBe(400);
   });
 
   it("still creates the clinic when the playbook applier throws", async () => {

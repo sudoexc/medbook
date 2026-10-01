@@ -110,6 +110,8 @@ vi.mock("@/lib/prisma", () => ({
           return state.invoices.find((i) => i.id === where.id) ?? null;
         },
       ),
+      // No open invoice for the same upgrade unless a test adds one.
+      findFirst: vi.fn(async () => null),
       updateMany: vi.fn(
         async ({
           where,

@@ -14,10 +14,21 @@
  *   - TRIAL daysLeft >  7   → hidden  (early honeymoon, no banner spam)
  *   - TRIAL daysLeft 7..3   → "info"  (yellow / neutral warning)
  *   - TRIAL daysLeft 2..0   → "warning" (red, last 48h-ish)
- *   - PAST_DUE              → "expired" (red, grace-period messaging)
+ *   - PAST_DUE              → "expired" (red, until `graceEndsAt`, after
+ *                              which the scheduler cancels; audit G5-02)
  *   - ACTIVE / CANCELLED    → hidden
  *   - null subscription     → hidden
+ *
+ * Who sees it: only the people who can act on it (`canSeePaymentBanner`),
+ * the clinic's ADMIN and an impersonating SUPER_ADMIN. Reception, nurses,
+ * doctors and the call center had a red «оплатите подписку» on every page
+ * they could do nothing about.
  */
+
+/** The clinic's payment / trial banner is for whoever manages billing. */
+export function canSeePaymentBanner(role: string | null | undefined): boolean {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}
 
 /**
  * Compact, render-friendly snapshot of the current clinic's subscription.
@@ -32,6 +43,8 @@ export type CurrentSubscription = {
   status: "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
   trialEndsAt: Date | null;
   currentPeriodEndsAt: Date | null;
+  /** When the PAST_DUE grace period ends (audit G5-02). */
+  graceEndsAt?: Date | null;
   planSlug: string;
   /** Calendar-days remaining in the trial (rounded up, clamped at 0). `null` when status !== "TRIAL". */
   daysLeft: number | null;
@@ -80,7 +93,9 @@ export function computeBannerState(
     return { kind: "hidden" };
   }
   if (sub.status === "PAST_DUE") {
-    return { kind: "expired", gracePeriodEndsAt: sub.currentPeriodEndsAt };
+    // The grace period's own end, not the paid period's (which is already
+    // over when a subscription is PAST_DUE).
+    return { kind: "expired", gracePeriodEndsAt: sub.graceEndsAt ?? null };
   }
   // status === "TRIAL"
   const daysLeft = computeTrialDaysLeft(sub.trialEndsAt, now);

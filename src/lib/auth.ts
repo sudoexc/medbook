@@ -49,6 +49,7 @@ import {
 } from "@/server/auth/login-sources";
 import { verifyPasswordConstantTime } from "@/server/auth/password";
 import { realClientIp } from "./client-ip";
+import { clinicLocksOut } from "@/server/auth/clinic-access";
 import { isUserActivityRequest } from "./user-activity";
 
 const APP_ROLES: ReadonlySet<Role> = new Set([
@@ -127,7 +128,10 @@ async function checkStaffCredentials(
   // User is in MODELS_WITHOUT_TENANT so the extension will not try
   // to inject a clinicId — and we're outside `runWithTenant` anyway.
   const user = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.user.findUnique({ where: { email: input.email } }),
+    prisma.user.findUnique({
+      where: { email: input.email },
+      include: { clinic: { select: { active: true } } },
+    }),
   );
   // One bcrypt comparison on every path, so an unknown or inactive
   // login costs the same time as a wrong password.
@@ -136,6 +140,16 @@ async function checkStaffCredentials(
     user?.passwordHash,
   );
   if (!user || !user.active || !valid) return null;
+  // A switched-off clinic's staff cannot sign in (audit SEC-10).
+  if (
+    clinicLocksOut({
+      role: user.role,
+      clinicId: user.clinicId,
+      clinicActive: user.clinic?.active,
+    })
+  ) {
+    return null;
+  }
 
   // 2FA gate. When the user has enrolled, we require either a
   // current TOTP code or a recovery code on the same submit. The

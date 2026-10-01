@@ -310,17 +310,15 @@ describe("GET /api/admin/clinics/[id]/subscription", () => {
     expect(body.subscription.status).toBe("TRIAL");
   });
 
-  it("auto-creates a TRIAL on `pro` if no subscription exists", async () => {
+  it("reports a missing subscription and creates nothing (G5-03)", async () => {
     state.subs = []; // wipe
     const GET = await loadGet();
     const res = await GET(req("https://x/api/admin/clinics/c2/subscription"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      subscription: { status: string; plan: { slug: string }; trialEndsAt: string | null };
-    };
-    expect(body.subscription.status).toBe("TRIAL");
-    expect(body.subscription.plan.slug).toBe("pro");
-    expect(body.subscription.trialEndsAt).not.toBeNull();
+    const body = (await res.json()) as { subscription: unknown };
+    expect(body.subscription).toBeNull();
+    // Opening the page used to start a 30-day Pro trial.
+    expect(state.subs).toHaveLength(0);
   });
 
   it("returns 404 for unknown clinic", async () => {

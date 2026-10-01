@@ -1,71 +1,67 @@
 /**
- * POST /api/webhooks/billing/click — Click webhook receiver (LogOnly).
+ * POST /api/webhooks/billing/click — Click SHOP-API endpoint (Prepare /
+ * Complete).
  *
- * Verification lives in `clickVerifyWebhook`; the secret is read from
- * `CLICK_SECRET_KEY`. Missing secret in dev → stub-accept; in prod a
- * real merchant configuration MUST set the env var.
+ * Not connected (audit AN-13, `online-payments.ts`). The old handler read
+ * the body as JSON while Click posts `application/x-www-form-urlencoded`,
+ * signed the Complete call without `merchant_prepare_id`, answered without
+ * `merchant_prepare_id` / `merchant_confirm_id`, and stub-accepted unsigned
+ * calls outside production. Prepare/Complete needs a prepare id we issue and
+ * check plus merchant credentials we do not have, so the endpoint now reads
+ * Click's form body, answers in Click's response shape with an error, and
+ * never marks an invoice paid. The pay page does not send anyone to Click
+ * meanwhile.
  *
- * On `ok: true` and `action === 1` (Click's "complete" notification),
- * we mark the invoice PAID via `markInvoicePaid`. For `action === 0`
- * (prepare) we just log — the prepare/complete protocol with click is
- * beyond the Wave 3 stub.
+ * The signature check still runs when `CLICK_SECRET_KEY` is set, so the log
+ * tells an authentic Click call from a forged one.
  */
-import { markInvoicePaid } from "@/server/billing/invoice";
-import { clickVerifyWebhook } from "@/server/billing/payments/click";
+import {
+  clickVerifyWebhook,
+  readClickBody,
+} from "@/server/billing/payments/click";
 
 export const runtime = "nodejs";
 
+/** Click's error codes: -1 sign check failed, -8 error in request. */
+const SIGN_CHECK_FAILED = -1;
+const NOT_CONNECTED = -8;
+
 export async function POST(request: Request): Promise<Response> {
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
+  const payload = await readClickBody(request);
+  if (!payload) {
     return Response.json(
-      { error: -32700, error_note: "InvalidJson" },
-      { status: 400 },
+      { error: NOT_CONNECTED, error_note: "Bad request" },
+      { status: 200 },
     );
   }
+  const echo = {
+    click_trans_id: payload.click_trans_id ?? null,
+    merchant_trans_id: payload.merchant_trans_id ?? null,
+  };
 
-  const secret = process.env.CLICK_SECRET_KEY;
-  // Fail closed in production: without the shared secret the verifier degrades
-  // to stub-accept, which would let anyone POST a forged "complete" and mark
-  // invoices PAID for free. Dev/staging keep the stub so simulate-pay works.
-  if (!secret && process.env.NODE_ENV === "production") {
-    console.error("[click webhook] CLICK_SECRET_KEY unset in production — refusing");
-    return Response.json(
-      { error: -1, error_note: "WebhookNotConfigured" },
-      { status: 503 },
-    );
-  }
-  const result = await clickVerifyWebhook(payload, secret);
+  const result = await clickVerifyWebhook(payload, process.env.CLICK_SECRET_KEY);
   if (!result.ok) {
-    console.warn("[click webhook] verify failed:", result.reason);
+    console.warn("[click webhook] refused:", result.reason);
     return Response.json(
-      { error: -1, error_note: result.reason },
-      { status: 400 },
+      {
+        ...echo,
+        error: result.reason === "not_configured" ? NOT_CONNECTED : SIGN_CHECK_FAILED,
+        error_note:
+          result.reason === "not_configured"
+            ? "Click payments are not connected"
+            : "SIGN CHECK FAILED",
+      },
+      { status: 200 },
     );
   }
 
-  // Action coercion — Click sends a string or number depending on the
-  // documented endpoint version. Treat "1" / 1 as "complete".
-  const action = (payload as Record<string, unknown>).action;
-  const isComplete = String(action) === "1";
-
-  if (isComplete && result.invoiceId) {
-    try {
-      await markInvoicePaid(
-        result.invoiceId,
-        result.providerRef ?? `click-${Date.now()}`,
-        { expectedAmountTiins: result.amountTiins },
-      );
-    } catch (err) {
-      console.error("[click webhook] markInvoicePaid threw:", err);
-      return Response.json(
-        { error: -2, error_note: "MarkPaidFailed" },
-        { status: 500 },
-      );
-    }
-  }
-
-  return Response.json({ error: 0, error_note: "OK", stub: result.stub === true });
+  console.warn(
+    `[click webhook] authentic action=${String(payload.action)} for invoice=${result.invoiceId ?? "?"}, ` +
+      "but Prepare/Complete is not implemented: answered not connected",
+  );
+  // An error at Prepare makes Click cancel the payment on its side.
+  return Response.json(
+    { ...echo, error: NOT_CONNECTED, error_note: "Click payments are not connected" },
+    { status: 200 },
+  );
 }

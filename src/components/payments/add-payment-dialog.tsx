@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { sumToTiyin, tiyinToSum } from "@/lib/money-input";
+import { parseSumInput, tiyinToSum } from "@/lib/money-input";
+import { formatMoney, type Locale } from "@/lib/format";
 import { tashkentPartsOf } from "@/lib/tashkent-time";
 import {
   defaultPaymentVisitId,
@@ -91,6 +92,7 @@ export function AddPaymentDialog({
   const t = useTranslations("patientCard.payments.dialog");
   const tMethod = useTranslations("patientCard.payments.method");
   const tToast = useTranslations("crmToasts.patient");
+  const locale = useLocale() as Locale;
   const qc = useQueryClient();
 
   const options = React.useMemo(
@@ -131,8 +133,16 @@ export function AddPaymentDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Typed in сум; the grouping spaces of a pasted «150 000» are fine.
-  const parsed = sumToTiyin(Number(amount.replace(/[\s\u00a0\u202f]/g, "")));
+  // Typed in сум; «150 000», «150.000» and «150,000» all mean 150 000
+  // (audit AN-23). Anything else is an error under the field, not a guess.
+  const amountInput = parseSumInput(amount);
+  const parsed = amountInput.ok ? amountInput.tiyin : 0;
+  const amountError =
+    !amountInput.ok && amountInput.reason !== "empty"
+      ? amountInput.reason === "too_large"
+        ? t("amountTooLarge")
+        : t("amountInvalid")
+      : null;
 
   const mutation = useMutation<unknown, Error, void>({
     mutationFn: async () => {
@@ -238,8 +248,20 @@ export function AddPaymentDialog({
                 setAmountTouched(true);
               }}
               placeholder="150 000"
+              aria-invalid={amountError ? true : undefined}
             />
-            <span className="text-xs text-muted-foreground">{t("hint")}</span>
+            {amountError ? (
+              <span className="text-xs text-destructive">{amountError}</span>
+            ) : parsed > 0 ? (
+              // What will actually be saved, before staff press «Добавить».
+              <span className="text-xs text-muted-foreground">
+                {t("amountPreview", {
+                  amount: formatMoney(parsed, "UZS", locale),
+                })}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t("hint")}</span>
+            )}
           </div>
           <div className="grid gap-1">
             <Label htmlFor="pay-method">{t("method")}</Label>

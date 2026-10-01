@@ -17,6 +17,7 @@ import { bookAppointment } from "@/server/appointments/book";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { isOnClinicDay } from "@/lib/appointment-transitions";
 import { findStandingAutoNoShows } from "@/server/appointments/auto-no-show";
+import { ensureQuotaForApi } from "@/server/billing/plan-limits";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -218,6 +219,13 @@ export const POST = createApiHandler(
 
     const actorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST";
     const actorUserId = ctx.userId || null;
+
+    // The plan's monthly booking limit (audit SEC-10).
+    const overLimit = await ensureQuotaForApi(
+      ctx.clinicId,
+      "maxAppointmentsPerMonth",
+    );
+    if (overLimit) return overLimit;
 
     const result = await bookAppointment({
       clinicId: ctx.clinicId,

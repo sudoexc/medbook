@@ -15,9 +15,10 @@
  *   - ACTIVE / CANCELLED        → hidden
  *   - null subscription         → hidden
  *
- * SUPER_ADMIN sees a deep-link to `/admin/clinics/[id]/billing` so they can
- * extend the trial without leaving the CRM. Regular ADMIN/RECEPTIONIST/etc.
- * have no admin access — the banner shows the message but no action link.
+ * Only the clinic's ADMIN and an impersonating SUPER_ADMIN see it
+ * (`canSeePaymentBanner`, audit G5-02). SUPER_ADMIN gets a deep-link to
+ * `/admin/clinics/[id]/billing` so they can extend the trial without leaving
+ * the CRM; ADMIN gets the message.
  *
  * i18n contract: `crmShell.trialBanner.*` keys. Both ru.json and uz.json
  * carry the same shape — ICU plural for `daysLeft.body` so RU's "осталось 1
@@ -31,6 +32,7 @@ import { AlertTriangleIcon, ClockIcon } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import {
+  canSeePaymentBanner,
   computeBannerState,
   type CurrentSubscription,
 } from "@/components/layout/trial-banner-state";
@@ -49,6 +51,7 @@ export async function TrialBanner({
   const locale = await getLocale();
   const session = await auth();
   const role = session?.user?.role ?? null;
+  if (!canSeePaymentBanner(role)) return null;
   const sessionClinicId = session?.user?.clinicId ?? null;
   const isSuperAdmin = role === "SUPER_ADMIN";
 
@@ -79,7 +82,7 @@ export async function TrialBanner({
     body = (
       <span>
         <strong className="font-semibold">{t("expired.title")}</strong>
-        {" — "}
+        {". "}
         {graceUntil
           ? t("expired.bodyWithDate", { date: graceUntil })
           : t("expired.body")}
@@ -92,7 +95,7 @@ export async function TrialBanner({
     body = (
       <span>
         <strong className="font-semibold">{t("daysLeft.title")}</strong>
-        {" — "}
+        {": "}
         {t("daysLeft.body", { count: state.daysLeft })}
       </span>
     );
@@ -104,7 +107,7 @@ export async function TrialBanner({
     body = (
       <span>
         <strong className="font-semibold">{t("daysLeft.title")}</strong>
-        {" — "}
+        {": "}
         {t("daysLeft.body", { count: state.daysLeft })}
       </span>
     );

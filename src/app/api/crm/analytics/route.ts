@@ -62,6 +62,12 @@ import { averageLtv } from "@/server/analytics/ltv-summary";
 import { loadClinicLoad } from "@/server/analytics/clinic-load";
 import { resolveAnalyticsScope } from "@/server/analytics/doctor-scope";
 import { paymentScopeWhere } from "@/server/analytics/payment-scope";
+import {
+  collectedWhere,
+  refundedWhere,
+  revenueMoves,
+  sumNetRevenue,
+} from "@/server/analytics/net-revenue";
 import { paymentsRecordedSince } from "@/server/patient/finance";
 
 export { resolveAnalyticsRange };
@@ -94,12 +100,11 @@ export const GET = createApiListHandler(
     // ----- 1. Revenue daily -------------------------------------------------
     // `Payment` is not branch-scoped: with a branch selected, narrow it
     // through the visit like the appointment counts are (audit AN-20).
+    // Net of refunds (AN-11): a payment counts on the day it was taken, its
+    // refund is subtracted on the day it was given back.
+    const scopeWhere = paymentScopeWhere({ doctorId, branchId: ctx.branchId });
     const payments = await prisma.payment.findMany({
-      where: {
-        status: "PAID",
-        paidAt: { gte: from, lt: to },
-        ...paymentScopeWhere({ doctorId, branchId: ctx.branchId }),
-      },
+      where: { ...collectedWhere({ from, to }), ...scopeWhere },
       select: {
         amount: true,
         paidAt: true,
@@ -109,13 +114,20 @@ export const GET = createApiListHandler(
         },
       },
     });
+    const refunds = await prisma.payment.findMany({
+      where: { ...refundedWhere({ from, to }), ...scopeWhere },
+      select: {
+        refundedAmount: true,
+        refundedAt: true,
+        appointment: { select: { doctorId: true } },
+      },
+    });
 
     const dailyMap = new Map<string, number>();
     for (const d of eachDay(from, to)) dailyMap.set(d, 0);
-    for (const p of payments) {
-      if (!p.paidAt) continue;
-      const k = ymdKey(p.paidAt);
-      dailyMap.set(k, (dailyMap.get(k) ?? 0) + p.amount);
+    for (const m of revenueMoves(payments, refunds)) {
+      const k = ymdKey(m.at);
+      dailyMap.set(k, (dailyMap.get(k) ?? 0) + m.amount);
     }
     const revenueDaily = [...dailyMap.entries()].map(([date, amount]) => ({
       date,
@@ -169,14 +181,7 @@ export const GET = createApiListHandler(
     // Totals only, for the chips: revenue, visits and no-shows.
     const prev = previousWindow(from, to);
     const [prevPayments, prevByStatus, clinicLoad] = await Promise.all([
-      prisma.payment.aggregate({
-        where: {
-          status: "PAID",
-          paidAt: { gte: prev.from, lt: prev.to },
-          ...paymentScopeWhere({ doctorId, branchId: ctx.branchId }),
-        },
-        _sum: { amount: true },
-      }),
+      sumNetRevenue(prisma, { from: prev.from, to: prev.to }, scopeWhere),
       prisma.appointment.groupBy({
         by: ["status"],
         where: {
@@ -202,7 +207,7 @@ export const GET = createApiListHandler(
       revenuePct: revenueDeltaPct({
         trackedSince,
         current: { amount: revenueTotal, payments: payments.length },
-        previous: { amount: prevPayments._sum.amount ?? 0, from: prev.from },
+        previous: { amount: prevPayments, from: prev.from },
       }),
       noShowPp: rateDeltaPp(
         { part: noShowTotal, whole: resolvedTotal },
@@ -225,6 +230,11 @@ export const GET = createApiListHandler(
       if (!did) continue;
       revenueByDoctor.set(did, (revenueByDoctor.get(did) ?? 0) + p.amount);
       countByDoctor.set(did, (countByDoctor.get(did) ?? 0) + 1);
+    }
+    for (const r of refunds) {
+      const did = r.appointment?.doctorId;
+      if (!did || !r.refundedAt || !r.refundedAmount) continue;
+      revenueByDoctor.set(did, (revenueByDoctor.get(did) ?? 0) - r.refundedAmount);
     }
     const topDoctorIds = [...revenueByDoctor.entries()]
       .sort((a, b) => b[1] - a[1])

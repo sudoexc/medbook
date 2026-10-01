@@ -9,7 +9,11 @@
  *     (no proration in the MVP — the gap between an inflight period
  *     and a freshly-billed full month is small enough not to warrant
  *     the complexity at this stage). One audit row is emitted with
- *     `INVOICE_CREATED`.
+ *     `INVOICE_CREATED`. An unpaid invoice for the same plan that is not
+ *     overdue yet is handed back instead of a new one, so every click on
+ *     «Перейти на …» no longer leaves another DRAFT behind (audit AN-13).
+ *     Numbers are per clinic (AN-12); a number taken by a concurrent
+ *     invoice is re-read and retried.
  *
  *   - `markInvoicePaid(invoiceId, paymentRef, opts)` flips the row to
  *     PAID, sets `paidAt` + `paymentRef`, and swaps the subscription's
@@ -18,7 +22,10 @@
  *     can't grant a newer queued plan). `opts.expectedAmountTiins`, when
  *     supplied by the webhook, must equal the invoice amount or the call
  *     throws. The status flip is an atomic conditional updateMany, so the
- *     function is idempotent and race-safe under webhook redelivery.
+ *     function is idempotent and race-safe under webhook redelivery. The
+ *     subscription becomes ACTIVE until the end of the paid period
+ *     (`currentPeriodEndsAt`), after which the trial-expiry scheduler moves
+ *     it to PAST_DUE (audit G5-02).
  *
  * Both helpers run inside `runWithTenant({ kind: "SYSTEM" })` so the
  * tenant-scope Prisma extension does not double-filter — the caller is
@@ -28,10 +35,29 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { tashkentComponents } from "@/lib/booking-validation";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const PERIOD_DAYS = 30;
 const DUE_DAYS = 7;
+/** Attempts at a fresh number when a concurrent invoice took ours. */
+const NUMBER_ATTEMPTS = 3;
+
+function isUniqueViolation(e: unknown): boolean {
+  return (e as { code?: string } | null)?.code === "P2002";
+}
+
+/**
+ * Where the paid period ends: the invoice's own period, or a full period
+ * from the payment when the invoice is paid after its period already ran
+ * out (a late payment still buys a month, not a subscription that is
+ * overdue the moment it is paid).
+ */
+export function paidPeriodEnd(invoicePeriodEnd: Date, now: Date): Date {
+  return invoicePeriodEnd.getTime() > now.getTime()
+    ? invoicePeriodEnd
+    : new Date(now.getTime() + PERIOD_DAYS * ONE_DAY_MS);
+}
 
 export interface CreateUpgradeInvoiceOpts {
   clinicId: string;
@@ -85,24 +111,62 @@ export async function createUpgradeInvoice(
     }
 
     const amountTiins = priceMonthToTiins(toPlan.priceMonth);
-    const number = await nextInvoiceNumber(opts.clinicId, now.getUTCFullYear());
 
-    const invoice = await prisma.invoice.create({
-      data: {
+    // The same upgrade still waiting for payment: hand it back.
+    const open = await prisma.invoice.findFirst({
+      where: {
         clinicId: opts.clinicId,
-        number,
-        status: "DRAFT",
-        amountTiins,
-        currency: toPlan.currency,
-        // Bind the destination plan to the invoice itself — the PAID handler
-        // upgrades to this, regardless of any newer pending upgrade.
         targetPlanId: opts.toPlanId,
-        periodStart,
-        periodEnd,
-        dueAt,
+        status: { in: ["DRAFT", "ISSUED"] },
+        amountTiins,
+        dueAt: { gt: now },
       },
+      orderBy: { createdAt: "desc" },
       select: { id: true, number: true, amountTiins: true },
     });
+    if (open) {
+      await prisma.subscription.update({
+        where: { clinicId: opts.clinicId },
+        data: { pendingPlanId: opts.toPlanId },
+      });
+      return {
+        invoiceId: open.id,
+        number: open.number,
+        amountTiins: open.amountTiins,
+      };
+    }
+
+    // The clinic's (Tashkent) year: on 1 January before 05:00 the UTC year
+    // is still the old one.
+    const year = Number(tashkentComponents(now).date.slice(0, 4));
+    let invoice: { id: string; number: string; amountTiins: bigint } | null =
+      null;
+    for (let attempt = 1; invoice === null; attempt += 1) {
+      const number = await nextInvoiceNumber(opts.clinicId, year);
+      try {
+        invoice = await prisma.invoice.create({
+          data: {
+            clinicId: opts.clinicId,
+            number,
+            status: "DRAFT",
+            amountTiins,
+            currency: toPlan.currency,
+            // Bind the destination plan to the invoice itself — the PAID
+            // handler upgrades to this, regardless of any newer pending
+            // upgrade.
+            targetPlanId: opts.toPlanId,
+            periodStart,
+            periodEnd,
+            dueAt,
+          },
+          select: { id: true, number: true, amountTiins: true },
+        });
+      } catch (e) {
+        // (clinicId, number) is unique: a concurrent invoice took this
+        // number between the read and the insert. Read the next one.
+        if (!isUniqueViolation(e) || attempt >= NUMBER_ATTEMPTS) throw e;
+      }
+    }
 
     // Stamp pendingPlanId so the billing UI shows "upgrade pending
     // payment". The actual planId swap happens in `markInvoicePaid`.
@@ -166,6 +230,7 @@ export async function markInvoicePaid(
         number: true,
         amountTiins: true,
         targetPlanId: true,
+        periodEnd: true,
       },
     });
     if (!inv) {
@@ -209,15 +274,29 @@ export async function markInvoicePaid(
     });
     const previousPlanId = sub?.planId ?? null;
     let newPlanId = previousPlanId;
-    if (sub && inv.targetPlanId) {
-      newPlanId = inv.targetPlanId;
+    // A paid invoice buys its period (audit G5-02): ACTIVE until then, the
+    // grace clock of a PAST_DUE subscription stops.
+    const currentPeriodEndsAt = inv.periodEnd
+      ? paidPeriodEnd(inv.periodEnd, now)
+      : null;
+    if (sub) {
+      if (inv.targetPlanId) newPlanId = inv.targetPlanId;
       await prisma.subscription.update({
         where: { clinicId: inv.clinicId },
         data: {
-          planId: inv.targetPlanId,
-          pendingPlanId:
-            sub.pendingPlanId === inv.targetPlanId ? null : sub.pendingPlanId,
+          ...(inv.targetPlanId
+            ? {
+                planId: inv.targetPlanId,
+                pendingPlanId:
+                  sub.pendingPlanId === inv.targetPlanId
+                    ? null
+                    : sub.pendingPlanId,
+              }
+            : {}),
           status: "ACTIVE",
+          graceEndsAt: null,
+          cancelledAt: null,
+          ...(currentPeriodEndsAt ? { currentPeriodEndsAt } : {}),
         },
       });
     }
@@ -235,6 +314,7 @@ export async function markInvoicePaid(
             paymentRef,
             previousPlanId,
             newPlanId,
+            currentPeriodEndsAt: currentPeriodEndsAt?.toISOString() ?? null,
           },
         },
       });

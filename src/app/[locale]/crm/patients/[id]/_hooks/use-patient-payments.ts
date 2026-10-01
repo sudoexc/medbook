@@ -16,6 +16,9 @@ export type PatientPayment = {
     | "UZUM"
     | "OTHER";
   status: "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED";
+  /** Тийин given back; 0 when nothing was (audit AN-11). */
+  refundedAmount: number;
+  refundedAt: string | null;
   paidAt: string | null;
   createdAt: string;
   appointmentId: string | null;

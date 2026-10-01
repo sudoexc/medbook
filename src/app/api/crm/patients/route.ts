@@ -37,6 +37,7 @@ import {
   decidePhoneOwner,
   type PhoneOwnerDecision,
 } from "@/server/patient/phone-owner";
+import { ensureQuotaForApi } from "@/server/billing/plan-limits";
 
 /**
  * The create body plus staff's answer to «is this the number's owner?»
@@ -198,6 +199,10 @@ export const POST = createApiHandler(
     }
     if (decision.kind !== "create") return existingCardConflict(decision);
     const { asContact } = decision;
+
+    // A new card on a plan whose patient limit is used up (audit SEC-10).
+    const overLimit = await ensureQuotaForApi(clinicId, "maxPatients");
+    if (overLimit) return overLimit;
 
     // Allocate the per-clinic patient number and create the row inside a
     // transaction so a unique-violation on the resulting (clinicId,

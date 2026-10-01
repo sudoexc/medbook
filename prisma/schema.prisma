@@ -594,6 +594,10 @@ model Subscription {
   status              SubscriptionStatus @default(TRIAL)
   trialEndsAt         DateTime?
   currentPeriodEndsAt DateTime?
+  // When the PAST_DUE grace period runs out (audit G5-02). Stamped when the
+  // subscription becomes PAST_DUE; the trial-expiry scheduler cancels it
+  // after this. Null outside PAST_DUE.
+  graceEndsAt         DateTime?
   cancelledAt         DateTime?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -627,7 +631,9 @@ model Invoice {
   id           String        @id @default(cuid())
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  number       String        @unique
+  // Unique per clinic, not globally: each clinic numbers its own invoices
+  // from INV-YYYY-0001 (audit AN-12).
+  number       String
   status       InvoiceStatus @default(DRAFT)
   amountTiins  BigInt
   currency     Currency      @default(UZS)
@@ -645,6 +651,7 @@ model Invoice {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  @@unique([clinicId, number])
   @@index([clinicId, createdAt])
   @@index([status])
 }
@@ -2423,6 +2430,11 @@ model Payment {
   receiptNumber  String?
   receiptUrl     String?
   refundedAmount Int           @default(0)
+  /// When the refund was given back (audit AN-11). Revenue is counted on
+  /// `paidAt` and the refund is subtracted on this day, so a refund lowers
+  /// the day it happened and never rewrites the day the money came in. One
+  /// refund per payment: the date of a second one would have nowhere to go.
+  refundedAt     DateTime?
   paidAt         DateTime?
   externalRef    String?
   /// Client-supplied idempotency key. Null = retries can dedupe themselves
@@ -2439,6 +2451,7 @@ model Payment {
   @@index([clinicId, appointmentId])
   @@index([clinicId, patientId])
   @@index([clinicId, createdAt])
+  @@index([clinicId, refundedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

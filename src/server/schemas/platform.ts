@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import { PLAYBOOK_SLUGS } from "@/server/onboarding/playbooks";
+import { DEFAULT_TRIAL_DAYS } from "@/server/platform/subscription-lifecycle";
 
 const CurrencyEnum = z.enum(["UZS", "USD"]);
 const RoleEnum = z.enum([
@@ -74,6 +75,12 @@ export const CreateClinicSchema = z.object({
   // this, only the /signup path got the playbook and a Path-A clinic needed
   // a manual SSH seed run for the reminder cascade to exist at all).
   playbook: z.enum(PLAYBOOK_SLUGS).nullish(),
+  // The subscription is created with the clinic (audit G5-03): which plan
+  // the trial runs on and for how long. Before, a console-made clinic had no
+  // subscription (Basic features) until someone opened its billing page,
+  // which then silently started a 30-day Pro trial from that day.
+  planSlug: z.string().min(1).max(60).default("pro"),
+  trialDays: z.number().int().min(1).max(365).default(DEFAULT_TRIAL_DAYS),
 });
 export type CreateClinic = z.infer<typeof CreateClinicSchema>;
 
@@ -190,6 +197,16 @@ export const PatchSubscriptionSchema = z.object({
   cancelledAt: z.coerce.date().nullish(),
 });
 export type PatchSubscription = z.infer<typeof PatchSubscriptionSchema>;
+
+/**
+ * Explicit subscription creation (audit G5-03): with a new clinic, or by
+ * the platform owner for a clinic that has none. A TRIAL on `planId` for
+ * `trialDays` days.
+ */
+export const CreateSubscriptionSchema = z.object({
+  planId: z.string().min(1).max(100),
+  trialDays: z.number().int().min(1).max(365),
+});
 
 /**
  * Maps each UI "family" to the set of Prisma ProviderKind values it can store.

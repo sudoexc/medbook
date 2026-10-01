@@ -54,6 +54,7 @@ import {
   toDateKey,
 } from "@/lib/revenue/loss-aggregation";
 import { paymentsRecordedSince } from "@/server/patient/finance";
+import { sumNetRevenue } from "@/server/analytics/net-revenue";
 
 export interface LossDoctorRow {
   doctorId: string;
@@ -183,15 +184,15 @@ export async function loadLossDashboard(
   // pass for the clinic's revenue, so there is no estimate.
   let averageVisitValueUzs: number | null = null;
   if (trackedSince && trackedSince.getTime() <= lapseCutoff.getTime()) {
-    const recentPayments = await prisma.payment.findMany({
-      where: {
-        clinicId,
-        status: "PAID",
-        paidAt: { gte: lapseCutoff, lte: now },
-      },
-      select: { amount: true },
-    });
-    const totalPaymentsUzs = recentPayments.reduce((a, p) => a + p.amount, 0);
+    // Net of the refunds given back in the same window (audit AN-11).
+    const totalPaymentsUzs = Math.max(
+      0,
+      await sumNetRevenue(
+        prisma,
+        { from: lapseCutoff, to: new Date(now.getTime() + 1) },
+        { clinicId },
+      ),
+    );
     const value = estimateAverageVisitValue({ totalPaymentsUzs, activePatientCount });
     averageVisitValueUzs = value > 0 ? value : null;
   }

@@ -2,7 +2,8 @@
  * /api/crm/dashboard — reception-dash KPIs. See docs/TZ.md §6.1.
  *
  * Returns { today: { booked, inProgress, completed, revenue }, week, month }.
- * Revenue is sum of PAID payments in clinic currency (UZS tiyin).
+ * Revenue is the payments taken in clinic currency (UZS tiyin) net of the
+ * refunds given back in the window (`sumNetRevenue`, audit AN-11).
  *
  * Revenue is finance (audit AN-20): only the roles that may open the
  * financial dashboard get it (`canSeeClinicRevenue`); everyone else gets
@@ -21,6 +22,7 @@ import {
 } from "@/lib/booking-validation";
 import { canSeeClinicRevenue } from "@/lib/reception-kpi";
 import { paymentScopeWhere } from "@/server/analytics/payment-scope";
+import { sumNetRevenue } from "@/server/analytics/net-revenue";
 import { getClinicAvgVisitTiins } from "@/server/revenue/avg-visit";
 import { ok } from "@/server/http";
 
@@ -67,15 +69,14 @@ async function kpisFor(
       where: { date: { gte: fromDate, lt: toDate }, status: "CANCELLED" },
     }),
     revenue
-      ? prisma.payment.aggregate({
-          where: {
-            status: "PAID",
-            paidAt: { gte: fromDate, lt: toDate },
+      ? sumNetRevenue(
+          prisma,
+          { from: fromDate, to: toDate },
+          {
             currency: "UZS",
             ...paymentScopeWhere({ branchId: revenue.branchId }),
           },
-          _sum: { amount: true },
-        })
+        )
       : null,
   ]);
   return {
@@ -83,7 +84,7 @@ async function kpisFor(
     inProgress,
     completed,
     cancelled,
-    revenue: revenueAgg ? (revenueAgg._sum.amount ?? 0) : null,
+    revenue: revenueAgg,
   };
 }
 

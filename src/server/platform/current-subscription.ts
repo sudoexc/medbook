@@ -60,6 +60,7 @@ export async function getCurrentSubscription(): Promise<CurrentSubscription | nu
     status: sub.status,
     trialEndsAt: sub.trialEndsAt,
     currentPeriodEndsAt: sub.currentPeriodEndsAt,
+    graceEndsAt: sub.graceEndsAt,
     planSlug: sub.plan.slug,
     daysLeft,
   };

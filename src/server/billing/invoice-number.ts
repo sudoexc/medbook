@@ -6,11 +6,10 @@
  * 9999 invoices/clinic/year — comfortably above the realistic ceiling).
  *
  * The sequencer is per-clinic per-year so two clinics can both have
- * `INV-2026-0001` (the counter does NOT collide across tenants).
- * Uniqueness is still enforced globally by the `Invoice.number` UNIQUE
- * index in Postgres — the format we emit is unique-by-construction
- * (each tenant's series is monotonically increasing) but the DB-level
- * constraint is the canonical guard against accidental duplicates.
+ * `INV-2026-0001` (the counter does NOT collide across tenants), and the
+ * database agrees: the UNIQUE index is `(clinicId, number)` (audit AN-12).
+ * It used to be `number` alone, so the second clinic's first invoice
+ * collided with the first clinic's and every upgrade failed with a 500.
  *
  * `nextInvoiceNumber` runs a `findFirst` on `Invoice` filtered by
  * `clinicId` and the year prefix, ordered by number desc. Parsing the
@@ -51,9 +50,8 @@ export function parseInvoiceCounter(number: string): number | null {
  *
  * Race condition: two concurrent callers could both observe the same
  * "highest" row and emit the same number. The race is bounded by the
- * `Invoice.number` UNIQUE index — the second writer will hit a P2002
- * and the caller can retry. We don't paper over it here because invoice
- * issuance is low-throughput (~minutes between rows in practice).
+ * `(clinicId, number)` UNIQUE index: the second writer hits a P2002 and
+ * `createUpgradeInvoice` asks for the next number again.
  */
 export async function nextInvoiceNumber(
   clinicId: string,

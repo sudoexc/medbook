@@ -44,6 +44,7 @@ import {
 } from "@/server/auth/login-throttle";
 import { isKnownLoginSource } from "@/server/auth/login-sources";
 import { realClientIp } from "@/lib/client-ip";
+import { clinicLocksOut } from "@/server/auth/clinic-access";
 
 const Schema = z.object({
   email: z.string().email().max(200),
@@ -84,6 +85,9 @@ export async function POST(request: Request): Promise<Response> {
           passwordHash: true,
           active: true,
           totpEnabledAt: true,
+          role: true,
+          clinicId: true,
+          clinic: { select: { active: true } },
         },
       }),
     );
@@ -99,6 +103,18 @@ export async function POST(request: Request): Promise<Response> {
   }
   // Right password, but no session yet: NextAuth counts the real sign-in.
   attempt.release();
+
+  // The clinic is switched off (audit SEC-10). Said only after the right
+  // password, so it tells nothing to someone guessing.
+  if (
+    clinicLocksOut({
+      role: user.role,
+      clinicId: user.clinicId,
+      clinicActive: user.clinic?.active,
+    })
+  ) {
+    return err("Forbidden", 403, { reason: "clinic_inactive" });
+  }
 
   // Kill-switch: when DISABLE_2FA is set we never gate the login on TOTP,
   // even for enrolled users. Skip the pending-cookie too — the login

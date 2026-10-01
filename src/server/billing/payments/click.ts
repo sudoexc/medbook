@@ -13,12 +13,18 @@
  *   2. `clickVerifyWebhook` — verify the inbound webhook against the
  *      MD5 sign-string Click documents:
  *
- *        md5(click_trans_id + service_id + SECRET_KEY +
- *            merchant_trans_id + amount + action + sign_time)
+ *        Prepare  (action=0): md5(click_trans_id + service_id + SECRET_KEY +
+ *                                 merchant_trans_id + amount + action + sign_time)
+ *        Complete (action=1): md5(click_trans_id + service_id + SECRET_KEY +
+ *                                 merchant_trans_id + merchant_prepare_id +
+ *                                 amount + action + sign_time)
  *
- *      When `CLICK_SECRET_KEY` is unset (dev), the webhook stub-accepts
- *      so the simulate-pay button still works end-to-end. In prod the
- *      env var MUST be set; the route handler decides whether to act.
+ *      When `CLICK_SECRET_KEY` is unset the call is refused as
+ *      `not_configured`: nothing is accepted unsigned, in any environment
+ *      (audit AN-13). The dev simulate-pay button has its own route.
+ *
+ *   3. `readClickBody` — Click posts `application/x-www-form-urlencoded`
+ *      (AN-13: the route used to read JSON and could not parse a real call).
  *
  *  The `secretFromEnv` argument is NOT read from `process.env` here —
  *  the route handler reads it and passes it in. That keeps this module
@@ -29,6 +35,8 @@ import { createHash } from "node:crypto";
 export interface ClickWebhookPayload {
   /** Provided by Click. We use it to look up the Invoice. */
   merchant_trans_id: string;
+  /** Our id from Prepare, echoed back by Click on Complete. */
+  merchant_prepare_id?: string | number;
   /** Decimal soum, e.g. "120000.00". */
   amount: string;
   /** 0 = prepare, 1 = complete. We log both, mark PAID on action=1. */
@@ -150,10 +158,38 @@ function tiinsToSoumString(tiins: bigint): string {
 }
 
 /**
- * Verify a Click webhook. Returns `{ok: true, stub: true}` when the
- * shared secret env var is missing — accepted in dev so the simulate
- * button works without provisioning real credentials. In prod the env
- * var MUST be set; otherwise the webhook silently degrades to stub.
+ * Read a Click webhook body: form-urlencoded as Click sends it, JSON as a
+ * fallback for manual tests. Null when it is neither.
+ */
+export async function readClickBody(
+  request: Request,
+): Promise<Partial<ClickWebhookPayload> | null> {
+  const type = (request.headers.get("content-type") ?? "").toLowerCase();
+  let text: string;
+  try {
+    text = await request.text();
+  } catch {
+    return null;
+  }
+  if (type.includes("application/json")) {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      return parsed && typeof parsed === "object"
+        ? (parsed as Partial<ClickWebhookPayload>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  const params = new URLSearchParams(text);
+  const out: Record<string, string> = {};
+  for (const [k, v] of params) out[k] = v;
+  return Object.keys(out).length > 0 ? (out as Partial<ClickWebhookPayload>) : null;
+}
+
+/**
+ * Verify a Click webhook. Without the shared secret nothing can be
+ * verified, so the call is refused (`not_configured`), never accepted.
  */
 export async function clickVerifyWebhook(
   payload: unknown,
@@ -173,20 +209,7 @@ export async function clickVerifyWebhook(
       : undefined;
   const amountTiins = soumStringToTiins(p.amount);
 
-  if (!secretFromEnv) {
-    // Stub mode — log and accept. The route handler decides whether to
-    // act on the result; in prod it fails closed when the secret is unset.
-    console.info(
-      `[click] webhook stub-accept invoice=${p.merchant_trans_id} action=${String(p.action)}`,
-    );
-    return {
-      ok: true,
-      stub: true,
-      invoiceId: p.merchant_trans_id,
-      providerRef,
-      amountTiins,
-    };
-  }
+  if (!secretFromEnv) return { ok: false, reason: "not_configured" };
 
   if (typeof p.sign_string !== "string" || !p.sign_string) {
     return { ok: false, reason: "missing_signature" };
@@ -219,18 +242,21 @@ function soumStringToTiins(amount: unknown): bigint | undefined {
 }
 
 /**
- * Pure helper. Mirrors Click's documented signature recipe.
+ * Pure helper. Mirrors Click's documented signature recipe: Complete
+ * (action=1) also signs `merchant_prepare_id`, Prepare does not.
  * Returns the lowercase hex MD5.
  */
 export function computeClickSignature(
   payload: Partial<ClickWebhookPayload>,
   secret: string,
 ): string {
+  const isComplete = String(payload.action ?? "") === "1";
   const concat = [
     payload.click_trans_id ?? "",
     payload.service_id ?? "",
     secret,
     payload.merchant_trans_id ?? "",
+    ...(isComplete ? [payload.merchant_prepare_id ?? ""] : []),
     payload.amount ?? "",
     payload.action ?? "",
     payload.sign_time ?? "",

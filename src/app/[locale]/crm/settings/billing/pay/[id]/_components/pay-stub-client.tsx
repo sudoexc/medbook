@@ -20,6 +20,12 @@ import { Badge } from "@/components/ui/badge";
 interface PayStubClientProps {
   locale: string;
   stubMode: boolean;
+  /**
+   * Which providers can actually complete a payment (audit AN-13). None
+   * today: the buttons are replaced by a plain note instead of leading to
+   * a provider page that ends in an error.
+   */
+  onlineProviders: { click: boolean; payme: boolean };
   invoice: {
     id: string;
     number: string;
@@ -117,6 +123,7 @@ export function PayStubClient(props: PayStubClientProps) {
   }
 
   const isPaid = props.invoice.status === "PAID";
+  const anyOnline = props.onlineProviders.click || props.onlineProviders.payme;
 
   return (
     <PageContainer>
@@ -157,27 +164,36 @@ export function PayStubClient(props: PayStubClientProps) {
             </div>
           </div>
 
-          {!isPaid ? (
+          {!isPaid && anyOnline ? (
             <div className="grid grid-cols-1 gap-2 pt-4 sm:grid-cols-2">
-              <Button
-                onClick={() => onPayWith("click")}
-                disabled={busyProvider !== null}
-                className="w-full"
-              >
-                {busyProvider === "click"
-                  ? t("pay.redirecting")
-                  : t("pay.payWithClick")}
-              </Button>
-              <Button
-                onClick={() => onPayWith("payme")}
-                disabled={busyProvider !== null}
-                variant="secondary"
-                className="w-full"
-              >
-                {busyProvider === "payme"
-                  ? t("pay.redirecting")
-                  : t("pay.payWithPayme")}
-              </Button>
+              {props.onlineProviders.click ? (
+                <Button
+                  onClick={() => onPayWith("click")}
+                  disabled={busyProvider !== null}
+                  className="w-full"
+                >
+                  {busyProvider === "click"
+                    ? t("pay.redirecting")
+                    : t("pay.payWithClick")}
+                </Button>
+              ) : null}
+              {props.onlineProviders.payme ? (
+                <Button
+                  onClick={() => onPayWith("payme")}
+                  disabled={busyProvider !== null}
+                  variant="secondary"
+                  className="w-full"
+                >
+                  {busyProvider === "payme"
+                    ? t("pay.redirecting")
+                    : t("pay.payWithPayme")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {!isPaid && !anyOnline ? (
+            <div className="mt-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+              {t("pay.onlineNotConnected")}
             </div>
           ) : null}
 
@@ -208,7 +224,7 @@ export function PayStubClient(props: PayStubClientProps) {
             </Link>
           </div>
 
-          {!isPaid ? (
+          {!isPaid && anyOnline ? (
             <p className="pt-4 text-xs text-muted-foreground">
               {t("pay.realProviderNote")}
             </p>

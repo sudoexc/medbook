@@ -9,6 +9,13 @@
  *   - change status        → PATCH  /api/admin/clinics/[id]/subscription
  *   - extend trial (+30d)  → POST   /api/admin/clinics/[id]/subscription/extend-trial
  *   - cancel (soft)        → POST   /api/admin/clinics/[id]/subscription/cancel
+ * and, for a clinic without one, «Создать подписку» → POST
+ * /api/admin/clinics/[id]/subscription (audit G5-03: nothing is created
+ * implicitly any more).
+ *
+ * Extending a trial is the shared rule (audit G5-01): PAST_DUE and CANCELLED
+ * come back to TRIAL, ACTIVE is refused, and the toast reports the status and
+ * date the server actually saved, not a fixed «продлён».
  *
  * On every successful mutation we call `router.refresh()` so the SSR'd
  * subscription/plan data is re-fetched. Toasts surface success/failure.
@@ -103,6 +110,7 @@ type SerializedSubscription = {
   status: SubscriptionStatus;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
+  graceEndsAt: string | null;
   cancelledAt: string | null;
   plan: SerializedPlan;
 };
@@ -126,6 +134,16 @@ const STATUS_BADGE: Record<SubscriptionStatus,
   ACTIVE: "default",
   PAST_DUE: "destructive",
   CANCELLED: "outline",
+};
+
+/** Server refusals the owner can act on, in words. */
+const REASON_LABEL: Record<string, string> = {
+  subscription_active: "Подписка оплачена (ACTIVE): триал не продлевается",
+  subscription_changed: "Подписку уже изменили. Страница обновлена, проверьте",
+  not_cancelled: "Восстановить можно только отменённую подписку",
+  no_subscription: "У клиники нет подписки",
+  subscription_exists: "Подписка уже есть",
+  invalid_plan: "План не найден или отключён",
 };
 
 const FEATURE_LABEL: Record<keyof FeatureFlags, string> = {
@@ -164,9 +182,22 @@ function daysBetween(from: Date, to: Date): number {
   return Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-export function BillingPageClient({ initial }: { initial: InitialState }) {
+export function BillingPageClient({
+  initial,
+  defaultTrialDays,
+}: {
+  initial: InitialState;
+  defaultTrialDays: number;
+}) {
   const router = useRouter();
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
+  const [newPlanId, setNewPlanId] = React.useState<string>(
+    () =>
+      initial.plans.find((p) => p.slug === "pro")?.id ??
+      initial.plans[0]?.id ??
+      "",
+  );
+  const [newTrialDays, setNewTrialDays] = React.useState(String(defaultTrialDays));
   const sub = initial.subscription;
   const flags: FeatureFlags | null = sub
     ? parsePlanFeatures(sub.plan.features)
@@ -177,7 +208,7 @@ export function BillingPageClient({ initial }: { initial: InitialState }) {
       label: string,
       url: string,
       init: RequestInit,
-      successMsg: string,
+      successMsg: string | ((body: unknown) => string),
     ): Promise<boolean> => {
       setPendingAction(label);
       try {
@@ -192,11 +223,16 @@ export function BillingPageClient({ initial }: { initial: InitialState }) {
           const body = (await r.json().catch(() => null)) as
             | { reason?: string; error?: string }
             | null;
-          const msg = body?.reason ?? body?.error ?? `HTTP ${r.status}`;
-          toast.error(msg);
+          const reason = body?.reason ?? body?.error ?? `HTTP ${r.status}`;
+          toast.error(REASON_LABEL[reason] ?? reason);
+          // A stale page (someone else changed it): show the real state.
+          if (r.status === 409) router.refresh();
           return false;
         }
-        toast.success(successMsg);
+        const okBody = (await r.json().catch(() => null)) as unknown;
+        toast.success(
+          typeof successMsg === "function" ? successMsg(okBody) : successMsg,
+        );
         router.refresh();
         return true;
       } catch (e) {
@@ -233,12 +269,44 @@ export function BillingPageClient({ initial }: { initial: InitialState }) {
     callApi(
       "extend",
       `/api/admin/clinics/${initial.clinic.id}/subscription/extend-trial`,
-      { method: "POST" },
-      "Триал продлён на 30 дней",
+      {
+        method: "POST",
+        // The date on screen: a second click finds it changed and gets 409.
+        body: JSON.stringify({ expectedTrialEndsAt: sub?.trialEndsAt ?? null }),
+      },
+      (body) => {
+        const s = (body as { subscription?: SerializedSubscription } | null)
+          ?.subscription;
+        return s
+          ? `${STATUS_LABEL[s.status]} до ${formatDate(s.trialEndsAt)}`
+          : "Готово";
+      },
     );
 
+  const onCreate = () => {
+    const days = Number(newTrialDays);
+    if (!newPlanId || !Number.isInteger(days) || days < 1 || days > 365) {
+      toast.error("Укажите план и срок триала от 1 до 365 дней");
+      return;
+    }
+    void callApi(
+      "create",
+      `/api/admin/clinics/${initial.clinic.id}/subscription`,
+      {
+        method: "POST",
+        body: JSON.stringify({ planId: newPlanId, trialDays: days }),
+      },
+      "Подписка создана",
+    );
+  };
+
   const onCancel = () => {
-    if (!confirm("Отменить подписку? Данные сохранятся (soft-cancel).")) return;
+    if (
+      !confirm(
+        "Отменить подписку? Pro-функции отключатся, лимиты станут как у Basic. Данные сохранятся, «Восстановить» вернёт прежний статус.",
+      )
+    )
+      return;
     void callApi(
       "cancel",
       `/api/admin/clinics/${initial.clinic.id}/subscription/cancel`,
@@ -270,11 +338,60 @@ export function BillingPageClient({ initial }: { initial: InitialState }) {
 
       <ClinicTabs clinicId={initial.clinic.id} />
 
-      {!sub && (
+      {!sub && initial.plans.length === 0 && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-          У клиники нет активной подписки и каталог планов пуст. Запустите
+          У клиники нет подписки и каталог планов пуст. Запустите
           {" "}<code className="rounded bg-muted px-1">npx prisma migrate dev</code>{" "}
           чтобы засеять Plan-каталог, затем обновите страницу.
+        </div>
+      )}
+
+      {!sub && initial.plans.length > 0 && (
+        <div className="max-w-xl space-y-3 rounded-lg border border-border bg-card p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              У клиники нет подписки
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Пока подписки нет, клиника работает на функциях Basic. Создайте
+              пробный период на нужном плане.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                План
+              </label>
+              <Select value={newPlanId} onValueChange={setNewPlanId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {initial.plans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nameRu} · {formatPrice(p.priceMonth, p.currency)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Пробный период, дней
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={newTrialDays}
+                onChange={(e) => setNewTrialDays(e.target.value)}
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+              />
+            </div>
+          </div>
+          <Button onClick={onCreate} disabled={pendingAction === "create"}>
+            {pendingAction === "create" ? "Создание…" : "Создать подписку"}
+          </Button>
         </div>
       )}
 
@@ -350,13 +467,28 @@ export function BillingPageClient({ initial }: { initial: InitialState }) {
                   )}
                 </div>
               )}
-              {(sub.status === "ACTIVE" || sub.status === "PAST_DUE") && (
+              {sub.status === "ACTIVE" && (
                 <div className="rounded-md bg-muted/40 px-3 py-2">
                   <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Период до
+                    Оплачено до
                   </div>
                   <div className="font-medium text-foreground">
-                    {formatDate(sub.currentPeriodEndsAt)}
+                    {sub.currentPeriodEndsAt
+                      ? formatDate(sub.currentPeriodEndsAt)
+                      : "Бессрочно"}
+                  </div>
+                </div>
+              )}
+              {sub.status === "PAST_DUE" && (
+                <div className="rounded-md bg-muted/40 px-3 py-2">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Льготный период до
+                  </div>
+                  <div className="font-medium text-foreground">
+                    {formatDate(sub.graceEndsAt)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Потом подписка отменится автоматически
                   </div>
                 </div>
               )}
@@ -434,7 +566,12 @@ export function BillingPageClient({ initial }: { initial: InitialState }) {
                 <Button
                   variant="outline"
                   onClick={() => void onExtendTrial()}
-                  disabled={pendingAction === "extend"}
+                  disabled={pendingAction === "extend" || sub.status === "ACTIVE"}
+                  title={
+                    sub.status === "ACTIVE"
+                      ? "Подписка оплачена, триал продлевать не нужно"
+                      : undefined
+                  }
                 >
                   <CalendarPlusIcon />
                   {pendingAction === "extend"

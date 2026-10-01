@@ -61,7 +61,39 @@ interface ClinicRow {
   brandColor: string;
   createdAt: string;
   updatedAt: string;
+  subscription?: {
+    status: "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
+    trialEndsAt: string | null;
+    currentPeriodEndsAt: string | null;
+    graceEndsAt: string | null;
+    plan: { slug: string };
+  } | null;
   _count?: { users: number; patients: number; appointments: number };
+}
+
+const SUB_LABEL: Record<NonNullable<ClinicRow["subscription"]>["status"], string> = {
+  TRIAL: "Пробная",
+  ACTIVE: "Активна",
+  PAST_DUE: "Просрочена",
+  CANCELLED: "Отменена",
+};
+
+/** Server refusals of the row menu, in words (audit G5-01). */
+const LIFECYCLE_REASON: Record<string, string> = {
+  subscription_active: "Подписка оплачена (ACTIVE): триал не продлевается",
+  subscription_changed: "Подписку уже изменили, список обновлён",
+  not_cancelled: "Восстановить можно только отменённую подписку",
+  no_subscription: "У клиники нет подписки: создайте её в «Тарификации»",
+};
+
+function shortDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Tashkent",
+  });
 }
 
 interface CreatedClinicResponse extends ClinicRow {
@@ -97,6 +129,8 @@ async function createClinic(input: {
   ownerEmail: string;
   active: boolean;
   playbook: PlaybookValue | null;
+  planSlug: string;
+  trialDays: number;
 }): Promise<CreatedClinicResponse> {
   const r = await fetch("/api/platform/clinics", {
     method: "POST",
@@ -171,16 +205,27 @@ async function impersonateClinic(clinicId: string): Promise<void> {
 async function lifecycleAction(
   clinicId: string,
   action: "suspend" | "restore" | "extend-trial",
-): Promise<void> {
+  expectedTrialEndsAt?: string | null,
+): Promise<{ status?: string; trialEndsAt?: string | null }> {
   const r = await fetch(`/api/admin/clinics/${clinicId}/lifecycle`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify(
+      action === "extend-trial"
+        ? { action, expectedTrialEndsAt: expectedTrialEndsAt ?? null }
+        : { action },
+    ),
   });
+  const body = (await r.json().catch(() => null)) as {
+    reason?: string;
+    error?: string;
+    subscription?: { status?: string; trialEndsAt?: string | null };
+  } | null;
   if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(txt || `HTTP ${r.status}`);
+    const reason = body?.reason ?? body?.error ?? `HTTP ${r.status}`;
+    throw new Error(LIFECYCLE_REASON[reason] ?? reason);
   }
+  return body?.subscription ?? {};
 }
 
 export function ClinicsPageClient() {
@@ -223,18 +268,28 @@ export function ClinicsPageClient() {
     mutationFn: (input: {
       clinicId: string;
       action: "suspend" | "restore" | "extend-trial";
-    }) => lifecycleAction(input.clinicId, input.action),
-    onSuccess: (_data, input) => {
+      expectedTrialEndsAt?: string | null;
+    }) =>
+      lifecycleAction(input.clinicId, input.action, input.expectedTrialEndsAt),
+    onSuccess: (sub, input) => {
+      // What the server saved, not what the button hoped for (audit G5-01).
+      const status =
+        sub.status && sub.status in SUB_LABEL
+          ? SUB_LABEL[sub.status as keyof typeof SUB_LABEL]
+          : "";
       const message =
         input.action === "suspend"
-          ? "Клиника приостановлена"
+          ? "Подписка отменена"
           : input.action === "restore"
-            ? "Клиника восстановлена"
-            : "Пробный период продлён";
+            ? `Подписка восстановлена: ${status}`
+            : `Пробный период до ${shortDate(sub.trialEndsAt)}`;
       toast.success(message);
       void qc.invalidateQueries({ queryKey: ["admin", "clinics"] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Error");
+      void qc.invalidateQueries({ queryKey: ["admin", "clinics"] });
+    },
   });
 
   return (
@@ -273,6 +328,7 @@ export function ClinicsPageClient() {
                 <th className="p-3 font-medium">Timezone</th>
                 <th className="p-3 font-medium">Валюта</th>
                 <th className="p-3 font-medium">Счётчики</th>
+                <th className="p-3 font-medium">Подписка</th>
                 <th className="p-3 font-medium">Активна</th>
                 <th className="p-3 font-medium"></th>
               </tr>
@@ -295,10 +351,53 @@ export function ClinicsPageClient() {
                     {c._count?.patients ?? 0} · appts{" "}
                     {c._count?.appointments ?? 0}
                   </td>
+                  <td className="p-3 text-xs">
+                    {c.subscription ? (
+                      <div className="space-y-0.5">
+                        <Badge
+                          variant={
+                            c.subscription.status === "PAST_DUE" ||
+                            c.subscription.status === "CANCELLED"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {SUB_LABEL[c.subscription.status]} ·{" "}
+                          {c.subscription.plan.slug}
+                        </Badge>
+                        <div className="text-muted-foreground">
+                          {c.subscription.status === "TRIAL"
+                            ? `до ${shortDate(c.subscription.trialEndsAt)}`
+                            : c.subscription.status === "PAST_DUE"
+                              ? `льгота до ${shortDate(c.subscription.graceEndsAt)}`
+                              : c.subscription.status === "ACTIVE"
+                                ? c.subscription.currentPeriodEndsAt
+                                  ? `до ${shortDate(c.subscription.currentPeriodEndsAt)}`
+                                  : "бессрочно"
+                                : ""}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">нет подписки</span>
+                    )}
+                  </td>
                   <td className="p-3">
                     <Switch
                       checked={c.active}
-                      onCheckedChange={() => toggleActive.mutate(c)}
+                      title="Выключенная клиника: сотрудники не могут войти"
+                      onCheckedChange={() => {
+                        // Switching off locks the clinic's staff out (audit
+                        // SEC-10), so it is confirmed; switching on is not.
+                        if (
+                          c.active &&
+                          !window.confirm(
+                            `Выключить клинику «${c.nameRu}»? Сотрудники клиники не смогут войти, пока её не включат снова.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        toggleActive.mutate(c);
+                      }}
                     />
                   </td>
                   <td className="p-3 text-right">
@@ -363,47 +462,56 @@ export function ClinicsPageClient() {
                             <MoreHorizontalIcon />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuItem
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              if (
-                                window.confirm(
-                                  `Приостановить клинику «${c.nameRu}»? Подписка будет отменена.`,
-                                )
-                              ) {
-                                lifecycle.mutate({
-                                  clinicId: c.id,
-                                  action: "suspend",
-                                });
-                              }
-                            }}
-                            className="gap-2 text-destructive focus:text-destructive"
-                          >
-                            <PauseIcon className="size-4" />
-                            Приостановить
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              if (
-                                window.confirm(
-                                  `Восстановить клинику «${c.nameRu}» и выдать 14-дневный пробный?`,
-                                )
-                              ) {
-                                lifecycle.mutate({
-                                  clinicId: c.id,
-                                  action: "restore",
-                                });
-                              }
-                            }}
-                            className="gap-2"
-                          >
-                            <PlayIcon className="size-4" />
-                            Восстановить (14 дн)
-                          </DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="w-64">
+                          {c.subscription &&
+                          c.subscription.status !== "CANCELLED" ? (
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                if (
+                                  window.confirm(
+                                    `Отменить подписку «${c.nameRu}»? Pro-функции отключатся, лимиты станут как у Basic. Вход сотрудников не блокируется: для этого выключите клинику.`,
+                                  )
+                                ) {
+                                  lifecycle.mutate({
+                                    clinicId: c.id,
+                                    action: "suspend",
+                                  });
+                                }
+                              }}
+                              className="gap-2 text-destructive focus:text-destructive"
+                            >
+                              <PauseIcon className="size-4" />
+                              Отменить подписку
+                            </DropdownMenuItem>
+                          ) : null}
+                          {c.subscription?.status === "CANCELLED" ? (
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                if (
+                                  window.confirm(
+                                    `Восстановить подписку «${c.nameRu}» в том виде, в каком она была до отмены?`,
+                                  )
+                                ) {
+                                  lifecycle.mutate({
+                                    clinicId: c.id,
+                                    action: "restore",
+                                  });
+                                }
+                              }}
+                              className="gap-2"
+                            >
+                              <PlayIcon className="size-4" />
+                              Восстановить подписку
+                            </DropdownMenuItem>
+                          ) : null}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
+                            disabled={
+                              !c.subscription ||
+                              c.subscription.status === "ACTIVE"
+                            }
                             onSelect={(e) => {
                               e.preventDefault();
                               if (
@@ -414,6 +522,8 @@ export function ClinicsPageClient() {
                                 lifecycle.mutate({
                                   clinicId: c.id,
                                   action: "extend-trial",
+                                  expectedTrialEndsAt:
+                                    c.subscription?.trialEndsAt ?? null,
                                 });
                               }
                             }}
@@ -430,7 +540,7 @@ export function ClinicsPageClient() {
               ))}
               {!data?.length && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
                     Нет клиник. Создайте первую.
                   </td>
                 </tr>
@@ -479,6 +589,24 @@ function CreateClinicDialog({
   const [emailError, setEmailError] = React.useState<string | null>(null);
   // "none" = start blank (no seeded services/templates).
   const [playbook, setPlaybook] = React.useState<PlaybookValue | "none">("none");
+  // The subscription is created with the clinic (audit G5-03).
+  const [planSlug, setPlanSlug] = React.useState("pro");
+  const [trialDays, setTrialDays] = React.useState("30");
+  const plans = useQuery({
+    queryKey: ["admin", "plans"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/plans", { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = (await r.json()) as {
+        plans: Array<{ id: string; slug: string; nameRu: string }>;
+      };
+      return data.plans;
+    },
+    enabled: open,
+  });
+  const trialDaysNum = Number(trialDays);
+  const trialDaysValid =
+    Number.isInteger(trialDaysNum) && trialDaysNum >= 1 && trialDaysNum <= 365;
 
   const reset = () => {
     setSlug("");
@@ -488,6 +616,8 @@ function CreateClinicDialog({
     setOwnerEmail("");
     setEmailError(null);
     setPlaybook("none");
+    setPlanSlug("pro");
+    setTrialDays("30");
   };
 
   const mut = useMutation({
@@ -502,6 +632,8 @@ function CreateClinicDialog({
         ownerEmail: ownerEmail.trim().toLowerCase(),
         active: true,
         playbook: playbook === "none" ? null : playbook,
+        planSlug,
+        trialDays: trialDaysNum,
       }),
     onSuccess: (res) => {
       toast.success("Клиника создана");
@@ -609,6 +741,38 @@ function CreateClinicDialog({
             </p>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Тариф пробного периода</Label>
+              <Select value={planSlug} onValueChange={setPlanSlug}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(plans.data ?? [{ id: "pro", slug: "pro", nameRu: "Pro" }]).map(
+                    (p) => (
+                      <SelectItem key={p.id} value={p.slug}>
+                        {p.nameRu}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="trialDays">Пробный период, дней</Label>
+              <Input
+                id="trialDays"
+                type="number"
+                min={1}
+                max={365}
+                value={trialDays}
+                onChange={(e) => setTrialDays(e.target.value)}
+                aria-invalid={trialDaysValid ? undefined : true}
+              />
+            </div>
+          </div>
+
           <div className="mt-2 rounded-md border border-border bg-muted/30 p-3 space-y-3">
             <div>
               <p className="text-sm font-medium">Владелец клиники (ADMIN)</p>
@@ -659,7 +823,8 @@ function CreateClinicDialog({
               !nameUz.trim() ||
               !ownerName.trim() ||
               !ownerEmail.trim() ||
-              !ownerEmail.includes("@")
+              !ownerEmail.includes("@") ||
+              !trialDaysValid
             }
           >
             {mut.isPending ? "Создание…" : "Создать"}

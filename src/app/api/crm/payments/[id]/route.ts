@@ -2,7 +2,12 @@
  * /api/crm/payments/[id] — patch (status/refund/etc).
  * See docs/TZ.md §6.2 оплата.
  *
- * When status transitions to/from PAID we recompute the patient LTV.
+ * What a change may do is decided by `planPaymentUpdate` (audit AN-11): an
+ * amount correction is ADMIN-only and only before a refund, a refund is
+ * recorded once with its date, REFUNDED is final. Any change to the money
+ * (amount, refund, status) recomputes the patient LTV. The write is
+ * conditional on the values the plan was made from, so two people refunding
+ * the same payment at once cannot both succeed.
  */
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -15,6 +20,7 @@ import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { tiyinToUsdCents } from "@/lib/fx";
 import { retireSettledDebt } from "@/server/actions/settled-debt";
+import { planPaymentUpdate } from "@/server/payments/payment-update";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -23,51 +29,60 @@ function idFromUrl(request: Request): string {
 
 export const PATCH = createApiHandler(
   { roles: ["ADMIN", "RECEPTIONIST"], bodySchema: UpdatePaymentSchema },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const id = idFromUrl(request);
     const before = await prisma.payment.findUnique({ where: { id } });
     if (!before) return notFound();
 
-    // Cap refund at the payment amount. Prisma stores amount as Int (minor
-    // units) so a direct compare is safe.
-    if (typeof body.refundedAmount === "number") {
-      const targetAmount =
-        typeof body.amount === "number" ? body.amount : before.amount;
-      if (body.refundedAmount > targetAmount) {
-        return err("ValidationError", 422, {
-          reason: "refund_exceeds_amount",
-          amount: targetAmount,
-          refundedAmount: body.refundedAmount,
-        });
-      }
+    const role = ctx.kind === "TENANT" ? ctx.role : "SUPER_ADMIN";
+    const plan = planPaymentUpdate(
+      {
+        status: before.status,
+        amount: before.amount,
+        refundedAmount: before.refundedAmount,
+        refundedAt: before.refundedAt,
+        paidAt: before.paidAt,
+      },
+      body,
+      role,
+      new Date(),
+    );
+    if (!plan.ok) {
+      return err(
+        plan.status === 403 ? "Forbidden" : "ValidationError",
+        plan.status,
+        { reason: plan.reason },
+      );
     }
 
-    const data: Record<string, unknown> = { ...body };
-    if (typeof body.amount === "number" && body.amount !== before.amount) {
+    const data = plan.data;
+    if (typeof data.amount === "number") {
       // The USD snapshot follows the corrected amount at the rate the
       // payment was taken at (сум per 1 USD, audit AN-01).
       data.amountUsdSnap =
         before.currency === "USD"
-          ? body.amount
-          : tiyinToUsdCents(body.amount, before.fxRate);
-    }
-    if (
-      body.status === "PAID" &&
-      before.status !== "PAID" &&
-      body.paidAt === undefined
-    ) {
-      data.paidAt = new Date();
+          ? data.amount
+          : tiyinToUsdCents(data.amount, before.fxRate);
     }
 
-    const after = await prisma.payment.update({
-      where: { id },
+    // Conditional on what the plan was made from: a concurrent refund or
+    // correction makes this one a no-op and the caller gets 409.
+    const written = await prisma.payment.updateMany({
+      where: {
+        id,
+        status: before.status,
+        amount: before.amount,
+        refundedAmount: before.refundedAmount,
+      },
       data: data as never,
     });
+    if (written.count === 0) {
+      return err("Conflict", 409, { reason: "payment_changed" });
+    }
+    const after = await prisma.payment.findUnique({ where: { id } });
+    if (!after) return notFound();
 
-    const ltvShouldRecalc =
-      before.status !== after.status &&
-      (before.status === "PAID" || after.status === "PAID");
-    if (ltvShouldRecalc && after.patientId) {
+    if (plan.moneyChanged && after.patientId) {
       try {
         await recalcLtv(after.patientId);
       } catch (e) {

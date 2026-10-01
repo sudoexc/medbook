@@ -38,6 +38,7 @@ import { tashkentDayBoundsForDateString } from "@/lib/booking-validation";
 import type { prisma as prismaClient } from "@/lib/prisma";
 import { addTashkentDays, tashkentDateOf } from "@/lib/tashkent-time";
 import { paymentsRecordedSince } from "@/server/patient/finance";
+import { sumNetRevenue } from "@/server/analytics/net-revenue";
 
 export { FINANCIAL_TREND_DAYS, financialWindow };
 
@@ -270,11 +271,12 @@ export async function resolveFinancialPace(
     // On the day recording is switched on, count from the switch: the
     // morning before it is not recorded (the card then says from when).
     const from = trackedSince > dayStart ? trackedSince : dayStart;
-    const agg = await prisma.payment.aggregate({
-      where: { clinicId, status: "PAID", paidAt: { gte: from, lt: dayEnd } },
-      _sum: { amount: true },
-    });
-    todayCollectedLiveTiins = agg._sum.amount ?? 0;
+    // Net of today's refunds, the same rule as the view (audit AN-11).
+    todayCollectedLiveTiins = await sumNetRevenue(
+      prisma as never,
+      { from, to: dayEnd },
+      { clinicId },
+    );
   }
 
   let rows: RawDayRow[];

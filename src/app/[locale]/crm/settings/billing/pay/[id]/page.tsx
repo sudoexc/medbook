@@ -12,6 +12,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
+import { isOnlinePaymentConnected } from "@/server/billing/payments/online-payments";
 
 import { PayStubClient } from "./_components/pay-stub-client";
 
@@ -57,6 +58,10 @@ export default async function BillingPayPage(props: {
   return (
     <PayStubClient
       locale={locale}
+      onlineProviders={{
+        click: isOnlinePaymentConnected("click"),
+        payme: isOnlinePaymentConnected("payme"),
+      }}
       stubMode={
         process.env.NODE_ENV !== "production" &&
         process.env.NEXT_PUBLIC_BILLING_STUB === "1"

@@ -57,6 +57,8 @@ export interface BillingPageProps {
     status: string;
     trialEndsAt: string | null;
     currentPeriodEndsAt: string | null;
+    /** PAST_DUE only: when the grace period ends (audit G5-02). */
+    graceEndsAt: string | null;
     priceMonth: string;
     pendingPlanSlug: string | null;
   };
@@ -276,6 +278,15 @@ export function BillingClient(props: BillingPageProps) {
                 <div className="text-xs text-muted-foreground">
                   {t("currentPlan.nextBillingAt", {
                     date: new Date(props.subscription.currentPeriodEndsAt)
+                      .toISOString()
+                      .slice(0, 10),
+                  })}
+                </div>
+              ) : null}
+              {props.subscription.graceEndsAt ? (
+                <div className="text-xs text-destructive">
+                  {t("currentPlan.graceEndsAt", {
+                    date: new Date(props.subscription.graceEndsAt)
                       .toISOString()
                       .slice(0, 10),
                   })}

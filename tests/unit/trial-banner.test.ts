@@ -109,16 +109,21 @@ describe("computeBannerState", () => {
     expect(computeBannerState(sub, NOW)).toEqual({ kind: "hidden" });
   });
 
-  it("PAST_DUE → expired (regardless of date fields)", () => {
-    const periodEnd = new Date(NOW.getTime() + 14 * 24 * 60 * 60 * 1000);
-    const sub = makeSub({
-      status: "PAST_DUE",
-      trialEndsAt: new Date(NOW.getTime() - 60_000),
-      currentPeriodEndsAt: periodEnd,
-    });
+  it("PAST_DUE → expired until the grace period's own end (G5-02)", () => {
+    const graceEnd = new Date(NOW.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const sub = {
+      ...makeSub({
+        status: "PAST_DUE",
+        trialEndsAt: new Date(NOW.getTime() - 60_000),
+        // The paid period is over when a subscription is PAST_DUE: it is
+        // not the date the features switch off.
+        currentPeriodEndsAt: new Date(NOW.getTime() - 60_000),
+      }),
+      graceEndsAt: graceEnd,
+    };
     expect(computeBannerState(sub, NOW)).toEqual({
       kind: "expired",
-      gracePeriodEndsAt: periodEnd,
+      gracePeriodEndsAt: graceEnd,
     });
   });
 

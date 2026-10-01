@@ -493,6 +493,22 @@ export const AUDIT_ACTION = {
   CLINIC_SUSPENDED: "CLINIC_SUSPENDED",
   CLINIC_RESUMED: "CLINIC_RESUMED",
   CLINIC_TRIAL_EXTENDED: "CLINIC_TRIAL_EXTENDED",
+  //   Both cancel paths (billing page «Отменить подписку», row menu
+  //   «Приостановить») write CLINIC_SUSPENDED and both trial buttons write
+  //   CLINIC_TRIAL_EXTENDED (audit G5-01). CLINIC_SUSPENDED meta carries
+  //   `{ previous: <snapshot>, previousStatus, to: "CANCELLED" }`, which
+  //   «Восстановить» (CLINIC_RESUMED) brings back.
+  //
+  //   SUBSCRIPTION_AUTO_TRANSITION — the trial-expiry scheduler moved a
+  //   subscription (G5-02). `entityType: "Subscription"`. `meta` carries
+  //   `{ from, to, reason, previous, graceEndsAt }`, reason one of
+  //   trial_expired / period_ended / grace_started / grace_ended.
+  //
+  //   SUBSCRIPTION_CREATED — a subscription was created with its clinic or
+  //   by the platform owner (G5-03). `meta` carries `{ planId, trialEndsAt,
+  //   source }`.
+  SUBSCRIPTION_AUTO_TRANSITION: "SUBSCRIPTION_AUTO_TRANSITION",
+  SUBSCRIPTION_CREATED: "SUBSCRIPTION_CREATED",
 
   // Patient duplicate merge. `entityType: "Patient"`, `entityId: <winnerId>`.
   // `meta` carries `{ loserId, loserSnapshot, reassigned: { table: count, … },

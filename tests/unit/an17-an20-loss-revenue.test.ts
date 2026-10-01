@@ -21,6 +21,9 @@ const h = vi.hoisted(() => ({
   activeCount: 0,
   payments: [] as Array<{ amount: number }>,
   paymentAggWheres: [] as Row[],
+  // What a payment aggregate answers: taken / given back (audit AN-11).
+  aggAmount: 12_345,
+  aggRefunded: 0,
   patientUpdates: [] as Array<{ where: Row; data: Row }>,
   completedAt: null as Date | null,
   completedCount: 0,
@@ -95,10 +98,14 @@ vi.mock("@/lib/prisma", () => ({
     },
     payment: {
       findMany: vi.fn(async () => h.payments),
-      aggregate: vi.fn(async ({ where }: { where: Row }) => {
-        h.paymentAggWheres.push(where);
-        return { _sum: { amount: 12_345 } };
-      }),
+      aggregate: vi.fn(
+        async ({ where, _sum }: { where: Row; _sum: Record<string, boolean> }) => {
+          h.paymentAggWheres.push(where);
+          return _sum.refundedAmount
+            ? { _sum: { refundedAmount: h.aggRefunded } }
+            : { _sum: { amount: h.aggAmount } };
+        },
+      ),
     },
     doctor: { findMany: vi.fn(async () => []) },
     clinic: {
@@ -138,6 +145,8 @@ beforeEach(() => {
   h.activeCount = 0;
   h.payments = [];
   h.paymentAggWheres = [];
+  h.aggAmount = 12_345;
+  h.aggRefunded = 0;
   h.patientUpdates = [];
   h.completedAt = null;
   h.completedCount = 0;
@@ -182,6 +191,7 @@ describe("AN-17: dormant patients are a stock, not a loss of the period", () => 
   it("without payments recorded for 90 days there is no money estimate", async () => {
     h.lapsed = [{ id: "p1", lastVisitAt: daysAgo(120) }];
     h.payments = [{ amount: 900_000 }];
+    h.aggAmount = 900_000;
     h.activeCount = 3;
     const off = await loadLossDashboard("c1", from, to, NOW);
     expect(off.averageVisitValueUzs).toBeNull();
@@ -304,9 +314,19 @@ describe("AN-20: dashboard revenue is for finance roles, per branch", () => {
     h.paymentAggWheres = [];
     h.ctx = { kind: "TENANT", clinicId: "c1", userId: "u1", role: "ADMIN", branchId: "b1" };
     await call();
-    expect(h.paymentAggWheres).toHaveLength(3);
+    // Taken and given back, for today / week / month (audit AN-11).
+    expect(h.paymentAggWheres).toHaveLength(6);
     for (const w of h.paymentAggWheres) {
-      expect(w).toMatchObject({ status: "PAID", appointment: { branchId: "b1" } });
+      expect(w).toMatchObject({
+        status: { in: ["PAID", "REFUNDED"] },
+        appointment: { branchId: "b1" },
+      });
     }
+  });
+
+  it("revenue is net of the refunds given back in the window (AN-11)", async () => {
+    h.aggAmount = 500_000_00;
+    h.aggRefunded = 150_000_00;
+    expect((await call()).today.revenue).toBe(350_000_00);
   });
 });

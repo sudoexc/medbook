@@ -32,14 +32,11 @@ function buildPayload(overrides: Record<string, unknown> = {}) {
 }
 
 describe("clickVerifyWebhook", () => {
-  it("accepts in stub mode when secret env is missing", async () => {
+  it("refuses when the secret env is missing: nothing is accepted unsigned (AN-13)", async () => {
     const payload = buildPayload({ sign_string: "ignored" });
     const res = await clickVerifyWebhook(payload, undefined);
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.stub).toBe(true);
-      expect(res.invoiceId).toBe("inv-abc");
-    }
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("not_configured");
   });
 
   it("rejects when secret is set but signature is wrong", async () => {

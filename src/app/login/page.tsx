@@ -57,8 +57,11 @@ function LoginForm() {
       body: JSON.stringify({ email, password }),
     });
     if (!r.ok) {
+      const body = (await r.json().catch(() => null)) as { reason?: string } | null;
       if (r.status === 401) {
         setError(t("error"));
+      } else if (r.status === 403 && body?.reason === "clinic_inactive") {
+        setError(t("clinicInactive"));
       } else if (r.status === 429) {
         setError(t("tooManyAttempts"));
       } else {

@@ -20,18 +20,13 @@ function envelope(method: string, params: Record<string, unknown> = {}) {
 }
 
 describe("paymeVerifyWebhook", () => {
-  it("accepts in stub mode when secret is missing", async () => {
+  it("refuses when the secret is missing: nothing is accepted unverified (AN-13)", async () => {
     const env = envelope("CreateTransaction", {
       account: { invoice_id: "inv-x" },
     });
     const res = await paymeVerifyWebhook(env, undefined, null);
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.stub).toBe(true);
-      expect(res.invoiceId).toBe("inv-x");
-      expect(res.method).toBe("CreateTransaction");
-      expect(res.providerRef).toBe("42");
-    }
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("not_configured");
   });
 
   it("rejects bad jsonrpc envelope", async () => {

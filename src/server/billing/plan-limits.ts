@@ -16,11 +16,16 @@
  *      noise; the alternative requires per-clinic state we don't have yet.
  *      `ensureSmsLimit` was removed in Wave 3 of `docs/TZ-sms-removal.md`.
  *
- *   3. `ensureQuotaForApi(clinicId, quota)` — convenience wrapper that
- *      maps a `block` outcome onto a 402-style JSON Response. API handlers
- *      call this at the top of a mutating route and bail early on a non-null
- *      return value, mirroring the `ensureFeature` pattern from
- *      `src/server/platform/feature-guard.ts`.
+ *   3. `ensureQuotaForApi(clinicId, quota)` — the API guard: a 402 JSON
+ *      Response when the quota is exhausted on a plan that blocks, null
+ *      otherwise. Called right before the row is created by the CRM's
+ *      patient create, booking and walk-in routes (audit SEC-10: nothing
+ *      called any of these, so the Basic plan's 50 patients never stopped
+ *      anyone). Plans that only warn are not counted at all here, so a
+ *      paying clinic pays one subscription read per create and never gets a
+ *      warning audit row per patient; a failure of the check itself lets the
+ *      create through (fail open: a limit check must never stop the desk
+ *      because the database hiccuped).
  *
  * `isFreePlan` is the slug-equality check `subscription.plan.slug === "basic"`.
  * Hard-block applies only to that tier. The roadmap copy talks about
@@ -34,7 +39,7 @@ import {
   parsePlanFeatures,
   type FeatureFlags,
 } from "@/lib/feature-flags";
-import { getClinicUsage } from "@/server/billing/usage";
+import { getClinicUsage, monthWindow } from "@/server/billing/usage";
 
 /** Numeric quota keys we evaluate. */
 export type NumericQuota =
@@ -200,21 +205,31 @@ export async function ensureAppointmentLimit(
 // `ensureSmsLimit` was deleted in Wave 3 of `docs/TZ-sms-removal.md`
 // together with `maxSmsPerMonth` and `smsCountThisMonth`.
 
-const QUOTA_DISPATCH: Record<
-  "maxPatients" | "maxAppointmentsPerMonth",
-  (clinicId: string) => Promise<LimitCheckResult>
-> = {
-  maxPatients: ensurePatientLimit,
-  maxAppointmentsPerMonth: ensureAppointmentLimit,
-};
+/** Current usage of one quota, counted alone (the guard needs one number). */
+async function countFor(
+  clinicId: string,
+  quota: "maxPatients" | "maxAppointmentsPerMonth",
+  now: Date,
+): Promise<number> {
+  return runWithTenant({ kind: "SYSTEM" }, () => {
+    if (quota === "maxPatients") {
+      return prisma.patient.count({ where: { clinicId, deletedAt: null } });
+    }
+    const { start, end } = monthWindow(now);
+    return prisma.appointment.count({
+      where: { clinicId, createdAt: { gte: start, lt: end } },
+    });
+  });
+}
 
 /**
  * API guard. Returns a 402 `Response` (Payment Required) with a JSON body
- * when the named quota is exhausted on a Free plan. Returns `null` otherwise
- * — including `warn` results, which are surfaced to the UI separately and
- * must NOT block API calls.
+ * when the named quota is exhausted on a plan that blocks (Basic, or any
+ * cancelled subscription). Returns `null` otherwise, warnings included:
+ * they are shown on the billing page and must NOT block API calls.
  *
- * Designed to be the very first thing inside a mutating route handler:
+ * Call it right before the create, after validation and dedupe, so a
+ * request that would not have created anything is not refused:
  *
  *   const block = await ensureQuotaForApi(clinicId, "maxPatients");
  *   if (block) return block;
@@ -222,18 +237,30 @@ const QUOTA_DISPATCH: Record<
 export async function ensureQuotaForApi(
   clinicId: string,
   quota: "maxPatients" | "maxAppointmentsPerMonth",
+  now: Date = new Date(),
 ): Promise<Response | null> {
-  const checker = QUOTA_DISPATCH[quota];
-  const result = await checker(clinicId);
-  if (result.ok) return null;
-  if (result.kind === "warn") return null;
-  return Response.json(
-    {
-      error: "PlanLimitExceeded",
-      quota,
-      max: result.max,
-      current: result.current,
-    },
-    { status: 402 },
-  );
+  try {
+    const planCtx = await loadPlanContext(clinicId);
+    // Warn-only plans never block: skip the counting entirely.
+    if (!planCtx.isFreePlan) return null;
+    const max = planCtx.flags[quota];
+    if (max <= 0) return null;
+    const current = await countFor(clinicId, quota, now);
+    const result = evaluateLimit(current, max, true, quota);
+    if (result.ok || result.kind === "warn") return null;
+    await auditLimit(clinicId, result);
+    return Response.json(
+      {
+        error: "PlanLimitExceeded",
+        reason: "plan_limit",
+        quota,
+        max: result.max,
+        current: result.current,
+      },
+      { status: 402 },
+    );
+  } catch (e) {
+    console.error(`[plan-limits] check failed clinic=${clinicId} quota=${quota}`, e);
+    return null;
+  }
 }

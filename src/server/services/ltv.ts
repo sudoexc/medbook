@@ -2,19 +2,20 @@
  * Patient LTV recalculation.
  *
  * Sums all PAID payments for a patient in the clinic's primary currency
- * (UZS minor units); USD payments are converted in the one convention,
- * сум per 1 USD (`computeLtv`, audit AN-01).
+ * (UZS minor units), net of what was refunded (`paidNetTiyin`, audit AN-11);
+ * USD payments are converted in the one convention, сум per 1 USD
+ * (`computeLtv`, audit AN-01).
  *
  * See docs/TZ.md §5.4 — LTV is denormalized on Patient for fast list sorts.
  * Called synchronously from the payment endpoints.
  */
 import { prisma } from "@/lib/prisma";
-import { computeLtv } from "@/server/services/ltv-compute";
+import { paidNetTiyin } from "@/server/services/ltv-compute";
 
 export async function recalcLtv(patientId: string): Promise<number> {
   const payments = await prisma.payment.findMany({
     where: { patientId, status: "PAID" },
-    select: { amount: true, currency: true, fxRate: true },
+    select: { amount: true, currency: true, fxRate: true, refundedAmount: true },
   });
 
   // Fetch the latest FX rate for the clinic once (tenant-scoped).
@@ -23,7 +24,7 @@ export async function recalcLtv(patientId: string): Promise<number> {
     select: { rateUsd: true },
   });
 
-  const ltv = computeLtv(payments, latestRate?.rateUsd);
+  const ltv = paidNetTiyin(payments, latestRate?.rateUsd);
 
   // Only `ltv`: `visitsCount` counts COMPLETED visits and belongs to
   // `refreshPatientVisitStats`. Writing the number of payments into it here

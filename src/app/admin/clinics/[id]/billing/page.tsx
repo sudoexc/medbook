@@ -2,8 +2,9 @@
  * /admin/clinics/[id]/billing — SUPER_ADMIN tariff control plane.
  *
  * Server-rendered initial state: this RSC loads the clinic, its subscription
- * (creating a TRIAL on `pro` if missing — same defensive path as the API),
- * and the catalog of active plans. The interactive controls live in a client
+ * and the catalog of active plans. It writes nothing (audit G5-03): a clinic
+ * without a subscription gets an explicit «Создать подписку» form instead of
+ * a 30-day Pro trial started by opening the page. The interactive controls live in a client
  * component (`BillingPageClient`) which calls `router.refresh()` on each
  * successful mutation so we never serialize stale rows back to the user.
  *
@@ -18,6 +19,8 @@ import {
   adminPageAccess,
 } from "@/server/platform/admin-page-gate";
 
+import { DEFAULT_TRIAL_DAYS } from "@/server/platform/subscription-lifecycle";
+
 import { BillingPageClient } from "./_components/billing-page-client";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +29,6 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
 async function loadInitialState(clinicId: string) {
   const clinic = await prisma.clinic.findUnique({
     where: { id: clinicId },
@@ -35,29 +36,10 @@ async function loadInitialState(clinicId: string) {
   });
   if (!clinic) return null;
 
-  let sub = await prisma.subscription.findUnique({
+  const sub = await prisma.subscription.findUnique({
     where: { clinicId: clinic.id },
     include: { plan: true },
   });
-  if (!sub) {
-    const fallbackPlan =
-      (await prisma.plan.findUnique({ where: { slug: "pro" } })) ??
-      (await prisma.plan.findFirst({
-        where: { isActive: true },
-        orderBy: { sortOrder: "asc" },
-      }));
-    if (fallbackPlan) {
-      sub = await prisma.subscription.create({
-        data: {
-          clinicId: clinic.id,
-          planId: fallbackPlan.id,
-          status: "TRIAL",
-          trialEndsAt: new Date(Date.now() + THIRTY_DAYS_MS),
-        },
-        include: { plan: true },
-      });
-    }
-  }
 
   const plans = await prisma.plan.findMany({
     where: { isActive: true },
@@ -96,6 +78,7 @@ export default async function BillingPage({ params }: PageProps) {
           trialEndsAt: data.subscription.trialEndsAt?.toISOString() ?? null,
           currentPeriodEndsAt:
             data.subscription.currentPeriodEndsAt?.toISOString() ?? null,
+          graceEndsAt: data.subscription.graceEndsAt?.toISOString() ?? null,
           cancelledAt: data.subscription.cancelledAt?.toISOString() ?? null,
           plan: {
             id: data.subscription.plan.id,
@@ -121,5 +104,10 @@ export default async function BillingPage({ params }: PageProps) {
     })),
   };
 
-  return <BillingPageClient initial={initial} />;
+  return (
+    <BillingPageClient
+      initial={initial}
+      defaultTrialDays={DEFAULT_TRIAL_DAYS}
+    />
+  );
 }

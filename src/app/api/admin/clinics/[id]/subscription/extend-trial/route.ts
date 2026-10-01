@@ -1,21 +1,22 @@
 /**
  * POST /api/admin/clinics/[id]/subscription/extend-trial
  *
- * SUPER_ADMIN convenience: bumps the linked subscription's `trialEndsAt` by
- * 30 days. If `trialEndsAt` is null (e.g. the clinic was promoted to ACTIVE
- * then reverted), the new value is `now + 30d`. Defensively auto-creates the
- * subscription using the same fallback as the GET handler if it's missing.
+ * SUPER_ADMIN «Продлить триал на 30 дней». The rule lives in
+ * `planExtendTrial` and is shared with the clinics row menu (audit G5-01):
+ * a TRIAL gets 30 more days from its current end, a PAST_DUE or CANCELLED
+ * subscription is back in TRIAL until now + 30 days (the banner goes away),
+ * an ACTIVE one is refused with 409 `subscription_active`.
  *
- * The handler does NOT change `status` — extending a trial after expiry is a
- * separate decision; the admin can flip TRIAL→PAST_DUE etc. via the PATCH
- * endpoint if needed.
+ * Body (optional): `{ expectedTrialEndsAt: ISO | null }`, the trial end the
+ * page showed. If it no longer matches, the trial was already extended (a
+ * double click, another tab) and the answer is 409 `subscription_changed`
+ * with the current subscription instead of a second month.
  */
-import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { ok, err, notFound } from "@/server/http";
-import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
-
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+import { err } from "@/server/http";
+import { requireSuperAdmin } from "@/server/platform/handler";
+import { extendTrialResponse } from "@/server/platform/subscription-admin";
+import { readExpectedTrialEndsAt } from "@/server/platform/subscription-body";
 
 function clinicIdFromUrl(request: Request): string | null {
   try {
@@ -29,94 +30,19 @@ function clinicIdFromUrl(request: Request): string | null {
   }
 }
 
-async function ensureSubscriptionId(clinicId: string): Promise<string> {
-  const existing = await prisma.subscription.findUnique({
-    where: { clinicId },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
-
-  const fallbackPlan =
-    (await prisma.plan.findUnique({ where: { slug: "pro" } })) ??
-    (await prisma.plan.findFirst({
-      where: { isActive: true },
-      orderBy: { sortOrder: "asc" },
-    }));
-  if (!fallbackPlan) {
-    throw new Error(
-      "No active Plan rows found — run `npx prisma migrate dev` to seed the catalog.",
-    );
-  }
-  const created = await prisma.subscription.create({
-    data: {
-      clinicId,
-      planId: fallbackPlan.id,
-      status: "TRIAL",
-      trialEndsAt: new Date(Date.now() + THIRTY_DAYS_MS),
-    },
-    select: { id: true },
-  });
-  return created.id;
-}
-
 export async function POST(request: Request): Promise<Response> {
   const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
-  return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, async () => {
-    const id = clinicIdFromUrl(request);
-    if (!id) return err("BadRequest", 400);
-    const clinic = await prisma.clinic.findUnique({ where: { id } });
-    if (!clinic) return notFound();
-
-    await ensureSubscriptionId(id);
-
-    const before = await prisma.subscription.findUnique({
-      where: { clinicId: id },
-      select: { id: true, trialEndsAt: true },
-    });
-    if (!before) {
-      // Should be unreachable after ensureSubscriptionId but keeps TS happy.
-      return err("InternalError", 500);
-    }
-
-    const base =
-      before.trialEndsAt && before.trialEndsAt.getTime() > Date.now()
-        ? before.trialEndsAt
-        : new Date();
-    const next = new Date(base.getTime() + THIRTY_DAYS_MS);
-
-    const updated = await prisma.subscription.update({
-      where: { clinicId: id },
-      data: { trialEndsAt: next },
-      include: { plan: true },
-    });
-
-    await platformAudit({
+  const id = clinicIdFromUrl(request);
+  if (!id) return err("BadRequest", 400);
+  const expected = await readExpectedTrialEndsAt(request);
+  if (expected === "invalid") return err("ValidationError", 400);
+  return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, () =>
+    extendTrialResponse({
       request,
       userId: gate.userId,
       clinicId: id,
-      action: "subscription.extend_trial",
-      entityType: "Subscription",
-      entityId: updated.id,
-      meta: {
-        from: before.trialEndsAt?.toISOString() ?? null,
-        to: next.toISOString(),
-      },
-    });
-
-    return ok({
-      subscription: {
-        id: updated.id,
-        clinicId: updated.clinicId,
-        planId: updated.planId,
-        status: updated.status,
-        trialEndsAt: updated.trialEndsAt,
-        currentPeriodEndsAt: updated.currentPeriodEndsAt,
-        cancelledAt: updated.cancelledAt,
-        createdAt: updated.createdAt,
-        updatedAt: updated.updatedAt,
-        plan: updated.plan,
-      },
-    });
-  });
+      expectedTrialEndsAt: expected,
+    }),
+  );
 }

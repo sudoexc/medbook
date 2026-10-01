@@ -18,7 +18,8 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api-handler", () => {
-  const ctx = { kind: "TENANT", clinicId: "c1", userId: "u1", role: "RECEPTIONIST" };
+  // ADMIN: correcting a recorded amount is ADMIN's (audit AN-11).
+  const ctx = { kind: "TENANT", clinicId: "c1", userId: "u1", role: "ADMIN" };
   return {
     createApiHandler:
       (
@@ -55,6 +56,11 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.paymentUpdates.push(data);
         return { ...state.paymentBefore, ...data };
+      }),
+      updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        state.paymentUpdates.push(data);
+        state.paymentBefore = { ...state.paymentBefore, ...data };
+        return { count: 1 };
       }),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const snap = data.amountUsdSnap;
@@ -158,6 +164,9 @@ describe("PATCH /api/crm/payments/[id]: a corrected amount", () => {
       fxRate: "12600.0000",
       amountUsdSnap: 1190,
       status: "PAID",
+      refundedAmount: 0,
+      refundedAt: null,
+      paidAt: null,
       patientId: null,
     };
     const { PATCH } = await import("@/app/api/crm/payments/[id]/route");

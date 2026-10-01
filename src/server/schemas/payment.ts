@@ -42,6 +42,8 @@ export const UpdatePaymentSchema = z.object({
   method: PaymentMethodEnum.optional(),
   status: PaymentStatusEnum.optional(),
   refundedAmount: z.number().int().min(0).optional(),
+  /** When the refund was given back; defaults to now (audit AN-11). */
+  refundedAt: z.coerce.date().optional(),
   receiptNumber: z.string().max(100).nullable().optional(),
   receiptUrl: z.string().url().nullable().optional(),
   paidAt: z.coerce.date().nullable().optional(),

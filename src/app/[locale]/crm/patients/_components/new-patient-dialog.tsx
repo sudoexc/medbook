@@ -34,6 +34,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { readPlanLimit } from "@/lib/plan-limit";
+
+/** The 402 from the plan-limit guard, already worded for the toast. */
+class PlanLimitError extends Error {}
 
 const SOURCES = [
   "WEBSITE",
@@ -87,6 +91,7 @@ export function NewPatientDialog({
   initialPhone,
 }: NewPatientDialogProps) {
   const t = useTranslations("patients.newDialog");
+  const tLimit = useTranslations("crmToasts.patient.planLimit");
   const tSource = useTranslations("patients.source");
   const tGender = useTranslations("patients.gender");
   const queryClient = useQueryClient();
@@ -166,6 +171,9 @@ export function NewPatientDialog({
         } | null;
         const owner = readPhoneOwnerMismatch(res.status, err);
         if (owner) throw new PhoneOwnerMismatchError(owner);
+        // The plan's patient limit (audit SEC-10): said in words.
+        const limit = readPlanLimit(res.status, err);
+        if (limit) throw new PlanLimitError(tLimit(limit.quota, { max: limit.max }));
         if (res.status === 409 && err?.reason === "phone_already_exists") {
           // Staff answered «this is the same person» (or the number's
           // owner matched outright): the card exists, so open it instead of
@@ -189,7 +197,9 @@ export function NewPatientDialog({
         return;
       }
       triggerShake();
-      if (e.message === "PHONE_EXISTS") {
+      if (e instanceof PlanLimitError) {
+        toast.error(e.message);
+      } else if (e.message === "PHONE_EXISTS") {
         toast.error(t("phoneExists"));
       } else {
         toast.error(t("errorToast"));

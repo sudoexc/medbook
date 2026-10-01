@@ -18,6 +18,11 @@
  * eventually flips the invoice to PAID — this endpoint never mutates
  * state.
  *
+ * Neither provider's merchant protocol is implemented yet (audit AN-13,
+ * `online-payments.ts`), so a real checkout could never complete: the
+ * route answers 503 `OnlinePaymentNotConnected` instead of sending the
+ * clinic to a provider page that ends in an error.
+ *
  * Wrapped in `createApiHandler` so SUPER_ADMIN impersonation in VIEW_ONLY
  * mode is blocked before any provider call (Phase 19 W4 contract).
  */
@@ -28,6 +33,7 @@ import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
 import { clickCreateCharge } from "@/server/billing/payments/click";
 import { paymeCreateCharge } from "@/server/billing/payments/payme";
+import { isOnlinePaymentConnected } from "@/server/billing/payments/online-payments";
 
 export const runtime = "nodejs";
 
@@ -71,6 +77,12 @@ export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: BodySchema },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
+    if (!isOnlinePaymentConnected(body.provider)) {
+      return err("OnlinePaymentNotConnected", 503, {
+        reason: "online_payment_not_connected",
+        provider: body.provider,
+      });
+    }
 
     const id = idFromUrl(request);
     if (!id) return err("InvalidInvoiceId", 400);

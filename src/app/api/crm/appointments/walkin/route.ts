@@ -23,6 +23,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, err, conflict } from "@/server/http";
 import { audit } from "@/lib/audit";
 import { registerWalkin } from "@/server/appointments/walkin";
+import { ensureQuotaForApi } from "@/server/billing/plan-limits";
 
 const Body = z
   .object({
@@ -61,6 +62,15 @@ export const POST = createApiHandler(
       if (doctorId !== self.id) return err("Forbidden", 403);
       doctorId = self.id;
     }
+
+    // The plan's limits (audit SEC-10): a walk-in is a visit, and a new
+    // patient typed in here is a new card.
+    const overLimit =
+      (await ensureQuotaForApi(ctx.clinicId, "maxAppointmentsPerMonth")) ??
+      (body.newPatient
+        ? await ensureQuotaForApi(ctx.clinicId, "maxPatients")
+        : null);
+    if (overLimit) return overLimit;
 
     const result = await registerWalkin({
       clinicId: ctx.clinicId,

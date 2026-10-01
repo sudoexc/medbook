@@ -11,7 +11,8 @@
  *
  *   2. `paymeVerifyWebhook` — accept a Payme JSON-RPC envelope and
  *      verify the `Authorization: Basic ${b64('Paycom:'+SECRET)}` header
- *      Payme sends with every notification.
+ *      Payme sends with every notification. Without the secret the call is
+ *      refused as `not_configured`, in any environment (audit AN-13).
  *
  *  The shared secret here is the Payme `Authorization: Basic …` value
  *  the merchant configures in their dashboard. The route reads it from
@@ -117,11 +118,9 @@ export async function paymeCreateCharge(
 }
 
 /**
- * Verify a Payme webhook envelope.
- *
- * Returns `{ok: true, stub: true}` when no shared secret is configured
- * — same dev-friendly fallback as the Click adapter. In prod the
- * Authorization header check enforces `Basic ${b64('Paycom:'+SECRET)}`.
+ * Verify a Payme webhook envelope: the Authorization header must be
+ * `Basic ${b64('Paycom:'+SECRET)}`. With no secret configured nothing can be
+ * verified, so the call is refused, never accepted.
  */
 export async function paymeVerifyWebhook(
   payload: unknown,
@@ -163,19 +162,7 @@ export async function paymeVerifyWebhook(
       ? String(env.id)
       : undefined;
 
-  if (!secretFromEnv) {
-    console.info(
-      `[payme] webhook stub-accept method=${env.method} invoice=${String(invoiceId)}`,
-    );
-    return {
-      ok: true,
-      stub: true,
-      method: env.method,
-      invoiceId: typeof invoiceId === "string" ? invoiceId : undefined,
-      providerRef,
-      amountTiins,
-    };
-  }
+  if (!secretFromEnv) return { ok: false, reason: "not_configured" };
 
   if (!authHeader || !authHeader.toLowerCase().startsWith("basic ")) {
     return { ok: false, reason: "missing_auth_header" };

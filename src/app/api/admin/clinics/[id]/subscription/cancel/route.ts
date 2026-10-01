@@ -2,17 +2,19 @@
  * POST /api/admin/clinics/[id]/subscription/cancel
  *
  * Soft-cancellation: sets `status=CANCELLED` and `cancelledAt=NOW()`. Does not
- * delete the row — the audit trail and the option to revert (PATCH back to
- * ACTIVE / TRIAL) both depend on the row staying around.
+ * delete the row — the audit trail and the option to revert both depend on
+ * the row staying around.
  *
- * Defensively auto-creates the subscription if missing, then immediately
- * marks it cancelled — so the operation is meaningful even if a clinic somehow
- * never received its 9b backfill.
+ * Same action as the clinics row menu's «Приостановить» (audit G5-01): one
+ * function, one audit action (CLINIC_SUSPENDED) with the snapshot that
+ * «Восстановить» brings back. Already cancelled answers 200 unchanged. A
+ * clinic without a subscription gets 409 `NoSubscription` (G5-03): nothing
+ * is created just to be cancelled.
  */
-import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { ok, err, notFound } from "@/server/http";
-import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
+import { err } from "@/server/http";
+import { requireSuperAdmin } from "@/server/platform/handler";
+import { cancelResponse } from "@/server/platform/subscription-admin";
 
 function clinicIdFromUrl(request: Request): string | null {
   try {
@@ -26,76 +28,12 @@ function clinicIdFromUrl(request: Request): string | null {
   }
 }
 
-async function ensureSubscriptionId(clinicId: string): Promise<string> {
-  const existing = await prisma.subscription.findUnique({
-    where: { clinicId },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
-  const fallbackPlan =
-    (await prisma.plan.findUnique({ where: { slug: "pro" } })) ??
-    (await prisma.plan.findFirst({
-      where: { isActive: true },
-      orderBy: { sortOrder: "asc" },
-    }));
-  if (!fallbackPlan) {
-    throw new Error(
-      "No active Plan rows found — run `npx prisma migrate dev` to seed the catalog.",
-    );
-  }
-  const created = await prisma.subscription.create({
-    data: {
-      clinicId,
-      planId: fallbackPlan.id,
-      status: "TRIAL",
-      trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    },
-    select: { id: true },
-  });
-  return created.id;
-}
-
 export async function POST(request: Request): Promise<Response> {
   const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
-  return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, async () => {
-    const id = clinicIdFromUrl(request);
-    if (!id) return err("BadRequest", 400);
-    const clinic = await prisma.clinic.findUnique({ where: { id } });
-    if (!clinic) return notFound();
-
-    await ensureSubscriptionId(id);
-
-    const cancelledAt = new Date();
-    const updated = await prisma.subscription.update({
-      where: { clinicId: id },
-      data: { status: "CANCELLED", cancelledAt },
-      include: { plan: true },
-    });
-
-    await platformAudit({
-      request,
-      userId: gate.userId,
-      clinicId: id,
-      action: "subscription.cancel",
-      entityType: "Subscription",
-      entityId: updated.id,
-      meta: { cancelledAt: cancelledAt.toISOString() },
-    });
-
-    return ok({
-      subscription: {
-        id: updated.id,
-        clinicId: updated.clinicId,
-        planId: updated.planId,
-        status: updated.status,
-        trialEndsAt: updated.trialEndsAt,
-        currentPeriodEndsAt: updated.currentPeriodEndsAt,
-        cancelledAt: updated.cancelledAt,
-        createdAt: updated.createdAt,
-        updatedAt: updated.updatedAt,
-        plan: updated.plan,
-      },
-    });
-  });
+  const id = clinicIdFromUrl(request);
+  if (!id) return err("BadRequest", 400);
+  return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, () =>
+    cancelResponse({ request, userId: gate.userId, clinicId: id }),
+  );
 }

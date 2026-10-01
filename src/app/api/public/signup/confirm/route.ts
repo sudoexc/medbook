@@ -28,11 +28,13 @@ import { generateTempPassword, hashPassword } from "@/server/auth/password";
 import { slugify } from "@/lib/slugify";
 import { applyPlaybook } from "@/server/onboarding/apply-playbook";
 import { isPlaybookSlug } from "@/server/onboarding/playbooks";
+import { createSubscription } from "@/server/platform/subscription-lifecycle";
 import {
   isPublicSignupEnabled,
   signupDisabledResponse,
 } from "@/lib/public-signup";
 
+/** Self-signup trial: 14 days on Basic, the self-serve offer. */
 const TRIAL_DAYS = 14;
 
 export const dynamic = "force-dynamic";
@@ -137,7 +139,6 @@ export async function POST(request: Request): Promise<Response> {
       return err("PlatformMisconfigured", 500, { reason: "basic_plan_missing" });
     }
 
-    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
     const playbookSlug = tokenRow.playbookSlug;
 
     // Single transaction: every row needed for the clinic to be usable.
@@ -178,13 +179,12 @@ export async function POST(request: Request): Promise<Response> {
         },
       });
 
-      await tx.subscription.create({
-        data: {
-          clinicId: clinic.id,
-          planId: basicPlan.id,
-          status: "TRIAL",
-          trialEndsAt,
-        },
+      // The one subscription constructor (audit G5-03), same as the
+      // platform console's.
+      await createSubscription(tx, {
+        clinicId: clinic.id,
+        planId: basicPlan.id,
+        trialDays: TRIAL_DAYS,
       });
 
       await tx.clinicSignupToken.update({

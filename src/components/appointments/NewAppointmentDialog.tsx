@@ -52,6 +52,7 @@ import {
   type PatientHit,
   type ServiceHit,
 } from "./new-appointment-dialog/types";
+import { readPlanLimit } from "@/lib/plan-limit";
 
 export interface NewAppointmentDialogProps {
   open: boolean;
@@ -122,6 +123,7 @@ export function NewAppointmentDialog({
   const tCase = useTranslations("appointments.case");
   const tChannel = useTranslations("appointments.channel");
   const tConflict = useTranslations("appointments.newDialog.conflict");
+  const tLimit = useTranslations("crmToasts.patient.planLimit");
   const qc = useQueryClient();
 
   // Post-creation flow: when there are multiple open cases for this patient,
@@ -411,12 +413,16 @@ export function NewAppointmentDialog({
           // The same person is already in the clinic's patient base: the
           // server hands back the existing id so we don't ask the
           // receptionist to retype anything. Reuse it and proceed to booking.
+          const limit = readPlanLimit(patientRes.status, j);
           if (
             patientRes.status === 409 &&
             j?.reason === "phone_already_exists" &&
             j.patientId
           ) {
             resolvedPatientId = j.patientId;
+          } else if (limit) {
+            // The plan's limit, said in words (audit SEC-10).
+            throw new Error(tLimit(limit.quota, { max: limit.max }));
           } else {
             throw new Error(j?.error ?? `HTTP ${patientRes.status}`);
           }
@@ -483,6 +489,8 @@ export function NewAppointmentDialog({
         const j = (await res.json().catch(() => null)) as {
           error?: string;
         } | null;
+        const limit = readPlanLimit(res.status, j);
+        if (limit) throw new Error(tLimit(limit.quota, { max: limit.max }));
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       const j = (await res.json()) as { id: string };

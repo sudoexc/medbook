@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { PlusIcon, WalletIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatDate, type Locale } from "@/lib/format";
+import { formatDate, formatMoney, type Locale } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { MoneyText } from "@/components/atoms/money-text";
@@ -14,6 +14,10 @@ import {
   AddPaymentDialog,
   type PaymentVisitOption,
 } from "@/components/payments/add-payment-dialog";
+import {
+  PaymentAdjustDialog,
+  type PaymentAdjustMode,
+} from "@/components/payments/payment-adjust-dialog";
 
 import type { Patient } from "../../_hooks/use-patient";
 import {
@@ -21,6 +25,7 @@ import {
   type PatientPayment,
 } from "../../_hooks/use-patient-payments";
 import { usePatientAppointments } from "../../_hooks/use-patient-appointments";
+import { useCurrentRole } from "../../_hooks/use-current-role";
 
 const STATUS_TONE: Record<
   PatientPayment["status"],
@@ -41,10 +46,20 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
   const tMethod = useTranslations("patientCard.payments.method");
   const tStatus = useTranslations("patientCard.payments.status");
   const locale = useLocale() as Locale;
+  const role = useCurrentRole();
 
   const q = usePatientPayments(patient.id);
   const apptsQ = usePatientAppointments(patient.id);
   const [addOpen, setAddOpen] = React.useState(false);
+  // «Исправить сумму» is ADMIN's, «Возврат» the desk's too (audit AN-11).
+  // Only сум payments: the dialog speaks сум.
+  const canRefund =
+    role === "ADMIN" || role === "SUPER_ADMIN" || role === "RECEPTIONIST";
+  const canCorrect = role === "ADMIN" || role === "SUPER_ADMIN";
+  const [adjust, setAdjust] = React.useState<{
+    mode: PaymentAdjustMode;
+    row: PatientPayment;
+  } | null>(null);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data?.rows]);
 
   // The visits a new payment can be filed under (audit AN-02).
@@ -67,9 +82,10 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
   );
 
   const totals = React.useMemo(() => {
+    // Net of refunds (audit AN-11): a refunded payment keeps its row.
     const paid = rows
-      .filter((r) => r.status === "PAID")
-      .reduce((acc, r) => acc + r.amount, 0);
+      .filter((r) => r.status === "PAID" || r.status === "REFUNDED")
+      .reduce((acc, r) => acc + Math.max(0, r.amount - (r.refundedAmount ?? 0)), 0);
     const debt = rows
       .filter((r) => r.status === "UNPAID" || r.status === "PARTIAL")
       .reduce((acc, r) => acc + r.amount, 0);
@@ -143,17 +159,18 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
         />
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="grid grid-cols-[140px_140px_140px_120px_1fr] gap-3 border-b border-border bg-muted/40 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="grid grid-cols-[140px_140px_140px_120px_1fr_auto] gap-3 border-b border-border bg-muted/40 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             <span>{t("date")}</span>
             <span>{t("amount")}</span>
             <span>{t("methodCol")}</span>
             <span>{t("statusCol")}</span>
             <span>{t("appointment")}</span>
+            <span />
           </div>
           {rows.map((row) => (
             <div
               key={row.id}
-              className="grid grid-cols-[140px_140px_140px_120px_1fr] gap-3 border-b border-border px-4 py-2 text-sm last:border-b-0"
+              className="grid grid-cols-[140px_140px_140px_120px_1fr_auto] items-start gap-3 border-b border-border px-4 py-2 text-sm last:border-b-0"
             >
               <span className="tabular-nums text-foreground">
                 {formatDate(row.paidAt ?? row.createdAt, locale, "short")}
@@ -164,6 +181,16 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
                   currency={row.currency}
                   showDual={false}
                 />
+                {row.refundedAmount > 0 ? (
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {t("refundedLine", {
+                      amount: formatMoney(row.refundedAmount, row.currency, locale),
+                      date: row.refundedAt
+                        ? formatDate(row.refundedAt, locale, "short")
+                        : "",
+                    })}
+                  </span>
+                ) : null}
               </span>
               <span className="text-muted-foreground">
                 {tMethod(
@@ -194,10 +221,45 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
                   ? formatDate(row.appointment.date, locale, "short")
                   : "—"}
               </span>
+              <span className="flex justify-end gap-1">
+                {row.status === "PAID" &&
+                row.currency === "UZS" &&
+                row.refundedAmount === 0 ? (
+                  <>
+                    {canCorrect ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setAdjust({ mode: "amount", row })}
+                      >
+                        {t("actions.correct")}
+                      </Button>
+                    ) : null}
+                    {canRefund ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setAdjust({ mode: "refund", row })}
+                      >
+                        {t("actions.refund")}
+                      </Button>
+                    ) : null}
+                  </>
+                ) : null}
+              </span>
             </div>
           ))}
         </div>
       )}
+
+      <PaymentAdjustDialog
+        mode={adjust?.mode ?? "amount"}
+        payment={adjust?.row ?? null}
+        patientId={patient.id}
+        onOpenChange={(open) => {
+          if (!open) setAdjust(null);
+        }}
+      />
 
       <AddPaymentDialog
         open={addOpen}

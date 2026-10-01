@@ -137,6 +137,10 @@ export default async function BillingPage(props: {
       status: data.sub.status,
       trialEndsAt: data.sub.trialEndsAt?.toISOString() ?? null,
       currentPeriodEndsAt: data.sub.currentPeriodEndsAt?.toISOString() ?? null,
+      graceEndsAt:
+        data.sub.status === "PAST_DUE"
+          ? (data.sub.graceEndsAt?.toISOString() ?? null)
+          : null,
       priceMonth: data.sub.plan.priceMonth.toString(),
       pendingPlanSlug,
     },

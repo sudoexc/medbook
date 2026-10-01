@@ -44,6 +44,7 @@ import {
   checkSessionLifetime,
   IDLE_TIMEOUT_DEFAULT,
 } from "./session-security";
+import { clinicLocksOut } from "./clinic-access";
 
 export type SessionBinding =
   | { kind: "sid"; sessionId: string }
@@ -56,6 +57,7 @@ export type SessionRejectReason =
   | "idle"
   | "forced-rerotate"
   | "inactive"
+  | "clinic-inactive"
   | "moved";
 
 export type GuardClaims = {
@@ -81,6 +83,8 @@ export type GuardUser = {
   mustChangePassword: boolean;
   lastSessionRotatedAt: Date | null;
   idleTimeoutMinutes: number | null;
+  /** `Clinic.active` of the user's clinic (audit SEC-10); null without one. */
+  clinicActive?: boolean | null;
 };
 
 export type FreshClaims = {
@@ -129,6 +133,16 @@ export function decideStaffSession(args: {
   });
 
   if (!user || !user.active) return reject("inactive");
+  // The platform switched the clinic off: its staff are signed out.
+  if (
+    clinicLocksOut({
+      role: user.role,
+      clinicId: user.clinicId,
+      clinicActive: user.clinicActive,
+    })
+  ) {
+    return reject("clinic-inactive");
+  }
 
   // Moving between the platform (SUPER_ADMIN, no home clinic) and a clinic
   // role, or between clinics, changes what every tenant-scoped query means.
@@ -266,7 +280,7 @@ async function loadSnapshot(
           clinicId: true,
           mustChangePassword: true,
           lastSessionRotatedAt: true,
-          clinic: { select: { sessionIdleTimeoutMinutes: true } },
+          clinic: { select: { sessionIdleTimeoutMinutes: true, active: true } },
         },
       }),
     ]),
@@ -282,6 +296,7 @@ async function loadSnapshot(
           mustChangePassword: user.mustChangePassword,
           lastSessionRotatedAt: user.lastSessionRotatedAt,
           idleTimeoutMinutes: user.clinic?.sessionIdleTimeoutMinutes ?? null,
+          clinicActive: user.clinic?.active ?? null,
         }
       : null,
     loadedAt: now.getTime(),

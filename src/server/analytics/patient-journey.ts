@@ -145,14 +145,22 @@ export async function loadPatientJourney(
     },
     select: {
       patientId: true,
-      payments: { where: { status: "PAID" }, select: { amount: true } },
+      payments: {
+        where: { status: "PAID" },
+        select: { amount: true, refundedAmount: true },
+      },
     },
   });
 
   const visits: JourneyVisitInput[] = rows.map((r) => ({
     patientId: r.patientId,
     paid: r.payments.length > 0,
-    paidAmount: r.payments.reduce((sum, p) => sum + p.amount, 0),
+    // Net of a partial refund (audit AN-11); a fully refunded payment is
+    // REFUNDED and not counted at all.
+    paidAmount: r.payments.reduce(
+      (sum, p) => sum + Math.max(0, p.amount - (p.refundedAmount ?? 0)),
+      0,
+    ),
   }));
 
   const patientIds = [...new Set(visits.map((v) => v.patientId))];

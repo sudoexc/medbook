@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +29,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
+import {
+  SELECT_ALL,
+  SELECT_NONE,
+  fromSelectValue,
+  toSelectValue,
+} from "@/lib/select-sentinel";
 
 type Role =
   | "SUPER_ADMIN"
@@ -69,11 +80,15 @@ async function fetchUsers(
   q: string,
   role: string,
   clinicId: string,
+  cursor: string | null,
 ): Promise<UsersResp> {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (role) params.set("role", role);
   if (clinicId) params.set("clinicId", clinicId);
+  // The API pages by 50; without the cursor only the first page was ever
+  // reachable (audit G5-04).
+  if (cursor) params.set("cursor", cursor);
   const r = await fetch(`/api/platform/users?${params.toString()}`, {
     cache: "no-store",
   });
@@ -116,10 +131,17 @@ export function UsersPageClient() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const users = useQuery({
+  const users = useInfiniteQuery({
     queryKey: ["admin", "users", debouncedQ, role, clinicFilter],
-    queryFn: () => fetchUsers(debouncedQ, role, clinicFilter),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      fetchUsers(debouncedQ, role, clinicFilter, pageParam),
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
+  const userRows = React.useMemo(
+    () => users.data?.pages.flatMap((p) => p.rows) ?? [],
+    [users.data],
+  );
 
   const clinics = useQuery({
     queryKey: ["admin", "clinics", "options"],
@@ -144,12 +166,15 @@ export function UsersPageClient() {
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <Select value={role} onValueChange={(v) => setRole(v as "" | Role)}>
+        <Select
+          value={toSelectValue(role)}
+          onValueChange={(v) => setRole(fromSelectValue(v) as "" | Role)}
+        >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Все роли" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Все роли</SelectItem>
+            <SelectItem value={SELECT_ALL}>Все роли</SelectItem>
             {ROLES.map((r) => (
               <SelectItem key={r} value={r}>
                 {r}
@@ -157,12 +182,15 @@ export function UsersPageClient() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={clinicFilter} onValueChange={setClinicFilter}>
+        <Select
+          value={toSelectValue(clinicFilter)}
+          onValueChange={(v) => setClinicFilter(fromSelectValue(v))}
+        >
           <SelectTrigger className="w-[220px]">
             <SelectValue placeholder="Все клиники" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Все клиники</SelectItem>
+            <SelectItem value={SELECT_ALL}>Все клиники</SelectItem>
             {clinics.data?.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.nameRu}
@@ -195,7 +223,7 @@ export function UsersPageClient() {
               </tr>
             </thead>
             <tbody>
-              {users.data.rows.map((u) => (
+              {userRows.map((u) => (
                 <tr
                   key={u.id}
                   className="border-b border-border last:border-0 hover:bg-muted/30"
@@ -257,7 +285,7 @@ export function UsersPageClient() {
                   </td>
                 </tr>
               ))}
-              {!users.data.rows.length && (
+              {!userRows.length && (
                 <tr>
                   <td
                     colSpan={5}
@@ -271,6 +299,18 @@ export function UsersPageClient() {
           </table>
         </div>
       )}
+      {users.hasNextPage ? (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void users.fetchNextPage()}
+            disabled={users.isFetchingNextPage}
+          >
+            {users.isFetchingNextPage ? "Загрузка…" : "Показать ещё"}
+          </Button>
+        </div>
+      ) : null}
 
       <ReassignDialog
         user={reassign}
@@ -333,12 +373,17 @@ function ReassignDialog({
         <div className="grid gap-3 py-2">
           <div className="grid gap-1.5">
             <Label>Клиника</Label>
-            <Select value={clinicId} onValueChange={setClinicId}>
+            <Select
+              value={toSelectValue(clinicId, SELECT_NONE)}
+              onValueChange={(v) => setClinicId(fromSelectValue(v))}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Выберите клинику" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— (только для SUPER_ADMIN)</SelectItem>
+                <SelectItem value={SELECT_NONE}>
+                  Без клиники (только для SUPER_ADMIN)
+                </SelectItem>
                 {clinics.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.nameRu}

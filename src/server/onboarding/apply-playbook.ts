@@ -3,7 +3,9 @@
  *
  * Materialises a `Playbook` bundle into a freshly-created Clinic:
  *   - services (skipping any whose `code` already exists for this clinic)
- *   - notification templates (skipping any whose `key` already exists)
+ *   - notification templates (skipping any whose `key` already exists):
+ *     the playbook's own wording first, then every canonical appointment
+ *     template (`DEFAULT_APPOINTMENT_TEMPLATES`) whose event has none yet
  *   - workday/slot defaults on the Clinic row
  *
  * Idempotency: re-running the same `applyPlaybook(clinicId, slug)` is safe
@@ -16,6 +18,9 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+
+import { DEFAULT_APPOINTMENT_TEMPLATES } from "@/server/notifications/default-templates";
+import { templateSlot } from "@/server/notifications/template-events";
 
 import {
   PLAYBOOKS,
@@ -84,13 +89,20 @@ export async function applyPlaybook(
       }
 
       // ── Notification templates ────────────────────────────────────────
-      const existingKeys = new Set(
-        (
-          await prisma.notificationTemplate.findMany({
-            where: { clinicId },
-            select: { key: true },
-          })
-        ).map((r: { key: string }) => r.key),
+      const existing = (await prisma.notificationTemplate.findMany({
+        where: { clinicId },
+        select: { key: true, trigger: true, triggerConfig: true },
+      })) as Array<{ key: string; trigger?: string; triggerConfig?: unknown }>;
+      const existingKeys = new Set(existing.map((r) => r.key));
+      // Events that already have a template, switched off ones included: a
+      // second active row for one event is the duplicate audit TG-22 is
+      // about, and an event an admin switched off stays off.
+      const occupied = new Set(
+        existing
+          .map((r) =>
+            templateSlot({ key: r.key, trigger: r.trigger ?? "", triggerConfig: r.triggerConfig }),
+          )
+          .filter((x): x is string => x !== null),
       );
 
       let templatesCreated = 0;
@@ -98,6 +110,8 @@ export async function applyPlaybook(
         const shape = triggerKeyToDbShape(tpl.trigger);
         if (!shape) continue;
         if (existingKeys.has(shape.key)) continue;
+        const slot = templateSlot(shape);
+        if (slot && occupied.has(slot)) continue;
         await prisma.notificationTemplate.create({
           data: {
             clinicId,
@@ -115,6 +129,38 @@ export async function applyPlaybook(
             isActive: true,
           } as never,
         });
+        existingKeys.add(shape.key);
+        if (slot) occupied.add(slot);
+        templatesCreated += 1;
+      }
+
+      // Audit TG-16: the playbook alone gave a new clinic no template for a
+      // cancellation, a reschedule, a no-show, a late patient or the 5-day
+      // band, so those events reached nobody and nothing said so. Every
+      // canonical template is added for each event still without one.
+      for (const def of DEFAULT_APPOINTMENT_TEMPLATES) {
+        if (existingKeys.has(def.key)) continue;
+        const slot = templateSlot(def);
+        if (slot && occupied.has(slot)) continue;
+        await prisma.notificationTemplate.create({
+          data: {
+            clinicId,
+            key: def.key,
+            nameRu: def.nameRu,
+            nameUz: def.nameUz,
+            channel: def.channel,
+            category: def.category,
+            bodyRu: def.bodyRu,
+            bodyUz: def.bodyUz,
+            buttons: null,
+            variables: def.variables,
+            trigger: def.trigger,
+            triggerConfig: (def.triggerConfig ?? undefined) as never,
+            isActive: true,
+          } as never,
+        });
+        existingKeys.add(def.key);
+        if (slot) occupied.add(slot);
         templatesCreated += 1;
       }
 

@@ -14,6 +14,12 @@
  * other two are defined here and auto-provisioned on first read (see
  * `ensureAutoMessageTemplates`) so the widget works on a clinic that predates
  * this feature without a migration or a manual seed step.
+ *
+ * `reminder` and `thankYou` show and edit the template the dispatcher really
+ * sends for their event (audit TG-22), which may be another row than the
+ * widget's own key (the onboarding `reminder.24h`, a seeded feedback
+ * request). The widget's switch acts on the whole event: off switches every
+ * template of it off, on keeps exactly one.
  */
 import type {
   NotificationTrigger,
@@ -24,6 +30,13 @@ import { runWithTenant } from "@/lib/tenant-context";
 
 import { DEFAULT_APPOINTMENT_TEMPLATES } from "./default-templates";
 import { ALLOWED_KEYS_BY_TRIGGER } from "./template";
+import { templateSlot } from "./template-events";
+import {
+  retireSlotRivals,
+  slotTemplates,
+  type TemplateSlotDb,
+} from "./template-slot";
+import { findActiveTemplateFor, type TriggerKey } from "./triggers";
 
 export type AutoMessageKind = "welcome" | "reminder" | "thankYou";
 
@@ -152,6 +165,16 @@ export async function ensureAutoMessageTemplates(
     const have = new Set(existing.map((r) => r.key));
     const missing = specs.filter((s) => !have.has(s.key));
     if (missing.length === 0) return;
+    // A widget row for an event that already has an active template starts
+    // switched off: created on, it was the second active template of «за 24
+    // часа» and the dispatcher picked either (audit TG-22).
+    const taken = new Set<string>();
+    for (const spec of missing) {
+      const slot = templateSlot(spec);
+      if (slot && (await slotTemplates(prisma, clinicId, slot)).length > 0) {
+        taken.add(spec.key);
+      }
+    }
     await prisma.notificationTemplate.createMany({
       data: missing.map((s) => ({
         clinicId,
@@ -165,11 +188,61 @@ export async function ensureAutoMessageTemplates(
         bodyRu: s.bodyRu,
         bodyUz: s.bodyUz,
         variables: s.variables,
-        isActive: true,
+        isActive: !taken.has(s.key),
       })) as never,
       skipDuplicates: true,
     });
   });
+}
+
+/** The dispatcher's trigger behind each event-driven widget message. */
+const WIDGET_TRIGGER: Partial<Record<AutoMessageKind, TriggerKey>> = {
+  reminder: "appointment.reminder-24h",
+  thankYou: "appointment.thank-you",
+};
+
+/**
+ * The key of the template a widget message stands for: the one the
+ * dispatcher sends for its event while one is active, else the widget's own
+ * row (audit TG-22).
+ */
+export async function autoMessageTemplateKey(
+  clinicId: string,
+  kind: AutoMessageKind,
+): Promise<string> {
+  const trigger = WIDGET_TRIGGER[kind];
+  if (!trigger) return AUTO_MESSAGE_KEYS[kind];
+  const live = await findActiveTemplateFor(clinicId, trigger);
+  return live?.key ?? AUTO_MESSAGE_KEYS[kind];
+}
+
+/**
+ * After the widget wrote `templateId`: on, it is its event's only active
+ * template; off, so is every other template of the event, or the reminder
+ * would keep going out from a rival row.
+ */
+export async function applyAutoMessageSwitch(
+  db: TemplateSlotDb,
+  templateId: string,
+  enabled: boolean,
+): Promise<string[]> {
+  if (enabled) return retireSlotRivals(db, templateId);
+  const tpl = (await db.notificationTemplate.findUnique({
+    where: { id: templateId },
+    select: { id: true, clinicId: true, key: true, trigger: true, triggerConfig: true },
+  })) as { id: string; clinicId: string; key: string; trigger: string; triggerConfig: unknown } | null;
+  const slot = tpl ? templateSlot(tpl) : null;
+  if (!tpl || !slot) return [];
+  const rivals = (await slotTemplates(db, tpl.clinicId, slot, { exceptId: tpl.id })).map(
+    (r) => r.id,
+  );
+  if (rivals.length > 0) {
+    await db.notificationTemplate.updateMany({
+      where: { id: { in: rivals }, clinicId: tpl.clinicId },
+      data: { isActive: false },
+    });
+  }
+  return rivals;
 }
 
 /**
@@ -203,18 +276,21 @@ export async function getAutoMessages(
   clinicId: string,
 ): Promise<AutoMessageView[]> {
   await ensureAutoMessageTemplates(clinicId);
+  const specs = autoMessageSpecs();
+  const keys = new Map<AutoMessageKind, string>();
+  for (const s of specs) keys.set(s.kind, await autoMessageTemplateKey(clinicId, s.kind));
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    const specs = autoMessageSpecs();
     const rows = await prisma.notificationTemplate.findMany({
-      where: { clinicId, key: { in: specs.map((s) => s.key) } },
+      where: { clinicId, key: { in: Array.from(new Set(keys.values())) } },
       select: { key: true, isActive: true, bodyRu: true },
     });
     const byKey = new Map(rows.map((r) => [r.key, r]));
     return specs.map((s) => {
-      const row = byKey.get(s.key);
+      const key = keys.get(s.kind) ?? s.key;
+      const row = byKey.get(key);
       return {
         kind: s.kind,
-        key: s.key,
+        key,
         enabled: row?.isActive ?? true,
         text: row?.bodyRu ?? s.bodyRu,
         variables: allowedKeysForKind(s.kind),

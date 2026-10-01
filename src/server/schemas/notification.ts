@@ -20,14 +20,20 @@ export const NotificationCategoryEnum = z.enum([
   "MARKETING",
   "TRANSACTIONAL",
 ]);
+// Every event the template editor can bind a template to (audit TG-25), the
+// enum values `TEMPLATE_EVENTS` uses included.
 export const NotificationTriggerEnum = z.enum([
   "MANUAL",
   "APPOINTMENT_CREATED",
   "APPOINTMENT_BEFORE",
+  "APPOINTMENT_CANCELLED",
+  "APPOINTMENT_RESCHEDULED",
+  "APPOINTMENT_RUNNING_LATE",
   "APPOINTMENT_MISSED",
   "APPOINTMENT_COMPLETED",
   "PATIENT_BIRTHDAY",
   "PATIENT_INACTIVE_DAYS",
+  "CASE_REPEAT_DUE",
   "CRON",
 ]);
 export const NotificationStatusEnum = z.enum([
@@ -41,7 +47,7 @@ export const NotificationStatusEnum = z.enum([
 
 // --- Templates --------------------------------------------------------------
 
-export const CreateTemplateSchema = z.object({
+const TemplateFieldsSchema = z.object({
   key: z.string().min(2).max(100),
   nameRu: z.string().min(1).max(200),
   nameUz: z.string().min(1).max(200),
@@ -51,12 +57,19 @@ export const CreateTemplateSchema = z.object({
   bodyUz: z.string().min(1).max(10000),
   buttons: z.unknown().optional().nullable(),
   variables: z.array(z.string().max(100)).max(100).optional(),
-  trigger: NotificationTriggerEnum.default("MANUAL"),
+  trigger: NotificationTriggerEnum,
   triggerConfig: z.unknown().optional().nullable(),
   isActive: z.boolean().optional(),
 });
 
-export const UpdateTemplateSchema = CreateTemplateSchema.partial();
+export const CreateTemplateSchema = TemplateFieldsSchema.extend({
+  trigger: NotificationTriggerEnum.default("MANUAL"),
+});
+
+// No default here (audit TG-25): Zod 4 applies a `.default()` even inside
+// `.partial()`, so every PATCH (an edited text, the «Триггеры» switch) came
+// with `trigger: "MANUAL"` and silently unbound the template from its event.
+export const UpdateTemplateSchema = TemplateFieldsSchema.partial();
 
 export const QueryTemplateSchema = z.object({
   channel: NotificationChannelEnum.optional(),

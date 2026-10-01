@@ -24,6 +24,7 @@ import {
   logicalTriggerKey,
   sanitizeTriggerConfig,
 } from "@/server/notifications/rules";
+import { retireSlotRivals } from "@/server/notifications/template-slot";
 
 const PatchSchema = z.object({
   bodyRu: z.string().min(0).max(10_000).optional(),
@@ -124,9 +125,15 @@ export const PATCH = createApiHandler(
       return err("EmptyPatch", 400);
     }
 
-    const after = await prisma.notificationTemplate.update({
-      where: { id },
-      data: data as never,
+    const { after, retired } = await prisma.$transaction(async (tx) => {
+      const after = await tx.notificationTemplate.update({
+        where: { id },
+        data: data as never,
+      });
+      // One active template per event (audit TG-22): a reminder switched on,
+      // or moved to an offset another one holds, switches that one off.
+      const retired = await retireSlotRivals(tx, id);
+      return { after, retired };
     });
     const d = diff(
       before as unknown as Record<string, unknown>,
@@ -136,7 +143,7 @@ export const PATCH = createApiHandler(
       action: "settings.notifications.template.update",
       entityType: "NotificationTemplate",
       entityId: id,
-      meta: d,
+      meta: { ...d, ...(retired.length > 0 ? { retiredTemplateIds: retired } : {}) },
     });
     return ok(after);
   },

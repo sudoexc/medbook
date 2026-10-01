@@ -85,7 +85,9 @@ describe.each(PLAYBOOK_SLUGS as readonly PlaybookSlug[])(
       const triggers = new Set(pb.templates.map((t) => t.trigger));
       expect(triggers.has("appointment.created")).toBe(true);
       expect(triggers.has("appointment.reminder-24h")).toBe(true);
-      expect(triggers.has("appointment.reminder-2h")).toBe(true);
+      // The canonical last band is 3h; the retired 2h one is not seeded.
+      expect(triggers.has("appointment.reminder-3h")).toBe(true);
+      expect(triggers.has("appointment.reminder-2h")).toBe(false);
     });
 
     it("every template trigger is mappable to a DB enum shape", () => {

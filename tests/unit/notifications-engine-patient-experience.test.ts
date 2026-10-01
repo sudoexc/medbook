@@ -278,8 +278,9 @@ describe("Mini App button (TG-09)", () => {
 });
 
 describe("medication reminders (TG-15)", () => {
-  // 08:10 Tashkent: both 08:00 and 08:30 doses fall in this hour.
-  const AT = new Date("2026-10-01T03:10:00.000Z");
+  // 08:31 Tashkent: both the 08:00 and the 08:30 dose are due (the tick
+  // reminds the doses of its trailing window, audit INF-12).
+  const AT = new Date("2026-10-01T03:31:00.000Z");
 
   function rx(over: Row = {}): Row {
     return {

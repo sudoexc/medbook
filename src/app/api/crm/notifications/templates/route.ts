@@ -5,7 +5,9 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, parseQuery } from "@/server/http";
+import { err, ok, parseQuery } from "@/server/http";
+import { sanitizeTriggerConfig } from "@/server/notifications/rules";
+import { retireSlotRivals } from "@/server/notifications/template-slot";
 import {
   CreateTemplateSchema,
   QueryTemplateSchema,
@@ -42,29 +44,43 @@ export const GET = createApiListHandler(
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: CreateTemplateSchema },
   async ({ request, body, ctx }) => {
+    // No EMAIL adapter exists: such a template could only fail (audit TG-25).
+    if (body.channel === "EMAIL") return err("ChannelNotAvailable", 400, { channel: "EMAIL" });
     const createdById = ctx.kind === "TENANT" ? ctx.userId : null;
-    const created = await prisma.notificationTemplate.create({
-      data: {
-        key: body.key,
-        nameRu: body.nameRu,
-        nameUz: body.nameUz,
-        channel: body.channel,
-        category: body.category,
-        bodyRu: body.bodyRu,
-        bodyUz: body.bodyUz,
-        buttons: body.buttons ?? null,
-        variables: body.variables ?? [],
-        trigger: body.trigger,
-        triggerConfig: body.triggerConfig ?? null,
-        isActive: body.isActive ?? true,
-        createdById,
-      } as never,
+    const { created, retired } = await prisma.$transaction(async (tx) => {
+      const created = await tx.notificationTemplate.create({
+        data: {
+          key: body.key,
+          nameRu: body.nameRu,
+          nameUz: body.nameUz,
+          channel: body.channel,
+          category: body.category,
+          bodyRu: body.bodyRu,
+          bodyUz: body.bodyUz,
+          buttons: body.buttons ?? null,
+          variables: body.variables ?? [],
+          trigger: body.trigger,
+          // The editor binds the template to an event (TG-25); the config is
+          // sanitised like the settings editor's (offset clamp, channels).
+          triggerConfig:
+            body.triggerConfig == null
+              ? null
+              : sanitizeTriggerConfig(body.triggerConfig, {
+                  kind: body.trigger === "APPOINTMENT_BEFORE" ? "before" : "other",
+                }),
+          isActive: body.isActive ?? true,
+          createdById,
+        } as never,
+      });
+      // One active template per event (TG-22).
+      const retired = await retireSlotRivals(tx, created.id);
+      return { created, retired };
     });
     await audit(request, {
       action: "template.create",
       entityType: "NotificationTemplate",
       entityId: created.id,
-      meta: { after: created },
+      meta: { after: created, ...(retired.length > 0 ? { retiredTemplateIds: retired } : {}) },
     });
     return ok(created, 201);
   }

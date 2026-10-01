@@ -12,8 +12,8 @@
  *   2. Run a *dynamic* pass for any APPOINTMENT_BEFORE templates whose
  *      `triggerConfig.offsetMin` was customised by the admin in
  *      /crm/settings/notifications. The dynamic pass uses the same
- *      idempotency key (appointmentId, templateId) as the legacy pass, so
- *      it never double-schedules.
+ *      idempotency key (appointmentId, templateId, appointment start) as
+ *      the legacy pass, so it never double-schedules.
  *   3. Return rows stuck in SENDING (the worker died mid-send) to work.
  *   4. Pick QUEUED NotificationSend rows whose `scheduledFor <= now()` and
  *      enqueue them on `notifications:send`, one dedupe key per attempt.
@@ -27,10 +27,12 @@ import { runWithTenant } from "@/lib/tenant-context";
 import {
   LIVE_SEND_STATUSES,
   SENDING_STALE_MS,
+  coversStart,
   deliveryAttemptKey,
   pinnedAnchor,
   stuckSendingVerdict,
 } from "@/server/notifications/delivery-state";
+import { familyRelaysFor } from "@/server/notifications/family-relay";
 import { recordPatientNoChannel } from "@/server/notifications/no-channel-action";
 import {
   isTriggerEnabled,
@@ -38,9 +40,11 @@ import {
   resolveOffsetMin,
   skipsWhenConfirmed,
 } from "@/server/notifications/rules";
+import { TEMPLATE_PICK_ORDER } from "@/server/notifications/template-events";
 import {
   APPOINTMENT_REFS_INCLUDE,
   renderAppointmentBody,
+  renderRelayedAppointmentBody,
   runScheduledTriggers,
   type AppointmentWithRefs,
 } from "@/server/notifications/triggers";
@@ -118,9 +122,13 @@ export async function runDynamicReminders(
         bodyUz: true,
         triggerConfig: true,
       },
+      orderBy: TEMPLATE_PICK_ORDER,
     }),
   )) as TplRow[];
 
+  // One template per clinic and offset, the dispatcher's pick (audit TG-22):
+  // two active rows at the same custom offset sent the patient both.
+  const seenOffset = new Set<string>();
   const dynamicTemplates: TplRow[] = templates.filter((t: TplRow) => {
     if (!isTriggerEnabled(true, t.triggerConfig)) return false;
     const cfg =
@@ -132,7 +140,11 @@ export async function runDynamicReminders(
     // 5d/3d/1d/3h per TZ-risk-outcomes §7 (the -4320 band stays gated on
     // confirmedAt there). Ex-canon offsets (-300, -120, -60) now flow
     // through this dynamic pass like any admin-customised value.
-    return off !== null && !CANONICAL_OFFSETS.has(off);
+    if (off === null || CANONICAL_OFFSETS.has(off)) return false;
+    const slot = `${t.clinicId}|${Math.round(off)}`;
+    if (seenOffset.has(slot)) return false;
+    seenOffset.add(slot);
+    return true;
   });
 
   if (dynamicTemplates.length === 0) {
@@ -179,7 +191,12 @@ export async function runDynamicReminders(
   // Index existing queued/sent rows for idempotency.
   const tplIds = dynamicTemplates.map((t: TplRow) => t.id);
   const apptIds = appts.map((a) => a.id);
-  type ExistingRow = { appointmentId: string | null; templateId: string | null };
+  type ExistingRow = {
+    appointmentId: string | null;
+    templateId: string | null;
+    appointmentAt: Date | null;
+    scheduledFor: Date;
+  };
   const existing: ExistingRow[] =
     apptIds.length === 0
       ? []
@@ -192,12 +209,31 @@ export async function runDynamicReminders(
               // build a second one (the sweep re-sends the first).
               status: { in: [...LIVE_SEND_STATUSES] },
             },
-            select: { appointmentId: true, templateId: true },
+            select: {
+              appointmentId: true,
+              templateId: true,
+              appointmentAt: true,
+              scheduledFor: true,
+            },
           }),
         )) as ExistingRow[]);
-  const existingSet = new Set(
-    existing.map((e: ExistingRow) => `${e.appointmentId}|${e.templateId}`),
-  );
+  const existingByPair = new Map<string, ExistingRow[]>();
+  for (const e of existing) {
+    const k = `${e.appointmentId}|${e.templateId}`;
+    existingByPair.set(k, [...(existingByPair.get(k) ?? []), e]);
+  }
+  // Covered only by a row written for the visit's CURRENT start: a reminder
+  // sent for the start before a reschedule does not stand in for the new
+  // one (audit TG-21).
+  const covered = (appt: AppointmentWithRefs, tpl: TplRow) =>
+    (existingByPair.get(`${appt.id}|${tpl.id}`) ?? []).some((row) =>
+      coversStart(
+        row,
+        (tpl.triggerConfig as { offsetMin?: unknown } | null)?.offsetMin,
+        appt.date.getTime(),
+        true,
+      ),
+    );
 
   const tplsByClinic = new Map<string, TplRow[]>();
   for (const t of dynamicTemplates) {
@@ -222,10 +258,19 @@ export async function runDynamicReminders(
   const toInsert: Insert[] = [];
   let skipped = 0;
 
+  // First the (appointment, template) pairs that are due a row at all, so
+  // the family lookup below reads only those patients, not every visit of
+  // the horizon.
+  const planned: Array<{
+    appt: AppointmentWithRefs;
+    tpl: TplRow;
+    scheduledFor: Date;
+    channel: Insert["channel"] | undefined;
+  }> = [];
   for (const appt of appts) {
     const tpls = tplsByClinic.get(appt.clinicId) ?? [];
     for (const tpl of tpls) {
-      if (existingSet.has(`${appt.id}|${tpl.id}`)) {
+      if (covered(appt, tpl)) {
         skipped += 1;
         continue;
       }
@@ -248,66 +293,86 @@ export async function runDynamicReminders(
       const channels = resolveChannels(tpl.channel, tpl.triggerConfig, {
         telegramId: appt.patient.telegramId,
       });
-      const channel = channels[0] as Insert["channel"] | undefined;
-      const recipient = !channel
-        ? null
-        : channel === "TG"
-          ? appt.patient.telegramId
-          : appt.patient.phone;
-      if (!channel || !recipient) {
-        // Wave 4 of `docs/TZ-sms-removal.md`: no way to reach the patient,
-        // so reception gets a call task instead. Only once the reminder's
-        // moment has come (audit TG-02): raised days ahead it asked reception
-        // to call about a reminder that was not due yet, and was raised again
-        // on every tick. Nothing is inserted for this pair, so ticks inside
-        // the grace window repeat the call; the action dedupes per day.
-        if (scheduledFor.getTime() <= now.getTime()) {
-          await recordPatientNoChannel({
-            clinicId: appt.clinicId,
-            patientId: appt.patientId,
-            patientName: appt.patient.fullName,
-            triggerKey: "appointment.before",
-            appointmentId: appt.id,
-            appointmentAt: appt.date,
-          });
-        }
-        skipped += 1;
-        continue;
+      planned.push({
+        appt,
+        tpl,
+        scheduledFor,
+        channel: channels[0] as Insert["channel"] | undefined,
+      });
+    }
+  }
+
+  // Relatives without Telegram reach their family owner (audit P1D-01).
+  const relays = await familyRelaysFor(
+    planned
+      .filter((p) => p.channel === "TG" && !p.appt.patient.telegramId)
+      .map((p) => ({ id: p.appt.patientId, clinicId: p.appt.clinicId })),
+  );
+
+  for (const { appt, tpl, scheduledFor, channel } of planned) {
+    // Telegram is the only channel with an adapter: an EMAIL or CALL row
+    // addressed to the phone could only fail in the worker (audit INF-11).
+    const relay =
+      channel === "TG" && !appt.patient.telegramId
+        ? (relays.get(appt.patientId) ?? null)
+        : null;
+    const recipient =
+      channel === "TG" ? (appt.patient.telegramId ?? relay?.telegramId ?? null) : null;
+    if (!channel || !recipient) {
+      // Wave 4 of `docs/TZ-sms-removal.md`: no way to reach the patient,
+      // so reception gets a call task instead. Only once the reminder's
+      // moment has come (audit TG-02): raised days ahead it asked reception
+      // to call about a reminder that was not due yet, and was raised again
+      // on every tick. Nothing is inserted for this pair, so ticks inside
+      // the grace window repeat the call; the action dedupes per day.
+      if (scheduledFor.getTime() <= now.getTime()) {
+        await recordPatientNoChannel({
+          clinicId: appt.clinicId,
+          patientId: appt.patientId,
+          patientName: appt.patient.fullName,
+          triggerKey: "appointment.before",
+          appointmentId: appt.id,
+          appointmentAt: appt.date,
+        });
       }
-      const body = renderAppointmentBody(tpl, appt);
+      skipped += 1;
+      continue;
+    }
+    const body = relay
+      ? renderRelayedAppointmentBody(tpl, appt, relay)
+      : renderAppointmentBody(tpl, appt);
+    toInsert.push({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      appointmentId: appt.id,
+      appointmentAt: appt.date,
+      templateId: tpl.id,
+      channel,
+      recipient,
+      body,
+      scheduledFor,
+      status: "QUEUED",
+    });
+    // Parallel INAPP mirror for TG-using patients — same rationale as
+    // the legacy 24h/5h/2h pass: free secondary touch in the Mini App.
+    if (
+      appt.patient.telegramId &&
+      channel !== "INAPP" &&
+      channel !== "VISIT" &&
+      channel !== "CALL"
+    ) {
       toInsert.push({
         clinicId: appt.clinicId,
         patientId: appt.patientId,
         appointmentId: appt.id,
         appointmentAt: appt.date,
         templateId: tpl.id,
-        channel,
-        recipient,
+        channel: "INAPP",
+        recipient: appt.patientId,
         body,
         scheduledFor,
         status: "QUEUED",
       });
-      // Parallel INAPP mirror for TG-using patients — same rationale as
-      // the legacy 24h/5h/2h pass: free secondary touch in the Mini App.
-      if (
-        appt.patient.telegramId &&
-        channel !== "INAPP" &&
-        channel !== "VISIT" &&
-        channel !== "CALL"
-      ) {
-        toInsert.push({
-          clinicId: appt.clinicId,
-          patientId: appt.patientId,
-          appointmentId: appt.id,
-          appointmentAt: appt.date,
-          templateId: tpl.id,
-          channel: "INAPP",
-          recipient: appt.patientId,
-          body,
-          scheduledFor,
-          status: "QUEUED",
-        });
-      }
     }
   }
 

@@ -146,7 +146,11 @@ vi.mock("@/lib/prisma", () => {
       return [args.select ? project(FULL_ROW, args.select) : FULL_ROW];
     }),
     findFirst: vi.fn(async () => ({ ...FULL_ROW })),
-    update: vi.fn(async () => ({ ...FULL_ROW, time: "11:00" })),
+    update: vi.fn(async (args?: { data?: { date?: Date } }) => ({
+      ...FULL_ROW,
+      time: "11:00",
+      ...(args?.data?.date ? { date: args.data.date } : {}),
+    })),
   };
   const tx = {
     appointment,
@@ -289,6 +293,32 @@ describe("PATCH / DELETE /api/miniapp/appointments/[id]", () => {
     const appt = (await json(res)).appointment as Record<string, unknown>;
     expect(Object.keys(appt).sort()).toEqual(SAFE_SCALARS);
     expectNoInternals(appt);
+  });
+
+  it("a move tells the patient and rebuilds the cascade; a same-time edit only tops it up (TG-18)", async () => {
+    const { fireTrigger } = await import("@/server/notifications/triggers");
+    vi.mocked(fireTrigger).mockClear();
+    await PATCH(
+      new Request("http://x/api/miniapp/appointments/apt_1?clinicSlug=neurofax", {
+        method: "PATCH",
+        body: JSON.stringify({ startAt: "2026-10-02T06:00:00.000Z" }),
+      }),
+    );
+    expect(fireTrigger).toHaveBeenLastCalledWith({
+      kind: "appointment.rescheduled",
+      appointmentId: "apt_1",
+    });
+
+    await PATCH(
+      new Request("http://x/api/miniapp/appointments/apt_1?clinicSlug=neurofax", {
+        method: "PATCH",
+        body: JSON.stringify({ startAt: FULL_ROW.date.toISOString() }),
+      }),
+    );
+    expect(fireTrigger).toHaveBeenLastCalledWith({
+      kind: "appointment.updated",
+      appointmentId: "apt_1",
+    });
   });
 
   it("DELETE answers with patient-safe fields only", async () => {

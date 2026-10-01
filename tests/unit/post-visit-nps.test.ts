@@ -7,7 +7,8 @@
  *      handler delegates to the same Zod schema we exercise here.
  *   2. Idempotency contract — the comment-truncation helper used to build
  *      `LowNpsReceivedPayload.commentPreview`.
- *   3. `isNpsEligible` window boundaries (4..5h after `completedAt`),
+ *   3. `isNpsEligible` window boundaries (4..24h after `completedAt`,
+ *      audit INF-12: the 4..5h window lost visits a deploy straddled),
  *      status gate, dedupe stamp, contact gate.
  *   4. `LOW_NPS_RECEIVED` action payload shape — `dedupeKeyFor`,
  *      `defaultSeverity`, `defaultDeeplinkPath` all behave exhaustively for
@@ -151,8 +152,13 @@ describe("isNpsEligible", () => {
     expect(isNpsEligible({ ...baseRow, completedAt }, now)).toBe(false);
   });
 
-  it("returns false just over 5h (window passed)", () => {
-    const completedAt = new Date(now.getTime() - 5 * 60 * 60 * 1000 - 60_000);
+  it("catches up a visit the worker missed (10h after, INF-12)", () => {
+    const completedAt = new Date(now.getTime() - 10 * 60 * 60 * 1000);
+    expect(isNpsEligible({ ...baseRow, completedAt }, now)).toBe(true);
+  });
+
+  it("returns false just over 24h (window passed)", () => {
+    const completedAt = new Date(now.getTime() - 24 * 60 * 60 * 1000 - 60_000);
     expect(isNpsEligible({ ...baseRow, completedAt }, now)).toBe(false);
   });
 

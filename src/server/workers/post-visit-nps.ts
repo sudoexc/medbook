@@ -2,7 +2,7 @@
  * Phase 16 Wave 2 — Post-visit NPS request worker.
  *
  * Hourly tick. For every COMPLETED appointment whose `completedAt` is
- * between `now-5h` and `now-4h`, with a TG-eligible patient, and which
+ * between `now-24h` and `now-4h`, with a TG-eligible patient, and which
  * has not yet been requested, we:
  *
  *   1. Materialise a notification through the `appointment.nps-request`
@@ -11,9 +11,12 @@
  *   2. Stamp `Appointment.npsRequestedAt = now()` to dedupe future ticks,
  *      once a row exists (the template is created on first use).
  *
- * The 4–5h window mirrors the pre-visit worker's design — wide enough that
- * a 60-minute tick can't miss it, narrow enough that a one-off long pause
- * in the worker process doesn't spam old appointments with NPS requests.
+ * The request goes out from 4h after the visit; in steady state the next
+ * hourly tick takes it, 4 to 5 hours after. The window reaches back to 24h
+ * (audit INF-12): the old one-hour [5h, 4h] window lost every visit that
+ * crossed it while the worker was down for a deploy, or while a tick
+ * slipped. `npsRequestedAt` keeps it to one request per visit; a visit
+ * older than a day is not asked any more.
  *
  * Patients who already left a review for the same appointment are NOT
  * filtered here — that's the API endpoint's job (idempotent 409 on
@@ -33,10 +36,14 @@ export const JOB_NAME = "post-visit-nps-tick";
 
 const TICK_INTERVAL_MS = 60 * 60 * 1000;
 
+/** How long after the visit the rating is asked, and the catch-up limit. */
+const NPS_DELAY_MS = 4 * 60 * 60 * 1000;
+const NPS_CATCH_UP_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Pure helper — does the row qualify for an NPS request right now?
  *
- * Window: completedAt in [now - 5h, now - 4h].
+ * Window: completedAt in [now - 24h, now - 4h].
  *
  * Reused by the worker AND the unit test (so we don't have to spin up
  * Prisma for window-boundary assertions).
@@ -55,16 +62,14 @@ export function isNpsEligible(
   if (!row.completedAt) return false;
   if (!row.patientHasContact) return false;
   const ms = now.getTime() - row.completedAt.getTime();
-  const lower = 4 * 60 * 60 * 1000;
-  const upper = 5 * 60 * 60 * 1000;
-  return ms >= lower && ms <= upper;
+  return ms >= NPS_DELAY_MS && ms <= NPS_CATCH_UP_MS;
 }
 
 export async function runPostVisitNpsTick(
   now: Date = new Date(),
 ): Promise<{ scanned: number; requested: number }> {
-  const lower = new Date(now.getTime() - 5 * 60 * 60 * 1000);
-  const upper = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+  const lower = new Date(now.getTime() - NPS_CATCH_UP_MS);
+  const upper = new Date(now.getTime() - NPS_DELAY_MS);
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
     const rows = await prisma.appointment.findMany({

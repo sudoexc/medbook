@@ -39,6 +39,7 @@ import { mirrorNotificationToConversation } from "@/server/conversations/notific
 import { getRateLimiter } from "@/server/notifications/rate-limit";
 import { enqueue, getQueue } from "@/server/queue";
 import { MANUAL_APPOINTMENT_REMINDER_KEY } from "@/server/notifications/default-templates";
+import { patientTexts } from "@/server/notifications/patient-texts";
 import { skipsWhenConfirmed } from "@/server/notifications/rules";
 // A fallback block signal for patients whose `my_chat_member` update we never
 // saw (e.g. blocks predating Layer 2).
@@ -79,21 +80,20 @@ export async function enqueueDelivery(
  * Template keys whose message is only useful with a way into the Mini App
  * screen it talks about: the pre-visit questionnaire and the visit rating
  * have no entry on the Mini App home, so without this button the patient
- * reads «заполните анкету» and has nowhere to tap (audit TG-09).
+ * reads «заполните анкету» and has nowhere to tap (audit TG-09). Labels are
+ * `notifications.patientMessages.*` in the patient's language (INF-11).
  */
 const MINI_APP_BUTTONS: Record<
   string,
-  { path: string; ru: string; uz: string }
+  { path: string; label: "questionnaireButton" | "npsButton" }
 > = {
   "appointment.pre-visit-questionnaire": {
     path: "pre-visit",
-    ru: "📝 Заполнить анкету",
-    uz: "📝 So'rovnomani to'ldirish",
+    label: "questionnaireButton",
   },
   "appointment.nps-request": {
     path: "nps",
-    ru: "⭐ Оценить визит",
-    uz: "⭐ Tashrifni baholash",
+    label: "npsButton",
   },
 };
 
@@ -125,7 +125,7 @@ export function miniAppButtonFor(send: {
   const origin = publicOrigin();
   if (!origin) return null;
   return {
-    text: send.lang === "UZ" ? spec.uz : spec.ru,
+    text: patientTexts(send.lang)(spec.label),
     web_app: {
       url: `${origin}/c/${send.clinicSlug}/my/${spec.path}/${send.appointmentId}`,
     },
@@ -166,6 +166,31 @@ function isPastReminderStage(status: string): boolean {
     status === "WAITING" ||
     status === "IN_PROGRESS"
   );
+}
+
+/**
+ * The language of whoever reads a Telegram row: the patient, or for a
+ * reminder relayed to a family owner (audit P1D-01), the owner. A failed
+ * lookup falls back to the patient's language.
+ */
+async function recipientLang(send: {
+  clinicId: string;
+  recipient: string;
+  patient: { telegramId: string | null; preferredLang: "RU" | "UZ" } | null;
+}): Promise<"RU" | "UZ" | null> {
+  const own = send.patient?.preferredLang ?? null;
+  if (!send.patient || send.patient.telegramId === send.recipient) return own;
+  try {
+    const reader = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.patient.findFirst({
+        where: { clinicId: send.clinicId, telegramId: send.recipient },
+        select: { preferredLang: true },
+      }),
+    );
+    return reader?.preferredLang ?? own;
+  } catch {
+    return own;
+  }
 }
 
 async function deliver(job: DeliverJob): Promise<void> {
@@ -397,6 +422,10 @@ async function deliver(job: DeliverJob): Promise<void> {
       const wantsConfirmButton =
         Boolean(send.appointmentId) &&
         (isManualReminder || (isBeforeReminder && !alreadyConfirmed));
+      // The button speaks the reader's language (audit INF-11): «✅
+      // Подтверждаю» to a patient who reads Uzbek left the visit
+      // unconfirmed. A relayed reminder is read by the family owner.
+      const readerLang = wantsConfirmButton ? await recipientLang(send) : null;
       const miniAppButton = miniAppButtonFor({
         appointmentId: send.appointmentId,
         templateKey: send.template?.key ?? null,
@@ -408,7 +437,7 @@ async function deliver(job: DeliverJob): Promise<void> {
             inline_keyboard: [
               [
                 {
-                  text: "✅ Подтверждаю",
+                  text: patientTexts(readerLang)("confirmButton"),
                   callback_data: `confirm:${send.appointmentId}`,
                 },
               ],

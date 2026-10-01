@@ -25,8 +25,9 @@ import { audit } from "@/lib/audit";
 import { ok, err, forbidden, diff } from "@/server/http";
 import { validate } from "@/server/notifications/template";
 import {
-  AUTO_MESSAGE_KEYS,
   allowedKeysForKind,
+  applyAutoMessageSwitch,
+  autoMessageTemplateKey,
   ensureAutoMessageTemplates,
   getAutoMessages,
   type AutoMessageKind,
@@ -92,7 +93,9 @@ export const PATCH = createApiHandler(
         data.isActive = m.enabled;
       }
       if (Object.keys(data).length === 0) continue;
-      patches.push({ kind: m.kind, key: AUTO_MESSAGE_KEYS[m.kind], data });
+      // The template the dispatcher really sends for this message's event,
+      // which the widget shows (audit TG-22).
+      patches.push({ kind: m.kind, key: await autoMessageTemplateKey(clinicId, m.kind), data });
     }
 
     if (patches.length === 0) return err("EmptyPatch", 400);
@@ -109,15 +112,19 @@ export const PATCH = createApiHandler(
         const after = await tx.notificationTemplate.update({
           where,
           data: p.data as never,
-          select: { isActive: true, bodyRu: true },
+          select: { id: true, isActive: true, bodyRu: true },
         });
+        // Off stops the whole event, on keeps one template for it (TG-22).
+        const retired = await applyAutoMessageSwitch(tx, after.id, after.isActive);
+        const shown = { isActive: after.isActive, bodyRu: after.bodyRu };
         out.push({
           kind: p.kind,
           key: p.key,
           ...diff(
             before as unknown as Record<string, unknown>,
-            after as unknown as Record<string, unknown>,
+            shown as unknown as Record<string, unknown>,
           ),
+          ...(retired.length > 0 ? { retiredTemplateIds: retired } : {}),
         });
       }
       return out;

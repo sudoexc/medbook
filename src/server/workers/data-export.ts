@@ -51,6 +51,7 @@ import { generatePassphrase, packDsarBundle } from "@/server/dsar/zip";
 import { hydrateMedicalCaseForRead } from "@/server/medical-case/cipher-fields";
 import { readClinicalNoteBody } from "@/server/patient/clinical-note";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
+import { patientTexts } from "@/server/notifications/patient-texts";
 import { loadPatientFinance } from "@/server/patient/finance";
 import { hydratePrescriptionForRead } from "@/server/prescription/cipher-fields";
 import { getQueue, enqueue } from "@/server/queue";
@@ -453,16 +454,17 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
           // Send the file first, then a separate message with the
           // passphrase. Two messages so the patient can copy the password
           // from chat history without it being baked into the file caption.
+          // Both in the patient's language (audit INF-11).
+          const t = patientTexts(patientRow.preferredLang);
           const tgMsg = await sendDocument(clinicForTg, chatId, zipBuffer, {
             filename: `medbook-data-${row.id}.zip`,
             contentType: "application/zip",
-            caption:
-              "Архив с вашими данными. Пароль придёт следующим сообщением.",
+            caption: t("dsarArchiveCaption"),
           });
           await sendMessage(
             clinicForTg,
             chatId,
-            `Пароль для расшифровки: <code>${passphrase}</code>\n\nИспользуйте decrypt.sh из архива (или свой openssl).`,
+            t("dsarPassword", { passphrase: `<code>${passphrase}</code>` }),
             { parse_mode: "HTML" },
           );
 

@@ -15,7 +15,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const fakeDb = vi.hoisted(() => ({
   service: [] as Array<{ clinicId: string; code: string }>,
-  notificationTemplate: [] as Array<{ clinicId: string; key: string }>,
+  notificationTemplate: [] as Array<{
+    clinicId: string;
+    key: string;
+    trigger?: string;
+    triggerConfig?: unknown;
+  }>,
   clinic: { id: "clinic_1", workdayStart: "09:00", workdayEnd: "18:00", slotMin: 30 },
   audit: [] as Array<Record<string, unknown>>,
   reset() {
@@ -41,10 +46,21 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async ({ where }: { where: { clinicId: string } }) =>
         fakeDb.notificationTemplate.filter((t) => t.clinicId === where.clinicId),
       ),
-      create: vi.fn(async ({ data }: { data: { clinicId: string; key: string } }) => {
-        fakeDb.notificationTemplate.push({ clinicId: data.clinicId, key: data.key });
-        return data;
-      }),
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: { clinicId: string; key: string; trigger?: string; triggerConfig?: unknown };
+        }) => {
+          fakeDb.notificationTemplate.push({
+            clinicId: data.clinicId,
+            key: data.key,
+            trigger: data.trigger,
+            triggerConfig: data.triggerConfig,
+          });
+          return data;
+        },
+      ),
     },
     clinic: {
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -78,7 +94,10 @@ describe("applyPlaybook / first apply", () => {
     const result = await applyPlaybook(CLINIC_ID, "neurology");
 
     expect(result.servicesCreated).toBe(pb.services.length);
-    expect(result.templatesCreated).toBe(pb.templates.length);
+    // The playbook's own wording plus the canonical events it has none for
+    // (audit TG-16).
+    expect(result.templatesCreated).toBe(fakeDb.notificationTemplate.length);
+    expect(result.templatesCreated).toBeGreaterThan(pb.templates.length);
     expect(result.scheduleSet).toBe(true);
 
     const codes = fakeDb.service.map((s) => s.code).sort();
@@ -139,5 +158,49 @@ describe("applyPlaybook / idempotency", () => {
     // No duplicates of the pre-existing code.
     const matches = fakeDb.service.filter((s) => s.code === pb.services[0].code);
     expect(matches.length).toBe(1);
+  });
+});
+
+describe("applyPlaybook / every canonical event gets a template (audit TG-16)", () => {
+  it("covers created, 5d/3d/1d/3h, both cancellations, reschedule, running late and no-show, one template each", async () => {
+    const { templateSlot } = await import("@/server/notifications/template-events");
+    await applyPlaybook(CLINIC_ID, "neurology");
+    const slots = fakeDb.notificationTemplate
+      .map((t) => templateSlot({ key: t.key, trigger: t.trigger ?? "", triggerConfig: t.triggerConfig }))
+      .filter((x): x is string => x !== null);
+    for (const slot of [
+      "APPOINTMENT_CREATED",
+      "APPOINTMENT_BEFORE:-7200",
+      "APPOINTMENT_BEFORE:-4320",
+      "APPOINTMENT_BEFORE:-1440",
+      "APPOINTMENT_BEFORE:-180",
+      "APPOINTMENT_CANCELLED:staff",
+      "APPOINTMENT_CANCELLED:patient",
+      "APPOINTMENT_RESCHEDULED",
+      "APPOINTMENT_RUNNING_LATE",
+      "APPOINTMENT_MISSED",
+    ]) {
+      expect(slots.filter((s) => s === slot), slot).toHaveLength(1);
+    }
+    // The playbook's wording wins where it has one; the retired 2h band is gone.
+    expect(fakeDb.notificationTemplate.map((t) => t.key)).toContain("reminder.24h");
+    expect(fakeDb.notificationTemplate.map((t) => t.key)).not.toContain("appointment.reminder-24h");
+    expect(slots).not.toContain("APPOINTMENT_BEFORE:-120");
+  });
+
+  it("does not add a second template for an event the clinic already has, even switched off", async () => {
+    fakeDb.notificationTemplate.push({
+      clinicId: CLINIC_ID,
+      key: "my.cancel",
+      trigger: "APPOINTMENT_CANCELLED",
+      triggerConfig: { audience: "staff" },
+    });
+    await applyPlaybook(CLINIC_ID, "general");
+    const staff = fakeDb.notificationTemplate.filter(
+      (t) =>
+        t.trigger === "APPOINTMENT_CANCELLED" &&
+        (t.triggerConfig as { audience?: string } | null)?.audience === "staff",
+    );
+    expect(staff.map((t) => t.key)).toEqual(["my.cancel"]);
   });
 });

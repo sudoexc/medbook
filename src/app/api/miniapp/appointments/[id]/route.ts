@@ -231,7 +231,15 @@ export const PATCH = createMiniAppHandler(
       return after;
     });
 
-    fireTrigger({ kind: "appointment.updated", appointmentId: id });
+    // A move tells the patient the new time and rebuilds the reminder
+    // cascade around it, as a move in the CRM does (audit TG-18):
+    // `appointment.updated` only topped the cascade up, so the old-time
+    // reminders died at send time and none came for the new slot.
+    const startMoved = updated.date.getTime() !== before.date.getTime();
+    fireTrigger({
+      kind: startMoved ? "appointment.rescheduled" : "appointment.updated",
+      appointmentId: id,
+    });
     // Patient-safe fields only (audit MA-10): `updated` is the full row.
     return ok({ appointment: toMiniAppAppointmentSummary(updated) });
   },

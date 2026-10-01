@@ -55,7 +55,9 @@ export type TemplateInput = {
   category: TemplateCategory;
   bodyRu: string;
   bodyUz: string;
+  /** The event that sends the template (audit TG-25), MANUAL when none. */
   trigger?: string;
+  triggerConfig?: unknown;
   isActive?: boolean;
 };
 

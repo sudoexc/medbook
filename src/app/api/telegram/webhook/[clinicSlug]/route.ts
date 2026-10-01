@@ -34,6 +34,7 @@ import {
   type TgClinicMinimal,
 } from "@/server/telegram/send";
 import { confirmAppointment } from "@/server/appointments/confirm";
+import { telegramUserMayConfirm } from "@/server/notifications/family-relay";
 import {
   type Catalog,
   type FsmEvent,
@@ -840,8 +841,16 @@ export async function POST(
 
         const senderTgId = cq.from?.id ? String(cq.from.id) : null;
         const patientTgId = appt?.patient?.telegramId ?? null;
+        // The patient, or the family member a relative's reminder was
+        // relayed to (audit P1D-01): the relative has no chat of their own.
         const ownerMatches =
-          !!appt && !!senderTgId && !!patientTgId && senderTgId === patientTgId;
+          !!appt &&
+          (await telegramUserMayConfirm({
+            clinicId: appt.clinicId,
+            patientId: appt.patientId,
+            patientTelegramId: patientTgId,
+            senderTelegramId: senderTgId,
+          }));
 
         if (!appt) {
           await answerCallbackQuery(

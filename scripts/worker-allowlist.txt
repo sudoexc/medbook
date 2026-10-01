@@ -41,6 +41,7 @@ fix-sec09-audit-pii.ts
 fix-tg02-reminder-texts.ts
 fix-tg04-phantom-delivered.ts
 fix-tg11-thread-patient-links.ts
+fix-tg22-duplicate-templates.ts
 fix-ux01-ai-mock-text.ts
 fix-vw02-stale-handouts.ts
 reminder-cadence-5d3d1d3h.ts

@@ -103,12 +103,15 @@ function appt(): Row {
   };
 }
 
-function inFlight(templateId: string, status = "SENDING"): Row {
+/** A row written for the visit starting `at` (audit TG-21 keys by start). */
+function inFlight(templateId: string, status = "SENDING", at: Date = VISIT): Row {
   return {
     id: "snd_old",
     clinicId: "c1",
     patientId: "p1",
     appointmentId: "apt_1",
+    appointmentAt: at,
+    scheduledFor: at,
     templateId,
     channel: "TG",
     status,
@@ -195,8 +198,9 @@ describe("in-flight rows block re-materialisation (TG-12 review)", () => {
       triggerConfig: { offsetMin: -1200 },
     };
     // Due a minute ago, still inside the pass's grace window.
-    state.appts = [{ ...appt(), date: new Date(NOW.getTime() + (1200 - 1) * 60_000) }];
-    state.sends.push(inFlight("tpl_20h"));
+    const start = new Date(NOW.getTime() + (1200 - 1) * 60_000);
+    state.appts = [{ ...appt(), date: start }];
+    state.sends.push(inFlight("tpl_20h", "SENDING", start));
 
     const res = await runDynamicReminders(NOW);
 

@@ -18,7 +18,9 @@
  *
  * Idempotency: a (patientId, appointmentId, templateKey) tuple never
  * creates more than one pending row. We enforce that by querying for
- * existing rows before insert.
+ * existing rows before insert. For messages about one appointment start
+ * (the bands, «перенесён», cancel, no-show, running late) the start is part
+ * of the key (`isStartKeyed`, audit TG-21).
  *
  * Integration: `fireTrigger` is called from route handlers after the
  * mutation commits. It wraps the trigger function in a SYSTEM context
@@ -32,7 +34,7 @@ import { loadPatientFinance } from "@/server/patient/finance";
 import { paidNetTiyin } from "@/server/services/ltv-compute";
 
 import { isAllowedToReceive } from "./consent-gate";
-import { LIVE_SEND_STATUSES } from "./delivery-state";
+import { LIVE_SEND_STATUSES, coversStart } from "./delivery-state";
 import {
   MANUAL_APPOINTMENT_REMINDER_KEY,
   MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
@@ -41,9 +43,15 @@ import {
   type DefaultTemplate,
 } from "./default-templates";
 import { ensureClinicTemplate } from "./ensure-template";
+import {
+  familyRelayHeader,
+  familyRelaysFor,
+  type FamilyRelay,
+} from "./family-relay";
 import { recordPatientNoChannel } from "./no-channel-action";
 import { skipsWhenConfirmed } from "./rules";
 import { render } from "./template";
+import { TEMPLATE_PICK_ORDER } from "./template-events";
 
 export const TRIGGER_KEYS = [
   "appointment.created",
@@ -278,13 +286,33 @@ export function renderAppointmentBody(
   tpl: { bodyRu: string; bodyUz: string },
   appt: AppointmentWithRefs,
   extras?: PaymentExtras,
+  /** The reader's language when it is not the patient's (a family relay). */
+  readerLang?: "ru" | "uz",
 ): string {
-  const lang =
-    patientLang(appt.patient) === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
+  const wanted = readerLang ?? patientLang(appt.patient);
+  const lang = wanted === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
   return render(
     lang === "uz" ? tpl.bodyUz : tpl.bodyRu,
     buildContext(appt, lang, extras) as unknown as Record<string, unknown>,
   );
+}
+
+/**
+ * The body a family owner gets for their relative's visit (audit P1D-01):
+ * a line naming the relative, then the template in the owner's language.
+ */
+export function renderRelayedAppointmentBody(
+  tpl: { bodyRu: string; bodyUz: string },
+  appt: AppointmentWithRefs,
+  relay: FamilyRelay,
+  extras?: PaymentExtras,
+): string {
+  return `${familyRelayHeader(relay.lang, appt.patient.fullName)}\n\n${renderAppointmentBody(
+    tpl,
+    appt,
+    extras,
+    relay.lang,
+  )}`;
 }
 
 /** What `payment.due` knows about the debt, тийин. */
@@ -383,6 +411,9 @@ function buildContext(
 
 type FindTemplateResult = {
   templateId: string;
+  key?: string;
+  nameRu?: string;
+  nameUz?: string;
   bodyRu: string;
   bodyUz: string;
   channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
@@ -460,36 +491,9 @@ function whereForTrigger(
           { key: "appointment.cancelled" },
         ],
       };
-    case "appointment.cancelled.by-staff":
-      // Prefer a staff-audience template; fall back to a generic one if the
-      // clinic only has a single template (default seed has both variants).
-      return {
-        OR: [
-          {
-            trigger: "APPOINTMENT_CANCELLED",
-            triggerConfig: { path: ["audience"], equals: "staff" },
-          },
-          {
-            trigger: "APPOINTMENT_CANCELLED",
-            triggerConfig: { path: ["audience"], equals: "any" },
-          },
-          { key: "appointment.cancelled" },
-        ],
-      };
-    case "appointment.cancelled.by-patient":
-      return {
-        OR: [
-          {
-            trigger: "APPOINTMENT_CANCELLED",
-            triggerConfig: { path: ["audience"], equals: "patient" },
-          },
-          {
-            trigger: "APPOINTMENT_CANCELLED",
-            triggerConfig: { path: ["audience"], equals: "any" },
-          },
-          { key: "appointment.cancelled" },
-        ],
-      };
+    // `appointment.cancelled.by-staff` / `.by-patient`: an audience template
+    // first, then a generic one if the clinic only has that (default seed
+    // has both variants). Two tiers, see `whereTiersForTrigger`.
     case "appointment.rescheduled":
       // Enum first; slug fallback for clinics that hand-seeded a row before
       // the enum existed.
@@ -531,39 +535,88 @@ function whereForTrigger(
   }
 }
 
+/**
+ * The where-clauses of a trigger, most specific first (audit TG-22). A
+ * cancellation by staff takes a staff-audience template before a generic
+ * one; one `OR` used to let the database pick either.
+ */
+function whereTiersForTrigger(
+  trigger: TriggerKey,
+): Array<Record<string, unknown>> | null {
+  const anyAudience = whereForTrigger("appointment.cancelled");
+  switch (trigger) {
+    case "appointment.cancelled.by-staff":
+    case "appointment.cancelled.by-patient":
+      return [
+        {
+          trigger: "APPOINTMENT_CANCELLED",
+          triggerConfig: {
+            path: ["audience"],
+            equals: trigger === "appointment.cancelled.by-staff" ? "staff" : "patient",
+          },
+        },
+        anyAudience!,
+      ];
+    default: {
+      const where = whereForTrigger(trigger);
+      return where ? [where] : null;
+    }
+  }
+}
+
+/**
+ * The active template the dispatcher sends for a trigger, or null. Within a
+ * tier the order is fixed (`TEMPLATE_PICK_ORDER`): `findFirst` without one
+ * returned whichever duplicate the database met first, so a switch or a text
+ * edited in «Авто-сообщения» could be ignored (audit TG-22). Saving a
+ * template now also switches its slot rivals off (`retireSlotRivals`).
+ */
 async function findTemplateFor(
   clinicId: string,
   trigger: TriggerKey,
 ): Promise<FindTemplateResult> {
-  const where = whereForTrigger(trigger);
-  if (!where) return null;
-  const row = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.notificationTemplate.findFirst({
-      where: {
-        clinicId,
-        isActive: true,
-        ...where,
-      },
-      select: {
-        id: true,
-        bodyRu: true,
-        bodyUz: true,
-        channel: true,
-        triggerConfig: true,
-      },
-    }),
-  );
-  if (!row) return null;
-  return {
-    templateId: row.id,
-    bodyRu: row.bodyRu,
-    bodyUz: row.bodyUz,
-    channel: row.channel as FindTemplateResult extends null
-      ? never
-      : "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
-    triggerConfig: row.triggerConfig,
-  };
+  const tiers = whereTiersForTrigger(trigger);
+  if (!tiers) return null;
+  for (const where of tiers) {
+    const row = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.notificationTemplate.findFirst({
+        where: {
+          clinicId,
+          isActive: true,
+          ...where,
+        },
+        select: {
+          id: true,
+          key: true,
+          nameRu: true,
+          nameUz: true,
+          bodyRu: true,
+          bodyUz: true,
+          channel: true,
+          triggerConfig: true,
+        },
+        orderBy: TEMPLATE_PICK_ORDER,
+      }),
+    );
+    if (!row) continue;
+    return {
+      templateId: row.id,
+      key: row.key,
+      nameRu: row.nameRu,
+      nameUz: row.nameUz,
+      bodyRu: row.bodyRu,
+      bodyUz: row.bodyUz,
+      channel: row.channel as FindTemplateResult extends null
+        ? never
+        : "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
+      triggerConfig: row.triggerConfig,
+    };
+  }
+  return null;
 }
+
+/** The template a trigger really sends now (the «Триггеры» panel, the widget). */
+export { findTemplateFor as findActiveTemplateFor };
 
 /** A reminder band that asks to confirm, for a visit already confirmed. */
 function isPointlessForConfirmed(
@@ -579,14 +632,71 @@ function isPointlessForConfirmed(
 }
 
 /**
+ * Triggers whose message is about one appointment START (audit TG-21): the
+ * cascade bands, «перенесён», the cancellation, the no-show, «опаздываете».
+ * Their idempotency is per start, not per appointment for ever: after a
+ * second reschedule the SENT «перенесён на вторник» used to block «перенесён
+ * на среду», and a 24h band already sent for the old day blocked the band of
+ * the new day, so the patient came at the old time.
+ */
+function isStartKeyed(trigger: TriggerKey): boolean {
+  return (
+    trigger.startsWith("appointment.reminder-") ||
+    trigger.startsWith("appointment.cancelled") ||
+    trigger === "appointment.rescheduled" ||
+    trigger === "appointment.no-show" ||
+    trigger === "no-show" ||
+    trigger === "appointment.running-late"
+  );
+}
+
+/**
+ * Whether a row written before `appointmentAt` existed, whose start cannot
+ * be derived, still counts as «already sent for this start». It does, so a
+ * row a deploy straddles is never doubled; except «перенесён», which is
+ * fired once per move: an old one is always about an earlier start.
+ */
+function unknownStartCovers(trigger: TriggerKey): boolean {
+  return trigger !== "appointment.rescheduled";
+}
+
+/**
+ * `where` of the live rows that cover appointment start `start`: rows
+ * stamped with it, and legacy rows of a cascade band whose start is
+ * `scheduledFor - offsetMin` (see `reminderAnchorMs`).
+ */
+function sameStartWhere(
+  start: Date,
+  offsetMin: unknown,
+  unknownCovers: boolean,
+): Record<string, unknown> {
+  const legacy: Array<Record<string, unknown>> = [];
+  if (typeof offsetMin === "number" && Number.isFinite(offsetMin)) {
+    legacy.push({
+      appointmentAt: null,
+      scheduledFor: new Date(start.getTime() + offsetMin * 60_000),
+    });
+  } else if (unknownCovers) {
+    legacy.push({ appointmentAt: null });
+  }
+  return { OR: [{ appointmentAt: start }, ...legacy] };
+}
+
+function offsetOf(triggerConfig: unknown): unknown {
+  return (triggerConfig as { offsetMin?: unknown } | null)?.offsetMin;
+}
+
+/**
  * Idempotency gate: skip if a queued, in-flight or sent row already exists
- * for this (patientId, appointmentId?, templateId).
+ * for this (patientId, appointmentId?, templateId), and for a start-keyed
+ * trigger, for this appointment start.
  */
 async function alreadyScheduled(params: {
   clinicId: string;
   patientId: string;
   appointmentId?: string | null;
   templateId: string;
+  sameStart?: Record<string, unknown>;
 }): Promise<boolean> {
   const existing = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationSend.findFirst({
@@ -596,6 +706,7 @@ async function alreadyScheduled(params: {
         appointmentId: params.appointmentId ?? null,
         templateId: params.templateId,
         status: { in: [...LIVE_SEND_STATUSES] },
+        ...(params.sameStart ?? {}),
       },
       select: { id: true },
     }),
@@ -603,13 +714,36 @@ async function alreadyScheduled(params: {
   return existing !== null;
 }
 
+/**
+ * The patient's own address on a channel. Only Telegram is dispatchable:
+ * EMAIL has no adapter and the card no e-mail field, and the phone it used
+ * to return made a row the worker could only fail (audit INF-11).
+ */
 function pickRecipient(
   channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
   patient: { phone: string; telegramId: string | null },
 ): string | null {
   if (channel === "TG") return patient.telegramId;
-  if (channel === "EMAIL") return patient.phone; // unused today
   return null;
+}
+
+/**
+ * Who an appointment message goes to: the patient's own chat, or, for a
+ * relative without Telegram, the family owner's (audit P1D-01). Null when
+ * neither can be reached; the caller raises the call task.
+ */
+async function reachAppointmentPatient(
+  channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
+  appt: AppointmentWithRefs,
+  relay: boolean,
+): Promise<{ recipient: string; relay: FamilyRelay | null } | null> {
+  const own = pickRecipient(channel, appt.patient);
+  if (own) return { recipient: own, relay: null };
+  if (!relay || channel !== "TG") return null;
+  const owner = (await familyRelaysFor([{ id: appt.patientId, clinicId: appt.clinicId }])).get(
+    appt.patientId,
+  );
+  return owner ? { recipient: owner.telegramId, relay: owner } : null;
 }
 
 async function createSend(params: {
@@ -703,11 +837,41 @@ export async function materializeForAppointmentsBulk(
               // build a second one (the sweep re-sends the first).
               status: { in: [...LIVE_SEND_STATUSES] },
             },
-            select: { appointmentId: true, templateId: true },
+            select: {
+              appointmentId: true,
+              templateId: true,
+              appointmentAt: true,
+              scheduledFor: true,
+            },
           }),
         );
-  const existingSet = new Set(
-    existing.map((e) => `${e.appointmentId}|${e.templateId}`),
+  const existingByPair = new Map<string, typeof existing>();
+  for (const e of existing) {
+    const k = `${e.appointmentId}|${e.templateId}`;
+    existingByPair.set(k, [...(existingByPair.get(k) ?? []), e]);
+  }
+  // A band already sent for the visit's OLD start does not cover the new
+  // one (audit TG-21).
+  const startKeyed = isStartKeyed(trigger);
+  const alreadyCovered = (appt: AppointmentWithRefs, tpl: NonNullable<FindTemplateResult>) =>
+    (existingByPair.get(`${appt.id}|${tpl.templateId}`) ?? []).some(
+      (row) =>
+        !startKeyed ||
+        coversStart(
+          row,
+          offsetOf(tpl.triggerConfig),
+          appt.date.getTime(),
+          unknownStartCovers(trigger),
+        ),
+    );
+  // Relatives without Telegram reach the family owner (audit P1D-01).
+  const relays = await familyRelaysFor(
+    appts
+      .filter((a) => {
+        const tpl = templates.get(a.clinicId);
+        return tpl?.channel === "TG" && !pickRecipient(tpl.channel, a.patient);
+      })
+      .map((a) => ({ id: a.patientId, clinicId: a.clinicId })),
   );
 
   const toInsert: Array<{
@@ -741,11 +905,12 @@ export async function materializeForAppointmentsBulk(
       skipped += 1;
       continue;
     }
-    if (existingSet.has(`${appt.id}|${tpl.templateId}`)) {
+    if (alreadyCovered(appt, tpl)) {
       skipped += 1;
       continue;
     }
-    const recipient = pickRecipient(tpl.channel, appt.patient);
+    const relay = relays.get(appt.patientId) ?? null;
+    const recipient = pickRecipient(tpl.channel, appt.patient) ?? relay?.telegramId ?? null;
     if (!recipient) {
       // Wave 4 of `docs/TZ-sms-removal.md` — surface the dropped signal so
       // the operator can call the patient via the Call Center instead of
@@ -762,13 +927,14 @@ export async function materializeForAppointmentsBulk(
       skipped += 1;
       continue;
     }
-    const body = renderAppointmentBody(
-      tpl,
-      appt,
+    const extras =
       job.paymentAmount === undefined
         ? undefined
-        : { paymentAmount: job.paymentAmount, paymentCurrency: "UZS" },
-    );
+        : { paymentAmount: job.paymentAmount, paymentCurrency: "UZS" };
+    const body =
+      relay && !appt.patient.telegramId
+        ? renderRelayedAppointmentBody(tpl, appt, relay, extras)
+        : renderAppointmentBody(tpl, appt, extras);
     toInsert.push({
       clinicId: appt.clinicId,
       patientId: appt.patientId,
@@ -914,9 +1080,18 @@ export async function materializeManualReminders(params: {
   }> = [];
   let reminded = 0;
   let noChannel = 0;
+  // Relatives without Telegram reach the family owner (audit P1D-01).
+  const relays = await familyRelaysFor(
+    tpl.channel === "TG"
+      ? appts
+          .filter((a) => !already.has(a.id) && !a.patient.telegramId)
+          .map((a) => ({ id: a.patientId, clinicId: a.clinicId }))
+      : [],
+  );
   for (const appt of appts) {
     if (already.has(appt.id)) continue;
-    const recipient = pickRecipient(tpl.channel, appt.patient);
+    const relay = appt.patient.telegramId ? null : (relays.get(appt.patientId) ?? null);
+    const recipient = pickRecipient(tpl.channel, appt.patient) ?? relay?.telegramId ?? null;
     if (!recipient) {
       await recordPatientNoChannel({
         clinicId: appt.clinicId,
@@ -929,7 +1104,9 @@ export async function materializeManualReminders(params: {
       noChannel += 1;
       continue;
     }
-    const body = renderAppointmentBody(tpl, appt);
+    const body = relay
+      ? renderRelayedAppointmentBody(tpl, appt, relay)
+      : renderAppointmentBody(tpl, appt);
     const base = {
       clinicId: appt.clinicId,
       patientId: appt.patientId,
@@ -1008,6 +1185,12 @@ async function materializeForAppointment(
      * Mini App form, and reception would get a task per visit.
      */
     noChannelAction?: boolean;
+    /**
+     * Send a relative's message to their family owner when the relative has
+     * no Telegram (audit P1D-01). Off for the same Mini App flows: the form
+     * link opens for the patient's own account only.
+     */
+    relay?: boolean;
   } = {},
 ): Promise<MaterializeOutcome> {
   const appt = await loadAppointment(apptId);
@@ -1029,9 +1212,17 @@ async function materializeForAppointment(
     patientId: appt.patientId,
     appointmentId: appt.id,
     templateId: tpl.templateId,
+    sameStart: isStartKeyed(trigger)
+      ? sameStartWhere(appt.date, offsetOf(tpl.triggerConfig), unknownStartCovers(trigger))
+      : undefined,
   });
   if (already) return { created: 0, skipped: 1, reason: "already_scheduled" };
-  const recipient = pickRecipient(tpl.channel, appt.patient);
+  const reach = await reachAppointmentPatient(
+    tpl.channel,
+    appt,
+    options.relay ?? options.noChannelAction !== false,
+  );
+  const recipient = reach?.recipient ?? null;
   if (!recipient) {
     // Wave 4 of `docs/TZ-sms-removal.md` — compensator for TG-less patients.
     if (options.noChannelAction !== false) {
@@ -1046,7 +1237,9 @@ async function materializeForAppointment(
     }
     return { created: 0, skipped: 1, reason: "no_recipient" };
   }
-  const body = renderAppointmentBody(tpl, appt);
+  const body = reach?.relay
+    ? renderRelayedAppointmentBody(tpl, appt, reach.relay)
+    : renderAppointmentBody(tpl, appt);
   await createSend({
     clinicId: appt.clinicId,
     patientId: appt.patientId,
@@ -1198,6 +1391,24 @@ export async function scheduleAppointmentReminders(
 ): Promise<void> {
   const appt = await loadAppointment(appointmentId);
   if (!appt) return;
+  // A reminder still queued for another start is a lie about the time. The
+  // reschedule path cancels them up front; any other caller of this top-up
+  // (`appointment.updated`) used to leave them for the send worker's drift
+  // guard to catch (audit TG-18).
+  await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.updateMany({
+      where: {
+        appointmentId,
+        status: "QUEUED",
+        template: { trigger: { in: ["APPOINTMENT_BEFORE"] } },
+        AND: [{ appointmentAt: { not: null } }, { appointmentAt: { not: appt.date } }],
+      },
+      data: {
+        status: "CANCELLED",
+        failedReason: "appointment time changed after reminder was queued",
+      },
+    }),
+  );
   const start = appt.date.getTime();
   const now = Date.now();
   if (start - 5 * 24 * 60 * 60 * 1000 > now) {
@@ -1239,9 +1450,11 @@ export async function scheduleAppointmentReminders(
  * wrong delivery moment — so they must die before the cascade is rebuilt.
  *
  * Only QUEUED rows are touched: SENT/DELIVERED/READ are historical fact and a
- * CANCELLED row must stay CANCELLED. Restricting to the two reminder-ish
- * triggers keeps transactional rows (the cancel/no-show/reschedule notices
- * themselves) out of the blast radius.
+ * CANCELLED row must stay CANCELLED. Restricting to the reminder-ish
+ * triggers keeps transactional rows (the cancel/no-show notices) out of the
+ * blast radius. A «перенесён на …» notice not sent yet (a rate-limit
+ * deferral, a second move a minute later) names a start that is gone too,
+ * so it is voided with them (audit TG-21).
  *
  * Cancelling is also what re-opens the idempotency gate: `alreadyScheduled`
  * only counts QUEUED/SENT/DELIVERED/READ, so flipping the stale rows to
@@ -1257,7 +1470,9 @@ export async function cancelPendingAppointmentReminders(
         appointmentId,
         status: "QUEUED",
         template: {
-          trigger: { in: ["APPOINTMENT_BEFORE", "APPOINTMENT_CREATED"] },
+          trigger: {
+            in: ["APPOINTMENT_BEFORE", "APPOINTMENT_CREATED", "APPOINTMENT_RESCHEDULED"],
+          },
         },
       },
       data: {
@@ -1498,7 +1713,8 @@ async function runBirthdays(now: Date = new Date()): Promise<number> {
         bodyUz: true,
         channel: true,
       },
-      orderBy: { createdAt: "asc" },
+      // The same pick as the dispatcher's (audit TG-22).
+      orderBy: TEMPLATE_PICK_ORDER,
     }),
   );
   if (tpls.length === 0) return 0;
@@ -1842,6 +2058,7 @@ async function runCaseRepeatReminders(now: Date = new Date()): Promise<number> {
         bodyUz: true,
         triggerConfig: true,
       },
+      orderBy: TEMPLATE_PICK_ORDER,
     }),
   )) as TplRow[];
   if (templates.length === 0) return 0;
@@ -2123,6 +2340,7 @@ async function onReferralRewardEarned(payload: {
         fullName: true,
         phone: true,
         telegramId: true,
+        preferredLang: true,
         marketingOptOut: true,
         deletedAt: true,
       },
@@ -2138,7 +2356,7 @@ async function onReferralRewardEarned(payload: {
 
     const clinic = await prisma.clinic.findUnique({
       where: { id: clinicId },
-      select: { nameRu: true, nameUz: true },
+      select: { nameRu: true, nameUz: true, phone: true, addressRu: true, addressUz: true },
     });
 
     const tpl = await prisma.notificationTemplate.findFirst({
@@ -2157,6 +2375,9 @@ async function onReferralRewardEarned(payload: {
     if (!tpl) return;
 
     const friendName = reward.referredPatient?.fullName ?? "—";
+    // In the referrer's language, with the clinic named in it (audit
+    // TG-23: always the Russian text and the Russian clinic name).
+    const lang = patientLang(referrer) === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
     const ctx: Record<string, unknown> = {
       patient: {
         name: referrer.fullName,
@@ -2164,17 +2385,12 @@ async function onReferralRewardEarned(payload: {
       },
       friend: { name: friendName },
       percent: String(reward.rewardPercent),
-      clinic: { name: clinic?.nameRu ?? "" },
+      clinic: clinic ? clinicContext(clinic, lang) : { name: "", phone: "", address: "" },
     };
-    const body = render(tpl.bodyRu, ctx);
+    const body = render(lang === "uz" ? tpl.bodyUz : tpl.bodyRu, ctx);
     const channel = tpl.channel as "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 
-    const recipient =
-      channel === "EMAIL"
-        ? referrer.phone
-        : channel === "TG"
-          ? referrer.telegramId
-          : null;
+    const recipient = pickRecipient(channel, referrer);
 
     const inserts: Array<{
       clinicId: string;

@@ -193,6 +193,50 @@ export function dosesDueInWindow(
 }
 
 /**
+ * Every dose whose moment fell in `(from, to]`, earliest first, inside the
+ * course's active window (audit INF-12).
+ *
+ * The reminder tick used to run once an hour at whatever minute the worker
+ * was first deployed and to look only at the current local hour, so the
+ * 08:00 dose went out at 08:37, and a tick that slipped from 08:59:58 to
+ * 09:00:01 never reminded the 08:00 dose at all. The worker now ticks every
+ * few minutes and asks for the doses of a trailing window: a dose is
+ * reminded within one tick of its time, and a tick missed during a deploy is
+ * caught up by the next. Each anchor is its own
+ * (prescriptionId, scheduledFor) key, so overlapping windows never double.
+ */
+export function dosesDueBetween(
+  schedule: ParsedSchedule,
+  from: Date,
+  to: Date,
+  tz: string,
+): Date[] {
+  if (to.getTime() <= from.getTime()) return [];
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startMs = schedule.startsAt.getTime();
+  const endMs =
+    schedule.days === null ? null : startMs + schedule.days * dayMs;
+  const times = Array.from(new Set(schedule.times)).sort();
+  const days = new Set<string>();
+  for (let t = from.getTime(); t < to.getTime() + dayMs; t += dayMs) {
+    days.add(localYYYYMMDD(new Date(Math.min(t, to.getTime())), tz));
+  }
+  const out: Date[] = [];
+  for (const ymd of Array.from(days).sort()) {
+    for (const hhmm of times) {
+      const at = tzDateToUtc(ymd, hhmm, tz);
+      const ms = at.getTime();
+      if (Number.isNaN(ms)) continue;
+      if (ms <= from.getTime() || ms > to.getTime()) continue;
+      if (ms < startMs) continue;
+      if (endMs !== null && ms >= endMs) continue;
+      out.push(at);
+    }
+  }
+  return out.sort((a, b) => a.getTime() - b.getTime());
+}
+
+/**
  * Days remaining in the schedule (0 = today is the last day, negative =
  * already finished). Null if the schedule is open-ended.
  */

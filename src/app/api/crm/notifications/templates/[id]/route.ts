@@ -5,7 +5,9 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound, diff } from "@/server/http";
+import { err, ok, notFound, diff } from "@/server/http";
+import { sanitizeTriggerConfig } from "@/server/notifications/rules";
+import { retireSlotRivals } from "@/server/notifications/template-slot";
 import { UpdateTemplateSchema } from "@/server/schemas/notification";
 
 function idFromUrl(request: Request): string {
@@ -31,9 +33,30 @@ export const PATCH = createApiHandler(
       where: { id },
     });
     if (!before) return notFound();
-    const after = await prisma.notificationTemplate.update({
-      where: { id },
-      data: body as never,
+    // No EMAIL adapter exists (audit TG-25); a legacy EMAIL row may still be
+    // edited, but nothing is switched to EMAIL.
+    if (body.channel === "EMAIL" && before.channel !== "EMAIL") {
+      return err("ChannelNotAvailable", 400, { channel: "EMAIL" });
+    }
+    const data: Record<string, unknown> = { ...body };
+    if (body.triggerConfig !== undefined) {
+      const trigger = body.trigger ?? before.trigger;
+      data.triggerConfig =
+        body.triggerConfig === null
+          ? null
+          : sanitizeTriggerConfig(body.triggerConfig, {
+              kind: trigger === "APPOINTMENT_BEFORE" ? "before" : "other",
+            });
+    }
+    const { after, retired } = await prisma.$transaction(async (tx) => {
+      const after = await tx.notificationTemplate.update({
+        where: { id },
+        data: data as never,
+      });
+      // One active template per event (TG-22): a template switched on, or
+      // moved to another event, switches that event's other one off.
+      const retired = await retireSlotRivals(tx, id);
+      return { after, retired };
     });
     const d = diff(
       before as unknown as Record<string, unknown>,
@@ -43,7 +66,7 @@ export const PATCH = createApiHandler(
       action: "template.update",
       entityType: "NotificationTemplate",
       entityId: id,
-      meta: d,
+      meta: { ...d, ...(retired.length > 0 ? { retiredTemplateIds: retired } : {}) },
     });
     return ok(after);
   }

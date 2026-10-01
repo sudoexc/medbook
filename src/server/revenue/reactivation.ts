@@ -12,7 +12,8 @@
  *
  * Per-patient idempotency gate (skipped + reason):
  *   - already sent within the last 90 days  → "recently_sent"
- *   - patient has a future BOOKED/WAITING/IN_PROGRESS appointment → "has_upcoming"
+ *   - patient has a future BOOKED/CONFIRMED/WAITING/IN_PROGRESS appointment
+ *     → excluded from the candidates
  *   - never visited                          → "no_last_visit"
  *
  * Compliance gate (Phase 17 Wave 1):
@@ -34,7 +35,11 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 import { isAllowedToReceive } from "@/server/notifications/consent-gate";
 import { render } from "@/server/notifications/template";
-import type { TriggerKey } from "@/server/notifications/triggers";
+import {
+  clinicContext,
+  patientLang,
+  type TriggerKey,
+} from "@/server/notifications/triggers";
 
 export type ReactivationSegment =
   | "recent_lapse"
@@ -224,6 +229,7 @@ export async function enqueueReactivationFor(
         phone: true,
         telegramId: true,
         preferredChannel: true,
+        preferredLang: true,
         reactivationSentAt: true,
         dormantSince: true,
         lastVisitAt: true,
@@ -239,6 +245,7 @@ export async function enqueueReactivationFor(
         phone: string;
         telegramId: string | null;
         preferredChannel: string;
+        preferredLang?: "RU" | "UZ" | null;
         reactivationSentAt: Date[];
         dormantSince: Date | null;
         lastVisitAt: Date | null;
@@ -307,13 +314,15 @@ export async function enqueueReactivationFor(
     return { scheduled: false, reason: "no_template" };
   }
 
-  // Pick a recipient compatible with the template's channel.
+  // Pick a recipient compatible with the template's channel. Only Telegram
+  // and the in-app inbox deliver: an EMAIL / CALL row addressed to the phone
+  // could only fail in the send worker (audit INF-11).
   const recipient =
     tpl.channel === "TG"
       ? patient.telegramId
       : tpl.channel === "INAPP"
         ? patient.id
-        : patient.phone;
+        : null;
   if (!recipient) {
     // Still mark as "sent" so we don't retry the same patient every day.
     await runWithTenant({ kind: "SYSTEM" }, () =>
@@ -328,13 +337,28 @@ export async function enqueueReactivationFor(
     return { scheduled: false, reason: "no_recipient" };
   }
 
-  const body = render(tpl.bodyRu, {
+  // The clinic's real name, phone and address, in the patient's language
+  // (audit AN-19: «Запишитесь в  по телефону .», always in Russian).
+  const clinic = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { nameRu: true, nameUz: true, phone: true, addressRu: true, addressUz: true },
+    }),
+  )) as {
+    nameRu: string;
+    nameUz: string;
+    phone: string | null;
+    addressRu: string | null;
+    addressUz: string | null;
+  } | null;
+  const lang = patientLang(patient) === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
+  const body = render(lang === "uz" ? tpl.bodyUz : tpl.bodyRu, {
     patient: {
       name: patient.fullName,
       firstName: firstName(patient.fullName),
       phone: patient.phone,
     },
-    clinic: { name: "", phone: "", address: "" },
+    clinic: clinic ? clinicContext(clinic, lang) : { name: "", phone: "", address: "" },
   });
 
   // Cast tx through a structural type so the engine accepts both the raw

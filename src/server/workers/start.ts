@@ -107,9 +107,10 @@ async function main() {
   const postVisitNps = startPostVisitNpsWorker();
 
   // Phase 16 Wave 3 — Medication reminders.
-  //   medication-reminder    hourly tick — for every ACTIVE Prescription
-  //                          with remindersEnabled, fires when local-clock
-  //                          hour matches an entry in `schedule.times[]`.
+  //   medication-reminder    5-minute tick — for every ACTIVE Prescription
+  //                          with remindersEnabled, fires for each dose of
+  //                          `schedule.times[]` whose time just passed
+  //                          (90-minute catch-up after a missed tick).
   //                          Inserts a `MedicationReminderSend` row + a
   //                          push (TG + parallel INAPP). Idempotent via
   //                          (prescriptionId, scheduledFor) unique key.

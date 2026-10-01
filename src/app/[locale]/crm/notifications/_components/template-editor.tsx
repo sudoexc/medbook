@@ -42,10 +42,13 @@ import {
   useUpdateTemplate,
 } from "../_hooks/use-templates";
 import type { TemplateCategory, TemplateChannel } from "../_hooks/types";
+import { ALLOWED_KEYS_BY_TRIGGER, render } from "@/server/notifications/template";
 import {
-  ALLOWED_KEYS_BY_TRIGGER,
-  TRIGGER_KEYS,
-} from "@/server/notifications/template";
+  TEMPLATE_EVENTS,
+  eventOfTemplate,
+  templateEventById,
+} from "@/server/notifications/template-events";
+import { toTelegramHtml } from "@/server/notifications/telegram-html";
 import { AiCopySuggest } from "./ai-copy-suggest";
 
 type Props = {
@@ -63,6 +66,12 @@ type FormState = {
   bodyRu: string;
   bodyUz: string;
   isActive: boolean;
+  /**
+   * What sends the template (audit TG-25): "manual", a `TEMPLATE_EVENTS` id,
+   * or, for a template bound outside this editor, "custom" (an admin offset
+   * from the notification settings) / "system" (a worker's own schedule).
+   */
+  event: string;
 };
 
 const EMPTY: FormState = {
@@ -74,7 +83,16 @@ const EMPTY: FormState = {
   bodyRu: "",
   bodyUz: "",
   isActive: true,
+  event: "manual",
 };
+
+/** The editor's event choice for a stored template. */
+function eventChoiceOf(tpl: { key: string; trigger: string; triggerConfig: unknown }): string {
+  const event = eventOfTemplate(tpl);
+  if (event) return event.id;
+  if (tpl.trigger === "MANUAL") return "manual";
+  return tpl.trigger === "APPOINTMENT_BEFORE" ? "custom" : "system";
+}
 
 function extractVars(template: string): string[] {
   const out: string[] = [];
@@ -82,6 +100,15 @@ function extractVars(template: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(template))) out.push(m[1]);
   return out;
+}
+
+/**
+ * The preview as the patient sees it in Telegram (audit TG-24): the same
+ * `render` as the materialisers, then the same HTML safety pass as the
+ * sender. A stray «<14» shows as typed, «<b>» shows bold.
+ */
+function telegramPreview(template: string, sample: Record<string, unknown>): string {
+  return toTelegramHtml(render(template, sample));
 }
 
 /** Simple handlebars-style preview. Keeps the client lean — no server round-trip. */
@@ -132,6 +159,9 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
   const sample = React.useMemo(() => buildSample(t), [t]);
   const selected = selectedId ? templates.find((tpl) => tpl.id === selectedId) ?? null : null;
   const [form, setForm] = React.useState<FormState>(EMPTY);
+  // Only an event the admin picked is written back: an edited text must not
+  // unbind a template from the schedule it was given elsewhere.
+  const [eventTouched, setEventTouched] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   React.useEffect(() => {
@@ -145,10 +175,12 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
         bodyRu: selected.bodyRu,
         bodyUz: selected.bodyUz,
         isActive: selected.isActive,
+        event: eventChoiceOf(selected),
       });
     } else {
       setForm(EMPTY);
     }
+    setEventTouched(false);
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -161,14 +193,25 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
   const isCreate = !selected;
   const saving = createMut.isPending || updateMut.isPending;
 
+  const triggerFields = (event: string) => {
+    const e = templateEventById(event);
+    return e
+      ? { trigger: e.trigger, triggerConfig: e.triggerConfig }
+      : { trigger: "MANUAL", triggerConfig: null };
+  };
+
   const onSave = async () => {
+    const { event, ...fields } = form;
     try {
       if (isCreate) {
-        const created = await createMut.mutateAsync(form);
+        const created = await createMut.mutateAsync({ ...fields, ...triggerFields(event) });
         toast.success(t("editor.saved"));
         onSelectCreated(created.id);
       } else {
-        await updateMut.mutateAsync({ id: selected.id, patch: form });
+        const bind =
+          eventTouched && event !== "custom" && event !== "system" ? triggerFields(event) : {};
+        await updateMut.mutateAsync({ id: selected.id, patch: { ...fields, ...bind } });
+        setEventTouched(false);
         toast.success(t("editor.saved"));
       }
     } catch (e) {
@@ -213,9 +256,12 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
     }
   };
 
+  // The placeholders the chosen event's materialiser fills.
+  const chosenEvent = templateEventById(form.event);
+  const placeholderKey = chosenEvent?.placeholders ?? form.key;
   const allowedForKey =
-    form.key in ALLOWED_KEYS_BY_TRIGGER
-      ? ALLOWED_KEYS_BY_TRIGGER[form.key]
+    placeholderKey in ALLOWED_KEYS_BY_TRIGGER
+      ? ALLOWED_KEYS_BY_TRIGGER[placeholderKey]
       : Array.from(
           new Set(
             Object.values(ALLOWED_KEYS_BY_TRIGGER).flat(),
@@ -261,22 +307,42 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
             onChange={(e) => update("key", e.currentTarget.value)}
             placeholder="appointment.reminder-24h"
           />
-          <div className="flex flex-wrap gap-1 pt-1">
-            {TRIGGER_KEYS.map((tk) => (
-              <button
-                key={tk}
-                type="button"
-                onClick={() => update("key", tk)}
-                className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted/80"
-              >
-                {tk}
-              </button>
-            ))}
-          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label>{t("editor.event")}</Label>
+          <Select
+            value={form.event}
+            onValueChange={(v) => {
+              update("event", v);
+              setEventTouched(true);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">{t("editor.eventManual")}</SelectItem>
+              {TEMPLATE_EVENTS.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {t(`triggers.events.${e.label}`)}
+                </SelectItem>
+              ))}
+              {form.event === "custom" || form.event === "system" ? (
+                <SelectItem value={form.event} disabled>
+                  {t(form.event === "custom" ? "editor.eventCustom" : "editor.eventSystem")}
+                </SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">{t("editor.eventHint")}</p>
         </div>
 
         <div className="space-y-1">
           <Label>{t("editor.channel")}</Label>
+          {/* Telegram is the only channel with an adapter (audit TG-25):
+              Email used to be offered and every row it made FAILED. A
+              legacy row keeps showing its channel, marked as not sent. */}
           <Select
             value={form.channel}
             onValueChange={(v) => update("channel", v as TemplateChannel)}
@@ -286,7 +352,11 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="TG">Telegram</SelectItem>
-              <SelectItem value="EMAIL">Email</SelectItem>
+              {form.channel !== "TG" ? (
+                <SelectItem value={form.channel} disabled>
+                  {t("editor.channelUnavailable", { channel: form.channel })}
+                </SelectItem>
+              ) : null}
             </SelectContent>
           </Select>
         </div>
@@ -334,7 +404,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
             <AiCopySuggest
               channel={form.channel}
               locale="ru"
-              triggerKey={form.key || null}
+              triggerKey={chosenEvent?.id ?? (form.key || null)}
               onUse={(text) => update("bodyRu", text)}
             />
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -380,7 +450,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
           <AiCopySuggest
             channel={form.channel}
             locale="uz"
-            triggerKey={form.key || null}
+            triggerKey={chosenEvent?.id ?? (form.key || null)}
             onUse={(text) => update("bodyUz", text)}
           />
         </div>
@@ -398,9 +468,17 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
           {t("editor.preview")}
           <Badge variant="muted">{form.channel}</Badge>
         </div>
-        <pre className="whitespace-pre-wrap font-sans text-sm text-foreground">
-          {previewRender(form.bodyRu, sample) || t("editor.previewEmpty")}
-        </pre>
+        {form.bodyRu.trim() ? (
+          <div
+            className="whitespace-pre-wrap font-sans text-sm text-foreground [&_a]:text-primary [&_a]:underline [&_code]:font-mono [&_pre]:font-mono"
+            // Safe: `toTelegramHtml` emits only Telegram's formatting tags,
+            // attribute-free except an http(s)/tg:// href, and entities.
+            dangerouslySetInnerHTML={{ __html: telegramPreview(form.bodyRu, sample) }}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("editor.previewEmpty")}</p>
+        )}
+        <p className="mt-1 text-[11px] text-muted-foreground">{t("editor.previewHint")}</p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-2">

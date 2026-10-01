@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { sendMessage, type TgClinicMinimal } from "@/server/telegram/send";
+import { toTelegramHtml } from "../telegram-html";
 import type { TgAdapter, TgSendOptions, TgSendResult } from "./tg";
 
 export class TelegramClinicAdapter implements TgAdapter {
@@ -43,7 +44,9 @@ export class TelegramClinicAdapter implements TgAdapter {
       tgBotToken: clinic.tgBotToken,
       tgBotUsername: clinic.tgBotUsername,
     };
-    const res = await sendMessage(clinicMin, chatId, body, {
+    // Staff-typed template and broadcast text is not HTML: a stray «<14» or
+    // «МРТ & ЭЭГ» made Telegram refuse the whole message (audit TG-24).
+    const res = await sendMessage(clinicMin, chatId, toTelegramHtml(body), {
       parse_mode: "HTML",
       ...(options?.replyMarkup
         ? { reply_markup: options.replyMarkup }

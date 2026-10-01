@@ -7,7 +7,13 @@ import {
 } from "@tanstack/react-query";
 
 export type TriggerRow = {
+  /** Event id (`TEMPLATE_EVENTS`). */
   key: string;
+  /** `notifications.triggers.events.<label>` / `.timing.<timing>`. */
+  label: string;
+  timing: string;
+  timingValues: Record<string, number>;
+  /** The template sent for the event, or its newest switched-off one. */
   template: {
     id: string;
     key: string;
@@ -34,26 +40,26 @@ export function useTriggers() {
   });
 }
 
-/** Toggling a trigger flips the linked template's `isActive`. */
+/**
+ * Toggling an event: off stops every template of it, on switches its newest
+ * template back on (audit TG-25, see the triggers route).
+ */
 export function useToggleTrigger() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
-      templateId,
-      isActive,
+      event,
+      enabled,
     }: {
-      templateId: string;
-      isActive: boolean;
+      event: string;
+      enabled: boolean;
     }) => {
-      const res = await fetch(
-        `/api/crm/notifications/templates/${templateId}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ isActive }),
-        },
-      );
+      const res = await fetch("/api/crm/notifications/triggers", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ event, enabled }),
+      });
       if (!res.ok) throw new Error(`Toggle failed: ${res.status}`);
       return await res.json();
     },

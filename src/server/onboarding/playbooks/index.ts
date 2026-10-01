@@ -17,8 +17,11 @@
  * 2026 Tashkent mid-market price points for the corresponding service.
  *
  * Templates use `TRIGGER_KEYS` from `@/server/notifications/triggers`. Each
- * playbook ships with the four templates `fireTrigger` actually emits out of
- * the box on appointment booking: confirmation + 3d / 24h / 2h reminders.
+ * playbook ships its own wording of the booking confirmation and the 3d /
+ * 24h / 3h reminders; the applier adds the rest of the canonical set (5d,
+ * cancellations, reschedule, running late, no-show) from
+ * `DEFAULT_APPOINTMENT_TEMPLATES` (audit TG-16: a new clinic used to get
+ * only these four, with a retired 2h band instead of the 3h one).
  * Stage 2.D added the 3d "gentle ping" — audience is filtered at the
  * materialiser to TELEGRAM/WEBSITE bookings whose `confirmedAt` is still
  * null, so PHONE/KIOSK/WALKIN auto-confirms never receive it. The applier
@@ -105,10 +108,11 @@ const RU_24H =
 const UZ_24H =
   "Eslatma: ertaga soat {{appointment.time}} da {{clinic.name}}da qabuluvingiz bor, shifokor {{appointment.doctor}}. Manzil: {{clinic.address}}. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}.";
 
-const RU_2H =
-  "Через 2 часа ваш приём в {{clinic.name}} ({{appointment.doctor}}). Если не сможете прийти, позвоните: {{clinic.phone}}.";
-const UZ_2H =
-  "2 soatdan so'ng {{clinic.name}}da qabuluvingiz bor ({{appointment.doctor}}). Kelolmasangiz qo'ng'iroq qiling: {{clinic.phone}}.";
+// The canonical last band is 3h (TZ-risk-outcomes §7); the 2h one is retired.
+const RU_3H =
+  "Через 3 часа, в {{appointment.time}}, ваш приём в {{clinic.name}} ({{appointment.doctor}}). Если не сможете прийти, позвоните: {{clinic.phone}}.";
+const UZ_3H =
+  "3 soatdan so'ng, soat {{appointment.time}} da {{clinic.name}}da qabuluvingiz bor ({{appointment.doctor}}). Kelolmasangiz qo'ng'iroq qiling: {{clinic.phone}}.";
 
 function trio(
   flavour: { confirmRu: string; confirmUz: string },
@@ -133,10 +137,10 @@ function trio(
       bodyUz: UZ_24H,
     },
     {
-      trigger: "appointment.reminder-2h",
+      trigger: "appointment.reminder-3h",
       channel: "TG",
-      bodyRu: RU_2H,
-      bodyUz: UZ_2H,
+      bodyRu: RU_3H,
+      bodyUz: UZ_3H,
     },
   ];
 }
@@ -512,6 +516,12 @@ export function triggerKeyToDbShape(trigger: TriggerKey): {
         trigger: "APPOINTMENT_BEFORE",
         triggerConfig: { offsetMin: -300 },
         key: "reminder.5h",
+      };
+    case "appointment.reminder-3h":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { offsetMin: -180 },
+        key: "reminder.3h",
       };
     case "appointment.reminder-2h":
       return {

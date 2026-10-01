@@ -1,13 +1,15 @@
 /**
  * Phase 16 Wave 3 — Medication-reminder worker.
  *
- * Hourly tick. For every ACTIVE prescription with `remindersEnabled: true`,
- * not on a closed medical case, whose schedule.times[] contains the current
- * local hour:
+ * Five-minute tick. For every ACTIVE prescription with `remindersEnabled:
+ * true`, not on a closed medical case, with a dose whose time fell in the
+ * trailing catch-up window (audit INF-12: the hourly tick ran at the minute
+ * of the first deploy and saw only the current hour, so doses went out up
+ * to 59 minutes late and a tick slipping past the hour lost one):
  *
- *   1. Compute the canonical UTC anchor (`scheduledFor`) of every dose in
- *      the tick via `dosesDueInWindow` (pure helper): 08:00 and 08:30 are
- *      two reminders.
+ *   1. Compute the canonical UTC anchor (`scheduledFor`) of every such dose
+ *      via `dosesDueBetween` (pure helper): 08:00 and 08:30 are two
+ *      reminders, each sent within one tick of its time.
  *   2. INSERT a `MedicationReminderSend(prescriptionId, scheduledFor)` row
  *      with status PENDING. The unique constraint on
  *      (prescriptionId, scheduledFor) makes the second tick a no-op.
@@ -31,7 +33,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import {
-  dosesDueInWindow,
+  dosesDueBetween,
   parseSchedule,
 } from "@/lib/patient-experience/medication-schedule";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -48,8 +50,19 @@ import { getQueue } from "@/server/queue";
 export const QUEUE_NAME = "patient-experience:medication";
 export const JOB_NAME = "medication-reminder-tick";
 
-/** Hourly cadence — schedules are anchored to HH:00 in clinic TZ. */
-const TICK_INTERVAL_MS = 60 * 60 * 1000;
+/**
+ * Tick cadence: a dose goes out at most this long after its time. A BullMQ
+ * `every` schedule keeps the offset of its first run, so a short interval,
+ * not an hourly one, is what keeps reminders on time.
+ */
+const TICK_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * How far back a tick still reminds a dose it has not reminded yet: a tick
+ * or two lost to a deploy or a restart is caught up; a dose from hours ago
+ * («пора принять в 08:00» at noon) is not sent.
+ */
+export const MEDICATION_CATCH_UP_MS = 90 * 60 * 1000;
 
 type Channel = "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 
@@ -105,7 +118,8 @@ function pickRecipient(
 ): string | null {
   // A patient who blocked the bot would only produce a FAILED row.
   if (channel === "TG") return patient.tgBlockedAt ? null : patient.telegramId;
-  if (channel === "EMAIL") return patient.phone;
+  // EMAIL has no adapter and the card no e-mail: the phone it used to
+  // return made a row the send worker could only fail (audit INF-11).
   return null;
 }
 
@@ -234,7 +248,8 @@ export async function runMedicationReminderTick(
 
       const tz = rx.clinic.timezone || "Asia/Tashkent";
       const tpl = tplByClinic.get(rx.clinicId) ?? null;
-      for (const dueAt of dosesDueInWindow(sched, now, tz)) {
+      const from = new Date(now.getTime() - MEDICATION_CATCH_UP_MS);
+      for (const dueAt of dosesDueBetween(sched, from, now, tz)) {
         if (await materializeDose(rx, tpl, dueAt, tz, now)) created += 1;
       }
     }

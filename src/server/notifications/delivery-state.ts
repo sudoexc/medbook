@@ -107,6 +107,23 @@ export function reminderAnchorMs(
 }
 
 /**
+ * Whether a live row is already the message for appointment start
+ * `startMs` (audit TG-21): its stamped start, or a legacy band row's derived
+ * one, equals it. A legacy row whose start cannot be known counts when
+ * `unknownCovers` (never doubling a message beats missing one, except for
+ * «перенесён», which is about a new start by definition).
+ */
+export function coversStart(
+  row: { appointmentAt?: Date | null; scheduledFor: Date },
+  offsetMin: unknown,
+  startMs: number,
+  unknownCovers: boolean,
+): boolean {
+  const anchor = reminderAnchorMs(row, offsetMin);
+  return anchor === null ? unknownCovers : anchor === startMs;
+}
+
+/**
  * `{ appointmentAt }` to write alongside a `scheduledFor` move, so a legacy
  * row's derived anchor survives the move; `{}` when there is nothing to pin.
  */

@@ -3012,7 +3012,14 @@
       "sampleService": "Konsultatsiya",
       "sampleClinicAddress": "Toshkent",
       "smsCounter": "{chars} belgi · {parts} SMS",
-      "unknownVar": "Noma'lum o'zgaruvchi: {var}"
+      "unknownVar": "Noma'lum o'zgaruvchi: {var}",
+      "event": "Hodisa",
+      "eventManual": "Qo'lda (yuborish yoki tugma)",
+      "eventCustom": "Boshqa vaqt (bildirishnoma sozlamalarida o'zgartiriladi)",
+      "eventSystem": "Tizim (CRM o'z jadvali bo'yicha yuboradi)",
+      "eventHint": "Hodisali shablonni CRM o'zi yuboradi. Hodisada faol shablon bo'lsa, saqlashda u o'chiriladi.",
+      "channelUnavailable": "{channel}: yuborilmaydi, kanal ulanmagan",
+      "previewHint": "Bemor Telegramda xabarni shunday ko'radi"
     },
     "marketingCopy": {
       "title": "AI kopirayting yordamchisi",
@@ -3047,15 +3054,51 @@
     },
     "triggers": {
       "title": "Triggerlar",
-      "hint": "CRM avtomatik tarzda bildirishnoma yaratadigan 7 hodisa. Har bir trigger mos kalitga ega shablonga bog'lanishi kerak.",
+      "hint": "CRM bemorga o'zi yozadigan hodisalar. Har biri uchun haqiqatda yuboriladigan shablon ko'rsatilgan.",
       "on": "yoq",
       "off": "o'chiq",
-      "needTemplate": "Shu kalitli shablon kerak",
-      "noTemplate": "Avval shu kalit bilan shablon yarating",
+      "needTemplate": "Shablon yo'q: bemorlar bu xabarni olmaydi",
+      "noTemplate": "«Shablonlar» bo'limida shu hodisa bilan shablon yarating",
       "empty": {
         "title": "Triggerlar yo'q",
         "description": "Avtomatikani yoqish uchun trigger kalitlari bilan shablonlar yarating."
+      },
+      "templateOff": "O'chirilgan: {name}",
+      "events": {
+        "created": "Yozilishni tasdiqlash",
+        "reminder5d": "5 kun oldin eslatma",
+        "reminder3d": "3 kun oldin eslatma (tasdiqlash so'rovi)",
+        "reminder24h": "1 kun oldin eslatma",
+        "reminder3h": "3 soat oldin eslatma",
+        "cancelledByStaff": "Klinika tomonidan bekor qilish",
+        "cancelledByPatient": "Bemor tomonidan bekor qilish",
+        "rescheduled": "Qabulni ko'chirish",
+        "runningLate": "Bemor kechikmoqda",
+        "noShow": "Qabul o'tkazib yuborildi",
+        "thankYou": "Tashrif uchun rahmat",
+        "birthday": "Tug'ilgan kun",
+        "caseRepeat": "Bepul takroriy qabul"
+      },
+      "timing": {
+        "immediate": "darhol",
+        "before5d": "qabuldan 5 kun oldin",
+        "before3d": "3 kun oldin, tashrif tasdiqlanmagan bo'lsa",
+        "before24h": "qabuldan 1 kun oldin",
+        "before3h": "qabuldan 3 soat oldin",
+        "late": "boshlanishidan 15 daqiqa o'tib, bemor kelmagan bo'lsa",
+        "noShow": "«kelmadi» belgisidan keyin",
+        "thankYou": "tashrif yakunlangandan keyin",
+        "birthday": "tug'ilgan kuni, klinika vaqti bilan 09:00 dan",
+        "caseRepeat": "bepul takroriy qabul tugashiga {days} kun qolganda"
       }
+    },
+    "patientMessages": {
+      "confirmButton": "✅ Tasdiqlayman",
+      "questionnaireButton": "📝 So'rovnomani to'ldirish",
+      "npsButton": "⭐ Tashrifni baholash",
+      "familyRelay": "👤 Oila a'zosi: {name}",
+      "dsarArchiveCaption": "Ma'lumotlaringiz arxivi. Parol keyingi xabarda keladi.",
+      "dsarPassword": "Shifrni ochish uchun parol: {passphrase}\n\nArxivdagi decrypt.sh dan (yoki o'z openssl dasturingizdan) foydalaning."
     },
     "campaigns": {
       "title": "Yuborishlar",

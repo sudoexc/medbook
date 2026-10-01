@@ -158,7 +158,7 @@ describe("the workers check", () => {
     expect(workersVerdict({}, { ...clean, oldestPendingSec: 600 }, NOW).status).toBe("down");
   });
 
-  it("status comes first in the JSON (the watchdog greps `\"workers\":{\"status\":\"ok\"`)", () => {
+  it("status comes first in the JSON (the watchdog greps `\"workers\":{\"status\":\"<status>\"`)", () => {
     expect(Object.keys(workersVerdict(fresh, clean, NOW))[0]).toBe("status");
   });
 });
@@ -296,7 +296,9 @@ describe("the wiring around it", () => {
     expect(wd).toContain('ALERT_TG_TOKEN:=${TELEGRAM_BOT_TOKEN:-}');
     expect(wd).toContain('ALERT_TG_CHAT_ID:=${WATCHDOG_TG_CHAT_ID:-}');
     expect(wd).toContain("alert not sent");
-    expect(wd).toContain('"\\"${svc}\\":{\\"status\\":\\"ok\\""');
+    // Reads each subsystem's status (not only "ok or not"): degraded and down
+    // are separate problems (tests/unit/p5-watchdog-alerts.test.ts).
+    expect(wd).toContain('"\\"${svc}\\":{\\"status\\":\\"[a-z_]*\\""');
     expect(read(".env.example")).toMatch(/^ALERT_TG_TOKEN=$/m);
   });
 

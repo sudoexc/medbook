@@ -5,33 +5,31 @@
  *
  * Two states:
  *   1. No pending request — show before/after summary, optional reason
- *      and notes fields, and a phone confirmation input. The TG main
+ *      and notes fields, and a confirmation input (the phone number, or the
+ *      word УДАЛИТЬ / O‘CHIRISH for a card with no number). The TG main
  *      button submits to /api/miniapp/account/delete.
  *   2. Pending request — show the scheduled date and a single "Отменить
  *      удаление" button calling /api/miniapp/account/cancel-deletion.
  *
- * The screen is self-contained (no react-query hook for the deletion
- * job): it derives the pending-request state from the active deletion
- * stamp on the loaded profile, and from the response payload of the
- * delete endpoint after submission.
+ * The pending state comes from the server (GET /api/miniapp/account/delete)
+ * every time the screen opens, so a patient who left the screen can still
+ * cancel, and every call goes through useMiniAppFetch (audit MA-12: the
+ * hand-rolled fetches carried no clinicSlug and always failed with 400).
  */
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
-import { MButton, MCard, MHint, MSection, MSpinner } from "./mini-ui";
+import { MButton, MCard, MEmpty, MErrorInline, MHint, MSection, MSpinner } from "./mini-ui";
 import { useT, useLang } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useProfile } from "../_hooks/use-profile";
+import {
+  useCancelDeletion,
+  useDeletionStatus,
+  useRequestDeletion,
+} from "../_hooks/use-account";
+import { deletionConfirmationMatches } from "@/lib/patient-experience/account-deletion";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
-
-type PendingState = {
-  jobId: string;
-  scheduledFor: string;
-};
-
-function digitsOnly(s: string): string {
-  return s.replace(/\D/g, "");
-}
 
 function splitLines(text: string): string[] {
   return text.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -43,6 +41,7 @@ function formatDeletionDate(iso: string, lang: "RU" | "UZ"): string {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
 }
 
@@ -53,104 +52,91 @@ export function AccountDeleteScreen() {
   const { clinicSlug } = useMiniAppAuth();
   const tg = useTelegramWebApp();
   const profile = useProfile();
+  const status = useDeletionStatus();
+  const requestDeletion = useRequestDeletion();
+  const cancelDeletion = useCancelDeletion();
 
   const [reason, setReason] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [confirmation, setConfirmation] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [pending, setPending] = React.useState<PendingState | null>(null);
+  const busy = requestDeletion.isPending || cancelDeletion.isPending;
+  const pending = status.data ?? null;
+  const loading = profile.isLoading || status.isLoading;
 
-  // Bootstrap the pending state — if profile loading is complete and
-  // the request creation endpoint reports `reused: true`, we land in
-  // the pending branch directly. We also bootstrap optimistically by
-  // probing the delete endpoint with a no-op call when the screen
-  // mounts: the server is idempotent and will return any active job.
   React.useEffect(() => {
     return tg.setBackButton(() => router.push(`/c/${clinicSlug}/my/profile`));
   }, [tg, router, clinicSlug]);
 
-  const phone = profile.data?.phone ?? "";
-  const confirmDigits = digitsOnly(confirmation);
-  const phoneDigits = digitsOnly(phone);
-  const confirmationOk =
-    confirmDigits.length > 0 && confirmDigits === phoneDigits;
+  // A card the Mini App created has no number (the profile hides its tg:
+  // stub): it confirms with the word instead, which the server accepts by
+  // the same rule.
+  const hasPhone = profile.data?.hasPhone ?? false;
+  const phone = hasPhone ? (profile.data?.phone ?? "") : "";
+  const confirmationOk = deletionConfirmationMatches({
+    hasPhone,
+    phone,
+    confirmation,
+  });
+  const typedSomething = confirmation.trim().length > 0;
 
   const onSubmit = React.useCallback(async () => {
     if (!confirmationOk || busy || pending) return;
-    setBusy(true);
     try {
-      const res = await fetch("/api/miniapp/account/delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Telegram-Init-Data": tg.initData ?? "",
-        },
-        body: JSON.stringify({
-          reason: reason.trim() || undefined,
-          notes: notes.trim() || undefined,
-          confirmation,
-        }),
+      const data = await requestDeletion.mutateAsync({
+        reason: reason.trim() || undefined,
+        notes: notes.trim() || undefined,
+        confirmation,
       });
-      const data = (await res.json()) as {
-        jobId?: string;
-        scheduledFor?: string;
-        error?: string;
-      };
-      if (!res.ok || !data.jobId || !data.scheduledFor) {
-        tg.haptic.notification("error");
-        tg.showAlert(t.account.deleteError);
-        return;
-      }
       tg.haptic.notification("success");
-      setPending({ jobId: data.jobId, scheduledFor: data.scheduledFor });
       tg.showAlert(
         t.account.deleteSuccess.replace(
           "{date}",
           formatDeletionDate(data.scheduledFor, lang),
         ),
       );
-    } catch {
+    } catch (e) {
       tg.haptic.notification("error");
-      tg.showAlert(t.account.deleteError);
-    } finally {
-      setBusy(false);
+      tg.showAlert(
+        (e as Error).message === "confirmation_mismatch"
+          ? hasPhone
+            ? t.account.deleteConfirmMismatch
+            : t.account.deleteConfirmWordMismatch
+          : t.account.deleteError,
+      );
     }
-  }, [busy, confirmation, confirmationOk, lang, notes, pending, reason, t, tg]);
+  }, [
+    busy,
+    confirmation,
+    confirmationOk,
+    hasPhone,
+    lang,
+    notes,
+    pending,
+    reason,
+    requestDeletion,
+    t,
+    tg,
+  ]);
 
   const onCancel = React.useCallback(async () => {
     if (busy || !pending) return;
-    setBusy(true);
     try {
-      const res = await fetch("/api/miniapp/account/cancel-deletion", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Telegram-Init-Data": tg.initData ?? "",
-        },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) {
-        tg.haptic.notification("error");
-        tg.showAlert(t.account.cancelError);
-        return;
-      }
+      await cancelDeletion.mutateAsync();
       tg.haptic.notification("success");
-      setPending(null);
       tg.showAlert(t.account.cancelSuccess);
       router.push(`/c/${clinicSlug}/my/profile`);
     } catch {
       tg.haptic.notification("error");
       tg.showAlert(t.account.cancelError);
-    } finally {
-      setBusy(false);
     }
-  }, [busy, clinicSlug, pending, router, t, tg]);
+  }, [busy, cancelDeletion, clinicSlug, pending, router, t, tg]);
 
   // The TG main button reflects the active mode — submit (pre-pending)
-  // or cancel (post-pending). We hide it entirely while the profile is
-  // loading or when the form is invalid to avoid a confusing dead tap.
+  // or cancel (post-pending). We hide it entirely while the profile or
+  // the request status is loading, or when it failed to load, to avoid a
+  // confusing dead tap.
   React.useEffect(() => {
-    if (profile.isLoading) {
+    if (loading || status.isError) {
       return tg.setMainButton({ visible: false });
     }
     if (pending) {
@@ -174,13 +160,27 @@ export function AccountDeleteScreen() {
     busy,
     confirmationOk,
     pending,
-    profile.isLoading,
+    loading,
+    status.isError,
     onSubmit,
     onCancel,
     tg,
   ]);
 
-  if (profile.isLoading) return <MSpinner label={t.common.loading} />;
+  if (loading) return <MSpinner label={t.common.loading} />;
+  // Without the status we cannot tell «scheduled» from «not requested»:
+  // offering the form could hide a cancellable request. Retry instead.
+  if (status.isError) {
+    return (
+      <MEmpty>
+        <MErrorInline
+          text={t.common.loadFailedShort}
+          retryLabel={t.common.retry}
+          onRetry={() => void status.refetch()}
+        />
+      </MEmpty>
+    );
+  }
 
   if (pending) {
     return (
@@ -301,14 +301,17 @@ export function AccountDeleteScreen() {
               className="mb-1 text-xs font-medium"
               style={{ color: "var(--tg-hint)" }}
             >
-              {t.account.deleteConfirmLabel}
+              {hasPhone
+                ? t.account.deleteConfirmLabel
+                : t.account.deleteConfirmWordLabel}
             </div>
             <input
-              type="tel"
-              inputMode="tel"
+              type={hasPhone ? "tel" : "text"}
+              inputMode={hasPhone ? "tel" : "text"}
+              autoCapitalize={hasPhone ? undefined : "characters"}
               value={confirmation}
               onChange={(e) => setConfirmation(e.target.value)}
-              placeholder={phone || "+998 90 000 00 00"}
+              placeholder={hasPhone ? phone || "+998 90 000 00 00" : undefined}
               className="w-full rounded-xl border px-3 py-3 text-sm"
               style={{
                 backgroundColor: "var(--tg-bg)",
@@ -318,13 +321,13 @@ export function AccountDeleteScreen() {
               }}
             />
             <div className="mt-1">
-              {confirmDigits.length === 0 ? (
-                <MHint>{t.account.deleteConfirmHelp}</MHint>
-              ) : confirmationOk ? (
+              {!typedSomething || confirmationOk ? (
                 <MHint>{t.account.deleteConfirmHelp}</MHint>
               ) : (
                 <p className="text-xs" style={{ color: "var(--ma-danger)" }}>
-                  {t.account.deleteConfirmMismatch}
+                  {hasPhone
+                    ? t.account.deleteConfirmMismatch
+                    : t.account.deleteConfirmWordMismatch}
                 </p>
               )}
             </div>

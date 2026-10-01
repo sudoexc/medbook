@@ -3,7 +3,8 @@
  *   Query: scope=upcoming|past (default "upcoming"), limit?.
  *
  * POST /api/miniapp/appointments — book an appointment.
- *   Body: { doctorId, serviceIds[], startAt (ISO), patientName?, patientPhone?, lang? }
+ *   Body: { doctorId, serviceIds[], startAt (ISO), patientName?, patientPhone?, lang?,
+ *           medicalCaseId? }
  *
  * Both are scoped to the authenticated patient (via `ctx.patientId`) and the
  * clinic (via `ctx.clinicId`).
@@ -36,6 +37,7 @@ import {
 import { queueTicketToken } from "@/server/appointments/public-ticket";
 import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
 import { getMetrics } from "@/server/observability/metrics";
+import { miniAppAppointmentScopeWhere } from "@/server/miniapp/appointment-scope";
 
 const BookBody = z.object({
   doctorId: z.string().min(1),
@@ -51,6 +53,11 @@ const BookBody = z.object({
   // but the appointment.patientId is the relative's id. Server validates
   // the PatientFamily link before honouring this.
   onBehalfOf: z.string().min(1).optional(),
+  // The open case the patient is continuing, when the wizard was started
+  // from the treatment-plan card (audit MA-11). A hint, not an order: the
+  // case-attach step files the visit there only if it is still an OPEN case
+  // of this patient, and otherwise falls back to its usual choice.
+  medicalCaseId: z.string().min(1).max(64).optional(),
 });
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
@@ -70,20 +77,16 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
     onBehalfOf,
   });
   if (!active.ok) return err(active.reason, 403);
-  const now = new Date();
-  const where: Record<string, unknown> = {
+  // Today's visits and the live queue stay «upcoming» until they finish,
+  // not until their start time passes (audit MA-20).
+  const where = {
     clinicId: ctx.clinicId,
     patientId: active.patientId,
+    ...miniAppAppointmentScopeWhere(
+      scope === "upcoming" ? "upcoming" : "past",
+      new Date(),
+    ),
   };
-  if (scope === "upcoming") {
-    where.status = { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] };
-    where.date = { gte: now };
-  } else {
-    where.OR = [
-      { status: { in: ["COMPLETED", "NO_SHOW", "CANCELLED"] } },
-      { date: { lt: now } },
-    ];
-  }
   // Explicit select, never include + spread (audit MA-10): the row carries
   // reception notes and cancel internals the patient must not receive.
   const rows = await prisma.appointment.findMany({
@@ -168,6 +171,15 @@ export const POST = createMiniAppHandler(
       }
     }
 
+    // Only services this doctor offers (audit MA-08). The wizard sends the
+    // doctor's online service; a crafted or stale body naming another one
+    // would book him at a price and length that are not his.
+    const wanted = Array.from(new Set(body.serviceIds));
+    const linked = await prisma.serviceOnDoctor.count({
+      where: { doctorId: body.doctorId, serviceId: { in: wanted } },
+    });
+    if (linked !== wanted.length) return err("service_not_found", 404);
+
     const primaryServiceId = body.serviceIds[0] ?? null;
     const preferredLang = body.lang ?? active.preferredLang;
 
@@ -188,6 +200,7 @@ export const POST = createMiniAppHandler(
         startAt,
         preferredLang,
         primaryComplaint: body.comments ?? null,
+        preferredCaseId: body.medicalCaseId ?? null,
       },
       actor: {
         role: "PATIENT",

@@ -30,6 +30,7 @@ import { DoctorTimeOff } from "./doctor-time-off";
 import { DoctorPatientsList } from "./doctor-patients-list";
 import { DoctorReviews } from "./doctor-reviews";
 import { DoctorServicesEditor } from "./doctor-services";
+import { DoctorOnlineService } from "./doctor-online-service";
 import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role";
 
 type TabId = "overview" | "schedule" | "services" | "patients" | "reviews";
@@ -220,6 +221,10 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
           className="flex flex-col gap-4 data-[state=inactive]:hidden"
         >
           <DoctorServicesEditor
+            doctorId={doctor.id}
+            canEdit={role === "ADMIN" || role === "SUPER_ADMIN"}
+          />
+          <DoctorOnlineService
             doctorId={doctor.id}
             canEdit={role === "ADMIN" || role === "SUPER_ADMIN"}
           />

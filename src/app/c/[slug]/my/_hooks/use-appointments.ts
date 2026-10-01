@@ -109,6 +109,8 @@ export function useBookAppointment() {
       lang?: "RU" | "UZ";
       comments?: string;
       onBehalfOf?: string | null;
+      /** The open case this booking continues (treatment-plan card, MA-11). */
+      medicalCaseId?: string | null;
       // Phase M4 — caller mints a stable id (UUID/ULID) once per
       // confirmation-screen instance so a double-tap MainButton or a
       // network retry collapses to a single booking. The mini-app server

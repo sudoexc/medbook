@@ -13,6 +13,7 @@ import {
 import { useT } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useProfile, useUpdateProfile } from "../_hooks/use-profile";
+import { useRequestExport } from "../_hooks/use-account";
 import { PhoneConfirm } from "./phone-confirm";
 import { useShareContact } from "../_hooks/use-share-contact";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
@@ -172,36 +173,25 @@ function AccountDsarSection({ clinicSlug }: { clinicSlug: string }) {
   const t = useT();
   const router = useRouter();
   const tg = useTelegramWebApp();
-  const [busy, setBusy] = React.useState(false);
+  // Through useMiniAppFetch (audit MA-12): the hand-rolled fetch carried no
+  // clinicSlug and every export request died on 400.
+  const exportData = useRequestExport();
+  const busy = exportData.isPending;
 
   const onExport = async () => {
-    setBusy(true);
     try {
-      const res = await fetch("/api/miniapp/account/export", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Telegram-Init-Data": tg.initData ?? "",
-        },
-        body: JSON.stringify({}),
-      });
-      const data = (await res.json()) as { reused?: boolean; error?: string };
-      if (!res.ok) {
-        if (data.error === "no_telegram_chat") {
-          tg.showAlert(t.account.exportNoTelegram);
-        } else {
-          tg.showAlert(t.account.exportError);
-        }
-        return;
-      }
+      const data = await exportData.mutateAsync();
       tg.haptic.notification("success");
       tg.showAlert(
         data.reused ? t.account.exportAlreadyRequested : t.account.exportSuccess,
       );
-    } catch {
-      tg.showAlert(t.account.exportError);
-    } finally {
-      setBusy(false);
+    } catch (e) {
+      tg.haptic.notification("error");
+      tg.showAlert(
+        (e as Error).message === "no_telegram_chat"
+          ? t.account.exportNoTelegram
+          : t.account.exportError,
+      );
     }
   };
 

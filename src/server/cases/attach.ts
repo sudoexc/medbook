@@ -214,6 +214,12 @@ export type AutoAttachCaseInput = {
   preferredLang: "RU" | "UZ";
   /** Optional patient-typed comment becomes the case `primaryComplaint`. */
   primaryComplaint: string | null;
+  /**
+   * The case the patient asked to continue (Mini App treatment-plan card,
+   * audit MA-11). Honoured only when it is one of this patient's OPEN cases
+   * at attach time, read under the case lock; otherwise ignored.
+   */
+  preferredCaseId?: string | null;
   /** Who is booking, for the free-repeat audit row (the booking kernel's actor). */
   audit: Omit<CaseAttachAuditActor, "clinicId">;
 };
@@ -248,6 +254,22 @@ export async function autoAttachCase(
           _count: { select: { appointments: true } },
         },
       });
+
+      // The patient booked from a case's own «Записаться»: file the visit
+      // there, whatever the number of open cases. A case closed or foreign
+      // meanwhile is not in `openCases`, and the usual rule decides below.
+      const preferred = input.preferredCaseId
+        ? openCases.find((c) => c.id === input.preferredCaseId)
+        : undefined;
+      if (preferred) {
+        const results = await attachAppointmentToCase(tx, {
+          appointmentId: input.appointmentId,
+          caseId: preferred.id,
+          previousCaseId: null,
+        });
+        await auditFreeRepeats(tx, who, preferred.id, results, "auto_attach");
+        return { kind: "auto" as const, caseId: preferred.id };
+      }
 
       if (openCases.length === 0) {
         const isUz = input.preferredLang === "UZ";

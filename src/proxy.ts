@@ -152,8 +152,13 @@ export default async function proxy(request: NextRequest) {
   return intlMiddleware(request);
 }
 
+// Paper QR codes point at locale-less public routes: /v/<token> (document
+// authenticity) and /t/<code> (queue ticket short link), next to /c/ (Mini
+// App) and /q/ (live ticket). Left to next-intl they were rewritten to
+// /ru/v/… and /ru/t/…, where no route exists, so every scan answered 404
+// (audit MA-06). The literal must stay inline: Next reads it statically.
 export const config = {
   matcher: [
-    "/((?!api|_next|_vercel|login|admin|kiosk|tv|receptionist|ticket|c\\/|q\\/|.*\\..*).*)",
+    "/((?!api|_next|_vercel|login|admin|kiosk|tv|receptionist|ticket|c\\/|q\\/|t\\/|v\\/|.*\\..*).*)",
   ],
 };

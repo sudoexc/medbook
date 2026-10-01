@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Bone,
   Brain,
@@ -61,6 +61,18 @@ export function ServicePicker() {
   const doctors = useDoctors(null);
   const tg = useTelegramWebApp();
   const [expanded, setExpanded] = React.useState(false);
+
+  // The wizard's entry step decides which case the booking continues
+  // (audit MA-11): the treatment-plan card links here with `?caseId=`, the
+  // doctor step's Back keeps it, and every other entry (home, «записаться
+  // ещё») has none, so a case left in the draft by an abandoned run is
+  // cleared instead of silently filing an unrelated visit under it.
+  const params = useSearchParams();
+  const caseFromLink = params.get("caseId") || null;
+  React.useEffect(() => {
+    if (!hydrated) return;
+    if (draft.medicalCaseId !== caseFromLink) setDraft({ medicalCaseId: caseFromLink });
+  }, [hydrated, caseFromLink, draft.medicalCaseId, setDraft]);
 
   const specs: Spec[] = React.useMemo(() => {
     if (!doctors.data) return [];

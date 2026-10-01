@@ -29,6 +29,7 @@ import { startDataExportWorker } from "./data-export";
 import { startScheduledReportsWorker } from "./scheduled-reports";
 import { registerDsarScheduler } from "./data-deletion";
 import { startMedicationReminderWorker } from "./medication-reminder";
+import { startMedicationReminderFollowUpWorker } from "./medication-reminder-followup";
 import { startNotificationsSendWorker } from "./notifications-send";
 import { startNotificationsSchedulerWorker } from "./notifications-scheduler";
 import { startOutboxPumperWorker } from "./outbox-pumper";
@@ -114,6 +115,11 @@ async function main() {
   //                          push (TG + parallel INAPP). Idempotent via
   //                          (prescriptionId, scheduledFor) unique key.
   const medicationReminder = startMedicationReminderWorker();
+  //   medication-reminder-followup  5-minute sweep (audit MA-13) — expires
+  //                          doses left unanswered past the open window and
+  //                          brings snoozed ones back as PENDING with a new
+  //                          push once «Отложить» has run out.
+  const medicationFollowUp = startMedicationReminderFollowUpWorker();
 
   // Doctor cabinet P1.1 — Conclusion → patient delivery.
   //   visit-note-handout   30s sweep — for every FINALIZED VisitNote that
@@ -198,6 +204,7 @@ async function main() {
     preVisit.stop();
     postVisitNps.stop();
     medicationReminder.stop();
+    medicationFollowUp.stop();
     visitNoteHandout.stop();
     referralDocument.stop();
     dsarScheduler.stop();

@@ -80,6 +80,8 @@ vi.mock("@/lib/prisma", () => {
   return {
     prisma: {
       patient,
+      // The booked service is one the doctor offers (MA-08 guard).
+      serviceOnDoctor: { count: vi.fn(async () => 1) },
       $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ patient })),
     },
   };

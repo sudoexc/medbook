@@ -2793,6 +2793,21 @@
       "currencySum": "so'm",
       "minShort": "daq"
     },
+    "onlineService": {
+      "title": "Onlayn yozilish",
+      "hint": "Bemor Telegram orqali o'zi yoziladigan xizmat. Qabul narxi va davomiyligi shundan olinadi.",
+      "label": "Onlayn yozilish xizmati",
+      "none": "Tanlanmagan",
+      "statusChosen": "Bemorlar «{service}» xizmatiga yoziladi.",
+      "statusOnly": "Shifokorda bitta faol xizmat bor, onlayn yozilish unga bo'ladi: «{service}».",
+      "statusAmbiguous": "Shifokorda bir nechta xizmat bor. Xizmat tanlanmaguncha unga onlayn yozilish mavjud emas.",
+      "statusNone": "Shifokorda faol xizmatlar yo'q, u onlayn yozilishda ko'rinmaydi.",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "Saqlandi",
+      "saveFailed": "Saqlab bo'lmadi",
+      "loadError": "Onlayn yozilish sozlamasini yuklab bo'lmadi"
+    },
     "weekdays": {
       "mon": "Dushanba",
       "tue": "Seshanba",

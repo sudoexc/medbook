@@ -171,6 +171,8 @@ export function AppointmentDetailDialog({
       date: null,
       time: null,
       onBehalfOf,
+      // Skips the service step, so clear a case an earlier run left (MA-11).
+      medicalCaseId: null,
     });
     router.push(bookHref(clinicSlug, "doctor", onBehalfOf));
   };

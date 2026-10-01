@@ -1,7 +1,7 @@
 /**
  * Phase 16 Wave 2 — Pre-visit questionnaire worker.
  *
- * Hourly tick. For every BOOKED/WAITING appointment whose `startsAt` lands
+ * Hourly tick. For every BOOKED/CONFIRMED/WAITING appointment whose `startsAt` lands
  * inside a 23–25h-from-now window, with a TG-eligible patient, and which
  * has not yet been notified or submitted, we:
  *
@@ -33,6 +33,7 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { isPreVisitEligible } from "@/lib/patient-experience/pre-visit";
+import { UPCOMING_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 
 import { onPreVisitQuestionnaire } from "@/server/notifications/triggers";
 import { getQueue } from "@/server/queue";
@@ -63,7 +64,8 @@ export async function runPreVisitTick(now: Date = new Date()): Promise<{
     const rows = await prisma.appointment.findMany({
       where: {
         date: { gte: lower, lte: upper },
-        status: { in: ["BOOKED", "WAITING"] },
+        // CONFIRMED too (audit MA-09): phone bookings start there.
+        status: { in: [...UPCOMING_VISIT_STATUSES] },
         preVisitNotifiedAt: null,
         preVisitSubmittedAt: null,
         // Phase 17 Wave 1 — never poke a soft-deleted patient. Marketing

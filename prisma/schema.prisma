@@ -904,6 +904,17 @@ model Doctor {
   // scripts/fix-q12-ticket-prefixes.ts. Null prints the bare number.
   ticketPrefix String?
 
+  // The service a Mini App booking with this doctor is made for (audit
+  // MA-08), picked by the admin on the doctor's «Услуги» tab. The wizard
+  // asks the patient for a doctor and a time, not a service, and used to
+  // guess one (a «консульт» category, else the cheapest), archived services
+  // included. Honoured only while it is one of the doctor's ACTIVE linked
+  // services; unset, a doctor with exactly one active service books that
+  // one, and a doctor with several is not bookable online until the admin
+  // picks (src/lib/doctors/online-service.ts). Null on existing rows.
+  onlineServiceId String?
+  onlineService   Service? @relation("DoctorOnlineService", fields: [onlineServiceId], references: [id], onDelete: SetNull)
+
   services            ServiceOnDoctor[]
   schedules           DoctorSchedule[]
   timeOffs            DoctorTimeOff[]
@@ -1697,6 +1708,7 @@ model Service {
   doctors             ServiceOnDoctor[]
   appointmentServices AppointmentService[]
   primaryAppointments Appointment[]        @relation("AppointmentPrimaryService")
+  onlineForDoctors    Doctor[]             @relation("DoctorOnlineService")
 
   @@unique([clinicId, code])
   @@index([clinicId, isActive])

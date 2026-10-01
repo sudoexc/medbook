@@ -4,11 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useMiniAppFetch } from "./use-miniapp-api";
 
+/** Mirrors `TreatmentProgress` (server/services/treatment-plan). */
 export type TreatmentPlanProgress = {
   done: number;
-  total: number;
+  /** Null without a doctor-set plan length: no «N из M», no bar. */
+  total: number | null;
   nextVisitAt: string | null;
-  progress: number;
+  progress: number | null;
+  /** Only a RESOLVED case is «Лечение завершено». */
   completed: boolean;
   empty: boolean;
 };

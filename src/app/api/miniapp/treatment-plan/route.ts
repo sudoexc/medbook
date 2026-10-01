@@ -3,7 +3,7 @@
  *
  * Returns the patient's most-recent active MedicalCase along with progress:
  *   - completed visit count (Appointments.status = COMPLETED tied to the case)
- *   - next BOOKED appointment (earliest in the future)
+ *   - next upcoming appointment (BOOKED, CONFIRMED or WAITING, from today)
  *   - count of OTHER open cases (so the UI can render "+N more")
  *
  * Honours `?onBehalfOf=<patientId>` — when present, validates that the TG
@@ -19,6 +19,8 @@ import { err, ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { computeProgress } from "@/server/services/treatment-plan";
+import { UPCOMING_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const onBehalfOf = new URL(request.url).searchParams.get("onBehalfOf");
@@ -39,6 +41,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
     select: {
       id: true,
       title: true,
+      status: true,
       primaryComplaint: true,
       diagnosisText: true,
       openedAt: true,
@@ -55,7 +58,11 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const active = openCases[0]!;
   const more = openCases.length - 1;
 
-  const now = new Date();
+  // The next visit is any one still ahead (audit MA-11): phone bookings and
+  // reminder answers are CONFIRMED, an arrived patient is WAITING, and a
+  // BOOKED-only lookup told them «nothing booked» and offered to book again.
+  // From the start of today, like the Mini App's «Предстоящие» (MA-20).
+  const { dayStart } = tashkentDayBounds(new Date());
   const [completedCount, nextBooked] = await Promise.all([
     prisma.appointment.count({
       where: {
@@ -70,8 +77,8 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
         clinicId: ctx.clinicId,
         patientId,
         medicalCaseId: active.id,
-        status: "BOOKED",
-        date: { gte: now },
+        status: { in: [...UPCOMING_VISIT_STATUSES] },
+        date: { gte: dayStart },
       },
       orderBy: { date: "asc" },
       select: { id: true, date: true, time: true },
@@ -79,6 +86,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   ]);
 
   const progress = computeProgress({
+    caseStatus: active.status,
     completedAppointments: completedCount,
     nextBookedAt: nextBooked?.date ?? null,
   });

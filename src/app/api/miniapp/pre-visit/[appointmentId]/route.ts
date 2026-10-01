@@ -19,7 +19,9 @@
 import { prisma } from "@/lib/prisma";
 import {
   PreVisitSubmissionSchema,
+  isPreVisitOpenStatus,
   parsePreVisitData,
+  preVisitClosedReason,
   type PreVisitData,
 } from "@/lib/patient-experience/pre-visit";
 import { err, forbidden, notFound, ok } from "@/server/http";
@@ -127,16 +129,15 @@ export const POST = createMiniAppHandler(
     if (loaded.kind === "not_found") return notFound();
     if (loaded.kind === "forbidden") return forbidden();
 
-    // Reject after the appointment has happened — pre-visit form is
-    // useless once the doctor has seen the patient. We still allow up to
-    // the appointment time itself.
-    if (
-      loaded.appt.status !== "BOOKED" &&
-      loaded.appt.status !== "WAITING"
-    ) {
+    // Reject once the visit is no longer ahead: the form is useless after
+    // the doctor has seen the patient, and a cancelled booking has no
+    // doctor to read it. CONFIRMED is open like BOOKED (audit MA-09); the
+    // closed reason lets the screen say which case it is.
+    if (!isPreVisitOpenStatus(loaded.appt.status)) {
       return err("appointment_not_open", 409, {
         reason: "appointment_not_open",
         status: loaded.appt.status,
+        closedReason: preVisitClosedReason(loaded.appt.status),
       });
     }
 

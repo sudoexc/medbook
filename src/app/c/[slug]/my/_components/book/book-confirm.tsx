@@ -139,6 +139,7 @@ export function BookConfirm() {
         ...(onBehalfOf ? {} : { patientName: name.trim() }),
         lang,
         onBehalfOf,
+        medicalCaseId: draft.medicalCaseId,
         idempotencyKey: idemKeyRef.current ?? undefined,
       });
       tg.haptic.notification("success");

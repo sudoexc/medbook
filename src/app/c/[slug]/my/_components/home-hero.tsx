@@ -51,6 +51,8 @@ import { useMinuteClock } from "../_hooks/use-minute-clock";
 import { countUnseenLabs, readLabsSeenAt } from "../_lib/labs-unseen";
 import { formatDateISO, formatTimeISO, MErrorInline } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
+import { tashkentDateOf } from "@/lib/tashkent-time";
+import { pickDueMedicationReminder } from "@/lib/patient-experience/medication-reminders";
 import { TicketSheet } from "./ticket-sheet";
 import type { Dict } from "./mini-i18n";
 
@@ -59,21 +61,17 @@ const GREEN = MA_ACCENTS.success;
 const ORANGE = MA_ACCENTS.warning;
 const SALMON = MA_ACCENTS.salmon;
 
-function isSameLocalDay(iso: string, ref: Date): boolean {
-  const d = new Date(iso);
-  return (
-    d.getFullYear() === ref.getFullYear() &&
-    d.getMonth() === ref.getMonth() &&
-    d.getDate() === ref.getDate()
-  );
+// «Today» is the clinic's day, not the phone's (audit MA-20): the server
+// files today's visits by the Tashkent day, and a patient whose phone sits
+// in another zone must still see today's queue ticket as today's.
+function isSameClinicDay(iso: string, ref: Date): boolean {
+  return tashkentDateOf(iso) === tashkentDateOf(ref);
 }
 
 function daysUntil(dateISO: string, now: number): number {
-  const d = new Date(dateISO);
-  d.setHours(0, 0, 0, 0);
-  const n = new Date(now);
-  n.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - n.getTime()) / 86_400_000);
+  const d = Date.parse(`${tashkentDateOf(dateISO)}T00:00:00Z`);
+  const n = Date.parse(`${tashkentDateOf(now)}T00:00:00Z`);
+  return Math.round((d - n) / 86_400_000);
 }
 
 function ruPlural(n: number, one: string, few: string, many: string): string {
@@ -440,15 +438,55 @@ function AppointmentHero({
   );
 }
 
+/**
+ * The dose's clock time in the clinic's zone, with its date when it is not
+ * today's, so a dose from last night never reads as this morning's.
+ */
+function reminderWhen(
+  iso: string,
+  tz: string,
+  now: number,
+  lang: "RU" | "UZ",
+): { time: string; date: string | null } {
+  const locale = lang === "UZ" ? "uz-Latn-UZ" : "ru-RU";
+  const at = new Date(iso);
+  try {
+    const day = (d: Date) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+    const time = new Intl.DateTimeFormat(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: tz,
+    }).format(at);
+    const date =
+      day(at) === day(new Date(now))
+        ? null
+        : new Intl.DateTimeFormat(locale, {
+            day: "2-digit",
+            month: "2-digit",
+            timeZone: tz,
+          }).format(at);
+    return { time, date };
+  } catch {
+    return { time: formatTimeISO(iso), date: null };
+  }
+}
+
 function MedsHero({
   reminder,
   onBehalfOf,
+  tz,
+  now,
 }: {
   reminder: MedicationsReminder;
   onBehalfOf: string | null;
+  tz: string;
+  now: number;
 }) {
   const t = useT();
+  const lang = useLang();
   const tg = useTelegramWebApp();
+  const when = reminderWhen(reminder.scheduledFor, tz, now, lang);
   const mark = useMarkReminder(onBehalfOf);
   return (
     <div className="ma-fade-in rounded-3xl p-5" style={heroSurface(ORANGE)}>
@@ -461,9 +499,10 @@ function MedsHero({
         {t.home.hero.medsTitle.replace("{drug}", reminder.drugName)}
       </div>
       <div className="mt-1 text-sm font-medium" style={{ color: "var(--tg-hint)" }}>
-        {t.home.hero.medsHint
+        {(when.date ? t.home.hero.medsHintDated : t.home.hero.medsHint)
           .replace("{dosage}", reminder.dosage)
-          .replace("{time}", formatTimeISO(reminder.scheduledFor))}
+          .replace("{date}", when.date ?? "")
+          .replace("{time}", when.time)}
       </div>
       <button
         type="button"
@@ -693,7 +732,7 @@ export function HomeHero({
   const queueAppt =
     upcoming.data?.find(
       (a) =>
-        isSameLocalDay(a.date, nowDate) &&
+        isSameClinicDay(a.date, nowDate) &&
         (a.status === "WAITING" || a.status === "IN_PROGRESS"),
     ) ?? null;
   const queue = useQueueStatus(queueAppt?.queueToken ?? null);
@@ -701,29 +740,19 @@ export function HomeHero({
   const todayAppt =
     upcoming.data?.find(
       (a) =>
-        isSameLocalDay(a.date, nowDate) &&
+        isSameClinicDay(a.date, nowDate) &&
         (a.status === "BOOKED" || a.status === "CONFIRMED"),
     ) ?? null;
   const nextUpcoming = upcoming.data?.[0] ?? null;
 
-  const dueReminder = React.useMemo(() => {
-    const list = meds.data?.reminders ?? [];
-    return (
-      list
-        .filter(
-          (r) =>
-            r.status === "PENDING" ||
-            (r.status === "SNOOZED" &&
-              r.snoozeUntil != null &&
-              new Date(r.snoozeUntil).getTime() <= now),
-        )
-        .sort(
-          (a, b) =>
-            new Date(a.scheduledFor).getTime() -
-            new Date(b.scheduledFor).getTime(),
-        )[0] ?? null
-    );
-  }, [meds.data, now]);
+  // The most recent dose still due, never one a newer dose has overtaken
+  // or one past the open window (audit MA-13: the OLDEST pending row was
+  // shown, a week-old «Пора принять» with only a time, no date).
+  const dueReminder = React.useMemo(
+    () => pickDueMedicationReminder(meds.data?.reminders ?? [], now),
+    [meds.data, now],
+  );
+  const medsTz = meds.data?.timezone || "Asia/Tashkent";
 
   const freshConclusion = React.useMemo(
     () =>
@@ -821,7 +850,14 @@ export function HomeHero({
       );
       break;
     case "meds":
-      hero = <MedsHero reminder={dueReminder!} onBehalfOf={onBehalfOf} />;
+      hero = (
+        <MedsHero
+          reminder={dueReminder!}
+          onBehalfOf={onBehalfOf}
+          tz={medsTz}
+          now={now}
+        />
+      );
       break;
     case "results":
       hero = <ResultsHero slug={slug} appt={freshConclusion!} />;
@@ -846,7 +882,10 @@ export function HomeHero({
         icon={Pill}
         color={ORANGE}
         text={reminderRowText(dueReminder, t)}
-        chip={formatTimeISO(dueReminder.scheduledFor)}
+        chip={(() => {
+          const when = reminderWhen(dueReminder.scheduledFor, medsTz, now, lang);
+          return when.date ? `${when.date} ${when.time}` : when.time;
+        })()}
       />
     );
   } else if (

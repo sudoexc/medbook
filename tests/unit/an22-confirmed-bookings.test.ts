@@ -47,6 +47,8 @@ vi.mock("@/lib/prisma", () => ({
       aggregate: vi.fn(async () => ({ _sum: { durationMin: h.bookedMinutes } })),
     },
     service: { findMany: vi.fn(async () => []) },
+    // The forecast reads the empty-slot snapshots too (audit AN-21).
+    emptySlotSnapshot: { findMany: vi.fn(async () => []) },
     doctorSchedule: { findMany: vi.fn(async () => h.schedules) },
     doctorTimeOff: { findMany: vi.fn(async () => h.timeOffs) },
     call: { count: vi.fn(async () => 0) },

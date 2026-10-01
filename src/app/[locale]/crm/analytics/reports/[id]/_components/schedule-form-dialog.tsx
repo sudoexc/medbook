@@ -141,6 +141,8 @@ export function ScheduleFormDialog({
                 </div>
               ))}
             </RadioGroup>
+            {/* Each cadence sends its own window, not the saved dates (audit AN-18). */}
+            <p className="text-xs text-muted-foreground">{t("periodHint")}</p>
           </div>
 
           {/* Channel */}

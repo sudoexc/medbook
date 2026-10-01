@@ -10,7 +10,6 @@ export interface LossTotalsWire {
   emptySlot: number;
   noShow: number;
   cancellation: number;
-  dormant: number;
   total: number;
 }
 
@@ -19,7 +18,6 @@ export interface DailyLossPointWire {
   emptySlot: number;
   noShow: number;
   cancellation: number;
-  dormant: number;
 }
 
 export interface LossDoctorRowWire {
@@ -35,7 +33,15 @@ export interface LossDoctorRowWire {
 export interface LossSegmentRowWire {
   segment: "recent_lapse" | "mid_lapse" | "deep_lapse";
   patientCount: number;
-  estimatedRevenueUzs: number;
+  /** Null when there is no honest value per patient (no payments recorded). */
+  estimatedRevenueUzs: number | null;
+}
+
+/** The dormant base now: a stock beside the period, not part of its total. */
+export interface DormantStockWire {
+  patientCount: number;
+  segments: LossSegmentRowWire[];
+  estimatedRevenueUzs: number | null;
 }
 
 export interface LossDashboardResponse {
@@ -47,7 +53,7 @@ export interface LossDashboardResponse {
   totals: LossTotalsWire;
   daily: DailyLossPointWire[];
   topDoctors: LossDoctorRowWire[];
-  dormantSegments: LossSegmentRowWire[];
+  dormant: DormantStockWire;
   hasAnyData: boolean;
-  averageVisitValueUzs: number;
+  averageVisitValueUzs: number | null;
 }

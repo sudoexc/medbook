@@ -103,7 +103,6 @@ export function LossPageClient() {
                       emptySlot: t("sources.emptySlot"),
                       noShow: t("sources.noShow"),
                       cancellation: t("sources.cancellation"),
-                      dormant: t("sources.dormant"),
                     }}
                   />
                 </div>
@@ -116,7 +115,7 @@ export function LossPageClient() {
                   t={t}
                 />
                 <SegmentsTable
-                  rows={q.data.dormantSegments}
+                  rows={q.data.dormant.segments}
                   averageVisitValueUzs={q.data.averageVisitValueUzs}
                   t={t}
                 />
@@ -151,8 +150,10 @@ function KpiGrid({
   t,
 }: {
   data: LossDashboardResponse;
-  t: (key: string) => string;
+  t: (key: string, values?: Record<string, string | number>) => string;
 }) {
+  // The period's losses. Dormant patients are a stock (audit AN-17): their
+  // card stands apart and never adds into the total or the chart.
   const cards: Array<{ key: string; amount: number; label: string }> = [
     {
       key: "emptySlot",
@@ -164,11 +165,6 @@ function KpiGrid({
       key: "cancellation",
       amount: data.totals.cancellation,
       label: t("sources.cancellation"),
-    },
-    {
-      key: "dormant",
-      amount: data.totals.dormant,
-      label: t("sources.dormant"),
     },
   ];
   return (
@@ -186,6 +182,24 @@ function KpiGrid({
           </div>
         </section>
       ))}
+      <section className="rounded-lg border border-dashed border-border bg-card p-4">
+        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          {t("dormantStockTitle")}
+        </div>
+        <div className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+          {t("dormantStockPatients", { count: data.dormant.patientCount })}
+        </div>
+        <div className="mt-1 text-sm text-muted-foreground tabular-nums">
+          {data.dormant.estimatedRevenueUzs === null ? (
+            t("noData")
+          ) : (
+            <MoneyText amount={data.dormant.estimatedRevenueUzs} currency="UZS" />
+          )}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t("dormantStockHint")}
+        </p>
+      </section>
       <section className="rounded-lg border border-border bg-card p-4 sm:col-span-2 xl:col-span-4">
         <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {t("totalLabel")}
@@ -247,8 +261,8 @@ function SegmentsTable({
   averageVisitValueUzs,
   t,
 }: {
-  rows: LossDashboardResponse["dormantSegments"];
-  averageVisitValueUzs: number;
+  rows: LossDashboardResponse["dormant"]["segments"];
+  averageVisitValueUzs: number | null;
   t: (key: string) => string;
 }) {
   return (
@@ -256,7 +270,7 @@ function SegmentsTable({
       <h3 className="mb-3 text-sm font-semibold text-foreground">
         {t("dormantSegmentsTitle")}
       </h3>
-      {rows.length === 0 ? (
+      {rows.every((r) => r.patientCount === 0) ? (
         <p className="text-sm text-muted-foreground">
           {t("dormantSegmentsEmpty")}
         </p>
@@ -279,7 +293,11 @@ function SegmentsTable({
                   {r.patientCount}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  <MoneyText amount={r.estimatedRevenueUzs} currency="UZS" />
+                  {r.estimatedRevenueUzs === null ? (
+                    t("noData")
+                  ) : (
+                    <MoneyText amount={r.estimatedRevenueUzs} currency="UZS" />
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -288,7 +306,11 @@ function SegmentsTable({
       )}
       <p className="mt-3 text-xs text-muted-foreground">
         {t("avgVisitValueHint")}{" "}
-        <MoneyText amount={averageVisitValueUzs} currency="UZS" />
+        {averageVisitValueUzs === null ? (
+          t("noData")
+        ) : (
+          <MoneyText amount={averageVisitValueUzs} currency="UZS" />
+        )}
       </p>
     </section>
   );

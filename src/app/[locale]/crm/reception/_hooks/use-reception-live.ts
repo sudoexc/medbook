@@ -41,7 +41,8 @@ export type DashboardKpi = {
   inProgress: number;
   completed: number;
   cancelled: number;
-  revenue: number;
+  /** Null for roles that may not see clinic revenue (audit AN-20). */
+  revenue: number | null;
 };
 
 export type DashboardQueueBucket = {

@@ -9,11 +9,12 @@
 import { describe, it, expect } from "vitest";
 
 import {
-  applyWhatIfSliders,
   baselineRevenue,
   ceilingRevenue,
   clampSliders,
+  projectForecast,
   projectedDelta,
+  type ForecastDay,
   type ForecastPoint,
 } from "@/lib/revenue/forecast";
 import {
@@ -27,7 +28,7 @@ import {
 } from "@/lib/revenue/loss-aggregation";
 
 // -----------------------------------------------------------------------------
-// Forecast — applyWhatIfSliders
+// Forecast — sliders and KPI sums
 // -----------------------------------------------------------------------------
 
 const baselinePoints: ForecastPoint[] = [
@@ -63,34 +64,28 @@ describe("clampSliders", () => {
   });
 });
 
-describe("applyWhatIfSliders", () => {
-  it("0% sliders return numerically equal points", () => {
-    const out = applyWhatIfSliders(baselinePoints, {
-      reduceNoShowPct: 0,
-      fillEmptyPct: 0,
-      priceUpliftPct: 0,
-    });
-    expect(out).toHaveLength(baselinePoints.length);
-    for (let i = 0; i < out.length; i += 1) {
-      expect(out[i]!.date).toBe(baselinePoints[i]!.date);
-      expect(out[i]!.low).toBe(baselinePoints[i]!.low);
-      expect(out[i]!.baseline).toBe(baselinePoints[i]!.baseline);
-      expect(out[i]!.high).toBe(baselinePoints[i]!.high);
-    }
-  });
+// projectForecast replaced applyWhatIfSliders (audit AN-21): the sliders act
+// on measured quantities. The behaviour is pinned in
+// an14-an26-analytics-dates-exports.test.ts; the invariants stay here.
+const forecastDays: ForecastDay[] = [
+  { date: "2026-05-06", bookedUzs: 1_000_000_00, emptySlotUzs: 400_000_00 },
+  { date: "2026-05-07", bookedUzs: 750_000_00, emptySlotUzs: 0 },
+  { date: "2026-05-08", bookedUzs: 0, emptySlotUzs: 0 },
+];
 
+describe("projectForecast", () => {
   it("does not mutate the input", () => {
-    const snapshot = JSON.parse(JSON.stringify(baselinePoints));
-    applyWhatIfSliders(baselinePoints, {
+    const snapshot = JSON.parse(JSON.stringify(forecastDays));
+    projectForecast(forecastDays, 0.2, {
       reduceNoShowPct: 50,
       fillEmptyPct: 50,
       priceUpliftPct: 30,
     });
-    expect(baselinePoints).toEqual(snapshot);
+    expect(forecastDays).toEqual(snapshot);
   });
 
   it("max sliders never produce negative bands", () => {
-    const out = applyWhatIfSliders(baselinePoints, {
+    const out = projectForecast(forecastDays, 0.2, {
       reduceNoShowPct: 50,
       fillEmptyPct: 50,
       priceUpliftPct: 30,
@@ -102,8 +97,8 @@ describe("applyWhatIfSliders", () => {
     }
   });
 
-  it("preserves low <= baseline <= high after slider transform", () => {
-    const out = applyWhatIfSliders(baselinePoints, {
+  it("preserves low <= baseline <= high", () => {
+    const out = projectForecast(forecastDays, 0.25, {
       reduceNoShowPct: 35,
       fillEmptyPct: 25,
       priceUpliftPct: 15,
@@ -114,41 +109,19 @@ describe("applyWhatIfSliders", () => {
     }
   });
 
-  it("price uplift multiplies baseline uniformly", () => {
-    const out = applyWhatIfSliders(
-      [{ date: "d", low: 100, baseline: 200, high: 300 }],
-      { reduceNoShowPct: 0, fillEmptyPct: 0, priceUpliftPct: 10 },
+  it("price uplift multiplies every band uniformly", () => {
+    const out = projectForecast(
+      [{ date: "d", bookedUzs: 200, emptySlotUzs: 0 }],
+      0.5,
+      { priceUpliftPct: 10 },
     );
-    expect(out[0]!.low).toBe(110);
-    expect(out[0]!.baseline).toBe(220);
-    expect(out[0]!.high).toBe(330);
+    expect(out[0]).toEqual({ date: "d", low: 110, baseline: 110, high: 220 });
   });
 
-  it("reduce-no-show shrinks the low gap toward baseline", () => {
-    const out = applyWhatIfSliders(
-      [{ date: "d", low: 100, baseline: 200, high: 300 }],
-      { reduceNoShowPct: 50, fillEmptyPct: 0, priceUpliftPct: 0 },
-    );
-    // lowGap = 100; low += 100 * 0.5 = 50 → low = 150
-    expect(out[0]!.low).toBe(150);
-    expect(out[0]!.baseline).toBe(200);
-    expect(out[0]!.high).toBe(300);
-  });
-
-  it("fill-empty extends the high band away from baseline", () => {
-    const out = applyWhatIfSliders(
-      [{ date: "d", low: 100, baseline: 200, high: 300 }],
-      { reduceNoShowPct: 0, fillEmptyPct: 50, priceUpliftPct: 0 },
-    );
-    // highGap = 100; high += 100 * 0.5 = 50 → high = 350
-    expect(out[0]!.high).toBe(350);
-    expect(out[0]!.low).toBe(100);
-    expect(out[0]!.baseline).toBe(200);
-  });
-
-  it("zero-baseline day stays zero (no division by zero)", () => {
-    const out = applyWhatIfSliders(
-      [{ date: "d", low: 0, baseline: 0, high: 0 }],
+  it("zero-booked day stays zero", () => {
+    const out = projectForecast(
+      [{ date: "d", bookedUzs: 0, emptySlotUzs: 0 }],
+      0.3,
       { reduceNoShowPct: 50, fillEmptyPct: 50, priceUpliftPct: 30 },
     );
     expect(out[0]!).toEqual({ date: "d", low: 0, baseline: 0, high: 0 });
@@ -170,12 +143,13 @@ describe("ceilingRevenue / baselineRevenue / projectedDelta", () => {
   });
 
   it("delta is positive after a price uplift", () => {
-    const adjusted = applyWhatIfSliders(baselinePoints, {
+    const base = projectForecast(forecastDays, 0.2, {});
+    const adjusted = projectForecast(forecastDays, 0.2, {
       reduceNoShowPct: 0,
       fillEmptyPct: 0,
       priceUpliftPct: 10,
     });
-    expect(projectedDelta(baselinePoints, adjusted)).toBeGreaterThan(0);
+    expect(projectedDelta(base, adjusted)).toBeGreaterThan(0);
   });
 });
 
@@ -218,7 +192,6 @@ describe("aggregateLoss", () => {
       emptySlot: 0,
       noShow: 0,
       cancellation: 0,
-      dormant: 0,
       total: 0,
     });
   });
@@ -232,7 +205,6 @@ describe("aggregateLoss", () => {
     expect(t.emptySlot).toBe(75_000_00);
     expect(t.noShow).toBe(0);
     expect(t.cancellation).toBe(0);
-    expect(t.dormant).toBe(0);
     expect(t.total).toBe(75_000_00);
   });
 
@@ -241,14 +213,12 @@ describe("aggregateLoss", () => {
       { dateKey: "2026-05-06", source: "emptySlot", amountUzs: 100 },
       { dateKey: "2026-05-06", source: "noShow", amountUzs: 200 },
       { dateKey: "2026-05-07", source: "cancellation", amountUzs: 300 },
-      { dateKey: "2026-05-07", source: "dormant", amountUzs: 400 },
     ];
     const t = aggregateLoss(entries, "2026-05-06", "2026-05-13");
     expect(t.emptySlot).toBe(100);
     expect(t.noShow).toBe(200);
     expect(t.cancellation).toBe(300);
-    expect(t.dormant).toBe(400);
-    expect(t.total).toBe(1000);
+    expect(t.total).toBe(600);
   });
 
   it("excludes entries before fromKey", () => {
@@ -284,9 +254,9 @@ describe("aggregateDaily", () => {
   it("returns a row per day even if no entries that day", () => {
     const out = aggregateDaily([], "2026-05-06", "2026-05-09");
     expect(out).toEqual([
-      { date: "2026-05-06", emptySlot: 0, noShow: 0, cancellation: 0, dormant: 0 },
-      { date: "2026-05-07", emptySlot: 0, noShow: 0, cancellation: 0, dormant: 0 },
-      { date: "2026-05-08", emptySlot: 0, noShow: 0, cancellation: 0, dormant: 0 },
+      { date: "2026-05-06", emptySlot: 0, noShow: 0, cancellation: 0 },
+      { date: "2026-05-07", emptySlot: 0, noShow: 0, cancellation: 0 },
+      { date: "2026-05-08", emptySlot: 0, noShow: 0, cancellation: 0 },
     ]);
   });
 
@@ -295,7 +265,7 @@ describe("aggregateDaily", () => {
       { dateKey: "2026-05-06", source: "emptySlot", amountUzs: 100 },
       { dateKey: "2026-05-06", source: "emptySlot", amountUzs: 250 },
       { dateKey: "2026-05-06", source: "noShow", amountUzs: 50 },
-      { dateKey: "2026-05-07", source: "dormant", amountUzs: 99 },
+      { dateKey: "2026-05-07", source: "cancellation", amountUzs: 99 },
     ];
     const out = aggregateDaily(entries, "2026-05-06", "2026-05-08");
     expect(out[0]).toEqual({
@@ -303,14 +273,12 @@ describe("aggregateDaily", () => {
       emptySlot: 350,
       noShow: 50,
       cancellation: 0,
-      dormant: 0,
     });
     expect(out[1]).toEqual({
       date: "2026-05-07",
       emptySlot: 0,
       noShow: 0,
-      cancellation: 0,
-      dormant: 99,
+      cancellation: 99,
     });
   });
 

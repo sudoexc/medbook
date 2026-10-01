@@ -28,6 +28,9 @@ import path from "node:path";
 import PDFDocument from "pdfkit";
 
 import { formatReportDay } from "@/lib/analytics/report-cells";
+import { tashkentDateOf } from "@/lib/tashkent-time";
+
+import { reportFileStem } from "./csv";
 
 export interface PdfReportColumn {
   key: string;
@@ -357,14 +360,5 @@ export async function formatReportPdf(input: FormatReportPdfInput): Promise<Buff
  * Build a `<name>-YYYY-MM-DD.pdf` filename mirroring the CSV helper.
  */
 export function pdfFilename(name: string, now: Date = new Date()): string {
-  const safe =
-    name
-      .trim()
-      .replace(/[^\p{L}\p{N}\-_ ]/gu, "")
-      .replace(/\s+/g, "-")
-      .slice(0, 80) || "report";
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
-  return `${safe}-${yyyy}-${mm}-${dd}.pdf`;
+  return `${reportFileStem(name)}-${tashkentDateOf(now)}.pdf`;
 }

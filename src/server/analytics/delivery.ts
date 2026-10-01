@@ -12,10 +12,9 @@
  * `src/lib/email.ts` already creates a singleton `nodemailer.createTransport`
  * configured by SMTP_HOST/PORT/USER/PASS. We import the transporter via a
  * lazy local creator so the analytics-delivery module can be exercised in
- * unit tests without touching SMTP. If SMTP_USER is unset (dev / CI) we
- * "succeed loudly" — log the would-be send and return ok:true. The
- * production `lastDeliveredAt` audit row still carries a `simulated:true`
- * flag so support can grep.
+ * unit tests without touching SMTP. If SMTP_USER is unset the channel is
+ * not configured and the send fails with that reason; so does a Telegram
+ * send for a clinic without a bot. Nothing unsent is reported delivered.
  *
  * Telegram
  * --------
@@ -117,10 +116,13 @@ export async function deliverTelegram(
   if (!clinic) {
     return { ok: false, error: "Clinic not found" };
   }
-  // tgBotToken null → `sendDocument` logs and returns a synthetic message id;
-  // we treat that as ok+simulated so dev environments don't auto-disable the
-  // schedule.
-  const simulated = !clinic.tgBotToken;
+  // No bot, no delivery. `sendDocument` without a token only logs and hands
+  // back a synthetic message id; reporting that as delivered stamped
+  // `lastDeliveredAt` on a report nobody received. Failing lets the
+  // 3-strike rule disable the schedule and shows the reason in the list.
+  if (!clinic.tgBotToken) {
+    return { ok: false, error: "Telegram bot is not configured for this clinic" };
+  }
   const captionLines = [input.subject];
   if (input.summary) captionLines.push("", input.summary);
   const caption = captionLines.join("\n").slice(0, 1024);
@@ -130,7 +132,7 @@ export async function deliverTelegram(
       contentType: input.contentType,
       caption,
     });
-    return { ok: true, simulated };
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as Error).message ?? "telegram_send_failed" };
   }

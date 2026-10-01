@@ -10,6 +10,7 @@
  * for the language of headers and names (audit AN-09).
  */
 import { auth } from "@/lib/auth";
+import { contentDisposition } from "@/lib/content-disposition";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
@@ -111,7 +112,7 @@ export async function POST(request: Request): Promise<Response> {
           status: 200,
           headers: {
             "content-type": "text/csv; charset=utf-8",
-            "content-disposition": `attachment; filename="${filename}"`,
+            "content-disposition": contentDisposition(filename),
             "cache-control": "no-store",
           },
         });
@@ -140,7 +141,7 @@ export async function POST(request: Request): Promise<Response> {
           status: 200,
           headers: {
             "content-type": "application/pdf",
-            "content-disposition": `attachment; filename="${filename}"`,
+            "content-disposition": contentDisposition(filename),
             "cache-control": "no-store",
           },
         });

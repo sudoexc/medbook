@@ -3,6 +3,14 @@
  *
  * Returns { today: { booked, inProgress, completed, revenue }, week, month }.
  * Revenue is sum of PAID payments in clinic currency (UZS tiyin).
+ *
+ * Revenue is finance (audit AN-20): only the roles that may open the
+ * financial dashboard get it (`canSeeClinicRevenue`); everyone else gets
+ * `revenue: null`. The payments list already refused a clinic-wide dump to
+ * DOCTOR / CALL_OPERATOR, while this summary handed them the monthly take.
+ * `Payment` is not branch-scoped, so with a branch selected the counts were
+ * the branch's and the revenue the whole network's; it is now the payments
+ * filed under that branch's visits.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -11,6 +19,8 @@ import {
   tashkentDayBoundsForDateString,
   tashkentComponents,
 } from "@/lib/booking-validation";
+import { canSeeClinicRevenue } from "@/lib/reception-kpi";
+import { paymentScopeWhere } from "@/server/analytics/payment-scope";
 import { getClinicAvgVisitTiins } from "@/server/revenue/avg-visit";
 import { ok } from "@/server/http";
 
@@ -38,7 +48,11 @@ function tashkentWindows(now: Date) {
   return { todayStart, tomorrow, weekStart, nextWeek, monthStart, nextMonth };
 }
 
-async function kpisFor(fromDate: Date, toDate: Date) {
+async function kpisFor(
+  fromDate: Date,
+  toDate: Date,
+  revenue: { branchId: string | null } | null,
+) {
   const [booked, inProgress, completed, cancelled, revenueAgg] = await Promise.all([
     prisma.appointment.count({
       where: { date: { gte: fromDate, lt: toDate }, status: "BOOKED" },
@@ -52,30 +66,37 @@ async function kpisFor(fromDate: Date, toDate: Date) {
     prisma.appointment.count({
       where: { date: { gte: fromDate, lt: toDate }, status: "CANCELLED" },
     }),
-    prisma.payment.aggregate({
-      where: {
-        status: "PAID",
-        paidAt: { gte: fromDate, lt: toDate },
-        currency: "UZS",
-      },
-      _sum: { amount: true },
-    }),
+    revenue
+      ? prisma.payment.aggregate({
+          where: {
+            status: "PAID",
+            paidAt: { gte: fromDate, lt: toDate },
+            currency: "UZS",
+            ...paymentScopeWhere({ branchId: revenue.branchId }),
+          },
+          _sum: { amount: true },
+        })
+      : null,
   ]);
   return {
     booked,
     inProgress,
     completed,
     cancelled,
-    revenue: revenueAgg._sum.amount ?? 0,
+    revenue: revenueAgg ? (revenueAgg._sum.amount ?? 0) : null,
   };
 }
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"] },
-  async () => {
+  async ({ ctx }) => {
     const now = new Date();
     const { todayStart, tomorrow, weekStart, nextWeek, monthStart, nextMonth } =
       tashkentWindows(now);
+    const revenue =
+      ctx.kind === "TENANT" && canSeeClinicRevenue(ctx.role)
+        ? { branchId: ctx.branchId ?? null }
+        : null;
 
     const [
       today,
@@ -86,9 +107,9 @@ export const GET = createApiListHandler(
       missedRequestsToday,
       avgVisitTiins,
     ] = await Promise.all([
-      kpisFor(todayStart, tomorrow),
-      kpisFor(weekStart, nextWeek),
-      kpisFor(monthStart, nextMonth),
+      kpisFor(todayStart, tomorrow, revenue),
+      kpisFor(weekStart, nextWeek, revenue),
+      kpisFor(monthStart, nextMonth, revenue),
       prisma.patient.count({
         where: { createdAt: { gte: monthStart, lt: nextMonth } },
       }),

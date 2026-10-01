@@ -19,7 +19,6 @@ interface DoctorMeta {
 export interface ScheduleHeatmapClientProps {
   cells: ScheduleHeatmapCell[];
   generatedAt: string;
-  source: string;
   doctors: DoctorMeta[];
 }
 
@@ -39,8 +38,10 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const ALL_DOCTORS = "__all__";
 
 /**
- * 7 × 24 schedule heatmap. Cell intensity is keyed off `appointmentCount`
- * relative to the busiest cell in the current view (per-doctor or all).
+ * 7 × 24 schedule heatmap in Tashkent hours. Cell intensity is keyed off
+ * `appointmentCount` relative to the busiest cell in the current view
+ * (per-doctor or all). The tooltip's free hours are working hours with no
+ * visit (audit AN-24); outside any schedule it says so instead of a number.
  *
  * The "italic 90-day" subtitle is required copy from the brief — we render
  * it under the section title so it's visible without scrolling.
@@ -48,7 +49,6 @@ const ALL_DOCTORS = "__all__";
 export function ScheduleHeatmapClient({
   cells,
   generatedAt,
-  source,
   doctors,
 }: ScheduleHeatmapClientProps) {
   const t = useTranslations("analyticsScheduleHeatmap");
@@ -61,17 +61,18 @@ export function ScheduleHeatmapClient({
     [locale],
   );
 
-  // (dayOfWeek, hour) → { appointments, slots }. When ALL_DOCTORS is active
-  // we sum across doctors. Memoised so flipping the selector is one
-  // recomputation per click.
+  // (dayOfWeek, hour) → { appointments, working hours, free hours }. When
+  // ALL_DOCTORS is active we sum across doctors. Memoised so flipping the
+  // selector is one recomputation per click.
   const aggregated = React.useMemo(() => {
-    const map = new Map<string, { appts: number; slots: number }>();
+    const map = new Map<string, { appts: number; working: number; free: number }>();
     for (const c of cells) {
       if (doctorId !== ALL_DOCTORS && c.doctorId !== doctorId) continue;
       const k = `${c.dayOfWeek}-${c.hour}`;
-      const cur = map.get(k) ?? { appts: 0, slots: 0 };
+      const cur = map.get(k) ?? { appts: 0, working: 0, free: 0 };
       cur.appts += c.appointmentCount;
-      cur.slots += c.availableSlotCount;
+      cur.working += c.workingHourCount;
+      cur.free += c.freeHourCount;
       map.set(k, cur);
     }
     return map;
@@ -157,18 +158,29 @@ export function ScheduleHeatmapClient({
                 </th>
                 {HOURS.map((h) => {
                   const v = aggregated.get(`${iso}-${h}`);
+                  const appts = v?.appts ?? 0;
+                  const working = v?.working ?? 0;
                   return (
                     <HeatmapCell
                       key={h}
-                      appts={v?.appts ?? 0}
-                      slots={v?.slots ?? 0}
+                      appts={appts}
+                      working={working}
                       max={maxAppts}
-                      tooltip={t("cellTooltip", {
-                        day: t(`days.${key}`),
-                        hour: h,
-                        appts: v?.appts ?? 0,
-                        slots: v?.slots ?? 0,
-                      })}
+                      tooltip={
+                        working > 0
+                          ? t("cellTooltip", {
+                              day: t(`days.${key}`),
+                              hour: h,
+                              appts,
+                              free: v?.free ?? 0,
+                              working,
+                            })
+                          : t("cellTooltipOffSchedule", {
+                              day: t(`days.${key}`),
+                              hour: h,
+                              appts,
+                            })
+                      }
                     />
                   );
                 })}
@@ -181,7 +193,6 @@ export function ScheduleHeatmapClient({
       <p className="text-xs text-muted-foreground">
         {t("metaHint", {
           generatedAt: formatClinicDateTime(generatedAt, locale as Locale),
-          source,
         })}
       </p>
     </PageContainer>
@@ -190,19 +201,19 @@ export function ScheduleHeatmapClient({
 
 function HeatmapCell({
   appts,
-  slots,
+  working,
   max,
   tooltip,
 }: {
   appts: number;
-  slots: number;
+  working: number;
   max: number;
   tooltip: string;
 }) {
   const intensity = max > 0 ? Math.max(0, Math.min(1, appts / max)) : 0;
   // Cap empty cells with a faint muted square so the grid stays legible
   // even on weeknights with zero appointments.
-  if (appts === 0 && slots === 0) {
+  if (appts === 0 && working === 0) {
     return (
       <td
         className="border-l border-border bg-muted/30 px-1 py-2 text-center"

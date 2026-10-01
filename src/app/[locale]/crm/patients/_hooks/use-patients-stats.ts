@@ -52,7 +52,8 @@ export type DashboardResponse = {
     inProgress: number;
     completed: number;
     cancelled: number;
-    revenue: number;
+    /** Null for roles that may not see clinic revenue (audit AN-20). */
+    revenue: number | null;
   };
   newPatientsThisMonth: number;
 };

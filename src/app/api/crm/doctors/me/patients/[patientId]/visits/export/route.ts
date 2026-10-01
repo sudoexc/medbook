@@ -20,6 +20,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { tashkentComponents } from "@/lib/booking-validation";
 import { audit } from "@/lib/audit";
+import { contentDisposition } from "@/lib/content-disposition";
 import { err, notFound } from "@/server/http";
 import {
   formatVisitDiagnosis,
@@ -205,11 +206,13 @@ export const GET = createApiListHandler(
 
     const filename = `visits-${patient.fullName.replace(/[^A-Za-zА-Яа-яЁё0-9]+/g, "-")}-${tashkentComponents(new Date()).date}.csv`;
 
+    // The name is Cyrillic: a bare `filename="…"` is not a ByteString and
+    // the Response constructor threw, a 500 (audit AN-26).
     return new Response(body, {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": contentDisposition(filename),
         "Cache-Control": "private, no-store",
       },
     });

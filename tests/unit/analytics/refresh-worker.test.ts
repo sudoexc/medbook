@@ -98,12 +98,11 @@ describe("refreshAllAnalyticsMvs", () => {
 
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]!.name).toBe("mv_cohort_retention");
-    // 4 MVs total → 3 successes + 1 failure.
-    expect(result.perView).toHaveLength(3);
+    // 3 MVs total → 2 successes + 1 failure (the heatmap is live, AN-24).
+    expect(result.perView).toHaveLength(2);
     // The failure does not skip the views after it.
     const refreshedNames = result.perView.map((v) => v.name);
     expect(refreshedNames).toContain("mv_financial_pace");
-    expect(refreshedNames).toContain("mv_schedule_heatmap");
   });
 
   it("returns a totalMs >= sum of perView ms", async () => {

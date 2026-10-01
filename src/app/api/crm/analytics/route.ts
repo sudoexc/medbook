@@ -61,6 +61,7 @@ import {
 import { averageLtv } from "@/server/analytics/ltv-summary";
 import { loadClinicLoad } from "@/server/analytics/clinic-load";
 import { resolveAnalyticsScope } from "@/server/analytics/doctor-scope";
+import { paymentScopeWhere } from "@/server/analytics/payment-scope";
 import { paymentsRecordedSince } from "@/server/patient/finance";
 
 export { resolveAnalyticsRange };
@@ -91,11 +92,13 @@ export const GET = createApiListHandler(
     const paymentsTracked = trackedSince !== null;
 
     // ----- 1. Revenue daily -------------------------------------------------
+    // `Payment` is not branch-scoped: with a branch selected, narrow it
+    // through the visit like the appointment counts are (audit AN-20).
     const payments = await prisma.payment.findMany({
       where: {
         status: "PAID",
         paidAt: { gte: from, lt: to },
-        ...(doctorId ? { appointment: { doctorId } } : {}),
+        ...paymentScopeWhere({ doctorId, branchId: ctx.branchId }),
       },
       select: {
         amount: true,
@@ -170,7 +173,7 @@ export const GET = createApiListHandler(
         where: {
           status: "PAID",
           paidAt: { gte: prev.from, lt: prev.to },
-          ...(doctorId ? { appointment: { doctorId } } : {}),
+          ...paymentScopeWhere({ doctorId, branchId: ctx.branchId }),
         },
         _sum: { amount: true },
       }),

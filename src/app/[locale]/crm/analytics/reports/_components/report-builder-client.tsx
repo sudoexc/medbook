@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
+import { filenameFromContentDisposition } from "@/lib/content-disposition";
 import { formatClinicDateTime } from "@/lib/format";
 import {
   formatReportCell,
@@ -319,9 +320,11 @@ export function ReportBuilderClient({
       const blob = await r.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      const cd = r.headers.get("content-disposition") ?? "";
-      const m = /filename="([^"]+)"/.exec(cd);
-      a.download = m?.[1] ?? "report.csv";
+      // The UTF-8 `filename*` carries a Cyrillic report name (audit AN-26).
+      a.download = filenameFromContentDisposition(
+        r.headers.get("content-disposition"),
+        "report.csv",
+      );
       document.body.appendChild(a);
       a.click();
       a.remove();

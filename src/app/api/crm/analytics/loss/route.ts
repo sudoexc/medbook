@@ -2,8 +2,9 @@
  * /api/crm/analytics/loss — revenue loss aggregation for the
  * /crm/analytics/loss dashboard (Phase 14, Wave 3).
  *
- * Returns the four loss sources (empty slots, no-shows, late cancellations,
- * dormant patients) over a selectable date range. Uses
+ * Returns the three loss sources (empty slots, no-shows, late cancellations)
+ * over a selectable date range, and the dormant patients as of now beside
+ * them, never inside the period's total (audit AN-17). Uses
  * `loadLossDashboard()` which delegates the math to the pure helpers in
  * `src/lib/revenue/loss-aggregation.ts`.
  *

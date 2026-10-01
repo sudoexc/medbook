@@ -7,7 +7,10 @@ import { MoneyText } from "@/components/atoms/money-text";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { projectMonthEnd } from "@/lib/analytics/dashboard-math";
+import {
+  FINANCIAL_TREND_DAYS,
+  projectMonthEnd,
+} from "@/lib/analytics/dashboard-math";
 import { formatClinicDateTime, type Locale } from "@/lib/format";
 import type { FinancialPaceSnapshot } from "@/server/analytics/financial-pace-resolver";
 
@@ -22,6 +25,12 @@ export interface FinancialDashboardClientProps {
  * trend. Polls `/api/crm/analytics/financial` every 60s so admins watching
  * the page during the day see live numbers without a manual refresh.
  *
+ * Audit AN-25: the poll asks for the same 90-day window the page rendered
+ * (it used to fetch the default month and the trend shrank a minute after
+ * opening); «Данные на» is the view's refresh time, not the poll's; «today»
+ * and the month are Tashkent days; «Получено сегодня» is live. Without
+ * payments recorded in the CRM the money collected says so instead of 0.
+ *
  * The projected month-end uses the shared `projectMonthEnd` helper so the
  * formula matches the cron-driven snapshots used by W4 scheduled emails.
  */
@@ -32,7 +41,6 @@ export function FinancialDashboardClient({
   const locale = useLocale() as Locale;
 
   const [snapshot, setSnapshot] = React.useState(initialSnapshot);
-  const [updatedAt, setUpdatedAt] = React.useState(initialSnapshot.generatedAt);
 
   // Auto-refresh — runs only while the tab is visible. Browsers throttle
   // intervals on hidden tabs, but we're explicit here so a 1h-in-the-back-
@@ -42,16 +50,16 @@ export function FinancialDashboardClient({
     const refresh = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
       try {
-        const res = await fetch("/api/crm/analytics/financial", {
-          credentials: "include",
-        });
+        const res = await fetch(
+          `/api/crm/analytics/financial?days=${FINANCIAL_TREND_DAYS}`,
+          { credentials: "include" },
+        );
         if (!res.ok) return;
         const json = (await res.json()) as {
           data: FinancialPaceSnapshot;
         };
         if (cancelled) return;
         setSnapshot(json.data);
-        setUpdatedAt(json.data.generatedAt);
       } catch {
         // Stale data is preferable to a spinner that never resolves.
       }
@@ -63,11 +71,20 @@ export function FinancialDashboardClient({
     };
   }, []);
 
-  const todayCollected = snapshot.today?.revenueCollectedTiins ?? 0;
+  const paymentsTracked = snapshot.paymentsTracked;
+  const todayCollected =
+    snapshot.todayCollectedLiveTiins ?? snapshot.today?.revenueCollectedTiins ?? 0;
   const todayScheduled = snapshot.today?.revenueScheduledTiins ?? 0;
   const todayNoShow = snapshot.today?.noShowLossTiins ?? 0;
   const mtdCollected = snapshot.mtd.revenueCollectedTiins;
-  const projection = projectMonthEnd(mtdCollected, new Date());
+  // The snapshot's own Tashkent day, so the card and the data agree.
+  const projection = projectMonthEnd(
+    mtdCollected,
+    new Date(`${snapshot.todayKey}T12:00:00+05:00`),
+  );
+  const dataAsOf = snapshot.dataAsOf
+    ? formatClinicDateTime(snapshot.dataAsOf, locale)
+    : t("noData");
 
   return (
     <PageContainer>
@@ -76,9 +93,7 @@ export function FinancialDashboardClient({
         subtitle={t("subtitle")}
         actions={
           <span className="text-xs text-muted-foreground">
-            {t("lastUpdated", {
-              time: new Date(updatedAt).toLocaleTimeString(),
-            })}
+            {t("lastUpdated", { time: dataAsOf })}
           </span>
         }
       />
@@ -86,8 +101,16 @@ export function FinancialDashboardClient({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title={t("kpi.todayCollected")}
-          subtitle={t("kpi.todayCollectedHint")}
-          value={<MoneyText amount={todayCollected} currency="UZS" />}
+          subtitle={paymentsTracked ? t("kpi.todayCollectedHint") : undefined}
+          value={
+            paymentsTracked ? (
+              <MoneyText amount={todayCollected} currency="UZS" />
+            ) : (
+              <span className="text-base font-medium text-muted-foreground">
+                {t("paymentsNotTracked")}
+              </span>
+            )
+          }
         />
         <KpiCard
           title={t("kpi.todayScheduled")}
@@ -107,16 +130,22 @@ export function FinancialDashboardClient({
             total: projection.daysInMonth,
           })}
           value={
-            <div className="flex flex-col">
-              <MoneyText amount={mtdCollected} currency="UZS" />
-              <span className="text-xs font-normal text-muted-foreground">
-                {t("kpi.mtdProjectedSuffix")}{" "}
-                <MoneyText
-                  amount={projection.projectedTiins}
-                  currency="UZS"
-                />
+            paymentsTracked ? (
+              <div className="flex flex-col">
+                <MoneyText amount={mtdCollected} currency="UZS" />
+                <span className="text-xs font-normal text-muted-foreground">
+                  {t("kpi.mtdProjectedSuffix")}{" "}
+                  <MoneyText
+                    amount={projection.projectedTiins}
+                    currency="UZS"
+                  />
+                </span>
+              </div>
+            ) : (
+              <span className="text-base font-medium text-muted-foreground">
+                {t("paymentsNotTracked")}
               </span>
-            </div>
+            )
           }
         />
       </div>
@@ -127,15 +156,22 @@ export function FinancialDashboardClient({
           <p className="text-xs text-muted-foreground">{t("trend.subtitle")}</p>
         </CardHeader>
         <CardContent>
-          <DailyPaceChart points={snapshot.daily} />
+          {paymentsTracked ? (
+            <DailyPaceChart
+              points={snapshot.daily}
+              from={snapshot.range.from}
+              todayKey={snapshot.todayKey}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {t("paymentsNotTracked")}
+            </p>
+          )}
         </CardContent>
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        {t("metaHint", {
-          generatedAt: formatClinicDateTime(snapshot.generatedAt, locale),
-          source: snapshot.source,
-        })}
+        {t("metaHint", { generatedAt: dataAsOf, source: snapshot.source })}
       </p>
     </PageContainer>
   );
@@ -182,21 +218,19 @@ function KpiCard({
  */
 function DailyPaceChart({
   points,
+  from,
+  todayKey,
 }: {
   points: FinancialPaceSnapshot["daily"];
+  /** First Tashkent day of the trend window. */
+  from: string;
+  /** The snapshot's Tashkent today. */
+  todayKey: string;
 }) {
   const t = useTranslations("analyticsFinancial.trend");
-  // Filter to the last 90 days so the page-level snapshot's optional 30-day
-  // forecast tail doesn't stretch the X axis.
-  const today = new Date();
-  const todayUtc = new Date(
-    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
-  );
-  const cutoff = new Date(todayUtc.getTime() - 89 * 24 * 3600 * 1000);
-  const filtered = points.filter((p) => {
-    const d = new Date(p.day);
-    return d >= cutoff && d <= todayUtc;
-  });
+  // The window's past days only, so the snapshot's tail up to the month end
+  // doesn't stretch the X axis. Day keys compare as strings.
+  const filtered = points.filter((p) => p.day >= from && p.day <= todayKey);
 
   if (filtered.length < 2) {
     return <p className="text-xs text-muted-foreground">{t("empty")}</p>;

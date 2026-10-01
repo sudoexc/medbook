@@ -27,12 +27,18 @@
  * harm is a duplicate email. We accept that for now (revisit when BullMQ
  * lands).
  */
+import { createTranslator } from "next-intl";
+
+import { formatReportDay } from "@/lib/analytics/report-cells";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import ru from "@/messages/ru.json";
 
 import {
   computeNextRunAt,
+  reportPeriodForRun,
+  type ReportPeriod,
   type ScheduleCadence,
 } from "@/server/analytics/cadence";
 import { csvFilename, formatCsv } from "@/server/analytics/csv";
@@ -168,6 +174,54 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
+/**
+ * The saved report with its dates replaced by the cadence's window (audit
+ * AN-18). Dates saved in the builder are for running it by hand.
+ */
+export function withReportPeriod(
+  config: ReportConfig,
+  period: ReportPeriod,
+): ReportConfig {
+  return {
+    ...config,
+    filters: {
+      ...(config.filters ?? {}),
+      dateFrom: period.dateFrom,
+      dateTo: period.dateTo,
+    },
+  };
+}
+
+/**
+ * Subject and caption lines naming the real period, in Russian like the
+ * rest of the scheduled report. The subject used to read «отчёт за —…—»
+ * whenever the saved report had no dates.
+ */
+export function scheduledReportTexts(input: {
+  reportName: string;
+  period: ReportPeriod;
+  rowCount: number;
+  truncated: boolean;
+}): { subject: string; summary: string } {
+  const t = createTranslator({
+    locale: "ru",
+    messages: ru,
+    namespace: "analyticsReports.schedules",
+  });
+  const from = formatReportDay(input.period.dateFrom) ?? input.period.dateFrom;
+  const to = formatReportDay(input.period.dateTo) ?? input.period.dateTo;
+  const oneDay = input.period.dateFrom === input.period.dateTo;
+  const subject = oneDay
+    ? t("subjectDay", { name: input.reportName, day: from })
+    : t("subjectRange", { name: input.reportName, from, to });
+  const lines = [
+    oneDay ? t("summaryDay", { day: from }) : t("summaryRange", { from, to }),
+    t("summaryRows", { count: input.rowCount }),
+  ];
+  if (input.truncated) lines.push(t("summaryTruncated"));
+  return { subject, summary: lines.join("\n") };
+}
+
 interface ProcessedSchedule {
   scheduleId: string;
   ok: boolean;
@@ -215,13 +269,21 @@ export async function processSchedule(
           if (!saved) {
             throw new Error("SavedReport not found");
           }
-          let config: ReportConfig;
+          let savedConfig: ReportConfig;
           try {
-            config = parseReportConfig(saved.config);
+            savedConfig = parseReportConfig(saved.config);
           } catch {
             throw new Error("Saved report config is invalid");
           }
-          const reportResult = await runReport(reportClient, row.clinicId, config);
+          // The window the schedule is due for, from its own firing time.
+          const period = reportPeriodForRun(row.cadence, row.nextRunAt, tz);
+          const config = withReportPeriod(savedConfig, period);
+          const reportResult = await runReport(
+            reportClient,
+            row.clinicId,
+            config,
+            now,
+          );
 
           // Build attachment based on `format`.
           const filename =
@@ -259,18 +321,14 @@ export async function processSchedule(
             contentType = "application/pdf";
           }
 
-          // Filter summary appears in email subject + TG caption.
-          const summaryParts: string[] = [];
-          if (config.filters?.dateFrom || config.filters?.dateTo) {
-            summaryParts.push(
-              `Период: ${config.filters?.dateFrom ?? "—"} → ${config.filters?.dateTo ?? "—"}`,
-            );
-          }
-          summaryParts.push(`Строк: ${reportResult.rowCount}`);
-          if (reportResult.truncated) summaryParts.push("(данные обрезаны)");
-          const summary = summaryParts.join("\n");
-
-          const subject = `${saved.name} — отчёт за ${(config.filters?.dateFrom ?? "—").slice(0, 10)}…${(config.filters?.dateTo ?? "—").slice(0, 10)}`;
+          // The period goes into the email subject, the TG caption and
+          // (through `filters`) the PDF header.
+          const { subject, summary } = scheduledReportTexts({
+            reportName: saved.name,
+            period,
+            rowCount: reportResult.rowCount,
+            truncated: reportResult.truncated,
+          });
 
           const delivery: DeliveryResult = await deliver({
             channel: row.deliveryChannel,

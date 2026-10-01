@@ -211,6 +211,59 @@ export function computeNextRunAt(
   return civilToUtc(nextY, nextM, 1, RUN_HOUR, RUN_MINUTE, timeZone);
 }
 
+/** Inclusive calendar days, "YYYY-MM-DD" in the clinic's timezone. */
+export interface ReportPeriod {
+  dateFrom: string;
+  dateTo: string;
+}
+
+function ymdOfUtcDay(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * The days a scheduled report covers when it fires at `runAt` (audit
+ * AN-18): DAILY is the day before, WEEKLY the previous Monday to Sunday,
+ * MONTHLY the previous calendar month, all in the clinic's civil calendar.
+ *
+ * The worker used to run the saved report as is: without dates that was
+ * always the last 30 days, so «ежедневный» brought a month every morning;
+ * with dates it resent the same frozen September in November. The worker
+ * now overrides the saved dates with this window, and `runAt` is the
+ * schedule's own firing time (`nextRunAt`), so a late tick still reports
+ * the day it was due for.
+ */
+export function reportPeriodForRun(
+  cadence: ScheduleCadence,
+  runAt: Date,
+  timeZone: string,
+): ReportPeriod {
+  const civ = getCivilParts(runAt, timeZone);
+  // Civil-date arithmetic on a UTC midnight: no DST or offset can shift it.
+  const runDay = Date.UTC(civ.year, civ.month - 1, civ.day);
+  const DAY = 24 * 60 * 60 * 1000;
+  if (cadence === "DAILY") {
+    const day = ymdOfUtcDay(runDay - DAY);
+    return { dateFrom: day, dateTo: day };
+  }
+  if (cadence === "WEEKLY") {
+    const thisMonday = runDay - (civ.weekday - 1) * DAY;
+    return {
+      dateFrom: ymdOfUtcDay(thisMonday - 7 * DAY),
+      dateTo: ymdOfUtcDay(thisMonday - DAY),
+    };
+  }
+  const firstOfThisMonth = Date.UTC(civ.year, civ.month - 1, 1);
+  return {
+    dateFrom: ymdOfUtcDay(Date.UTC(civ.year, civ.month - 2, 1)),
+    dateTo: ymdOfUtcDay(firstOfThisMonth - DAY),
+  };
+}
+
 /**
  * Localised label for the cadence enum — wired into the UI list / preview.
  */

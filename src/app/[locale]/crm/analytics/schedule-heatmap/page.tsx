@@ -12,9 +12,10 @@ import { ScheduleHeatmapClient } from "./_components/schedule-heatmap-client";
 /**
  * /crm/analytics/schedule-heatmap — Phase 18 Wave 2.
  *
- * Reads `mv_schedule_heatmap` (last 90 days, one row per
- * clinicId × doctorId × dayOfWeek × hour). The client lays out a 7×24 grid
- * with a "All doctors" aggregate plus a per-doctor selector.
+ * Visits and free working hours per doctor × ISO weekday × Tashkent hour
+ * over the 90 days before today, counted live (schedule-heatmap-resolver.ts,
+ * audit AN-24). The client lays out a 7×24 grid with a "All doctors"
+ * aggregate plus a per-doctor selector.
  *
  * ADMIN-only.
  */
@@ -63,7 +64,6 @@ export default async function ScheduleHeatmapPage({
     <ScheduleHeatmapClient
       cells={heatmap.cells}
       generatedAt={heatmap.generatedAt}
-      source={heatmap.source}
       doctors={doctors}
     />
   );

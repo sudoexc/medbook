@@ -1,7 +1,7 @@
 /**
  * POST /api/crm/analytics/refresh — manual analytics MV refresh.
  *
- * Phase 18 Wave 1. ADMIN-only. Refreshes all four analytics materialized
+ * Phase 18 Wave 1. ADMIN-only. Refreshes all the analytics materialized
  * views synchronously. The hourly cron does this automatically; this
  * endpoint exists for "I just imported a big batch and don't want to
  * wait an hour" cases.

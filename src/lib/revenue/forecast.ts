@@ -1,11 +1,10 @@
 /**
  * Pure helpers for the Revenue Forecast dashboard (Phase 14, Wave 3).
  *
- * The forecast page shows a 30-day forward revenue projection with
- * confidence bands and what-if sliders. The math is split into pure helpers
- * here so it can be unit-tested without DB access AND so the client-side
- * sliders can re-apply the same transform on every drag without a
- * round-trip to the server.
+ * The forecast page shows a 30-day forward revenue projection with a band
+ * and what-if sliders. The math is split into pure helpers here so it can
+ * be unit-tested without DB access AND so the client-side sliders can
+ * re-project on every drag without a round-trip to the server.
  *
  * Money units: every UZS amount is in **tiins** (minor units).
  *
@@ -24,7 +23,7 @@ export interface ForecastPoint {
 }
 
 export interface WhatIfSliders {
-  /** 0..50 — percentage points of no-show rate to remove. */
+  /** 0..50 — percent fewer no-shows (relative to the historical rate). */
   reduceNoShowPct: number;
   /** 0..50 — percentage of empty slots that get filled. */
   fillEmptyPct: number;
@@ -53,62 +52,71 @@ function clamp(n: number, lo: number, hi: number): number {
 }
 
 /**
- * Apply what-if sliders to a baseline forecast. Returns a new array with
- * each `{low, baseline, high}` adjusted in-place by the slider deltas:
- *
- *   1. Reducing no-show lifts the low band toward baseline (low += (mid-low) * f)
- *   2. Filling empty slots lifts the high band further (high += (high-mid) * f)
- *   3. Price uplift multiplies all three bands uniformly
- *
- * The transform is pure — same input always yields same output. All three
- * sliders at 0 returns the original `points` shallow-cloned (we never
- * mutate the input, so the caller can keep the baseline reference).
- *
- * Negative low bands are clamped at 0 (revenue is non-negative).
- *
- * Result invariants:
- *   - low <= baseline <= high (always)
- *   - all numbers are integers (tiins) — `Math.round` per band per day
+ * One forecast day as the server measured it. The client re-projects these
+ * on every slider move (`projectForecast`), so the sliders work on real
+ * quantities instead of reshaping a finished band.
  */
-export function applyWhatIfSliders(
-  points: ReadonlyArray<ForecastPoint>,
+export interface ForecastDay {
+  /** "YYYY-MM-DD", the Tashkent clinic day. */
+  date: string;
+  /** Visits booked for the day at their price, tiins: everyone shows up. */
+  bookedUzs: number;
+  /**
+   * What typically stays empty on this weekday, tiins: the average of the
+   * recent `EmptySlotSnapshot` losses for the same weekday. 0 without
+   * snapshots.
+   */
+  emptySlotUzs: number;
+}
+
+/**
+ * Project the forecast band from the measured days (audit AN-21).
+ *
+ * The sliders used to reshape a finished band: «снизить неявки» only lifted
+ * the low edge and «заполнить пустые слоты» only the high one, while the
+ * KPIs read the untouched middle line; 50% of empty slots meant +2.5%
+ * because the ceiling was a constant baseline × 1.05. Now every slider
+ * moves the expected revenue through what it acts on:
+ *
+ *   r      = historical no-show rate, cut by `reduceNoShowPct` (relative:
+ *            30% means 30% fewer no-shows)
+ *   filled = emptySlotUzs × fillEmptyPct
+ *   low      = bookedUzs × (1 − r)            booked visits, usual no-shows
+ *   baseline = (bookedUzs + filled) × (1 − r) plus the slots filled
+ *   high     = bookedUzs + filled             nobody fails to show
+ *   all × (1 + priceUpliftPct)
+ *
+ * So the adjusted forecast rises by `booked × r × reduce` for fewer
+ * no-shows, in proportion to the historical rate, and by the real empty
+ * value for filled slots. Integers (tiins), never negative,
+ * low <= baseline <= high.
+ */
+export function projectForecast(
+  days: ReadonlyArray<ForecastDay>,
+  historicalNoShowRate: number | null,
   sliders: Partial<WhatIfSliders>,
 ): ForecastPoint[] {
   const s = clampSliders(sliders);
-  const reduceFactor = s.reduceNoShowPct / 100; // 0..0.5
-  const fillFactor = s.fillEmptyPct / 100; // 0..0.5
-  const priceMult = 1 + s.priceUpliftPct / 100; // 1..1.3
-
-  return points.map((p) => {
-    const lowGap = p.baseline - p.low;
-    const highGap = p.high - p.baseline;
-    const adjustedLow = p.low + lowGap * reduceFactor;
-    const adjustedHigh = p.high + highGap * fillFactor;
-    const adjustedBaseline = p.baseline;
-
-    // Apply price uplift uniformly across the band.
-    const newLow = Math.max(0, Math.round(adjustedLow * priceMult));
-    const newBaseline = Math.max(0, Math.round(adjustedBaseline * priceMult));
-    const newHigh = Math.max(0, Math.round(adjustedHigh * priceMult));
-
-    // Defensive sort — `lowGap` and `highGap` are non-negative by
-    // construction (callers build bands with low<=baseline<=high) but if
-    // an upstream bug ever flips them, we don't want a non-monotonic chart.
-    const sorted = [newLow, newBaseline, newHigh].sort((a, b) => a - b);
-
+  const rate = clamp(historicalNoShowRate ?? 0, 0, 1);
+  const noShow = rate * (1 - s.reduceNoShowPct / 100);
+  const show = 1 - noShow;
+  const fill = s.fillEmptyPct / 100;
+  const priceMult = 1 + s.priceUpliftPct / 100;
+  return days.map((d) => {
+    const booked = Math.max(0, d.bookedUzs);
+    const filled = Math.max(0, d.emptySlotUzs) * fill;
     return {
-      date: p.date,
-      low: sorted[0]!,
-      baseline: sorted[1]!,
-      high: sorted[2]!,
+      date: d.date,
+      low: Math.round(booked * show * priceMult),
+      baseline: Math.round((booked + filled) * show * priceMult),
+      high: Math.round((booked + filled) * priceMult),
     };
   });
 }
 
 /**
- * Sum the high-band over the forecast horizon. This is the "Achievable
- * revenue ceiling" KPI — what the clinic could earn if every slider were
- * cranked to its max AND the optimistic assumptions held.
+ * Sum the high band over the forecast horizon: the «Потолок выручки» KPI,
+ * what the scenario earns if nobody fails to show.
  */
 export function ceilingRevenue(points: ReadonlyArray<ForecastPoint>): number {
   let sum = 0;

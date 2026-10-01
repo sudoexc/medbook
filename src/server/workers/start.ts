@@ -149,9 +149,9 @@ async function main() {
 
   // Phase 18 Wave 1 — Analytics & Reporting foundation.
   //   analytics:refresh   hourly tick — REFRESH MATERIALIZED VIEW
-  //                       CONCURRENTLY for the four analytics MVs
+  //                       CONCURRENTLY for the three analytics MVs
   //                       (mv_doctor_performance, mv_cohort_retention,
-  //                       mv_financial_pace, mv_schedule_heatmap). Kicks
+  //                       mv_financial_pace; the heatmap is live). Kicks
   //                       off an initial refresh on boot (async, doesn't
   //                       block other workers from registering). Manual
   //                       refresh available via /api/crm/analytics/refresh.

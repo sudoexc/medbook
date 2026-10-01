@@ -18,6 +18,8 @@
  *      (not PDFs: Chrome refuses to show a sandboxed PDF).
  */
 
+import { contentDisposition } from "@/lib/content-disposition";
+
 export const IMAGE_TYPES = [
   "image/jpeg",
   "image/png",
@@ -202,11 +204,9 @@ export function safeFileHeaders(
       ? type
       : "application/octet-stream";
 
-  const asciiName = opts.filename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
-  const utf8Name = encodeURIComponent(opts.filename);
   const headers: Record<string, string> = {
     "Content-Type": contentType,
-    "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+    "Content-Disposition": contentDisposition(opts.filename, { inline }),
     "X-Content-Type-Options": "nosniff",
   };
   if (contentType !== "application/pdf") {

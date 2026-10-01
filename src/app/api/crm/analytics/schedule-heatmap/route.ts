@@ -1,8 +1,9 @@
 /**
  * GET /api/crm/analytics/schedule-heatmap — per-doctor schedule heatmap.
  *
- * Reads `mv_schedule_heatmap` (last 90 days, see migration). Returns one
- * cell per (doctorId, dayOfWeek, hour) with appointment + slot counts.
+ * Counted live over the 90 days before today (schedule-heatmap-resolver.ts,
+ * audit AN-24). Returns one cell per (doctorId, ISO dayOfWeek, Tashkent
+ * hour) with visits, working hours and free working hours.
  *
  * RBAC: ADMIN.
  */

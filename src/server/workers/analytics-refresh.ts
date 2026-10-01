@@ -1,13 +1,16 @@
 /**
  * Phase 18 Wave 1 — analytics materialized-view refresher.
  *
- * Hourly tick refreshes the four analytics MVs created in
- * `20260507130000_phase18_w1_analytics_foundation`:
+ * Hourly tick refreshes the three analytics MVs created in
+ * `20260507130000_phase18_w1_analytics_foundation` and re-created on
+ * Tashkent days and months in `20261001100000_analytics_tashkent_mvs`:
  *
  *   - mv_doctor_performance
  *   - mv_cohort_retention
- *   - mv_financial_pace
- *   - mv_schedule_heatmap
+ *   - mv_financial_pace (stamps "refreshedAt": the dashboard's «Данные на»)
+ *
+ * `mv_schedule_heatmap` is gone: the heatmap is counted live
+ * (schedule-heatmap-resolver.ts, audit AN-24).
  *
  * Refresh strategy
  * ----------------
@@ -21,7 +24,7 @@
  *
  * First refresh on boot
  * ---------------------
- * The migration creates all four MVs WITH NO DATA so the migration itself
+ * The migration creates the MVs WITH NO DATA so the migration itself
  * stays cheap (no full Appointment scan during prisma migrate). The first
  * REFRESH on a freshly-created MV cannot use CONCURRENTLY (no rows to
  * compare against) — we detect "no rows" via pg_class.relispopulated and
@@ -43,7 +46,6 @@ export const ANALYTICS_MV_NAMES = [
   "mv_doctor_performance",
   "mv_cohort_retention",
   "mv_financial_pace",
-  "mv_schedule_heatmap",
 ] as const;
 
 export type AnalyticsMvName = (typeof ANALYTICS_MV_NAMES)[number];

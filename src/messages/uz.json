@@ -4915,10 +4915,12 @@
   "analyticsFinancial": {
     "title": "Moliyaviy hisobot",
     "subtitle": "Bugun, MTD va oy oxiri chiziqli prognozi",
-    "lastUpdated": "Yangilangan {time}",
+    "lastUpdated": "Ma’lumotlar {time} holatiga",
+    "paymentsNotTracked": "To‘lovlar CRMda yuritilmaydi",
+    "noData": "ma’lumot yo‘q",
     "kpi": {
       "todayCollected": "Bugun olingan",
-      "todayCollectedHint": "Klinika tomonidan bugun qabul qilingan to‘lovlar",
+      "todayCollectedHint": "Bugungi to‘lovlar, kiritilishi bilan ko‘rinadi",
       "todayScheduled": "Bugunga rejalashtirilgan",
       "todayScheduledHint": "Bugungi yozuvlar bo‘yicha jami summa",
       "todayNoShow": "Kelmaganlar yo‘qotishi",
@@ -4933,14 +4935,14 @@
       "empty": "Grafik tuzish uchun ma’lumot yetarli emas",
       "ariaLabel": "Oxirgi 90 kunlik kunlik tushum grafigi"
     },
-    "metaHint": "Yangilangan {generatedAt} · manba {source}"
+    "metaHint": "Ma’lumotlar {generatedAt} holatiga, manba {source}"
   },
   "analyticsScheduleHeatmap": {
     "title": "Jadval Heatmap",
     "subtitle": "Hafta kuni va soat bo‘yicha bandlik",
     "windowHint": "Oxirgi 90 kunlik yuklama",
     "empty": "Ma’lumot yo‘q",
-    "emptyHint": "Vitrina jadvalga birinchi yozuv qo‘shilgandan so‘ng to‘ldiriladi.",
+    "emptyHint": "Oxirgi 90 kunda jadvalda tashriflar paydo bo‘lganda xarita to‘ladi.",
     "allDoctors": "Barcha shifokorlar",
     "axis": {
       "day": "Kun",
@@ -4955,8 +4957,9 @@
       "sat": "Sh",
       "sun": "Ya"
     },
-    "cellTooltip": "{day} {hour}:00 da — {appts} ta yozuv (bo‘sh {slots})",
-    "metaHint": "Yangilangan {generatedAt} · manba {source}"
+    "cellTooltip": "{day}, {hour}:00: {appts} ta yozuv, bo‘sh ish soatlari {working} dan {free}",
+    "cellTooltipOffSchedule": "{day}, {hour}:00: {appts} ta yozuv, shifokorlar jadvalidan tashqari",
+    "metaHint": "{generatedAt} da tashriflar va shifokorlar jadvali bo‘yicha hisoblandi, Toshkent vaqti"
   },
   "analyticsReports": {
     "dimensions": {
@@ -5104,6 +5107,7 @@
       "dialogTitleCreate": "Jadval yaratish",
       "dialogTitleEdit": "Jadvalni tahrirlash",
       "dialogDescription": "Hisobot Asia/Tashkent vaqti bilan 09:00 da tanlangan jadval bo‘yicha yuboriladi",
+      "periodHint": "Har kuni kechagi kun uchun, har hafta o‘tgan hafta (dushanbadan yakshanbagacha) uchun, har oy o‘tgan oy uchun hisobot keladi. Hisobotda saqlangan sanalar yuborishda ishlatilmaydi.",
       "cadenceLabel": "Davriyligi",
       "channelLabel": "Yetkazib berish kanali",
       "targetEmailLabel": "Email manzili",
@@ -5125,7 +5129,13 @@
       "toastUpdateFailed": "Jadvalni yangilab bo‘lmadi",
       "toastDeleted": "Jadval o‘chirildi",
       "toastDeleteFailed": "Jadvalni o‘chirib bo‘lmadi",
-      "toastValidationFailed": "Kanal va manzil to‘g‘ri kiritilganini tekshiring"
+      "toastValidationFailed": "Kanal va manzil to‘g‘ri kiritilganini tekshiring",
+      "subjectDay": "{name}: {day} uchun hisobot",
+      "subjectRange": "{name}: {from} dan {to} gacha hisobot",
+      "summaryDay": "Davr: {day}",
+      "summaryRange": "Davr: {from} dan {to} gacha",
+      "summaryRows": "Qatorlar: {count}",
+      "summaryTruncated": "(ma’lumotlar qisqartirildi)"
     }
   },
   "lossAnalytics": {
@@ -5137,7 +5147,11 @@
     "topDoctorsEmpty": "Tanlangan davr uchun shifokorlar bo‘yicha ma’lumot yo‘q",
     "dormantSegmentsTitle": "Faol bo‘lmagan bemorlar segmentlari",
     "dormantSegmentsEmpty": "Bu kogortada faol bo‘lmagan bemorlar yo‘q",
-    "avgVisitValueHint": "O‘rtacha tashrif qiymati: {amount}",
+    "avgVisitValueHint": "Bitta faol bemorga 90 kunlik tushum:",
+    "dormantStockTitle": "Hozir faol bo‘lmagan bemorlar",
+    "dormantStockPatients": "{count} ta bemor",
+    "dormantStockHint": "90 kundan ortiq kelmagan va hech kimga yozilmagan. Bu hozirgi zaxira, davr yo‘qotishlari va grafikka kirmaydi.",
+    "noData": "ma’lumot yo‘q",
     "noSnapshotsTitle": "Bo‘sh slotlar surati yo‘q",
     "noSnapshotsHint": "Suratlar har kuni to‘planadi. Birinchi ishga tushgandan keyin ma’lumotlar paydo bo‘ladi.",
     "errorTitle": "Hisobotni yuklab bo‘lmadi",
@@ -5152,9 +5166,9 @@
       "dormant": "Faol bo‘lmagan bemorlar"
     },
     "segments": {
-      "recent_lapse": "Yaqinda ketgan (60–120 kun)",
-      "mid_lapse": "O‘rta davr (120–270 kun)",
-      "deep_lapse": "Uzoq vaqt yo‘q (270+ kun)"
+      "recent_lapse": "Yaqinda ketgan (90 dan 179 kungacha)",
+      "mid_lapse": "O‘rta davr (180 dan 365 kungacha)",
+      "deep_lapse": "Uzoq vaqt yo‘q (365 kundan ortiq)"
     },
     "col": {
       "doctor": "Shifokor",
@@ -5174,7 +5188,8 @@
     "errorRetry": "Qayta urinish",
     "empty": "Prognoz uchun ma’lumot yetarli emas",
     "emptyHint": "Yaqin 30 kunda jadvalda yozuvlar bo‘lganda prognoz paydo bo‘ladi.",
-    "metaHint": "Kelmaganlar tarixiy darajasi: {noShowRate}. Bo‘sh slotlarni to‘ldirish: {upliftRate}.",
+    "metaHint": "30 kunda kelmaganlar ulushi: {noShowRate}. Oxirgi 4 haftada bo‘sh slotlar: haftasiga {emptyWeekly}.",
+    "noData": "ma’lumot yo‘q",
     "kpi": {
       "baseline": "Bazaviy prognoz",
       "adjusted": "Tuzatilgan",
@@ -5189,8 +5204,12 @@
     "slider": {
       "reduceNoShow": "Kelmaganlarni kamaytirish",
       "reduceNoShowHint": "Eslatmalar va tasdiqlash kelmaganlarni qancha kamaytirishi mumkin.",
+      "reduceNoShowNoData": "30 kunda yakunlangan tashrif va kelmaganlar yo‘q, kelmaganlar ulushini hisoblab bo‘lmaydi.",
+      "reduceNoShowNone": "30 kunda kelmaganlar bo‘lmagan, kamaytiradigan narsa yo‘q.",
       "fillEmpty": "Bo‘sh slotlarni to‘ldirish",
       "fillEmptyHint": "Navbat ro‘yxati orqali to‘ldirilishi mumkin bo‘lgan bo‘sh slotlar ulushi.",
+      "fillEmptyNoData": "4 haftada bo‘sh slotlar surati yo‘q, to‘ldirish samarasini hisoblab bo‘lmaydi.",
+      "fillEmptyNone": "4 haftada bo‘sh slotlar bo‘lmagan, to‘ldiradigan narsa yo‘q.",
       "priceUplift": "O‘rtacha chek o‘sishi",
       "priceUpliftHint": "O‘rtacha tashrif qiymatining o‘zgarishi (masalan, narx indeksatsiyasidan keyin)."
     }

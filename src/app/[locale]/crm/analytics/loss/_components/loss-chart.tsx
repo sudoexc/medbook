@@ -30,7 +30,6 @@ export interface LossChartProps {
     emptySlot: string;
     noShow: string;
     cancellation: string;
-    dormant: string;
   };
 }
 
@@ -100,15 +99,6 @@ export function LossChart({ daily, locale, labels }: LossChartProps) {
           fill={c.chart5}
           fillOpacity={0.6}
           name={labels.cancellation}
-        />
-        <Area
-          type="monotone"
-          dataKey="dormant"
-          stackId="1"
-          stroke={c.chart4}
-          fill={c.chart4}
-          fillOpacity={0.6}
-          name={labels.dormant}
         />
       </AreaChart>
     </ResponsiveContainer>

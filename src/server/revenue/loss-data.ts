@@ -1,8 +1,8 @@
 /**
  * Server-side data loaders for the Loss Analytics dashboard
- * (/crm/analytics/loss). Pulls each of the four loss sources from Prisma,
+ * (/crm/analytics/loss). Pulls each of the three loss sources from Prisma,
  * normalises them into `LossEntry` rows, and returns aggregated totals via
- * the pure `loss-aggregation` helpers.
+ * the pure `loss-aggregation` helpers, plus the dormant base beside them.
  *
  * Heuristic notes (documented for Wave 4):
  *
@@ -20,23 +20,29 @@
  *     non-null cancelledAt. Rows whose fallback timestamp is also missing
  *     are skipped (treated as 0 loss to avoid inventing data).
  *
- *   - **Dormant patients**
- *     Count of `Patient.dormantSince != null` × an estimated average
- *     lifetime visit value. The estimate is conservative: total payments
- *     in the last 90 days divided by `max(activePatients, 1)`. The result
- *     is dated to "today" (the snapshot date) since this is a forward-
- *     looking risk number, not a per-day historical loss.
+ *   - **Dormant patients** (audit AN-17)
+ *     A stock reported beside the period, never inside its total or chart:
+ *     patients whose last completed visit is 90 days old or more and who
+ *     have nothing booked ahead, by `lastVisitAt` (kept current by
+ *     `refreshPatientVisitStats`), not by the `dormantSince` stamp. The
+ *     value per patient is the last 90 days' payments over the active
+ *     patients, and only when the clinic has recorded every payment for
+ *     those whole 90 days (`paymentsRecordedSince`); otherwise null, shown
+ *     as «нет данных».
  *
  *   - **Top-by-doctor breakdown**
  *     We aggregate empty-slot snapshots and no-show appointments per
  *     doctor; cancellations are folded into the no-show bucket for the
  *     UI's purposes (both reflect "doctor whose patients didn't show").
  *     Dormant patients have no doctor scope so they're absent from the
- *     drill-down table — that's fine, the segment table next to it
- *     covers them.
+ *     drill-down table; the segment table next to it covers them.
  */
+import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
+import { tashkentDayBounds } from "@/lib/booking-validation";
+import { SEGMENT_ACTIVE_DAYS } from "@/lib/patients/segment-rules";
 import { prisma } from "@/lib/prisma";
 import {
+  type DormantStock,
   type LossEntry,
   type LossTotals,
   type DailyLossPoint,
@@ -44,8 +50,10 @@ import {
   aggregateLoss,
   estimateAverageVisitValue,
   isLateCancellation,
+  summarizeDormantStock,
   toDateKey,
 } from "@/lib/revenue/loss-aggregation";
+import { paymentsRecordedSince } from "@/server/patient/finance";
 
 export interface LossDoctorRow {
   doctorId: string;
@@ -57,23 +65,19 @@ export interface LossDoctorRow {
   totalUzs: number;
 }
 
-export interface LossSegmentRow {
-  segment: "recent_lapse" | "mid_lapse" | "deep_lapse";
-  patientCount: number;
-  estimatedRevenueUzs: number;
-}
-
 export interface LossDashboardData {
   fromKey: string;
   toKeyExcl: string;
+  /** Empty slots, no-shows and late cancellations of the period. */
   totals: LossTotals;
   daily: DailyLossPoint[];
   topDoctors: LossDoctorRow[];
-  dormantSegments: LossSegmentRow[];
+  /** The dormant base right now; not part of `totals` or `daily`. */
+  dormant: DormantStock;
   /** True when the engines have written zero data into the range. */
   hasAnyData: boolean;
-  /** Average visit value used for the dormant calc (tiins). */
-  averageVisitValueUzs: number;
+  /** Value per patient used for the dormant estimate (tiins), or null. */
+  averageVisitValueUzs: number | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -92,6 +96,7 @@ export async function loadLossDashboard(
   clinicId: string,
   from: Date,
   to: Date,
+  now: Date = new Date(),
 ): Promise<LossDashboardData> {
   const fromKey = toDateKey(from);
   const toKeyExcl = toDateKey(to);
@@ -148,31 +153,55 @@ export async function loadLossDashboard(
         )
       : 0;
 
-  // Dormant patients — count + segments. We classify by lapse buckets so
-  // the drill-down table can split the total.
-  const dormant = await prisma.patient.findMany({
-    where: { clinicId, dormantSince: { not: null } },
-    select: { id: true, dormantSince: true, lastVisitAt: true },
-  });
+  // Dormant patients: the last completed visit 90 days ago or earlier, by
+  // `lastVisitAt`. A patient with a visit booked ahead is coming back and
+  // is not dormant (the patient segments' rule, segment-rules.ts).
+  const lapseCutoff = new Date(now.getTime() - SEGMENT_ACTIVE_DAYS * DAY_MS);
+  const [lapsed, upcoming, activePatientCount, trackedSince] = await Promise.all([
+    prisma.patient.findMany({
+      where: { clinicId, deletedAt: null, lastVisitAt: { lte: lapseCutoff } },
+      select: { id: true, lastVisitAt: true },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        clinicId,
+        status: { in: [...ACTIVE_VISIT_STATUSES] },
+        date: { gte: tashkentDayBounds(now).dayStart },
+      },
+      select: { patientId: true },
+    }),
+    prisma.patient.count({
+      where: { clinicId, deletedAt: null, lastVisitAt: { gt: lapseCutoff } },
+    }),
+    paymentsRecordedSince(clinicId),
+  ]);
+  const comingBack = new Set(upcoming.map((a) => a.patientId));
 
-  // Average lifetime visit value: payments in the last 90d / active patients.
-  const ninetyDaysAgo = new Date(Date.now() - 90 * DAY_MS);
-  const recentPayments = await prisma.payment.findMany({
-    where: {
-      clinicId,
-      status: "PAID",
-      paidAt: { gte: ninetyDaysAgo },
-    },
-    select: { amount: true },
-  });
-  const totalPaymentsUzs = recentPayments.reduce((a, p) => a + p.amount, 0);
-  const activePatientCount = await prisma.patient.count({
-    where: { clinicId, dormantSince: null },
-  });
-  const averageVisitValueUzs = estimateAverageVisitValue({
-    totalPaymentsUzs,
-    activePatientCount,
-  });
+  // Value per patient: the last 90 days' payments over the active patients,
+  // only when every payment of those 90 days was recorded. Before that, or
+  // with payments not recorded at all, a handful of entered payments would
+  // pass for the clinic's revenue, so there is no estimate.
+  let averageVisitValueUzs: number | null = null;
+  if (trackedSince && trackedSince.getTime() <= lapseCutoff.getTime()) {
+    const recentPayments = await prisma.payment.findMany({
+      where: {
+        clinicId,
+        status: "PAID",
+        paidAt: { gte: lapseCutoff, lte: now },
+      },
+      select: { amount: true },
+    });
+    const totalPaymentsUzs = recentPayments.reduce((a, p) => a + p.amount, 0);
+    const value = estimateAverageVisitValue({ totalPaymentsUzs, activePatientCount });
+    averageVisitValueUzs = value > 0 ? value : null;
+  }
+  const dormant = summarizeDormantStock(
+    lapsed.flatMap((p) =>
+      p.lastVisitAt && !comingBack.has(p.id) ? [p.lastVisitAt] : [],
+    ),
+    now,
+    averageVisitValueUzs,
+  );
 
   // Doctor-name lookup, used for the drill-down table.
   const doctorIds = new Set<string>();
@@ -261,53 +290,6 @@ export async function loadLossDashboard(
     }
   }
 
-  // 4. Dormant patients — single dated entry on the snapshot's first day
-  // so the area chart shows it as a constant baseline. The KPI card uses
-  // `totals.dormant`, which is the sum of those daily entries; we use the
-  // first day so the totals number equals (count × averageValue) exactly.
-  // (Spreading across many days would only complicate the math.)
-  const dormantSegments: LossSegmentRow[] = [];
-  if (dormant.length > 0 && averageVisitValueUzs > 0) {
-    const totalDormantLoss = dormant.length * averageVisitValueUzs;
-    entries.push({
-      dateKey: fromKey,
-      source: "dormant",
-      amountUzs: totalDormantLoss,
-    });
-
-    // Segment classification — mirrors `classifyLapse` from the engine
-    // but inlined here to avoid pulling the engine's heavy imports into a
-    // page module.
-    const now = new Date();
-    const segmentBuckets: Record<
-      LossSegmentRow["segment"],
-      { count: number }
-    > = {
-      recent_lapse: { count: 0 },
-      mid_lapse: { count: 0 },
-      deep_lapse: { count: 0 },
-    };
-    for (const p of dormant) {
-      const ref = p.lastVisitAt ?? p.dormantSince;
-      if (!ref) continue;
-      const days = Math.floor((now.getTime() - ref.getTime()) / DAY_MS);
-      let bucket: LossSegmentRow["segment"] | null = null;
-      if (days < 90) bucket = null;
-      else if (days < 180) bucket = "recent_lapse";
-      else if (days <= 365) bucket = "mid_lapse";
-      else bucket = "deep_lapse";
-      if (bucket) segmentBuckets[bucket].count += 1;
-    }
-    for (const segment of ["recent_lapse", "mid_lapse", "deep_lapse"] as const) {
-      const b = segmentBuckets[segment];
-      dormantSegments.push({
-        segment,
-        patientCount: b.count,
-        estimatedRevenueUzs: b.count * averageVisitValueUzs,
-      });
-    }
-  }
-
   const totals = aggregateLoss(entries, fromKey, toKeyExcl);
   const daily = aggregateDaily(entries, fromKey, toKeyExcl);
 
@@ -327,7 +309,7 @@ export async function loadLossDashboard(
     .sort((a, b) => b.totalUzs - a.totalUzs)
     .slice(0, 10);
 
-  const hasAnyData = entries.length > 0;
+  const hasAnyData = entries.length > 0 || dormant.patientCount > 0;
 
   return {
     fromKey,
@@ -335,7 +317,7 @@ export async function loadLossDashboard(
     totals,
     daily,
     topDoctors,
-    dormantSegments,
+    dormant,
     hasAnyData,
     averageVisitValueUzs,
   };

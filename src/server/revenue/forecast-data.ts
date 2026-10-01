@@ -1,35 +1,47 @@
 /**
  * Server-side forecast loader for /crm/analytics/forecast.
  *
- * Builds a 30-day forward `ForecastPoint[]` from the current booked
- * pipeline plus historical signal:
+ * Measures each of the next 30 days (audit AN-21); the band and the
+ * what-if sliders are projected from these by `projectForecast`, on the
+ * server for the first paint and in the browser on every slider move:
  *
- *   baseline[d] = sum(Appointment.priceFinal | priceBase | clinicAvg) for
- *                  appointments scheduled on day d, status BOOKED|CONFIRMED|
- *                  WAITING|IN_PROGRESS (the still-open pipeline,
- *                  `ACTIVE_VISIT_STATUSES`)
- *   low[d]      = baseline × (1 − historicalNoShowRate)
- *   high[d]     = baseline × (1 + emptySlotFillUplift)
+ *   bookedUzs[d]    = sum(Appointment.priceFinal | priceBase | clinicAvg)
+ *                     for visits on day d still in the pipeline
+ *                     (`ACTIVE_VISIT_STATUSES`)
+ *   emptySlotUzs[d] = the average `EmptySlotSnapshot` loss of d's weekday
+ *                     over the last 4 weeks (what usually stays empty)
+ *   noShowRate      = NO_SHOW / (COMPLETED + NO_SHOW) over the last 30
+ *                     days, the resolved visits (the no-show rate's
+ *                     denominator everywhere since AN-07)
  *
- * The historical no-show rate is computed over the last 30 days. The
- * empty-slot uplift is a rough estimate: of all empty hours snapshot-
- * recorded in the last 14 days, how many got filled within 3 days of the
- * snapshot (we don't track this directly so we approximate as a small
- * constant 5% bump). Wave 4 can replace this with a real attribution.
+ * The empty-slot uplift used to be a constant 5% and the no-show rate was
+ * counted over every booking, cancelled ones included. Either input can be
+ * missing (no resolved visits, no snapshots): it is null / flagged, and the
+ * page disables the slider it would drive instead of showing a lever that
+ * moves nothing.
  */
 import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
-import type { ForecastPoint } from "@/lib/revenue/forecast";
+import {
+  projectForecast,
+  type ForecastDay,
+  type ForecastPoint,
+} from "@/lib/revenue/forecast";
 import { toDateKey } from "@/lib/revenue/loss-aggregation";
 
 export interface ForecastDashboardData {
-  /** 30 forward-day points starting at today (Tashkent clinic day). */
+  /** 30 forward days starting at today (Tashkent clinic day). */
+  days: ForecastDay[];
+  /** `days` projected with the sliders at zero. */
   points: ForecastPoint[];
-  /** Used by the page to show how the bands were derived. */
   meta: {
-    historicalNoShowRate: number; // 0..1
-    emptySlotUpliftRate: number; // 0..0.5 (currently constant 0.05)
+    /** 0..1, null when no visit resolved in the last 30 days. */
+    historicalNoShowRate: number | null;
+    /** False when no empty-slot snapshot exists in the last 4 weeks. */
+    emptySlotDataAvailable: boolean;
+    /** Average empty-slot loss per week over the snapshot window, tiins. */
+    emptySlotWeeklyUzs: number;
     averageServicePriceUzs: number;
   };
 }
@@ -37,6 +49,55 @@ export interface ForecastDashboardData {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FORECAST_DAYS = 30;
 const LOOKBACK_DAYS_NOSHOW = 30;
+const LOOKBACK_DAYS_EMPTY = 28;
+
+/** Sun=0..Sat=6 of a Tashkent "YYYY-MM-DD" day. */
+function weekdayOf(dateKey: string): number {
+  return new Date(`${dateKey}T00:00:00Z`).getUTCDay();
+}
+
+/**
+ * Average empty-slot loss per weekday from snapshot rows. Each weekday is
+ * averaged over its occurrences from the first snapshot day up to (not
+ * including) `todayKey`: a fully booked day writes no rows and must count
+ * as 0, while days before the engine ever ran must not count at all.
+ */
+export function emptySlotByWeekday(
+  rows: ReadonlyArray<{ date: Date; estimatedRevenueLossUzs: number }>,
+  todayKey: string,
+): { byWeekday: number[]; weeklyUzs: number; available: boolean } {
+  const byWeekday = [0, 0, 0, 0, 0, 0, 0];
+  if (rows.length === 0) return { byWeekday, weeklyUzs: 0, available: false };
+  const sums = [0, 0, 0, 0, 0, 0, 0];
+  let firstKey = todayKey;
+  for (const r of rows) {
+    const key = toDateKey(r.date);
+    if (key >= todayKey) continue;
+    if (key < firstKey) firstKey = key;
+    sums[weekdayOf(key)]! += Math.max(0, r.estimatedRevenueLossUzs);
+  }
+  if (firstKey >= todayKey) return { byWeekday, weeklyUzs: 0, available: false };
+  const occurrences = [0, 0, 0, 0, 0, 0, 0];
+  let total = 0;
+  let dayCount = 0;
+  for (
+    let ms = Date.parse(`${firstKey}T00:00:00Z`);
+    ms < Date.parse(`${todayKey}T00:00:00Z`);
+    ms += DAY_MS
+  ) {
+    occurrences[new Date(ms).getUTCDay()]! += 1;
+    dayCount += 1;
+  }
+  for (let w = 0; w < 7; w += 1) {
+    byWeekday[w] = occurrences[w]! > 0 ? Math.round(sums[w]! / occurrences[w]!) : 0;
+    total += sums[w]!;
+  }
+  return {
+    byWeekday,
+    weeklyUzs: dayCount > 0 ? Math.round((total * 7) / dayCount) : 0,
+    available: true,
+  };
+}
 
 export async function loadForecast(
   clinicId: string,
@@ -75,12 +136,13 @@ export async function loadForecast(
         )
       : 0;
 
-  // 2. Historical no-show rate — last 30 days.
+  // 2. Historical no-show rate over the resolved visits of the last 30 days.
   const noShowFrom = new Date(todayMidnight.getTime() - LOOKBACK_DAYS_NOSHOW * DAY_MS);
-  const recentTotal = await prisma.appointment.count({
+  const recentResolved = await prisma.appointment.count({
     where: {
       clinicId,
       date: { gte: noShowFrom, lt: todayMidnight },
+      status: { in: ["COMPLETED", "NO_SHOW"] },
     },
   });
   const recentNoShow = await prisma.appointment.count({
@@ -91,16 +153,18 @@ export async function loadForecast(
     },
   });
   const historicalNoShowRate =
-    recentTotal > 0 ? recentNoShow / recentTotal : 0;
+    recentResolved > 0 ? recentNoShow / recentResolved : null;
 
-  // 3. Empty-slot uplift — currently a small constant. The empty-slot
-  // engine doesn't yet record fill outcomes, so this is the fastest
-  // honest estimate: assume ~5% of currently-empty hours close late.
-  // Wave 4 / Phase 17 can wire a real attribution loop.
-  const emptySlotUpliftRate = 0.05;
+  // 3. What usually stays empty, per weekday, from the snapshot engine.
+  const emptyFrom = new Date(todayMidnight.getTime() - LOOKBACK_DAYS_EMPTY * DAY_MS);
+  const snapshots = await prisma.emptySlotSnapshot.findMany({
+    where: { clinicId, date: { gte: emptyFrom, lt: todayMidnight } },
+    select: { date: true, estimatedRevenueLossUzs: true },
+  });
+  const empty = emptySlotByWeekday(snapshots, toDateKey(todayMidnight));
 
   // 4. Bucket upcoming revenue per day.
-  const baselinePerDay = new Map<string, number>();
+  const bookedPerDay = new Map<string, number>();
   for (const a of upcoming) {
     const key = toDateKey(a.date);
     const valueUzs =
@@ -110,30 +174,27 @@ export async function loadForecast(
           ? a.primaryService.priceBase
           : averageServicePriceUzs;
     if (valueUzs <= 0) continue;
-    baselinePerDay.set(key, (baselinePerDay.get(key) ?? 0) + valueUzs);
+    bookedPerDay.set(key, (bookedPerDay.get(key) ?? 0) + valueUzs);
   }
 
-  // 5. Build points for every day in the window (including zero days).
-  const points: ForecastPoint[] = [];
+  // 5. Every day in the window (including zero days).
+  const days: ForecastDay[] = [];
   for (let i = 0; i < FORECAST_DAYS; i += 1) {
-    const day = new Date(todayMidnight.getTime() + i * DAY_MS);
-    const key = toDateKey(day);
-    const baseline = baselinePerDay.get(key) ?? 0;
-    const low = Math.round(baseline * (1 - historicalNoShowRate));
-    const high = Math.round(baseline * (1 + emptySlotUpliftRate));
-    points.push({
+    const key = toDateKey(new Date(todayMidnight.getTime() + i * DAY_MS));
+    days.push({
       date: key,
-      low: Math.max(0, low),
-      baseline: Math.max(0, baseline),
-      high: Math.max(0, high),
+      bookedUzs: bookedPerDay.get(key) ?? 0,
+      emptySlotUzs: empty.byWeekday[weekdayOf(key)] ?? 0,
     });
   }
 
   return {
-    points,
+    days,
+    points: projectForecast(days, historicalNoShowRate, {}),
     meta: {
       historicalNoShowRate,
-      emptySlotUpliftRate,
+      emptySlotDataAvailable: empty.available,
+      emptySlotWeeklyUzs: empty.weeklyUzs,
       averageServicePriceUzs,
     },
   };

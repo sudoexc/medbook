@@ -119,12 +119,11 @@ describe("PT-06: lastVisitAt = MAX(COALESCE(completedAt, date))", () => {
 
     await refreshPatientVisitStats("p1");
 
-    expect(state.patientWrites).toEqual([
-      {
-        visitsCount: 2,
-        lastVisitAt: new Date("2026-09-25T06:40:00.000Z"),
-      },
-    ]);
+    // [1] is the conditional `dormantSince` reset (audit AN-17).
+    expect(state.patientWrites[0]).toEqual({
+      visitsCount: 2,
+      lastVisitAt: new Date("2026-09-25T06:40:00.000Z"),
+    });
   });
 
   it("a legacy slot newer than every stamped completion still counts", async () => {

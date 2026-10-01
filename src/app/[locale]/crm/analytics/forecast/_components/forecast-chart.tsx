@@ -41,6 +41,7 @@ export function ForecastChart({ points, locale, labels }: ForecastChartProps) {
         date: p.date,
         bandLow: p.low,
         bandSpan: Math.max(0, p.high - p.low),
+        high: p.high,
         baseline: p.baseline,
       })),
     [points],
@@ -79,9 +80,13 @@ export function ForecastChart({ points, locale, labels }: ForecastChartProps) {
           }
         />
         <Tooltip
-          formatter={(value, name) => {
+          formatter={(value, name, item) => {
             if (name === "bandLow") return [money(Number(value)), labels.low];
-            if (name === "bandSpan") return [money(Number(value)), labels.high];
+            // The stacked span is high − low; the tooltip names the top edge.
+            if (name === "bandSpan") {
+              const high = (item?.payload as { high?: number } | undefined)?.high;
+              return [money(Number(high ?? value)), labels.high];
+            }
             if (name === "baseline")
               return [money(Number(value)), labels.baseline];
             return [String(value), String(name)];

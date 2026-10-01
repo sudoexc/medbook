@@ -9,9 +9,10 @@
  *   1. `computeEmptySlot` is a pure setminus + multiplication. No DB. The
  *      bulk of the test surface lives here so the engine is deterministic.
  *   2. `snapshotEmptySlotsForDay` is the side-effecting wrapper. It pulls
- *      `DoctorSchedule`, `Appointment`, and an average price per doctor's
- *      specialty from Prisma, calls `computeEmptySlot`, and writes one
- *      `EmptySlotSnapshot` row per empty (doctor, hour) for the date.
+ *      `DoctorSchedule`, `DoctorTimeOff`, `Appointment`, and an average
+ *      price per doctor's specialty from Prisma, calls `computeEmptySlot`,
+ *      and writes one `EmptySlotSnapshot` row per empty (doctor, hour) for
+ *      the date.
  *
  * Idempotency: each snapshot run for a (clinicId, doctorId, date) clears
  * any prior rows for that triple inside a single transaction so re-running
@@ -36,6 +37,10 @@ import {
 } from "@/lib/booking-validation";
 import { runWithTenant } from "@/lib/tenant-context";
 import { TODAY_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
+import {
+  workingIntervalsOn,
+  type WorkingInterval,
+} from "@/lib/doctor-working-windows";
 
 export type EmptySlotInput = {
   doctorId: string;
@@ -145,6 +150,32 @@ export function expandScheduleHours(
   return out;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * The Tashkent wall-clock hours (0..23) of the day starting at `dayStart`
+ * (a Tashkent midnight) that the intervals touch; any minute occupies the
+ * hour, the same rule as `expandScheduleHours`. Offsets from a Tashkent
+ * midnight are clinic hours, the coordinate system of the schedule's
+ * "HH:MM" strings. Sorted, deduped.
+ */
+export function hoursCoveredBy(
+  intervals: ReadonlyArray<WorkingInterval>,
+  dayStart: Date,
+): number[] {
+  const base = dayStart.getTime();
+  const out: number[] = [];
+  for (const i of intervals) {
+    const lo = Math.max(i.start.getTime(), base);
+    const hi = Math.min(i.end.getTime(), base + 24 * HOUR_MS);
+    if (hi <= lo) continue;
+    const first = Math.floor((lo - base) / HOUR_MS);
+    const lastExclusive = Math.ceil((hi - base) / HOUR_MS);
+    for (let h = first; h < lastExclusive; h += 1) out.push(h);
+  }
+  return normalizeHours(out);
+}
+
 type DoctorRow = {
   id: string;
   specializationRu: string;
@@ -153,8 +184,17 @@ type DoctorRow = {
 
 type ScheduleRow = {
   doctorId: string;
+  weekday: number;
   startTime: string;
   endTime: string;
+  validFrom: Date | null;
+  validTo: Date | null;
+};
+
+type TimeOffRow = {
+  doctorId: string;
+  startAt: Date;
+  endAt: Date;
 };
 
 type ApptRow = {
@@ -280,6 +320,10 @@ export async function snapshotEmptySlotsForDay(
   }
   const doctorIds = doctors.map((d) => d.id);
 
+  // The weekday's active rows; their validity (`validFrom` / `validTo`) and
+  // the time off are applied by `workingIntervalsOn`, the one rule the
+  // booking grid, the load meter and the «свободный слот завтра» detector
+  // already share.
   const schedules = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.doctorSchedule.findMany({
       where: {
@@ -287,16 +331,32 @@ export async function snapshotEmptySlotsForDay(
         doctorId: { in: doctorIds },
         weekday,
         isActive: true,
-        OR: [
-          { validFrom: null, validTo: null },
-          { validFrom: { lte: dayEnd }, validTo: null },
-          { validFrom: null, validTo: { gte: dayStart } },
-          { validFrom: { lte: dayEnd }, validTo: { gte: dayStart } },
-        ],
       },
-      select: { doctorId: true, startTime: true, endTime: true },
+      select: {
+        doctorId: true,
+        weekday: true,
+        startTime: true,
+        endTime: true,
+        validFrom: true,
+        validTo: true,
+      },
     }),
   )) as ScheduleRow[];
+
+  // Leave, sick days, a conference (audit AN-16): hours a doctor was away
+  // were snapshotted as empty and priced as lost revenue, so a two-week
+  // holiday put the doctor on top of «Потери».
+  const timeOffs = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.doctorTimeOff.findMany({
+      where: {
+        clinicId,
+        doctorId: { in: doctorIds },
+        startAt: { lt: dayEnd },
+        endAt: { gt: dayStart },
+      },
+      select: { doctorId: true, startAt: true, endAt: true },
+    }),
+  )) as TimeOffRow[];
 
   const appts = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
@@ -320,6 +380,13 @@ export async function snapshotEmptySlotsForDay(
     schedByDoctor.set(s.doctorId, arr);
   }
 
+  const offsByDoctor = new Map<string, TimeOffRow[]>();
+  for (const t of timeOffs) {
+    const arr = offsByDoctor.get(t.doctorId) ?? [];
+    arr.push(t);
+    offsByDoctor.set(t.doctorId, arr);
+  }
+
   const apptsByDoctor = new Map<string, ApptRow[]>();
   for (const a of appts) {
     const arr = apptsByDoctor.get(a.doctorId) ?? [];
@@ -340,28 +407,22 @@ export async function snapshotEmptySlotsForDay(
   for (const doctor of doctors) {
     const rows = schedByDoctor.get(doctor.id) ?? [];
     if (rows.length === 0) continue;
-    const workingHours: number[] = [];
-    for (const r of rows) workingHours.push(...expandScheduleHours(r.startTime, r.endTime));
+    // Working time: the rows valid that day, merged, time off cut out. A
+    // doctor away the whole day has none and gets no snapshot rows.
+    const workingHours = hoursCoveredBy(
+      workingIntervalsOn(rows, dayComp.date, offsByDoctor.get(doctor.id) ?? []),
+      dayStart,
+    );
     if (workingHours.length === 0) continue;
 
-    const bookedHours: number[] = [];
-    for (const a of apptsByDoctor.get(doctor.id) ?? []) {
-      // An appointment occupies every Tashkent wall-clock hour it overlaps:
-      // offsets from `dayStart` (a Tashkent midnight) are clinic hours —
-      // the same coordinate system as the schedule's "HH:MM" strings.
-      const startMs = a.date.getTime();
-      const endMs = a.endDate.getTime();
-      const dayStartMs = dayStart.getTime();
-      const dayEndMs = dayEnd.getTime();
-      const lo = Math.max(startMs, dayStartMs);
-      const hi = Math.min(endMs, dayEndMs);
-      if (hi <= lo) continue;
-      const startHour = Math.floor((lo - dayStartMs) / (60 * 60 * 1000));
-      const endHourExclusive = Math.ceil((hi - dayStartMs) / (60 * 60 * 1000));
-      for (let h = startHour; h < endHourExclusive; h += 1) {
-        if (h >= 0 && h < 24) bookedHours.push(h);
-      }
-    }
+    // An appointment occupies every Tashkent wall-clock hour it overlaps.
+    const bookedHours = hoursCoveredBy(
+      (apptsByDoctor.get(doctor.id) ?? []).map((a) => ({
+        start: a.date,
+        end: a.endDate,
+      })),
+      dayStart,
+    );
 
     const avg =
       avgByDoctor.get(doctor.id) ??

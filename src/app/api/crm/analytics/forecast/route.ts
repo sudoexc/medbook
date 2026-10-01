@@ -2,9 +2,10 @@
  * /api/crm/analytics/forecast — 30-day forward revenue forecast for the
  * /crm/analytics/forecast dashboard (Phase 14, Wave 3).
  *
- * Server returns the baseline `ForecastPoint[]` (low/baseline/high). The
- * client then re-applies what-if sliders locally via `applyWhatIfSliders`
- * — no round-trip on slider drag.
+ * Server returns the measured days (`ForecastDay[]`: booked value and the
+ * usual empty-slot value), the no-show rate, and the zero-slider band. The
+ * client re-projects the what-if sliders locally via `projectForecast`, no
+ * round-trip on slider drag.
  *
  * RBAC: ADMIN only (sensitive forward projection).
  */

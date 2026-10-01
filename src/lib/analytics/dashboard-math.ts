@@ -154,7 +154,11 @@ export function trailingMonths(now: Date, monthCount: number): CohortRangeMonths
 /**
  * Project the month-end revenue from MTD-collected revenue using a linear
  * extrapolation (`mtd * totalDays / dayOfMonth`). Returns the original `mtd`
- * when `dayOfMonth <= 0` (pathological clock state).
+ * when the day of month is not a positive number (pathological clock state).
+ *
+ * The day and the month are the clinic's (Tashkent) calendar (audit AN-25):
+ * read off UTC, the projection ran a day behind until 05:00 and on the 1st
+ * divided the new month's first takings by the old month's length.
  *
  * Centralised here so the financial dashboard and any future report can
  * agree on the projection formula and the test harness covers it once.
@@ -163,11 +167,10 @@ export function projectMonthEnd(
   mtdTiins: number,
   now: Date,
 ): { projectedTiins: number; dayOfMonth: number; daysInMonth: number } {
-  const dayOfMonth = now.getUTCDate();
-  const daysInMonth = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  if (dayOfMonth <= 0) {
+  const [y, m, d] = tashkentDateOf(now).split("-").map(Number) as [number, number, number];
+  const dayOfMonth = d;
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  if (!(dayOfMonth > 0)) {
     return { projectedTiins: mtdTiins, dayOfMonth, daysInMonth };
   }
   // Multiply before dividing so we don't accumulate float-rounding error on
@@ -177,6 +180,47 @@ export function projectMonthEnd(
     projectedTiins: Math.round((mtdTiins * daysInMonth) / dayOfMonth),
     dayOfMonth,
     daysInMonth,
+  };
+}
+
+/** The financial dashboard's trend: the 90 days the MV keeps behind today. */
+export const FINANCIAL_TREND_DAYS = 90;
+
+export interface FinancialWindow {
+  /** First day of the trend (inclusive). */
+  from: string;
+  /** Exclusive end: the 1st of next month, so the month card fits too. */
+  toExcl: string;
+  todayKey: string;
+  monthStart: string;
+  nextMonthStart: string;
+}
+
+/**
+ * The Tashkent days the financial dashboard reads (audit AN-25): `trendDays`
+ * days back to today, inclusive, through the end of the month, so the trend
+ * and the month-to-date card come out of one query. The page's first render
+ * and its auto-refresh both go through here, so the trend cannot shrink to
+ * the month so far a minute after opening. Clamped to 1..90.
+ */
+export function financialWindow(
+  now: Date,
+  trendDays: number = FINANCIAL_TREND_DAYS,
+): FinancialWindow {
+  const days = Math.min(
+    FINANCIAL_TREND_DAYS,
+    Math.max(1, Math.trunc(Number.isFinite(trendDays) ? trendDays : FINANCIAL_TREND_DAYS)),
+  );
+  const todayKey = tashkentDateOf(now);
+  const [y, m] = todayKey.split("-").map(Number) as [number, number];
+  const nextMonthStart =
+    m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  return {
+    from: addTashkentDays(todayKey, -(days - 1)),
+    toExcl: nextMonthStart,
+    todayKey,
+    monthStart: `${todayKey.slice(0, 7)}-01`,
+    nextMonthStart,
   };
 }
 

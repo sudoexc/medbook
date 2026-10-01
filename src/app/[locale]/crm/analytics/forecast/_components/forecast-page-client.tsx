@@ -12,10 +12,12 @@ import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
+import { formatMoney } from "@/lib/format";
 import {
-  applyWhatIfSliders,
   baselineRevenue,
   ceilingRevenue,
+  projectForecast,
+  type ForecastDay,
   type ForecastPoint,
   type WhatIfSliders,
 } from "@/lib/revenue/forecast";
@@ -30,10 +32,12 @@ const ForecastChart = dynamic(
 );
 
 interface ForecastResponse {
+  days: ForecastDay[];
   points: ForecastPoint[];
   meta: {
-    historicalNoShowRate: number;
-    emptySlotUpliftRate: number;
+    historicalNoShowRate: number | null;
+    emptySlotDataAvailable: boolean;
+    emptySlotWeeklyUzs: number;
     averageServicePriceUzs: number;
   };
 }
@@ -75,11 +79,25 @@ export function ForecastPageClient() {
     return () => window.clearTimeout(id);
   }, [draftSliders]);
 
-  const baseline = q.data?.points ?? null;
-  const adjusted = React.useMemo(
-    () => (baseline ? applyWhatIfSliders(baseline, sliders) : null),
-    [baseline, sliders],
+  // Both bands come from the measured days (audit AN-21): every slider
+  // acts on the quantity it names, so «снизить неявки» and «заполнить
+  // пустые слоты» move the adjusted forecast, not just a band edge.
+  const days = q.data?.days ?? null;
+  const noShowRate = q.data?.meta.historicalNoShowRate ?? null;
+  const baseline = React.useMemo(
+    () => (days ? projectForecast(days, noShowRate, {}) : null),
+    [days, noShowRate],
   );
+  const adjusted = React.useMemo(
+    () => (days ? projectForecast(days, noShowRate, sliders) : null),
+    [days, noShowRate, sliders],
+  );
+  // A lever without data behind it moves nothing: it is disabled and says
+  // why instead.
+  const noShowKnown = noShowRate !== null && noShowRate > 0;
+  const emptyKnown =
+    q.data?.meta.emptySlotDataAvailable === true &&
+    q.data.meta.emptySlotWeeklyUzs > 0;
 
   const baselineSum = baseline ? baselineRevenue(baseline) : 0;
   const adjustedSum = adjusted ? baselineRevenue(adjusted) : 0;
@@ -149,8 +167,15 @@ export function ForecastPageClient() {
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
               <SliderRow
                 label={t("slider.reduceNoShow")}
-                hint={t("slider.reduceNoShowHint")}
-                value={draftSliders.reduceNoShowPct}
+                hint={
+                  noShowKnown
+                    ? t("slider.reduceNoShowHint")
+                    : noShowRate === 0
+                      ? t("slider.reduceNoShowNone")
+                      : t("slider.reduceNoShowNoData")
+                }
+                disabled={!noShowKnown}
+                value={noShowKnown ? draftSliders.reduceNoShowPct : 0}
                 onChange={(v) =>
                   setDraftSliders((s) => ({ ...s, reduceNoShowPct: v }))
                 }
@@ -161,8 +186,15 @@ export function ForecastPageClient() {
               />
               <SliderRow
                 label={t("slider.fillEmpty")}
-                hint={t("slider.fillEmptyHint")}
-                value={draftSliders.fillEmptyPct}
+                hint={
+                  emptyKnown
+                    ? t("slider.fillEmptyHint")
+                    : q.data.meta.emptySlotDataAvailable
+                      ? t("slider.fillEmptyNone")
+                      : t("slider.fillEmptyNoData")
+                }
+                disabled={!emptyKnown}
+                value={emptyKnown ? draftSliders.fillEmptyPct : 0}
                 onChange={(v) =>
                   setDraftSliders((s) => ({ ...s, fillEmptyPct: v }))
                 }
@@ -188,8 +220,17 @@ export function ForecastPageClient() {
 
           <p className="text-xs text-muted-foreground">
             {t("metaHint", {
-              noShowRate: `${Math.round(q.data.meta.historicalNoShowRate * 100)}%`,
-              upliftRate: `${Math.round(q.data.meta.emptySlotUpliftRate * 100)}%`,
+              noShowRate:
+                q.data.meta.historicalNoShowRate === null
+                  ? t("noData")
+                  : `${Math.round(q.data.meta.historicalNoShowRate * 100)}%`,
+              emptyWeekly: emptyKnown
+                ? formatMoney(
+                    q.data.meta.emptySlotWeeklyUzs,
+                    "UZS",
+                    locale === "uz" ? "uz" : "ru",
+                  )
+                : t("noData"),
             })}
           </p>
         </>
@@ -248,6 +289,7 @@ function SliderRow({
   max,
   step,
   suffix,
+  disabled = false,
 }: {
   label: string;
   hint: string;
@@ -257,6 +299,7 @@ function SliderRow({
   max: number;
   step: number;
   suffix?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -273,8 +316,9 @@ function SliderRow({
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full"
+        className="w-full disabled:opacity-50"
       />
       <p className="text-xs text-muted-foreground">{hint}</p>
     </div>

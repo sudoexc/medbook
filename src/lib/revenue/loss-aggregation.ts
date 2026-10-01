@@ -1,7 +1,7 @@
 /**
  * Pure helpers for the Loss Analytics dashboard (Phase 14, Wave 3).
  *
- * The dashboard at /crm/analytics/loss aggregates revenue lost from four
+ * The dashboard at /crm/analytics/loss aggregates revenue lost from three
  * sources over a date range. Aggregation logic lives here so it's testable
  * without spinning up Prisma:
  *
@@ -10,8 +10,12 @@
  *                            for `status = 'NO_SHOW'`
  *   - Late cancellations   — same as no-shows but for `status = 'CANCELLED'`
  *                            and `cancelledAt within 24h of date`
- *   - Dormant patients     — count(dormantSince != null) × avg lifetime visit
- *                            value (a conservative payment-based estimate)
+ *
+ * Dormant patients are a stock, not a flow (audit AN-17): how many patients
+ * lapsed by now says nothing about what a week lost. They used to be one
+ * entry worth the whole dormant base, dated on the period's first day, so
+ * every week's chart opened with a spike the size of a month's revenue and
+ * the period total carried it. `summarizeDormantStock` reports them apart.
  *
  * Every UZS amount is in **tiins** (minor units) and integer arithmetic only.
  * The page UI formats with `<MoneyText>` — these helpers return raw integers.
@@ -19,9 +23,10 @@
  * Pure (only the client-safe Tashkent time helper is imported). Used by the
  * page server component AND by unit tests.
  */
+import { SEGMENT_ACTIVE_DAYS } from "@/lib/patients/segment-rules";
 import { tashkentPartsOf } from "@/lib/tashkent-time";
 
-export type LossSource = "emptySlot" | "noShow" | "cancellation" | "dormant";
+export type LossSource = "emptySlot" | "noShow" | "cancellation";
 
 /** A single loss data-point — `dateKey` is "YYYY-MM-DD" (clinic-local TZ). */
 export interface LossEntry {
@@ -36,7 +41,6 @@ export interface LossTotals {
   emptySlot: number;
   noShow: number;
   cancellation: number;
-  dormant: number;
   total: number;
 }
 
@@ -46,7 +50,6 @@ export interface DailyLossPoint {
   emptySlot: number;
   noShow: number;
   cancellation: number;
-  dormant: number;
 }
 
 /**
@@ -100,7 +103,6 @@ export function aggregateLoss(
     emptySlot: 0,
     noShow: 0,
     cancellation: 0,
-    dormant: 0,
     total: 0,
   };
   for (const e of entries) {
@@ -110,7 +112,6 @@ export function aggregateLoss(
     if (e.source === "emptySlot") totals.emptySlot += amt;
     else if (e.source === "noShow") totals.noShow += amt;
     else if (e.source === "cancellation") totals.cancellation += amt;
-    else if (e.source === "dormant") totals.dormant += amt;
     else continue;
     totals.total += amt;
   }
@@ -134,7 +135,6 @@ export function aggregateDaily(
       emptySlot: 0,
       noShow: 0,
       cancellation: 0,
-      dormant: 0,
     });
   }
   for (const e of entries) {
@@ -145,7 +145,6 @@ export function aggregateDaily(
     if (e.source === "emptySlot") point.emptySlot += amt;
     else if (e.source === "noShow") point.noShow += amt;
     else if (e.source === "cancellation") point.cancellation += amt;
-    else if (e.source === "dormant") point.dormant += amt;
   }
   return days.map((d) => map.get(d)!);
 }
@@ -168,6 +167,81 @@ export function estimateAverageVisitValue(args: {
   const total = Math.max(0, Math.trunc(args.totalPaymentsUzs));
   const denom = Math.max(1, args.activePatientCount);
   return Math.round(total / denom);
+}
+
+export type DormantSegment = "recent_lapse" | "mid_lapse" | "deep_lapse";
+
+export interface DormantSegmentRow {
+  segment: DormantSegment;
+  patientCount: number;
+  /** Null when there is no honest per-patient value to multiply by. */
+  estimatedRevenueUzs: number | null;
+}
+
+export interface DormantStock {
+  /** Patients whose last completed visit is 90 days old or more, now. */
+  patientCount: number;
+  segments: DormantSegmentRow[];
+  /** `patientCount × averageValueUzs`, null without a value. */
+  estimatedRevenueUzs: number | null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Lapse bucket by days since the last visit, the reactivation engine's
+ * bands (`classifyLapse`): 90 to 179, 180 to 365, over 365. Below 90 the
+ * patient is not dormant (`SEGMENT_ACTIVE_DAYS`, the same line the patient
+ * segments draw).
+ */
+export function dormantSegmentOf(daysSinceLastVisit: number): DormantSegment | null {
+  if (!Number.isFinite(daysSinceLastVisit)) return null;
+  if (daysSinceLastVisit < SEGMENT_ACTIVE_DAYS) return null;
+  if (daysSinceLastVisit < 180) return "recent_lapse";
+  if (daysSinceLastVisit <= 365) return "mid_lapse";
+  return "deep_lapse";
+}
+
+/**
+ * The dormant base as of `now`, from each candidate's last completed visit.
+ * The caller drops patients with a visit booked ahead (they are coming).
+ * Patients seen within the last 90 days are not dormant, whatever an old
+ * `dormantSince` stamp says: that flag was never cleared, so a patient who
+ * came back stayed «спящий» and his value stayed in the losses for good.
+ */
+export function summarizeDormantStock(
+  lastVisits: ReadonlyArray<Date>,
+  now: Date,
+  averageValueUzs: number | null,
+): DormantStock {
+  const counts: Record<DormantSegment, number> = {
+    recent_lapse: 0,
+    mid_lapse: 0,
+    deep_lapse: 0,
+  };
+  let patientCount = 0;
+  for (const at of lastVisits) {
+    const days = Math.floor((now.getTime() - at.getTime()) / DAY_MS);
+    const segment = dormantSegmentOf(days);
+    if (!segment) continue;
+    counts[segment] += 1;
+    patientCount += 1;
+  }
+  const value =
+    averageValueUzs !== null && Number.isFinite(averageValueUzs) && averageValueUzs > 0
+      ? Math.trunc(averageValueUzs)
+      : null;
+  return {
+    patientCount,
+    segments: (["recent_lapse", "mid_lapse", "deep_lapse"] as const).map(
+      (segment) => ({
+        segment,
+        patientCount: counts[segment],
+        estimatedRevenueUzs: value === null ? null : counts[segment] * value,
+      }),
+    ),
+    estimatedRevenueUzs: value === null ? null : patientCount * value,
+  };
 }
 
 /**

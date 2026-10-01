@@ -18,6 +18,7 @@
  */
 
 import { formatReportDay } from "@/lib/analytics/report-cells";
+import { tashkentDateOf } from "@/lib/tashkent-time";
 
 export interface CsvColumn {
   /** Internal column key — e.g. the dimension/measure alias. */
@@ -103,18 +104,23 @@ export function formatCsv(
 }
 
 /**
- * Build a `<name>-YYYY-MM-DD.csv` filename. Strips characters that would
- * confuse Content-Disposition; falls back to `report` when name is empty.
+ * Build a `<name>-YYYY-MM-DD.csv` filename, dated by the clinic's
+ * (Tashkent) day. Letters of any script stay: the route sends the name
+ * through `contentDisposition` (RFC 5987 `filename*`), which is what makes
+ * a Cyrillic name legal in a header (audit AN-26). Falls back to `report`
+ * when name is empty.
  */
 export function csvFilename(name: string, now: Date = new Date()): string {
-  const safe =
+  return `${reportFileStem(name)}-${tashkentDateOf(now)}.csv`;
+}
+
+/** The report name as a file stem: letters, digits, `-`, `_`; max 80. */
+export function reportFileStem(name: string): string {
+  return (
     name
       .trim()
       .replace(/[^\p{L}\p{N}\-_ ]/gu, "")
       .replace(/\s+/g, "-")
-      .slice(0, 80) || "report";
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
-  return `${safe}-${yyyy}-${mm}-${dd}.csv`;
+      .slice(0, 80) || "report"
+  );
 }

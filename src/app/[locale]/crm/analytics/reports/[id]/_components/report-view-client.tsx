@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
+import { filenameFromContentDisposition } from "@/lib/content-disposition";
 import { formatClinicDateTime } from "@/lib/format";
 import {
   formatReportCell,
@@ -103,9 +104,11 @@ export function ReportViewClient({
     const blob = await r.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    const cd = r.headers.get("content-disposition") ?? "";
-    const m = /filename="([^"]+)"/.exec(cd);
-    a.download = m?.[1] ?? `report.${fmt}`;
+    // The UTF-8 `filename*` carries a Cyrillic report name (audit AN-26).
+    a.download = filenameFromContentDisposition(
+      r.headers.get("content-disposition"),
+      `report.${fmt}`,
+    );
     document.body.appendChild(a);
     a.click();
     a.remove();

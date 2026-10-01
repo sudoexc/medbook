@@ -68,7 +68,8 @@ export async function bumpPatientLastContact(
  * than incremented: a completed visit can be reverted (doctor un-does a
  * mis-click) and an increment would drift permanently; a recount is always
  * the truth for a handful of rows. `lastVisitAt` is recomputed from the
- * latest COMPLETED appointment for the same reason.
+ * latest COMPLETED appointment for the same reason, and a visit on or after
+ * `dormantSince` clears that stamp.
  */
 export async function refreshPatientVisitStats(
   patientId: string,
@@ -98,16 +99,24 @@ export async function refreshPatientVisitStats(
         select: { date: true },
       }),
     ]);
+    const lastVisitAt = latestVisitAt(
+      latestStamped?.completedAt ?? null,
+      latestLegacy?.date ?? null,
+    );
     await prisma.patient.updateMany({
       where: { id: patientId },
-      data: {
-        visitsCount,
-        lastVisitAt: latestVisitAt(
-          latestStamped?.completedAt ?? null,
-          latestLegacy?.date ?? null,
-        ),
-      },
+      data: { visitsCount, lastVisitAt },
     });
+    // A visit after the lapse began ends it (audit AN-17). Reactivation
+    // stamps `dormantSince` and nothing ever cleared it: a patient who came
+    // back stayed «спящий» for good. Conditional on the stored stamp, so a
+    // reverted completion that leaves only older visits keeps it.
+    if (lastVisitAt) {
+      await prisma.patient.updateMany({
+        where: { id: patientId, dormantSince: { lte: lastVisitAt } },
+        data: { dormantSince: null },
+      });
+    }
   } catch (e) {
     // Never fail a visit over a denormalised counter.
     console.warn(

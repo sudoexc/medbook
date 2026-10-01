@@ -8,6 +8,9 @@
  * request or notification; a HARD_DELETE request completes (as an
  * anonymization, without deleting the card) and a job that keeps failing
  * ends FAILED, not retried forever.
+ *
+ * Review: a number a family shares took the other card's leads with it, and
+ * chat attachments (objects and links) and doctors' reminders survived.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -22,6 +25,8 @@ const state = vi.hoisted(() => ({
   patient: null as null | Record<string, unknown>,
   docs: [] as Array<{ id: string; fileUrl: string }>,
   revisions: [] as Array<{ id: string; pdfObjectKey: string | null }>,
+  convs: [] as Array<{ id: string }>,
+  messages: [] as Array<{ conversationId: string; attachments: unknown }>,
   deletedObjects: [] as string[],
   failStorage: false,
   audits: [] as Array<Record<string, unknown>>,
@@ -70,11 +75,15 @@ vi.mock("@/lib/prisma", () => {
       appointment: { updateMany: rec("appointment", "updateMany") },
       patientReview: { updateMany: rec("patientReview", "updateMany") },
       conversation: {
-        findMany: vi.fn(async () => []),
+        findMany: vi.fn(async () => state.convs),
         updateMany: rec("conversation", "updateMany"),
       },
-      message: { updateMany: rec("message", "updateMany") },
+      message: {
+        findMany: rec("message", "findMany", () => state.messages),
+        updateMany: rec("message", "updateMany"),
+      },
       patientClinicalNote: { deleteMany: rec("patientClinicalNote", "deleteMany") },
+      reminder: { deleteMany: rec("reminder", "deleteMany") },
       lead: { updateMany: rec("lead", "updateMany") },
       onlineRequest: { updateMany: rec("onlineRequest", "updateMany") },
       notificationSend: { updateMany: rec("notificationSend", "updateMany") },
@@ -106,6 +115,8 @@ import {
   runDsarTick,
 } from "@/server/workers/data-deletion";
 import { buildAnonymizationPayload } from "@/server/dsar/anonymize";
+import { chatAttachmentKey } from "@/lib/storage-ref";
+import { Prisma } from "@/generated/prisma/client";
 
 const due = new Date("2026-01-01T00:00:00Z");
 
@@ -137,6 +148,8 @@ beforeEach(() => {
     { id: "d2", fileUrl: "/api/crm/documents/file?key=clinics%2Fc1%2Fvisit-notes%2Fvn1.pdf" },
   ];
   state.revisions = [{ id: "r1", pdfObjectKey: "clinics/c1/visit-notes/vn1-r1.pdf" }];
+  state.convs = [];
+  state.messages = [];
 });
 
 const callsOf = (model: string) => state.calls.filter((c) => c.model === model);
@@ -149,7 +162,11 @@ describe("what an erasure reaches", () => {
       expect(c!.args.where).toEqual({
         OR: [
           { patientId: "p1" },
-          { clinicId: "c1", phone: { in: ["+998 90 123 45 67", "+998901234567"] } },
+          {
+            clinicId: "c1",
+            patientId: null,
+            phone: { in: ["+998 90 123 45 67", "+998901234567"] },
+          },
         ],
       });
       expect(c!.args.data).toMatchObject({ name: "Удалённый пациент", phone: "", comment: null });
@@ -220,6 +237,144 @@ describe("what an erasure reaches", () => {
       telegramLinkedAt: null,
       tgBlockedAt: null,
     });
+  });
+});
+
+describe("two cards on one number (a family)", () => {
+  // The mother owns +998901234567; her son's card keeps it in `phone` with a
+  // `contact:` stub as his identity (patients/route.ts, walkin.ts).
+  it("erasing the son's card takes only rows linked to him, never by the number", async () => {
+    state.patient = {
+      ...state.patient!,
+      fullName: "Иванов Сардор",
+      phone: "+998901234567",
+      phoneNormalized: "contact:lx2k9abc12",
+    };
+    await executeDeletionJob("job_1");
+    for (const model of ["lead", "onlineRequest"]) {
+      expect(callsOf(model)[0]!.args.where).toEqual({ OR: [{ patientId: "p1" }] });
+    }
+  });
+
+  it("erasing the mother's card leaves leads already linked to her son", async () => {
+    await executeDeletionJob("job_1");
+    for (const model of ["lead", "onlineRequest"]) {
+      const byNumber = (callsOf(model)[0]!.args.where as { OR: unknown[] }).OR[1];
+      // Only rows no card owns are taken by the number.
+      expect(byNumber).toMatchObject({ clinicId: "c1", patientId: null });
+    }
+  });
+
+  it("a card on a family: stub or an already erased card is matched by link only", async () => {
+    for (const phoneNormalized of ["family:p0:abc", "deleted:job_0", "tg:555"]) {
+      state.calls = [];
+      state.patient = { ...state.patient!, phone: "", phoneNormalized };
+      await executeDeletionJob("job_1");
+      expect(callsOf("lead")[0]!.args.where).toEqual({ OR: [{ patientId: "p1" }] });
+    }
+  });
+});
+
+describe("chat attachments and reminders", () => {
+  const proxy = (conv: string, key: string, name: string) =>
+    `/api/crm/conversations/${conv}/attachments/file?${new URLSearchParams({ key, name })}`;
+
+  beforeEach(() => {
+    state.docs = [];
+    state.revisions = [];
+    state.convs = [{ id: "conv1" }];
+    state.messages = [
+      {
+        conversationId: "conv1",
+        attachments: [
+          {
+            kind: "image",
+            url: proxy("conv1", "clinics/c1/chat/conv1/a1.jpg", "passport.jpg"),
+            name: "passport.jpg",
+          },
+          {
+            kind: "file",
+            url: proxy("conv1", "clinics/c1/chat/conv1/b2.pdf", "МРТ Иванов.pdf"),
+            name: "МРТ Иванов.pdf",
+          },
+        ],
+      },
+    ];
+  });
+
+  it("deletes every stored object, then drops the links with the bodies", async () => {
+    await executeDeletionJob("job_1");
+    expect(state.deletedObjects).toEqual([
+      "clinics/c1/chat/conv1/a1.jpg",
+      "clinics/c1/chat/conv1/b2.pdf",
+    ]);
+    const [find] = callsOf("message").filter((c) => c.op === "findMany");
+    expect(find!.args.where).toMatchObject({ conversationId: { in: ["conv1"] } });
+    const [update] = callsOf("message").filter((c) => c.op === "updateMany");
+    expect(update!.args).toEqual({
+      where: { conversationId: { in: ["conv1"] } },
+      data: { body: null, attachments: Prisma.DbNull },
+    });
+  });
+
+  it("never deletes an object outside the thread's own chat folder", async () => {
+    state.messages = [
+      {
+        conversationId: "conv1",
+        attachments: [
+          { kind: "file", url: proxy("conv1", "clinics/c2/chat/conv1/x.pdf", "x.pdf") },
+          { kind: "file", url: proxy("conv9", "clinics/c1/chat/conv9/y.pdf", "y.pdf") },
+          { kind: "file", url: proxy("conv1", "clinics/c1/documents/scan.pdf", "z.pdf") },
+          { kind: "image", url: "/uploads/chat/c1/conv1/dev.jpg" },
+          { kind: "file" },
+        ],
+      },
+    ];
+    await executeDeletionJob("job_1");
+    expect(state.deletedObjects).toEqual([]);
+    // The links still go: nothing points at those objects from this thread.
+    expect(callsOf("message").some((c) => c.op === "updateMany")).toBe(true);
+  });
+
+  it("a storage failure keeps the links so the retry still finds the files", async () => {
+    state.failStorage = true;
+    await expect(executeDeletionJob("job_1")).rejects.toThrow("storage unavailable");
+    expect(callsOf("message").filter((c) => c.op === "updateMany")).toEqual([]);
+    expect(callsOf("patient")).toEqual([]);
+  });
+
+  it("the doctors' reminders about the patient are deleted", async () => {
+    await executeDeletionJob("job_1");
+    expect(callsOf("reminder")).toEqual([
+      { model: "reminder", op: "deleteMany", args: { where: { patientId: "p1" } } },
+    ]);
+  });
+});
+
+describe("chatAttachmentKey", () => {
+  const scope = { clinicId: "c1", conversationId: "conv1" };
+
+  it("reads the key from the chat proxy URL, relative or absolute", () => {
+    const key = "clinics/c1/chat/conv1/a1.jpg";
+    const rel = `/api/crm/conversations/conv1/attachments/file?key=${encodeURIComponent(key)}&name=a.jpg`;
+    expect(chatAttachmentKey(rel, scope)).toBe(key);
+    expect(chatAttachmentKey(`https://neurofax.uz${rel}`, scope)).toBe(key);
+  });
+
+  it("refuses keys outside the folder, traversal and the bare folder", () => {
+    const at = (key: string) =>
+      `/api/crm/conversations/conv1/attachments/file?key=${encodeURIComponent(key)}`;
+    expect(chatAttachmentKey(at("clinics/c1/chat/conv1/../conv2/a.jpg"), scope)).toBeNull();
+    expect(chatAttachmentKey(at("clinics/c1/chat/conv1/"), scope)).toBeNull();
+    expect(chatAttachmentKey(at("clinics/c1/chat/conv10/a.jpg"), scope)).toBeNull();
+    expect(chatAttachmentKey(null, scope)).toBeNull();
+    expect(chatAttachmentKey("/uploads/chat/c1/conv1/a.jpg", scope)).toBeNull();
+  });
+
+  it("also knows a raw storage URL of the same folder", () => {
+    expect(
+      chatAttachmentKey("https://neurofax.uz/files/medbook/clinics/c1/chat/conv1/v.ogg", scope),
+    ).toBe("clinics/c1/chat/conv1/v.ogg");
   });
 });
 

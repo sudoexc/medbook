@@ -78,6 +78,38 @@ export function storageKeyFromUrl(url: string | null | undefined): string | null
   return validKey(match?.[1]);
 }
 
+/** The chat streaming proxy every chat attachment URL is persisted as. */
+const CHAT_FILE_ROUTE = /^\/api\/crm\/conversations\/[^/]+\/attachments\/file$/;
+
+/**
+ * The storage key behind a chat attachment kept on a Message of
+ * `conversationId`: the chat proxy
+ * `/api/crm/conversations/<id>/attachments/file?key=…` that inbound Telegram
+ * media and staff uploads persist, or any shape `storageKeyFromUrl` knows.
+ * Only a key inside that conversation's own chat folder
+ * (`clinics/<clinic>/chat/<conversation>/…`) counts, so a forged attachment
+ * URL can never point a caller that deletes (the DSAR erasure) at another
+ * clinic's or another thread's object. Null for dev `/uploads/…` files.
+ */
+export function chatAttachmentKey(
+  url: string | null | undefined,
+  scope: { clinicId: string; conversationId: string },
+): string | null {
+  const raw = url?.trim();
+  if (!raw || !scope.clinicId || !scope.conversationId) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw, "http://local.invalid");
+  } catch {
+    return null;
+  }
+  const key = CHAT_FILE_ROUTE.test(parsed.pathname)
+    ? validKey(parsed.searchParams.get("key"))
+    : storageKeyFromUrl(raw);
+  const folder = `clinics/${scope.clinicId}/chat/${scope.conversationId}/`;
+  return key && key.startsWith(folder) && key.length > folder.length ? key : null;
+}
+
 /** Does `key` sit in a folder owned by `clinicId`? */
 export function isClinicOwnedKey(key: string, clinicId: string): boolean {
   if (!validKey(key) || !clinicId) return false;

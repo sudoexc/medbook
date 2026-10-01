@@ -17,15 +17,17 @@
  *
  * What else a DSAR erasure covers (audit PT-07, carried out by
  * `src/server/workers/data-deletion.ts`):
- *   - erased: site requests and leads (`Lead`, `OnlineRequest`, by card
- *     and by the card's phone), sent notification texts and recipients
+ *   - erased: site requests and leads (`Lead`, `OnlineRequest`, by card,
+ *     and by the card's own number when no card owns the row: a family
+ *     shares one number), sent notification texts and recipients
  *     (`NotificationSend`), communication log bodies, call summaries,
  *     recordings and the patient's number on calls, chat messages and the
- *     inbox preview, review comments, the clinical note, appointment
- *     notes, SOAP drafts, and every stored FILE of the patient: documents
- *     (uploads, scans and rendered PDFs, rows and objects) and the issued
- *     conclusion PDFs of visit-note revisions. A file carries the name on
- *     its pages, so no file survives.
+ *     inbox preview, review comments, the clinical note, the doctors'
+ *     reminders about the patient, appointment notes, SOAP drafts, and
+ *     every stored FILE of the patient: documents (uploads, scans and
+ *     rendered PDFs, rows and objects), chat attachments (objects and
+ *     links) and the issued conclusion PDFs of visit-note revisions. A
+ *     file carries the name on its pages, so no file survives.
  *   - kept, by policy: the structured medical record (visit notes and
  *     their revisions' content, diagnoses, prescriptions, allergies, lab
  *     orders and results, sick leaves, referrals, appointments, payments).

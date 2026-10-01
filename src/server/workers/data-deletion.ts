@@ -11,8 +11,9 @@
  *          says who they are;
  *        - erase everything about the person outside the card
  *          (`scrubPatientPhiCarriers`, audit PT-07): leads and site
- *          requests, notification texts, communication bodies, calls, chat,
- *          reviews, the clinical note, every stored file;
+ *          requests, notification texts, communication bodies, calls, chat
+ *          and its attachments, reviews, the clinical note, reminders, every
+ *          stored file;
  *        - anonymize the card (`buildAnonymizationPayload`);
  *        - mark the job ANONYMIZED and audit PATIENT_ANONYMIZED naming the
  *          erased identity fields.
@@ -48,7 +49,8 @@ import {
 import { scrubPatientFromAuditLog } from "@/server/dsar/audit-scrub";
 import { DSAR_EXPORTS_BUCKET } from "@/server/dsar/expiry";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
-import { storageKeyFromUrl } from "@/lib/storage-ref";
+import { isRealPhone } from "@/server/patient/phone-identity";
+import { chatAttachmentKey, storageKeyFromUrl } from "@/lib/storage-ref";
 
 /** Failed executions before a job is given up on as FAILED. */
 export const MAX_DELETION_ATTEMPTS = 3;
@@ -76,6 +78,16 @@ async function logAudit(
   } catch (err) {
     console.error("[dsar:deletion] audit insert failed", err);
   }
+}
+
+/** The URLs of a Message's `attachments` JSON (`[{ kind, url, … }]`). */
+function attachmentUrls(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((a) =>
+    a && typeof a === "object" && typeof (a as { url?: unknown }).url === "string"
+      ? [(a as { url: string }).url]
+      : [],
+  );
 }
 
 /**
@@ -131,9 +143,31 @@ async function scrubPatientPhiCarriers(
     select: { id: true },
   });
   if (convs.length > 0) {
+    const conversationIds = convs.map((c) => c.id);
+    // What he sent the bot (a passport photo, an MRI) and what staff sent
+    // him are objects in storage, reachable by the capability URL kept in
+    // `attachments` (audit PT-07 review). The object goes first and a
+    // storage failure throws, like the documents below: the job retries and
+    // still finds the link, instead of losing the key to a file that stays.
+    const withFiles = await prisma.message.findMany({
+      where: {
+        conversationId: { in: conversationIds },
+        attachments: { not: Prisma.AnyNull },
+      },
+      select: { conversationId: true, attachments: true },
+    });
+    for (const msg of withFiles) {
+      for (const url of attachmentUrls(msg.attachments)) {
+        const key = chatAttachmentKey(url, {
+          clinicId,
+          conversationId: msg.conversationId,
+        });
+        if (key) await deleteObject(undefined, key);
+      }
+    }
     await prisma.message.updateMany({
-      where: { conversationId: { in: convs.map((c) => c.id) } },
-      data: { body: null },
+      where: { conversationId: { in: conversationIds } },
+      data: { body: null, attachments: Prisma.DbNull },
     });
   }
   await prisma.conversation.updateMany({
@@ -147,16 +181,29 @@ async function scrubPatientPhiCarriers(
   });
   // The doctor's clinical note (audit PT-11) is free text about the person.
   await prisma.patientClinicalNote.deleteMany({ where: { patientId } });
+  // So is a doctor's reminder about him («Позвонить Иванову по МРТ»): the
+  // title and body are the whole reminder, nothing is left to keep.
+  await prisma.reminder.deleteMany({ where: { patientId } });
 
   // Site requests and leads (audit PT-07): linked to the card, or left with
-  // the card's number before anyone linked them.
-  const phones = [identity.phone, identity.phoneNormalized].filter(
-    (p): p is string => !!p && !p.startsWith("deleted:") && !p.startsWith("contact:"),
-  );
+  // the card's number before anyone linked them. A family shares one number
+  // (a son's card keeps his mother's in `phone`, with a `contact:` stub as
+  // its identity), so by number only rows no card owns are taken: a lead
+  // already linked is that card's, the mother's or the son's (PT-07
+  // review). A card whose number is not its own identity (a `contact:`
+  // sharer, a `family:` or `tg:` stub, an already erased card) is matched
+  // by link only: the number in its `phone` is somebody else's.
+  const phones = isRealPhone(identity.phoneNormalized)
+    ? [identity.phone, identity.phoneNormalized].filter(
+        (p): p is string => !!p && !p.startsWith("deleted:") && !p.startsWith("contact:"),
+      )
+    : [];
   const byCardOrPhone = {
     OR: [
       { patientId },
-      ...(phones.length > 0 ? [{ clinicId, phone: { in: phones } }] : []),
+      ...(phones.length > 0
+        ? [{ clinicId, patientId: null, phone: { in: phones } }]
+        : []),
     ],
   };
   const erasedContact = {

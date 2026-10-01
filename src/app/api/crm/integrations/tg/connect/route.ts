@@ -36,6 +36,10 @@ import {
   setWebhook,
   type TgBotCommand,
 } from "@/server/telegram/bot-api";
+import {
+  TG_ALLOWED_UPDATES,
+  telegramPublicOrigin,
+} from "@/server/telegram/clinic-bot";
 
 const Schema = z.object({
   token: z
@@ -73,11 +77,6 @@ const DESCRIPTION_UZ =
   "Klinika boti — qabulga yozilish, eslatmalar va ro'yxatxona bilan bog'lanish.";
 const SHORT_DESCRIPTION_UZ = "Qabulga yozilish va klinika bilan aloqa";
 
-function publicOrigin(request: Request): string {
-  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (envUrl) return envUrl.replace(/\/+$/, "");
-  return new URL(request.url).origin;
-}
 
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: Schema },
@@ -114,7 +113,7 @@ export const POST = createApiHandler(
       return err("bot_in_use", 409, { otherClinicSlug: collision.slug });
     }
 
-    const origin = publicOrigin(request);
+    const origin = telegramPublicOrigin(request);
     if (!origin.startsWith("https://")) {
       // Webhook + Mini-App both require HTTPS — refuse rather than silently
       // produce a bot that can't be reached.
@@ -183,7 +182,7 @@ export const POST = createApiHandler(
     const w = await setWebhook(body.token, {
       url: webhookUrl,
       secret_token: webhookSecret,
-      allowed_updates: ["message", "callback_query", "my_chat_member"],
+      allowed_updates: [...TG_ALLOWED_UPDATES],
       drop_pending_updates: true,
     }).catch((e: unknown) => {
       console.error("[tg.connect] setWebhook threw:", e);

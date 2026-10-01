@@ -391,8 +391,13 @@ async function handleFsmMessage(
   conversationId: string,
   event: FsmEvent,
   miniAppUrl: string | null,
+  from: TgUser | undefined,
 ): Promise<void> {
-  const welcome = await readWelcomeConfig(clinic.id);
+  // The greeting goes out in the sender's language (audit ST-08).
+  const welcome = await readWelcomeConfig(
+    clinic.id,
+    await senderLang(clinic.id, from),
+  );
   const catalog = loadBotCatalog(miniAppUrl, welcome);
   const prev = await loadSnapshot(clinic.id, chatId);
   const { next, outgoing } = step(prev, event, catalog);
@@ -805,6 +810,7 @@ export async function POST(
         recorded.conversationId,
         event,
         miniAppUrl,
+        msg.from,
       );
       return jsonResponse({ ok: true });
     }
@@ -971,6 +977,7 @@ export async function POST(
         conv.id,
         { kind: "callback", data: cq.data ?? "" },
         miniAppUrl,
+        cq.from,
       );
       return jsonResponse({ ok: true });
     }

@@ -16,6 +16,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -24,6 +34,19 @@ import {
   SettingsApiError,
   settingsFetch,
 } from "../../_hooks/use-settings-api";
+
+type BranchUsage = {
+  doctors: number;
+  cabinets: number;
+  upcomingAppointments: number;
+};
+
+/** API `reason` → message key under `branches.errors` (audit ST-06). */
+const BRANCH_ERROR_KEYS: Record<string, string> = {
+  last_active_branch: "lastActive",
+  default_branch: "defaultBranch",
+  inactive_default: "inactiveDefault",
+};
 
 type BranchRow = {
   id: string;
@@ -51,40 +74,55 @@ export function BranchesSettingsClient() {
   });
 
   const [createOpen, setCreateOpen] = React.useState(false);
+  // A branch the admin is switching off while doctors, cabinets or upcoming
+  // visits still point at it: the server answered with the counts and waits
+  // for a confirmation (audit ST-06).
+  const [inUse, setInUse] = React.useState<{
+    row: BranchRow;
+    usage: BranchUsage;
+    via: "patch" | "delete";
+  } | null>(null);
+
+  const branchError = (e: Error, row: BranchRow, via: "patch" | "delete") => {
+    const reason = e instanceof SettingsApiError ? e.reason : undefined;
+    if (reason === "branch_in_use" && e instanceof SettingsApiError) {
+      const usage = (e.details as { usage?: BranchUsage } | null)?.usage;
+      if (usage) {
+        setInUse({ row, usage, via });
+        return;
+      }
+    }
+    const key = reason ? BRANCH_ERROR_KEYS[reason] : undefined;
+    toast.error(key ? t(`branches.errors.${key}`) : e.message);
+    // The card flipped its switch optimistically; put it back.
+    qc.invalidateQueries({ queryKey: ["settings", "branches"] });
+  };
 
   const patchMutation = useMutation({
-    mutationFn: (payload: { id: string; data: Partial<BranchRow> }) =>
-      settingsFetch<BranchRow>(`/api/crm/branches/${payload.id}`, {
+    mutationFn: (payload: {
+      row: BranchRow;
+      data: Partial<BranchRow> & { confirmInUse?: boolean };
+    }) =>
+      settingsFetch<BranchRow>(`/api/crm/branches/${payload.row.id}`, {
         method: "PATCH",
         body: JSON.stringify(payload.data),
       }),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["settings", "branches"] }),
-    onError: (e: Error) => {
-      const reason = e instanceof SettingsApiError ? e.reason : undefined;
-      if (reason === "last_active_branch") {
-        toast.error(t("branches.errors.lastActive"));
-        return;
-      }
-      toast.error(e.message);
-    },
+    onError: (e: Error, payload) => branchError(e, payload.row, "patch"),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      settingsFetch(`/api/crm/branches/${id}`, { method: "DELETE" }),
+    mutationFn: (payload: { row: BranchRow; confirm?: boolean }) =>
+      settingsFetch(
+        `/api/crm/branches/${payload.row.id}${payload.confirm ? "?confirm=1" : ""}`,
+        { method: "DELETE" },
+      ),
     onSuccess: () => {
       toast.success(t("branches.deactivated"));
       qc.invalidateQueries({ queryKey: ["settings", "branches"] });
     },
-    onError: (e: Error) => {
-      const reason = e instanceof SettingsApiError ? e.reason : undefined;
-      if (reason === "last_active_branch") {
-        toast.error(t("branches.errors.lastActive"));
-        return;
-      }
-      toast.error(e.message);
-    },
+    onError: (e: Error, payload) => branchError(e, payload.row, "delete"),
   });
 
   const rows = listQuery.data?.rows ?? [];
@@ -133,8 +171,8 @@ export function BranchesSettingsClient() {
               <BranchCard
                 key={b.id}
                 row={b}
-                onPatch={(data) => patchMutation.mutate({ id: b.id, data })}
-                onDelete={() => deleteMutation.mutate(b.id)}
+                onPatch={(data) => patchMutation.mutate({ row: b, data })}
+                onDelete={() => deleteMutation.mutate({ row: b })}
               />
             ))}
           </div>
@@ -161,6 +199,52 @@ export function BranchesSettingsClient() {
           qc.invalidateQueries({ queryKey: ["settings", "branches"] })
         }
       />
+
+      <AlertDialog
+        open={inUse !== null}
+        onOpenChange={(v: boolean) => {
+          if (!v) {
+            setInUse(null);
+            qc.invalidateQueries({ queryKey: ["settings", "branches"] });
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("branches.inUse.title", {
+                name: inUse?.row.nameRu || inUse?.row.slug || "",
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("branches.inUse.description", {
+                doctors: inUse?.usage.doctors ?? 0,
+                cabinets: inUse?.usage.cabinets ?? 0,
+                appointments: inUse?.usage.upcomingAppointments ?? 0,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!inUse) return;
+                if (inUse.via === "delete") {
+                  deleteMutation.mutate({ row: inUse.row, confirm: true });
+                } else {
+                  patchMutation.mutate({
+                    row: inUse.row,
+                    data: { isActive: false, confirmInUse: true },
+                  });
+                }
+                setInUse(null);
+              }}
+            >
+              {t("branches.inUse.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageContainer>
   );
 }

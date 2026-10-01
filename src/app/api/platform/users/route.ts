@@ -42,6 +42,8 @@ export const GET = createPlatformListHandler(async ({ request }) => {
       phone: true,
       active: true,
       clinicId: true,
+      // 2FA status only, for «Сбросить 2FA» (audit ST-03); never the secret.
+      totpEnabledAt: true,
       createdAt: true,
       updatedAt: true,
       clinic: {

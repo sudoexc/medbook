@@ -5,8 +5,9 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound, diff } from "@/server/http";
+import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateTemplateSchema } from "@/server/schemas/notification";
+import { verbatimPlaceholderLeak } from "@/server/notifications/rules";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -31,6 +32,19 @@ export const PATCH = createApiHandler(
       where: { id },
     });
     if (!before) return notFound();
+    // The bot's greeting is sent verbatim: a placeholder would reach the
+    // patient as «{{patient.firstName}}» (audit ST-08). Checked on the texts
+    // this edit sends, or on both when it renames a template to that key.
+    const nextKey = body.key ?? before.key;
+    const leak = verbatimPlaceholderLeak(
+      nextKey,
+      body.key && body.key !== before.key
+        ? [body.bodyRu ?? before.bodyRu, body.bodyUz ?? before.bodyUz]
+        : [body.bodyRu, body.bodyUz],
+    );
+    if (leak) {
+      return err("UnknownPlaceholder", 400, { unknown: leak, allowed: [] });
+    }
     const after = await prisma.notificationTemplate.update({
       where: { id },
       data: body as never,

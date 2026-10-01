@@ -8,7 +8,9 @@
  *
  * Each maps 1:1 onto a NotificationTemplate row — the existing materialise →
  * NotificationSend → send-worker pipeline does the delivery. There is NO
- * parallel sender; the widget just toggles `isActive` and edits `bodyRu`.
+ * parallel sender; the widget toggles `isActive` and edits `bodyRu` AND
+ * `bodyUz` (audit ST-08: it used to write the Russian text only, so a new
+ * address in the reminder never reached patients who read Uzbek).
  *
  * `reminder` reuses the canonical seed row from `default-templates.ts`; the
  * other two are defined here and auto-provisioned on first read (see
@@ -33,27 +35,38 @@ export const AUTO_MESSAGE_KEYS: Record<AutoMessageKind, string> = {
   thankYou: "appointment.thank-you",
 };
 
+/** The clinic names a default greeting is built from. */
+export type ClinicNames = { nameRu: string; nameUz: string };
+
 /**
- * Default bilingual greeting for a fresh chat. Kept in sync with the FSM
- * fallback `WELCOME_TEXT` in `src/server/telegram/state.ts` — the template
- * row is the runtime source of truth once provisioned; the FSM const only
- * matters for a clinic whose `patient.welcome` row is missing/inactive.
+ * Default greeting for a fresh chat, one per language: the bot answers in
+ * the sender's language (`readWelcomeConfig`). Built from the clinic's own
+ * name; every clinic used to greet patients as «клиника Neurofax» (audit
+ * ST-08). The template row is the runtime source of truth once provisioned.
  */
-const DEFAULT_WELCOME_BODY = [
-  "👋 Здравствуйте! Это клиника Neurofax.",
-  "",
-  "Если у вас есть вопросы — просто напишите сюда, регистратура свяжется с вами.",
-  "",
-  "Для записи на приём нажмите кнопку ниже.",
-  "",
-  "—",
-  "",
-  "👋 Assalomu alaykum! Bu Neurofax klinikasi.",
-  "",
-  "Savollar bo'lsa — shu yerga yozing, ro'yxatxona javob beradi.",
-  "",
-  "Qabulga yozilish uchun pastdagi tugmani bosing.",
-].join("\n");
+export function defaultWelcomeBodies(clinic: ClinicNames): {
+  ru: string;
+  uz: string;
+} {
+  const nameRu = clinic.nameRu.trim();
+  const nameUz = (clinic.nameUz || clinic.nameRu).trim();
+  return {
+    ru: [
+      nameRu ? `👋 Здравствуйте! Это ${nameRu}.` : "👋 Здравствуйте!",
+      "",
+      "Если у вас есть вопросы, просто напишите сюда, регистратура свяжется с вами.",
+      "",
+      "Для записи на приём нажмите кнопку ниже.",
+    ].join("\n"),
+    uz: [
+      nameUz ? `👋 Assalomu alaykum! Bu ${nameUz}.` : "👋 Assalomu alaykum!",
+      "",
+      "Savollaringiz bo'lsa, shu yerga yozing, ro'yxatxona siz bilan bog'lanadi.",
+      "",
+      "Qabulga yozilish uchun pastdagi tugmani bosing.",
+    ].join("\n"),
+  };
+}
 
 type AutoMessageSpec = {
   kind: AutoMessageKind;
@@ -94,7 +107,8 @@ function reminderSpec(): AutoMessageSpec {
 }
 
 /** The three specs in widget display order. */
-export function autoMessageSpecs(): AutoMessageSpec[] {
+export function autoMessageSpecs(clinic: ClinicNames): AutoMessageSpec[] {
+  const welcome = defaultWelcomeBodies(clinic);
   return [
     {
       kind: "welcome",
@@ -106,8 +120,8 @@ export function autoMessageSpecs(): AutoMessageSpec[] {
       // No materialiser — read directly by the bot FSM on first contact.
       trigger: "MANUAL",
       triggerConfig: null,
-      bodyRu: DEFAULT_WELCOME_BODY,
-      bodyUz: DEFAULT_WELCOME_BODY,
+      bodyRu: welcome.ru,
+      bodyUz: welcome.uz,
       variables: [],
     },
     reminderSpec(),
@@ -144,12 +158,14 @@ export async function ensureAutoMessageTemplates(
   clinicId: string,
 ): Promise<void> {
   await runWithTenant({ kind: "SYSTEM" }, async () => {
-    const specs = autoMessageSpecs();
+    const keys = Object.values(AUTO_MESSAGE_KEYS);
     const existing = await prisma.notificationTemplate.findMany({
-      where: { clinicId, key: { in: specs.map((s) => s.key) } },
+      where: { clinicId, key: { in: keys } },
       select: { key: true },
     });
     const have = new Set(existing.map((r) => r.key));
+    if (keys.every((k) => have.has(k))) return;
+    const specs = autoMessageSpecs(await loadClinicNames(clinicId));
     const missing = specs.filter((s) => !have.has(s.key));
     if (missing.length === 0) return;
     await prisma.notificationTemplate.createMany({
@@ -190,10 +206,23 @@ export type AutoMessageView = {
   kind: AutoMessageKind;
   key: string;
   enabled: boolean;
+  /** Russian text (`bodyRu`). */
   text: string;
+  /** Uzbek text (`bodyUz`), sent to patients who read Uzbek. */
+  textUz: string;
   /** Placeholders the editor may use for this message (empty for welcome). */
   variables: string[];
 };
+
+async function loadClinicNames(clinicId: string): Promise<ClinicNames> {
+  const clinic = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { nameRu: true, nameUz: true },
+    }),
+  );
+  return { nameRu: clinic?.nameRu ?? "", nameUz: clinic?.nameUz ?? "" };
+}
 
 /**
  * Read the three rows in widget order. Auto-provisions missing rows first so
@@ -203,11 +232,12 @@ export async function getAutoMessages(
   clinicId: string,
 ): Promise<AutoMessageView[]> {
   await ensureAutoMessageTemplates(clinicId);
+  const names = await loadClinicNames(clinicId);
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    const specs = autoMessageSpecs();
+    const specs = autoMessageSpecs(names);
     const rows = await prisma.notificationTemplate.findMany({
       where: { clinicId, key: { in: specs.map((s) => s.key) } },
-      select: { key: true, isActive: true, bodyRu: true },
+      select: { key: true, isActive: true, bodyRu: true, bodyUz: true },
     });
     const byKey = new Map(rows.map((r) => [r.key, r]));
     return specs.map((s) => {
@@ -217,6 +247,7 @@ export async function getAutoMessages(
         key: s.key,
         enabled: row?.isActive ?? true,
         text: row?.bodyRu ?? s.bodyRu,
+        textUz: row?.bodyUz || row?.bodyRu || s.bodyUz,
         variables: allowedKeysForKind(s.kind),
       };
     });
@@ -226,26 +257,34 @@ export async function getAutoMessages(
 export type WelcomeConfig = { enabled: boolean; text: string };
 
 /**
- * Read the clinic's welcome config for the bot FSM on first contact.
+ * Read the clinic's welcome for the bot FSM on first contact, in the
+ * sender's language (audit ST-08: the Uzbek text was editable but never
+ * sent).
  *
- *   - `null`               — no row yet (clinic predates the widget) → caller
- *                            falls back to the hard-coded FSM greeting.
- *   - `{ enabled: false }` — admin toggled welcome OFF → bot stays silent.
- *   - `{ enabled: true }`  — send `text` as the greeting.
+ *   - no row yet (clinic predates the widget) → the default greeting with
+ *     the clinic's name (never a hard-coded clinic);
+ *   - `{ enabled: false }` — admin toggled welcome OFF → bot stays silent;
+ *   - `{ enabled: true }`  — send `text` as the greeting. It goes out
+ *     verbatim: the editors refuse `{{…}}` in it (`allowedKeysForTemplate`).
  *
  * Does NOT auto-provision — the webhook hot path stays read-only.
  */
 export async function readWelcomeConfig(
   clinicId: string,
+  lang: "ru" | "uz" = "ru",
 ): Promise<WelcomeConfig | null> {
-  return runWithTenant({ kind: "SYSTEM" }, async () => {
-    const row = await prisma.notificationTemplate.findUnique({
+  const row = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationTemplate.findUnique({
       where: {
         clinicId_key: { clinicId, key: AUTO_MESSAGE_KEYS.welcome },
       },
-      select: { isActive: true, bodyRu: true },
-    });
-    if (!row) return null;
-    return { enabled: row.isActive, text: row.bodyRu };
-  });
+      select: { isActive: true, bodyRu: true, bodyUz: true },
+    }),
+  );
+  if (!row) {
+    const fallback = defaultWelcomeBodies(await loadClinicNames(clinicId));
+    return { enabled: true, text: lang === "uz" ? fallback.uz : fallback.ru };
+  }
+  const text = lang === "uz" ? row.bodyUz || row.bodyRu : row.bodyRu;
+  return { enabled: row.isActive, text };
 }

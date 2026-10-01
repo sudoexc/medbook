@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { clientIpForAudit } from "@/lib/client-ip";
+import { activeBranchClearCookie } from "@/server/platform/branch-cookie";
 import { pickSessionsToKick } from "./session-security";
 
 export const SESSION_COOKIE_NAME = "crm_user_session";
@@ -141,6 +142,9 @@ export async function mintUserSessionOnSignIn(
     path: "/",
     maxAge: COOKIE_MAX_AGE_SECONDS,
   });
+  // A fresh sign-in starts clinic-wide, not in the branch the browser's
+  // previous user picked (audit ST-06).
+  store.set(activeBranchClearCookie());
 
   return { sessionId: newSession.id, token };
 }

@@ -5,6 +5,10 @@
  * very first chat event the bot replies with a single bilingual welcome and
  * an optional `web_app` button; afterwards it stays silent until the
  * snapshot expires (30-min TTL).
+ *
+ * The built-in greeting (used only when the webhook passes no clinic
+ * welcome) names no clinic: every clinic used to introduce itself as
+ * Neurofax (audit ST-08).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -38,7 +42,7 @@ describe("fsm.step (simplified welcome flow)", () => {
       CATALOG_WITH_MINIAPP,
     );
     expect(next.state).toBe("welcomed");
-    expect(outgoing?.text).toContain("Neurofax");
+    expect(outgoing?.text).not.toMatch(/Neurofax/i);
     // Bilingual: both RU and UZ greetings in the same message.
     expect(outgoing?.text).toContain("Здравствуйте");
     expect(outgoing?.text).toContain("Assalomu alaykum");
@@ -53,7 +57,7 @@ describe("fsm.step (simplified welcome flow)", () => {
       CATALOG_WITH_MINIAPP,
     );
     expect(next.state).toBe("welcomed");
-    expect(outgoing?.text).toContain("Neurofax");
+    expect(outgoing?.text).toContain("Здравствуйте");
   });
 
   it("greets on first ever text even without /start", () => {
@@ -63,7 +67,7 @@ describe("fsm.step (simplified welcome flow)", () => {
       CATALOG_WITH_MINIAPP,
     );
     expect(next.state).toBe("welcomed");
-    expect(outgoing?.text).toContain("Neurofax");
+    expect(outgoing?.text).toContain("Здравствуйте");
   });
 
   it("stays silent after welcoming on subsequent plain text", () => {
@@ -89,7 +93,7 @@ describe("fsm.step (simplified welcome flow)", () => {
   it("welcome without miniAppUrl is text-only (no inline keyboard)", () => {
     const { next, outgoing } = step(fresh(), { kind: "start" }, EMPTY_CATALOG);
     expect(next.state).toBe("welcomed");
-    expect(outgoing?.text).toContain("Neurofax");
+    expect(outgoing?.text).toContain("Здравствуйте");
     expect(outgoing?.replyMarkup).toBeUndefined();
   });
 });

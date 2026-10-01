@@ -151,6 +151,17 @@ function readBranchIdFromRequest(request: Request): string | null {
 }
 
 /**
+ * Drop a cookie branch that no longer exists, belongs to another clinic or
+ * was switched off (audit ST-06): it pinned every read to an empty branch.
+ * No cookie, no lookup.
+ */
+async function dropStaleBranch(ctx: TenantContext): Promise<TenantContext> {
+  if (ctx.kind !== "TENANT" || !ctx.branchId) return ctx;
+  const { withLiveBranch } = await import("@/server/branches/active-branch-guard");
+  return withLiveBranch(ctx);
+}
+
+/**
  * `auth()` is also the server-side session check (audit SEC-05/SEC-06,
  * DC-02): the NextAuth `jwt` callback consults `session-guard.ts`, so a
  * revoked, idled-out, kicked or deactivated session arrives here as null (401),
@@ -280,6 +291,7 @@ export function createApiHandler<TBody = unknown>(
       const status = (e as Error & { status?: number }).status ?? 403;
       return json({ error: "Forbidden" }, { status });
     }
+    ctx = await dropStaleBranch(ctx);
 
     if (ctx.kind === "SUPER_ADMIN") {
       return json(
@@ -368,6 +380,7 @@ export function createApiListHandler(
       const status = (e as Error & { status?: number }).status ?? 403;
       return json({ error: "Forbidden" }, { status });
     }
+    ctx = await dropStaleBranch(ctx);
 
     // GET-only handler — VIEW_ONLY does not need to block here (every method
     // routed through this wrapper is read-only by construction), but we still

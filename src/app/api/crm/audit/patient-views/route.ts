@@ -18,14 +18,17 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { tashkentDayRange } from "@/lib/tashkent-time";
 import { ok, parseQuery } from "@/server/http";
+import { TashkentDaySchema } from "@/server/schemas/common";
 
 const QuerySchema = z.object({
   patientId: z.string().optional(),
   viewerUserId: z.string().optional(),
   context: z.string().optional(),
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  // Tashkent calendar days, both inclusive (audit ST-09).
+  from: TashkentDaySchema.optional(),
+  to: TashkentDaySchema.optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -42,12 +45,8 @@ export const GET = createApiListHandler(
     if (q.patientId) where.patientId = q.patientId;
     if (q.viewerUserId) where.viewerUserId = q.viewerUserId;
     if (q.context) where.context = q.context;
-    if (q.from || q.to) {
-      where.createdAt = {
-        ...(q.from ? { gte: q.from } : {}),
-        ...(q.to ? { lte: q.to } : {}),
-      };
-    }
+    const createdAt = tashkentDayRange(q.from, q.to);
+    if (createdAt) where.createdAt = createdAt;
 
     const take = q.limit + 1;
     const rows = await prisma.patientView.findMany({
@@ -92,8 +91,8 @@ export const GET = createApiListHandler(
             patientId: q.patientId ?? null,
             viewerUserId: q.viewerUserId ?? null,
             context: q.context ?? null,
-            from: q.from ? q.from.toISOString() : null,
-            to: q.to ? q.to.toISOString() : null,
+            from: q.from ?? null,
+            to: q.to ?? null,
           },
           rowCount: rows.length,
         },

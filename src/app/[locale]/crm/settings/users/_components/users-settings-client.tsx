@@ -8,6 +8,7 @@ import {
   KeyRoundIcon,
   Pencil as PencilIcon,
   PlusIcon,
+  ShieldOffIcon,
   Trash2Icon,
   UserCogIcon,
   UserPlusIcon,
@@ -40,7 +41,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 
-import { settingsFetch } from "../../_hooks/use-settings-api";
+import { SettingsApiError, settingsFetch } from "../../_hooks/use-settings-api";
+import { PasswordReentryDialog } from "../../_components/password-reentry-dialog";
 
 type Role =
   | "ADMIN"
@@ -57,6 +59,10 @@ type UserRow = {
   phone: string | null;
   active: boolean;
   createdAt: string;
+  /** TOTP enrolled (the secret itself never reaches the browser). */
+  totpEnabled: boolean;
+  /** The schedule card a doctor login holds (audit ST-04). */
+  doctorCard: { id: string; nameRu: string } | null;
 };
 
 const ROLES: Role[] = [
@@ -95,6 +101,7 @@ export function UsersSettingsClient() {
   const [editRow, setEditRow] = React.useState<UserRow | null>(null);
   const [deleteRow, setDeleteRow] = React.useState<UserRow | null>(null);
   const [resetRow, setResetRow] = React.useState<UserRow | null>(null);
+  const [totpRow, setTotpRow] = React.useState<UserRow | null>(null);
 
   // Doctor cards that exist in the schedule but have no login yet. Surfaced as
   // an onboarding checklist so an admin provisioning a clinic can see at a
@@ -208,19 +215,20 @@ export function UsersSettingsClient() {
               <th className="px-3 py-2 font-medium">{t("users.cols.role")}</th>
               <th className="px-3 py-2 font-medium">{t("users.cols.phone")}</th>
               <th className="px-3 py-2 font-medium">{t("users.cols.status")}</th>
+              <th className="px-3 py-2 font-medium">{t("users.cols.twoFactor")}</th>
               <th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>
             {listQuery.isLoading ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
                   {t("common.loading")}
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
                   {t("users.empty")}
                 </td>
               </tr>
@@ -251,6 +259,13 @@ export function UsersSettingsClient() {
                       </span>
                     )}
                   </td>
+                  <td className="px-3 py-2 text-xs">
+                    {u.totpEnabled ? (
+                      <span className="text-success">{t("users.twoFactor.on")}</span>
+                    ) : (
+                      <span className="text-muted-foreground">{t("users.twoFactor.off")}</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
                       <Button
@@ -269,6 +284,17 @@ export function UsersSettingsClient() {
                       >
                         <KeyRoundIcon className="size-4" />
                       </Button>
+                      {u.totpEnabled ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setTotpRow(u)}
+                          aria-label={t("users.resetTotp")}
+                          title={t("users.resetTotp")}
+                        >
+                          <ShieldOffIcon className="size-4" />
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -337,6 +363,17 @@ export function UsersSettingsClient() {
         <ResetPasswordDialog
           row={resetRow}
           onClose={() => setResetRow(null)}
+        />
+      ) : null}
+
+      {totpRow ? (
+        <ResetTotpDialog
+          row={totpRow}
+          onClose={() => setTotpRow(null)}
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ["settings", "users"] });
+            setTotpRow(null);
+          }}
         />
       ) : null}
     </PageContainer>
@@ -460,7 +497,16 @@ function CreateUserDialog({
       reset();
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      const reason = e instanceof SettingsApiError ? e.reason : undefined;
+      if (reason === "email_taken_inactive") {
+        toast.error(t("users.emailTakenInactiveError"));
+      } else if (reason === "email_taken") {
+        toast.error(t("users.emailTakenError"));
+      } else if (reason === "doctor_taken") {
+        toast.error(t("users.doctorTakenError"));
+      } else toast.error(e.message);
+    },
   });
 
   return (
@@ -697,13 +743,33 @@ function EditUserDialog({
     role: Role;
     phone: string;
     active: boolean;
+    doctorId: string;
   }>({
     name: row.name,
     email: row.email,
     role: row.role,
     phone: row.phone ?? "",
     active: row.active,
+    doctorId: row.doctorCard?.id ?? "",
   });
+
+  // An active DOCTOR login holds exactly one schedule card (audit ST-04): a
+  // reactivated or newly promoted doctor must get one, or the cabinet has
+  // nothing to open. The server releases the card on deactivation or a role
+  // change by itself.
+  const needsCard = form.role === "DOCTOR" && form.active;
+  const doctorsQuery = useQuery({
+    queryKey: ["settings", "users", "orphan-doctors"],
+    queryFn: () =>
+      settingsFetch<{ rows: DoctorRow[]; nextCursor: string | null }>(
+        `/api/crm/doctors?limit=200`,
+      ),
+    enabled: needsCard,
+  });
+  const cardOptions = (doctorsQuery.data?.rows ?? []).filter(
+    (d) => d.id === row.doctorCard?.id || (d.userId === null && d.isActive),
+  );
+
   const mut = useMutation({
     mutationFn: () =>
       settingsFetch<UserRow>(`/api/crm/users/${row.id}`, {
@@ -714,13 +780,22 @@ function EditUserDialog({
           role: form.role,
           phone: form.phone || null,
           active: form.active,
+          ...(needsCard && form.doctorId ? { doctorId: form.doctorId } : {}),
         }),
       }),
     onSuccess: () => {
       toast.success(t("common.saved"));
       onSaved();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      const reason = e instanceof SettingsApiError ? e.reason : undefined;
+      if (reason === "doctor_taken") toast.error(t("users.doctorTakenError"));
+      else if (reason === "doctor_id_required") {
+        toast.error(t("users.doctorRequiredError"));
+      } else if (reason === "cannot_deactivate_self") {
+        toast.error(t("users.cannotDeactivateSelf"));
+      } else toast.error(e.message);
+    },
   });
 
   // Deactivation is destructive: an inactive user can no longer log in, and
@@ -774,9 +849,7 @@ function EditUserDialog({
                   setForm({ ...form, role: e.target.value as Role })
                 }
               >
-                {ROLES.filter(
-                  (r) => r !== "DOCTOR" || row.role === "DOCTOR",
-                ).map((r) => (
+                {ROLES.map((r) => (
                   <option key={r} value={r}>
                     {t(`users.roles.${r}`)}
                   </option>
@@ -791,6 +864,39 @@ function EditUserDialog({
               />
             </div>
           </div>
+          {needsCard ? (
+            <div>
+              <Label htmlFor="edit-doctor">{t("users.doctorBinding")}</Label>
+              {cardOptions.length === 0 && !doctorsQuery.isLoading ? (
+                <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  {t("users.noOrphanDoctors")}
+                </p>
+              ) : (
+                <>
+                  <select
+                    id="edit-doctor"
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                    value={form.doctorId}
+                    onChange={(e) =>
+                      setForm({ ...form, doctorId: e.target.value })
+                    }
+                  >
+                    <option value="">
+                      {t("users.doctorBindingPlaceholder")}
+                    </option>
+                    {cardOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.nameRu}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("users.doctorBindingHint")}
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             <Switch
               checked={form.active}
@@ -810,7 +916,12 @@ function EditUserDialog({
           </Button>
           <Button
             onClick={onSave}
-            disabled={mut.isPending || !form.name || !form.email}
+            disabled={
+              mut.isPending ||
+              !form.name ||
+              !form.email ||
+              (needsCard && !form.doctorId)
+            }
           >
             {mut.isPending ? t("common.saving") : t("common.save")}
           </Button>
@@ -1000,5 +1111,56 @@ function ResetPasswordDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * «Сбросить 2FA» (audit ST-03): the employee lost the phone with the
+ * authenticator. The admin confirms with their own password; the server
+ * wipes the enrolment, ends the employee's sessions and audits it.
+ */
+function ResetTotpDialog({
+  row,
+  onClose,
+  onDone,
+}: {
+  row: UserRow;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const t = useTranslations("settings");
+  const mut = useMutation({
+    mutationFn: (currentPassword: string) =>
+      settingsFetch<{ reset: boolean }>(`/api/crm/users/${row.id}/reset-totp`, {
+        method: "POST",
+        body: JSON.stringify({ currentPassword }),
+      }),
+    onSuccess: () => {
+      toast.success(t("users.resetTotpDone"));
+      onDone();
+    },
+  });
+  return (
+    <PasswordReentryDialog
+      open
+      onOpenChange={(v: boolean) => !v && onClose()}
+      title={t("users.resetTotpTitle")}
+      description={t("users.resetTotpDescription", { name: row.name })}
+      onConfirm={async (password) => {
+        try {
+          await mut.mutateAsync(password);
+        } catch (e) {
+          // The dialog shows the thrown message under the password field.
+          const reason = e instanceof SettingsApiError ? e.reason : undefined;
+          if (reason === "wrong_password") {
+            throw new Error(t("passwordReentry.wrong"));
+          }
+          if (reason === "cannot_reset_self") {
+            throw new Error(t("users.resetTotpSelf"));
+          }
+          throw e;
+        }
+      }}
+    />
   );
 }

@@ -42,6 +42,7 @@ interface UserRow {
   active: boolean;
   clinicId: string | null;
   clinic: { id: string; slug: string; nameRu: string } | null;
+  totpEnabledAt: string | null;
   createdAt: string;
 }
 
@@ -90,7 +91,12 @@ async function fetchClinics(): Promise<ClinicOption[]> {
 
 async function patchUser(
   id: string,
-  patch: { clinicId?: string | null; role?: Role; active?: boolean },
+  patch: {
+    clinicId?: string | null;
+    role?: Role;
+    active?: boolean;
+    resetTotp?: true;
+  },
 ): Promise<void> {
   const r = await fetch(`/api/platform/users/${id}`, {
     method: "PATCH",
@@ -129,6 +135,17 @@ export function UsersPageClient() {
   const deactivate = useMutation({
     mutationFn: (u: UserRow) => patchUser(u.id, { active: !u.active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
+  });
+
+  // Audit ST-03: the way back in for a clinic's only ADMIN who lost the
+  // phone with the authenticator (a colleague resets it from the clinic).
+  const resetTotp = useMutation({
+    mutationFn: (u: UserRow) => patchUser(u.id, { resetTotp: true }),
+    onSuccess: () => {
+      toast.success("2FA сброшена");
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
@@ -238,6 +255,23 @@ export function UsersPageClient() {
                       >
                         Переназначить
                       </Button>
+                      {u.totpEnabledAt ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "Сбросить 2FA? Все сеансы пользователя завершатся.",
+                              )
+                            ) {
+                              resetTotp.mutate(u);
+                            }
+                          }}
+                        >
+                          Сбросить 2FA
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="sm"

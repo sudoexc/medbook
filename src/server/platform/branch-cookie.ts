@@ -60,3 +60,21 @@ export function buildActiveBranchSetCookie(
   ];
   return parts.filter(Boolean).join("; ");
 }
+
+/**
+ * `cookies().set(...)` arguments that delete the active-branch cookie. Used
+ * at sign-in and sign-out (audit ST-06): the cookie is not tied to a user,
+ * so on a shared reception PC the next employee inherited the previous
+ * one's branch, and with it a filtered (possibly empty) queue.
+ */
+export function activeBranchClearCookie(opts: { secure?: boolean } = {}) {
+  return {
+    name: ACTIVE_BRANCH_COOKIE_NAME,
+    value: "",
+    httpOnly: true,
+    secure: opts.secure ?? process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 0,
+  };
+}

@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma"
 import { runWithTenant } from "@/lib/tenant-context"
 import { shouldRedirectDoctorToCabinet } from "@/lib/doctor-cabinet"
 import { ACTIVE_BRANCH_COOKIE_NAME } from "@/server/platform/branch-cookie"
+import { liveBranchIdOrNull } from "@/server/branches/active-branch-guard"
 import { getFeatureFlagsForCurrentSession } from "@/server/platform/current-flags"
 import { getCurrentSubscription } from "@/server/platform/current-subscription"
 import { AUDIT_ACTION } from "@/lib/audit-actions"
@@ -67,7 +68,13 @@ export default async function CrmLayout({
     redirect(`/${locale}/doctor`)
   }
   const cookieStore = await cookies()
-  const branchCookie = cookieStore.get(ACTIVE_BRANCH_COOKIE_NAME)?.value || null
+  const rawBranchCookie = cookieStore.get(ACTIVE_BRANCH_COOKIE_NAME)?.value || null
+  // A switched-off or foreign branch is ignored by the API (audit ST-06), so
+  // the switcher must not claim it either: it reads «Все филиалы».
+  const branchCookie =
+    rawBranchCookie && session?.user?.clinicId
+      ? await liveBranchIdOrNull(session.user.clinicId, rawBranchCookie)
+      : null
   // Phase 9d — resolve plan-aware nav flags once on the server. The sidebar
   // uses this to hide pro-only menu items; the gated `page.tsx` files run
   // their own `notFound()` guards as defense-in-depth.

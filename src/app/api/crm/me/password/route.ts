@@ -8,7 +8,9 @@
  *
  * A new password ends every OTHER session of the account: if the old password
  * leaked, changing it must also push out whoever is already signed in with it.
- * The session that made the change stays signed in.
+ * The session that made the change stays signed in. The change is audited
+ * (`PASSWORD_CHANGED`, audit CM-15) so an investigation can see when it
+ * happened and from where.
  *
  * NOTE: deliberately not using `createApiHandler` here — that helper rejects
  * SUPER_ADMINs who haven't impersonated a clinic, but a SUPER_ADMIN should
@@ -17,6 +19,8 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
+import { audit } from "@/lib/audit";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
@@ -51,8 +55,10 @@ export async function POST(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
 
-  // Guessing the current password through an open session is still guessing.
-  if (!rateLimit(`pw-change:${session.user.id}`, 10, 15 * 60 * 1000, "pw-change")) {
+  // Guessing the current password through an open session is still guessing:
+  // five tries per 15 minutes, the same budget as the TOTP endpoints (the
+  // sixth answers 429, audit CM-15).
+  if (!rateLimit(`pw-change:${session.user.id}`, 5, 15 * 60 * 1000, "pw-change")) {
     return err("too_many_attempts", 429);
   }
 
@@ -93,12 +99,13 @@ export async function POST(request: Request): Promise<Response> {
       where: { id: user.id },
       data: { passwordHash, mustChangePassword: false },
     });
-    return { response: null };
+    return { response: null, temporaryPasswordFlow: skipCurrent };
   });
   if (result.response) return result.response;
 
+  let revokedSessions: number | null = null;
   try {
-    await revokeUserSessions(session.user.id, {
+    revokedSessions = await revokeUserSessions(session.user.id, {
       exceptSessionId: await callerSessionId(session.user.sessionId),
     });
   } catch (e) {
@@ -106,5 +113,15 @@ export async function POST(request: Request): Promise<Response> {
     // into an error the user would retry.
     console.error("[me/password] revoking other sessions failed", e);
   }
+  // `audit()` never throws (it logs its own failures).
+  await audit(request, {
+    action: AUDIT_ACTION.PASSWORD_CHANGED,
+    entityType: "User",
+    entityId: session.user.id,
+    meta: {
+      revokedSessions,
+      temporaryPasswordFlow: result.temporaryPasswordFlow ?? false,
+    },
+  });
   return ok({ ok: true });
 }

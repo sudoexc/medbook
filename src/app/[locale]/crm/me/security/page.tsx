@@ -10,7 +10,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { isMandatory2faRole } from "@/server/auth/security-policy";
+import { isTotpMandatory } from "@/server/auth/security-policy";
 
 import { SecurityClient } from "./_components/security-client";
 
@@ -41,8 +41,10 @@ export default async function MeSecurityPage() {
   if (!me) redirect("/login");
 
   const enrolled = Boolean(me.totpEnabledAt);
-  const mandatory =
-    isMandatory2faRole(me.role) || (me.clinic?.require2faForAll ?? false);
+  const mandatory = isTotpMandatory({
+    role: me.role,
+    clinicRequire2faForAll: me.clinic?.require2faForAll ?? false,
+  });
 
   return (
     <SecurityClient

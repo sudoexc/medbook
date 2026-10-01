@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { TashkentDaySchema } from "./common";
+
 export const DocumentTypeEnum = z.enum([
   "REFERRAL",
   "PRESCRIPTION",
@@ -56,8 +58,9 @@ export const QueryDocumentSchema = z.object({
   doctorId: z.string().optional(),
   type: DocumentTypeEnum.optional(),
   q: z.string().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  // Tashkent calendar days, both inclusive (audit CM-16).
+  from: TashkentDaySchema.optional(),
+  to: TashkentDaySchema.optional(),
   pendingSignature: z
     .union([z.literal("true"), z.literal("false"), z.boolean()])
     .optional()

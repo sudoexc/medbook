@@ -29,6 +29,19 @@ function redactClinic<T extends Record<string, unknown>>(c: T): T {
   return out as T;
 }
 
+/** The entries of `patch` whose value differs from `before` (scalars only). */
+function changedFields(
+  before: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (before[key] !== value) out[key] = value;
+  }
+  return out;
+}
+
 // Plans that may flip require2faForAll on. Basic must show the toggle as
 // disabled with an upsell hint; the API rejects the flip server-side too.
 const PLANS_ALLOWING_REQUIRE_2FA = new Set(["pro", "enterprise"]);
@@ -91,7 +104,13 @@ export const PATCH = createApiHandler(
     // on keeps the original moment, or every save would forgive the debt of
     // visits completed before it.
     const { tracksPayments, ...fields } = body;
-    const data: Record<string, unknown> = { ...fields };
+    // Write only what differs from the stored row (audit ST-07): a form
+    // loaded hours ago re-sends every field, and a blind write put back
+    // whatever a colleague had changed in the meantime.
+    const data = changedFields(
+      before as unknown as Record<string, unknown>,
+      fields,
+    );
     if (tracksPayments === true && before.paymentsTrackedSince === null) {
       data.paymentsTrackedSince = new Date();
     } else if (tracksPayments === false) {

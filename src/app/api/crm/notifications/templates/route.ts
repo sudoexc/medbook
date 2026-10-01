@@ -5,11 +5,12 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, parseQuery } from "@/server/http";
+import { ok, err, parseQuery } from "@/server/http";
 import {
   CreateTemplateSchema,
   QueryTemplateSchema,
 } from "@/server/schemas/notification";
+import { verbatimPlaceholderLeak } from "@/server/notifications/rules";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"] },
@@ -42,6 +43,11 @@ export const GET = createApiListHandler(
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: CreateTemplateSchema },
   async ({ request, body, ctx }) => {
+    // The bot's greeting is sent verbatim (audit ST-08).
+    const leak = verbatimPlaceholderLeak(body.key, [body.bodyRu, body.bodyUz]);
+    if (leak) {
+      return err("UnknownPlaceholder", 400, { unknown: leak, allowed: [] });
+    }
     const createdById = ctx.kind === "TENANT" ? ctx.userId : null;
     const created = await prisma.notificationTemplate.create({
       data: {

@@ -7,6 +7,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { tashkentDayRange } from "@/lib/tashkent-time";
 import { ok, parseQuery } from "@/server/http";
 import { QueryAuditSchema } from "@/server/schemas/audit";
 
@@ -23,12 +24,9 @@ export const GET = createApiListHandler(
     if (q.entityId) where.entityId = q.entityId;
     if (q.actorId) where.actorId = q.actorId;
     if (q.action) where.action = q.action;
-    if (q.from || q.to) {
-      where.createdAt = {
-        ...(q.from ? { gte: q.from } : {}),
-        ...(q.to ? { lte: q.to } : {}),
-      };
-    }
+    // The filter's dates are Tashkent days, the last one included whole.
+    const createdAt = tashkentDayRange(q.from, q.to);
+    if (createdAt) where.createdAt = createdAt;
 
     const take = q.limit + 1;
     const rows = await prisma.auditLog.findMany({

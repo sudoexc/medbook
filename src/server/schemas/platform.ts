@@ -138,6 +138,9 @@ export const PatchPlatformUserSchema = z.object({
   clinicId: z.string().nullish(),
   role: RoleEnum.optional(),
   active: z.boolean().optional(),
+  // Audit ST-03: wipe the user's TOTP. The way back in for a clinic's only
+  // ADMIN who lost the phone (no colleague can reset it from the clinic).
+  resetTotp: z.literal(true).optional(),
 });
 export type PatchPlatformUser = z.infer<typeof PatchPlatformUserSchema>;
 

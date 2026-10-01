@@ -8,7 +8,8 @@
  * Validation:
  *   - Reject unknown placeholders against ALLOWED_KEYS_BY_TRIGGER for the
  *     row's logical trigger (computed server-side from `trigger` enum +
- *     existing triggerConfig.offsetMin).
+ *     existing triggerConfig.offsetMin); a verbatim template (the bot's
+ *     greeting) allows none.
  *   - Reject empty bodies (server-side guard mirroring UI).
  *   - Sanitize triggerConfig (clamp offsetMin, normalize channels).
  */
@@ -20,8 +21,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
 import { validate } from "@/server/notifications/template";
 import {
-  allowedKeysFor,
-  logicalTriggerKey,
+  allowedKeysForTemplate,
   sanitizeTriggerConfig,
 } from "@/server/notifications/rules";
 
@@ -55,12 +55,8 @@ export const PATCH = createApiHandler(
     });
     if (!before) return notFound();
 
-    const logical = logicalTriggerKey(
-      before.trigger,
-      before.triggerConfig,
-      before.key,
-    );
-    const allowed = allowedKeysFor(logical);
+    // The greeting is sent verbatim: no placeholders (audit ST-08).
+    const allowed = allowedKeysForTemplate(before);
 
     const data: Record<string, unknown> = {};
 

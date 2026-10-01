@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { formatDate, type Locale } from "@/lib/format";
 
-import { settingsFetch } from "../../_hooks/use-settings-api";
+import { SettingsApiError, settingsFetch } from "../../_hooks/use-settings-api";
 import { KioskDeviceCard } from "./kiosk-device-card";
 import { PasswordReentryDialog } from "../../_components/password-reentry-dialog";
 
@@ -43,7 +43,6 @@ type ClinicRow = {
   tgBotUsername: string | null;
   tgBotToken: string | null; // "***" when set
   tgWebhookSecret: string | null; // "***" when set
-  active: boolean;
   // Phase 16 Patient Experience surface — exposed in the "Опыт пациента"
   // section. Stored as flat clinic columns; the API accepts each as an
   // independent optional in `UpdateClinicSettingsSchema`.
@@ -71,6 +70,18 @@ type ClinicForm = Partial<ClinicRow> & { tracksPayments?: boolean };
 
 const TIMEZONES = ["Asia/Tashkent", "Asia/Samarkand"];
 
+/** API error code / reason of /api/crm/clinic/secrets → message key. */
+const SECRET_ERROR_KEYS: Record<string, string> = {
+  invalid_token: "invalidToken",
+  token_format: "invalidToken",
+  tg_error: "invalidToken",
+  bot_in_use: "botInUse",
+  https_required: "httpsRequired",
+  webhook_failed: "webhookFailed",
+  network_error: "network",
+  RateLimited: "rateLimited",
+};
+
 export function ClinicSettingsClient() {
   const t = useTranslations("settings");
   const tSec = useTranslations("clinicSecurity");
@@ -83,9 +94,14 @@ export function ClinicSettingsClient() {
   });
 
   const [form, setForm] = React.useState<ClinicForm | null>(null);
+  // What the form was loaded from (then: what the last save returned). A
+  // save sends only the fields that differ from it, so a tab opened hours
+  // ago does not put back what a colleague changed since (audit ST-07).
+  const [baseline, setBaseline] = React.useState<ClinicForm | null>(null);
   React.useEffect(() => {
     if (clinicQuery.data && !form) {
       setForm({ ...clinicQuery.data });
+      setBaseline({ ...clinicQuery.data });
     }
   }, [clinicQuery.data, form]);
 
@@ -95,8 +111,9 @@ export function ClinicSettingsClient() {
         method: "PATCH",
         body: JSON.stringify(payload),
       }),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       toast.success(t("common.saved"));
+      setBaseline((b) => ({ ...(b ?? {}), ...saved }));
       qc.invalidateQueries({ queryKey: ["settings", "clinic"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -104,21 +121,31 @@ export function ClinicSettingsClient() {
 
   const secretsMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
-      settingsFetch<{ updated: boolean }>("/api/crm/clinic/secrets", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-    onSuccess: () => {
-      toast.success(t("common.saved"));
+      settingsFetch<{ updated: boolean; botUsername?: string }>(
+        "/api/crm/clinic/secrets",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+      ),
+    onSuccess: (res) => {
+      toast.success(
+        res.botUsername
+          ? t("clinic.secretsSaved", { username: res.botUsername })
+          : t("common.saved"),
+      );
+      if (res.botUsername) {
+        setForm((f) => (f ? { ...f, tgBotUsername: res.botUsername } : f));
+      }
       qc.invalidateQueries({ queryKey: ["settings", "clinic"] });
+      qc.invalidateQueries({ queryKey: ["settings", "tg-webhook-status"] });
     },
   });
 
-  const [secretDraft, setSecretDraft] = React.useState<{
-    tgBotToken?: string;
-    tgBotUsername?: string;
-    tgWebhookSecret?: string;
-  } | null>(null);
+  // Only the token is typed (audit ST-02): the bot's username comes from
+  // Telegram and the webhook secret is generated on the server, so a stray
+  // edit can no longer blank either of them. Empty means "keep".
+  const [tokenDraft, setTokenDraft] = React.useState("");
   const [pwOpen, setPwOpen] = React.useState(false);
 
   // Ф0 — letterhead travels as multipart, so raw fetch (the browser must set
@@ -197,7 +224,6 @@ export function ClinicSettingsClient() {
       "workdayStart",
       "workdayEnd",
       "slotMin",
-      "active",
       // Phase 16 Patient Experience.
       "npsAlertThreshold",
       "referralRewardPercent",
@@ -208,19 +234,23 @@ export function ClinicSettingsClient() {
     ] as const;
     for (const k of keys) {
       const v = form[k];
-      if (v !== undefined) payload[k] = v;
+      if (v !== undefined && v !== baseline?.[k]) payload[k] = v;
     }
     if (form.tracksPayments !== undefined) {
       payload.tracksPayments = form.tracksPayments;
     }
     // Currency is UZS-only for now — pin both fields so any stale USD value
-    // gets cleared on the next save without touching the schema.
+    // gets cleared on the next save without touching the schema (the server
+    // writes them only when they differ).
     payload.currency = "UZS";
     payload.secondaryCurrency = null;
     // Ф0 — empty prefix means "derive from slug"; the schema regex rejects
     // "", so normalise to null here.
     const prefix = (form.documentNumberPrefix ?? "").trim();
-    payload.documentNumberPrefix = prefix === "" ? null : prefix;
+    const nextPrefix = prefix === "" ? null : prefix;
+    if (nextPrefix !== (baseline?.documentNumberPrefix ?? null)) {
+      payload.documentNumberPrefix = nextPrefix;
+    }
     saveMutation.mutate(payload);
   };
 
@@ -316,16 +346,6 @@ export function ClinicSettingsClient() {
                   setForm({ ...form, addressUz: e.target.value })
                 }
               />
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <Switch
-                id="active"
-                checked={form.active ?? true}
-                onCheckedChange={(v: boolean) =>
-                  setForm({ ...form, active: v })
-                }
-              />
-              <Label htmlFor="active">{t("clinic.fields.active")}</Label>
             </div>
           </div>
         </section>
@@ -704,19 +724,18 @@ export function ClinicSettingsClient() {
               </Label>
               <Input
                 id="tgBotUsername"
-                placeholder="@neurofax_bot"
-                defaultValue={form.tgBotUsername ?? ""}
-                onChange={(e) =>
-                  setSecretDraft({
-                    ...(secretDraft ?? {}),
-                    tgBotUsername: e.target.value,
-                  })
+                value={
+                  form.tgBotUsername
+                    ? `@${form.tgBotUsername}`
+                    : t("clinic.fields.tgBotNone")
                 }
+                readOnly
+                disabled
               />
             </div>
             <div>
               <Label htmlFor="tgBotToken">
-                {t("clinic.fields.tgBotToken")}
+                {t("clinic.fields.tgBotTokenNew")}
                 {form.tgBotToken ? (
                   <span className="ml-2 text-xs text-muted-foreground">
                     ({t("clinic.fields.configured")})
@@ -728,39 +747,14 @@ export function ClinicSettingsClient() {
                 type="password"
                 placeholder="123456:ABC-..."
                 autoComplete="off"
-                onChange={(e) =>
-                  setSecretDraft({
-                    ...(secretDraft ?? {}),
-                    tgBotToken: e.target.value,
-                  })
-                }
-              />
-            </div>
-            <div>
-              <Label htmlFor="tgWebhookSecret">
-                {t("clinic.fields.tgWebhookSecret")}
-                {form.tgWebhookSecret ? (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    ({t("clinic.fields.configured")})
-                  </span>
-                ) : null}
-              </Label>
-              <Input
-                id="tgWebhookSecret"
-                type="password"
-                autoComplete="off"
-                onChange={(e) =>
-                  setSecretDraft({
-                    ...(secretDraft ?? {}),
-                    tgWebhookSecret: e.target.value,
-                  })
-                }
+                value={tokenDraft}
+                onChange={(e) => setTokenDraft(e.target.value)}
               />
             </div>
           </div>
           <div className="flex justify-end">
             <Button
-              disabled={!secretDraft || secretsMutation.isPending}
+              disabled={!tokenDraft.trim() || secretsMutation.isPending}
               onClick={() => setPwOpen(true)}
             >
               <SaveIcon className="size-4" />
@@ -777,13 +771,26 @@ export function ClinicSettingsClient() {
         title={t("clinic.confirmSecretTitle")}
         description={t("clinic.confirmSecretDescription")}
         onConfirm={async (password) => {
-          if (!secretDraft) return;
-          await secretsMutation.mutateAsync({
-            ...secretDraft,
-            currentPassword: password,
-          });
+          const token = tokenDraft.trim();
+          if (!token) return;
+          try {
+            await secretsMutation.mutateAsync({
+              tgBotToken: token,
+              currentPassword: password,
+            });
+          } catch (e) {
+            // Shown under the password field; nothing was saved.
+            const reason = e instanceof SettingsApiError ? e.reason : undefined;
+            const code = e instanceof SettingsApiError ? e.message : "";
+            if (reason === "wrong_password") {
+              throw new Error(t("passwordReentry.wrong"));
+            }
+            const key = SECRET_ERROR_KEYS[reason ?? code];
+            if (key) throw new Error(t(`clinic.secretsErrors.${key}`));
+            throw e;
+          }
           setPwOpen(false);
-          setSecretDraft(null);
+          setTokenDraft("");
         }}
       />
     </PageContainer>

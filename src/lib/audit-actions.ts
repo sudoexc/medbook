@@ -315,6 +315,17 @@ export const AUDIT_ACTION = {
   // `entityType: "User"`, `entityId: <userId>`. `meta` is `{}`.
   TOTP_DISABLED: "TOTP_DISABLED",
 
+  // Audit ST-03 — an ADMIN (or the platform owner, for a clinic's only
+  // admin) wiped another user's TOTP after re-entering their own password,
+  // so a lost phone no longer needs a database edit. `entityType: "User"`,
+  // `entityId: <target userId>`. `meta` is `{ by, via, revokedSessions }`.
+  TOTP_RESET_BY_ADMIN: "TOTP_RESET_BY_ADMIN",
+
+  // Audit CM-15 — the user set a new password from their own session.
+  // `entityType: "User"`, `entityId: <userId>`. `meta` is
+  // `{ revokedSessions, temporaryPasswordFlow }`; never the password.
+  PASSWORD_CHANGED: "PASSWORD_CHANGED",
+
   // Phase 17 Wave 2 — user clicked "Regenerate recovery codes". The new
   // 10 codes are shown ONCE; old hashes are dropped. `entityType: "User"`,
   // `entityId: <userId>`. `meta` is `{ recoveryCodeCount }`.

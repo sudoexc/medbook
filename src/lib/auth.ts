@@ -34,6 +34,7 @@ import {
   mintUserSessionOnSignIn,
 } from "@/server/auth/user-session";
 import { is2faDisabled } from "@/server/auth/security-policy";
+import { activeBranchClearCookie } from "@/server/platform/branch-cookie";
 import {
   deleteSessionById,
   evaluateStaffSession,
@@ -254,6 +255,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           path: "/",
           maxAge: 0,
         });
+        // The branch pick is the signed-out user's, not the next one's on
+        // this PC (audit ST-06).
+        store.set(activeBranchClearCookie());
       } catch {
         // Outside a request scope; the row is gone, which is what matters.
       }

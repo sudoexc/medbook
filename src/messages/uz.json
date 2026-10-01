@@ -3134,6 +3134,9 @@
       "saveError": "Saqlab bo‘lmadi",
       "loadError": "Yuklab bo‘lmadi",
       "placeholdersHint": "Mavjud o‘rinbosarlar: {keys}",
+      "langRu": "Rus tilidagi matn",
+      "langUz": "O‘zbek tilidagi matn",
+      "placeholderError": "Bu o‘rinbosarlar bu yerda ishlamaydi: {keys}",
       "items": {
         "welcome": {
           "title": "Salomlashuv",
@@ -3788,6 +3791,8 @@
         "tgBotUsername": "TG bot (username)",
         "tgBotToken": "TG Bot Token",
         "tgWebhookSecret": "Webhook secret",
+        "tgBotTokenNew": "Yangi bot tokeni",
+        "tgBotNone": "Bot ulanmagan",
         "active": "Klinika faol",
         "configured": "saqlangan",
         "npsAlertThreshold": "NPS-ogohlantirish chegarasi",
@@ -3805,8 +3810,17 @@
         "letterheadHint": "PNG yoki JPEG, 512 KB gacha. Xulosalar sarlavhasida matn o'rniga chop etiladi.",
         "letterheadRemove": "Blankni olib tashlash"
       },
-      "secretsHint": "Tokenlar va maxfiy sozlamalarni o'zgartirish uchun joriy parolni kiriting. Bo'sh maydon — o'zgarmaydi.",
+      "secretsHint": "Botni yoki uning tokenini almashtirish uchun @BotFather bergan yangi tokenni kiriting. Biz uni Telegramda tekshiramiz, bot nomini o'sha yerdan olamiz va webhookni o'zimiz qayta o'rnatamiz. Bo'sh maydon hech narsani o'zgartirmaydi. Joriy parolingiz kerak bo'ladi.",
       "saveSecrets": "Maxfiy sozlamalarni saqlash",
+      "secretsSaved": "Bot yangilandi: @{username}",
+      "secretsErrors": {
+        "invalidToken": "Telegram tokenni qabul qilmadi. Uni @BotFather'dan to'liq nusxalang.",
+        "botInUse": "Bu bot boshqa klinikaga ulangan.",
+        "httpsRequired": "Webhook faqat HTTPS orqali ishlaydi. Server sozlamalarida sayt manzilini tekshiring.",
+        "webhookFailed": "Telegram webhookni qabul qilmadi. Token saqlanmadi, bot avvalgidek ishlayapti.",
+        "network": "Telegram bilan bog'lanib bo'lmadi. Token saqlanmadi.",
+        "rateLimited": "Urinishlar juda ko'p. 15 daqiqa kuting."
+      },
       "confirmSecretTitle": "Maxfiy sozlamalarni o'zgartirishni tasdiqlang",
       "confirmSecretDescription": "Yangi tokenlarni saqlash uchun joriy parolingizni kiriting."
     },
@@ -3855,12 +3869,25 @@
       "orphanCreateLogin": "Login yaratish",
       "resetTooShort": "Kamida 8 ta belgi — yoki yaratish uchun bo'sh qoldiring.",
       "emailEditHint": "Email o'zgartirilsa, tizimga kirish logini ham o'zgaradi.",
+      "cannotDeactivateSelf": "O'z akkauntingizni nofaol qilib bo'lmaydi.",
+      "emailTakenError": "Bu email boshqa akkauntda band.",
+      "emailTakenInactiveError": "Bu emailli xodim nofaol qilingan. Uni ro'yxatda oching, «Tahrirlash» ni bosing va qayta yoqing.",
+      "resetTotp": "2FA ni tiklash",
+      "resetTotpTitle": "Xodimning 2FA sini tiklaysizmi?",
+      "resetTotpDescription": "{name} endi ilovadagi kod yoki tiklash kodlari bilan kira olmaydi, uning barcha seanslari yakunlanadi. Keyingi kirishda parol yetarli bo'ladi, agar uning roli uchun 2FA majburiy bo'lsa, tizim darhol uni qayta ulashni so'raydi. Tasdiqlash uchun o'z parolingizni kiriting.",
+      "resetTotpDone": "2FA tiklandi",
+      "resetTotpSelf": "O'z 2FA ingizni «Xavfsizlik» bo'limida o'zgartiring.",
+      "twoFactor": {
+        "on": "Yoqilgan",
+        "off": "Yo'q"
+      },
       "cols": {
         "name": "Ism",
         "email": "Email",
         "role": "Rol",
         "phone": "Telefon",
         "status": "Holat",
+        "twoFactor": "2FA",
         "password": "Parol"
       },
       "roles": {
@@ -3918,6 +3945,11 @@
       "emptyHint": "Klinikada turli manzil va jadvalli bir nechta filial bo'lishi mumkin.",
       "created": "Filial yaratildi",
       "deactivated": "Filial o'chirildi",
+      "inUse": {
+        "title": "«{name}» filialini o'chirasizmi?",
+        "description": "Filialga hali bog'langan: shifokorlar {doctors}, kabinetlar {cabinets}, kelgusi yozuvlar {appointments}. Ular tanlangan filial ro'yxatlaridan yo'qoladi, unda ishlagan xodimlar esa butun klinikani ko'radi.",
+        "confirm": "O'chirish"
+      },
       "defaultBadge": "Asosiy",
       "fields": {
         "slug": "Slug (URL)",
@@ -3933,6 +3965,8 @@
       },
       "errors": {
         "slugTaken": "Bu slug allaqachon ushbu klinikada ishlatilgan",
+        "defaultBranch": "Asosiy filialni o'chirib bo'lmaydi. Avval boshqa filialni asosiy qiling.",
+        "inactiveDefault": "O'chirilgan filialni asosiy qilib bo'lmaydi.",
         "lastActive": "Oxirgi faol filialni o'chirib bo'lmaydi"
       },
       "hints": {
@@ -4069,7 +4103,7 @@
       },
       "integrations": {
         "title": "Integratsiyalar",
-        "description": "SMS, Telegram, to'lovlar va telefoniya."
+        "description": "Telegram, to'lovlar va telefoniya."
       },
       "notifications": {
         "title": "Bildirishnoma shablonlari",
@@ -4189,7 +4223,7 @@
     },
     "integrations": {
       "title": "Integratsiyalar",
-      "subtitle": "SMS, Telegram, to'lovlar va telefoniya.",
+      "subtitle": "Telegram, to'lovlar va telefoniya.",
       "setup": "Sozlash",
       "active": "Yoqilgan",
       "inactive": "O'chirilgan",
@@ -4198,10 +4232,28 @@
       "state": {
         "ok": "Ulangan",
         "incomplete": "E'tibor talab qiladi",
+        "unavailable": "Mavjud emas",
         "missing": "Sozlanmagan",
         "notConnected": "Ulanmagan"
       },
       "telephonyNotConnectedHint": "CRMga hali qo'ng'iroqlar kelmagan: ATS bilan integratsiya ulanmagan.",
+      "paymentUnavailableHint": "Onlayn to'lov hali yo'q: Payme, Click va Uzum kalitlaridan hech narsa foydalanmaydi, shuning uchun ularni bu yerda saqlab bo'lmaydi.",
+      "tgReconnect": "Botni almashtirish",
+      "telephony": {
+        "title": "ATS hodisalarini qabul qilish",
+        "hint": "ATS sozlamalarida shu manzilni va maxfiy kalitli sarlavhani ko'rsating. CRMga birinchi qo'ng'iroq kelganda karta «Ulangan» bo'ladi.",
+        "url": "Hodisalar manzili",
+        "header": "Sarlavha",
+        "secret": "Maxfiy kalit",
+        "noSecret": "Maxfiy kalit hali yo'q: usiz ATS qo'ng'iroqlarni uzata olmaydi.",
+        "generate": "Maxfiy kalit yaratish",
+        "rotate": "Maxfiy kalitni almashtirish",
+        "rotateHint": "Almashtirilgach eski kalit darhol ishlamay qoladi, uni ATSda yangilang.",
+        "saved": "Maxfiy kalit saqlandi",
+        "copy": "Nusxalash",
+        "copied": "Nusxalandi",
+        "copyFailed": "Nusxalab bo'lmadi"
+      },
       "fields": {
         "label": "Yorliq (ixtiyoriy)",
         "labelPlaceholder": "main, backup, eskiz…",
@@ -4274,7 +4326,7 @@
         },
         "telephony": {
           "title": "Telefoniya",
-          "description": "SIP-provayder: kiruvchi qo'ng'iroqlar, yozish."
+          "description": "ATS qo'ng'iroq hodisalari: kiruvchi va o'tkazib yuborilgan."
         }
       },
       "smsTest": "Test SMS",
@@ -8062,6 +8114,11 @@
       "collapse": {
         "expand": "Yoyish",
         "collapse": "Yig‘ish"
+      },
+      "cardMissing": {
+        "title": "Shifokor kartochkasi bog‘lanmagan",
+        "body": "Loginingiz jadvaldagi shifokor kartochkasiga bog‘lanmagan, shuning uchun kabinetni ochib bo‘lmaydi. Klinika administratoridan «Sozlamalar → Foydalanuvchilar» bo‘limida kartochkangizni tanlashni so‘rang.",
+        "signOut": "Chiqish"
       },
       "topbar": {
         "searchPlaceholder": "Bemor qidirish: familiya, telefon, «Familiya 1969»…",

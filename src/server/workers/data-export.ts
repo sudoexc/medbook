@@ -9,7 +9,8 @@
  *   2. Load patient + appointments + payments + reviews + prescriptions
  *      + messages + medicalCases (everything tenant-scoped via
  *      runWithTenant).
- *   3. Generate one-time passphrase, persist its bcryptjs hash.
+ *   3. Take the passphrase the admin was shown (CRM request) or generate
+ *      one (Mini App request), persist its bcryptjs hash.
  *   4. Build the canonical bundle JSON via `buildDsarBundle`.
  *   5. Encrypt + ZIP via `packDsarBundle`.
  *   6. Upload to MinIO at `exports/<clinicId>/<jobId>.zip`.
@@ -47,7 +48,9 @@ import {
   type DsarPrescriptionInput,
   type DsarReviewInput,
 } from "@/server/dsar/bundle";
+import { DSAR_EXPORTS_BUCKET } from "@/server/dsar/expiry";
 import { generatePassphrase, packDsarBundle } from "@/server/dsar/zip";
+import { decryptField, encryptField } from "@/server/crypto/field-cipher";
 import { hydrateMedicalCaseForRead } from "@/server/medical-case/cipher-fields";
 import { readClinicalNoteBody } from "@/server/patient/clinical-note";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
@@ -62,10 +65,18 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 export const QUEUE_NAME = "dsar:export";
 export const JOB_NAME = "run";
 
-export type ExportRunJob = { jobId: string };
+export type ExportRunJob = {
+  jobId: string;
+  /**
+   * CRM-requested exports (audit PT-09): the passphrase the admin was shown
+   * once when they asked for the export, sealed with the field cipher so
+   * the queue (Redis) never holds it in clear. Absent for Mini App
+   * requests: the worker makes one and sends it to the patient's chat.
+   */
+  sealedPassphrase?: string;
+};
 
 const BCRYPT_ROUNDS = 10;
-const EXPORTS_BUCKET = process.env.MINIO_EXPORTS_BUCKET || "exports";
 
 async function logAudit(
   clinicId: string,
@@ -386,8 +397,10 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
 
       const json = bundleToJson(bundle);
 
-      // 2. Generate passphrase + persist hash.
-      const passphrase = generatePassphrase();
+      // 2. Passphrase (the one the admin was shown, or a fresh one) + hash.
+      const passphrase = job.sealedPassphrase
+        ? unsealPassphrase(job.sealedPassphrase)
+        : generatePassphrase();
       const passphraseHash = await bcrypt.hash(passphrase, BCRYPT_ROUNDS);
 
       // 3. Encrypt + zip.
@@ -403,7 +416,7 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
       // 4. Upload to MinIO.
       const storageKey = `exports/${clinicRow.id}/${row.id}.zip`;
       await uploadObject(
-        EXPORTS_BUCKET,
+        DSAR_EXPORTS_BUCKET,
         storageKey,
         zipBuffer,
         "application/zip",
@@ -484,7 +497,8 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
           );
         }
       }
-      // If no chatId: leave at READY; the admin will download via signed URL.
+      // If no chatId: leave at READY; the admin downloads it in «Настройки →
+      // Запросы DSAR» and already has the passphrase (shown at request time).
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[dsar:export] job ${row.id} failed at ${stage}`, err);
@@ -503,9 +517,31 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
   });
 }
 
-/** Enqueue an export job from a request handler. */
-export function enqueueExportJob(jobId: string): Promise<void> {
-  return enqueue<ExportRunJob>(QUEUE_NAME, JOB_NAME, { jobId });
+/** Seal a passphrase for the queue payload (field cipher, active key). */
+export function sealPassphrase(passphrase: string): string {
+  return encryptField(passphrase);
+}
+
+function unsealPassphrase(sealed: string): string {
+  const plain = decryptField(sealed);
+  // The admin already holds this passphrase: a different one would make
+  // the archive unopenable, so the job fails instead.
+  if (!plain) throw new Error("export passphrase could not be unsealed");
+  return plain;
+}
+
+/**
+ * Enqueue an export job from a request handler. `passphrase` is the one a
+ * CRM admin was shown; omit it for Mini App requests.
+ */
+export function enqueueExportJob(
+  jobId: string,
+  opts: { passphrase?: string } = {},
+): Promise<void> {
+  return enqueue<ExportRunJob>(QUEUE_NAME, JOB_NAME, {
+    jobId,
+    ...(opts.passphrase ? { sealedPassphrase: sealPassphrase(opts.passphrase) } : {}),
+  });
 }
 
 /** Idempotent worker registration. */

@@ -42,7 +42,8 @@ export const GET = createApiListHandler(
     const [patients, doctors, appointments, conversations] = await Promise.all([
       prisma.patient.findMany({
         // The shared patient search, «Турматов 1969» included (audit PT-03).
-        where: patientSearchWhere(q) ?? {},
+        // DSAR-erased cards are not found (audit PT-07).
+        where: { deletedAt: null, ...(patientSearchWhere(q) ?? {}) },
         select: {
           id: true,
           fullName: true,

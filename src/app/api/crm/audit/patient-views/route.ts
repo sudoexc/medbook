@@ -51,7 +51,9 @@ export const GET = createApiListHandler(
     const take = q.limit + 1;
     const rows = await prisma.patientView.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      // Unique order + the last sent row as cursor: no row lost or repeated
+      // between pages (audit G1-10).
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       include: {
@@ -60,8 +62,8 @@ export const GET = createApiListHandler(
     });
     let nextCursor: string | null = null;
     if (rows.length > q.limit) {
-      const next = rows.pop();
-      nextCursor = next?.id ?? null;
+      rows.pop();
+      nextCursor = rows[rows.length - 1]?.id ?? null;
     }
     // `patientId` is a plain id since audit G1-09: the view rows outlive a
     // deleted card, so the patient is looked up, and a gone one reads null

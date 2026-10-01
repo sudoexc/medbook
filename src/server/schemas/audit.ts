@@ -7,6 +7,9 @@ export const QueryAuditSchema = z.object({
   entityId: z.string().optional(),
   actorId: z.string().optional(),
   action: z.string().optional(),
+  // Events about one patient: the card's own rows and every row whose meta
+  // names the patient (audit G1-10).
+  patientId: z.string().optional(),
   // Tashkent calendar days, both inclusive (see `tashkentDayRange`).
   from: TashkentDaySchema.optional(),
   to: TashkentDaySchema.optional(),

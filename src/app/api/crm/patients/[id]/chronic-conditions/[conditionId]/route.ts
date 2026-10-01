@@ -8,6 +8,10 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound, err } from "@/server/http";
 import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
+import {
+  medicalRecordDeleteAuditMeta,
+  medicalRecordUpdateAuditMeta,
+} from "@/server/audit/patient-audit-meta";
 
 export const UpdateChronicSchema = z.object({
   name: z.string().min(1).max(240).optional(),
@@ -59,7 +63,8 @@ export const PATCH = createApiHandler(
       action: "patient.chronic.update",
       entityType: "PatientChronicCondition",
       entityId: conditionId,
-      meta: { patientId, fields: Object.keys(data) },
+      // Old and new values, not just field names (audit G1-07).
+      meta: medicalRecordUpdateAuditMeta(patientId, before, after),
     });
     return ok(after);
   },
@@ -85,7 +90,8 @@ export const DELETE = createApiHandler(
       action: "patient.chronic.delete",
       entityType: "PatientChronicCondition",
       entityId: conditionId,
-      meta: { patientId, name: row.name },
+      // The whole removed row, so it can be restored (audit G1-07).
+      meta: medicalRecordDeleteAuditMeta(patientId, row),
     });
     return ok({ id: conditionId, deleted: true });
   },

@@ -20,7 +20,10 @@ import { deletionScheduledFor } from "@/server/dsar/expiry";
 
 const CreateSchema = z.object({
   patientId: z.string().min(1),
-  mode: z.enum(["ANONYMIZE", "HARD_DELETE"]).default("ANONYMIZE"),
+  // Anonymization only (audit PT-07): a hard delete of the card can never
+  // run (its visits, documents and broadcasts hold RESTRICT keys) and would
+  // destroy medical records the clinic must keep. See dsar/anonymize.ts.
+  mode: z.literal("ANONYMIZE").default("ANONYMIZE"),
   reason: z.string().max(200).optional(),
   notes: z.string().max(2000).optional(),
 });
@@ -49,6 +52,8 @@ export const GET = createApiListHandler(
         approvedByUserId: true,
         cancelledByUserId: true,
         requestedByUserId: true,
+        attempts: true,
+        errorMessage: true,
       },
     });
     return ok({
@@ -68,6 +73,8 @@ export const GET = createApiListHandler(
         approvedByUserId: r.approvedByUserId,
         cancelledByUserId: r.cancelledByUserId,
         requestedByUserId: r.requestedByUserId,
+        attempts: r.attempts,
+        errorMessage: r.errorMessage,
       })),
     });
   },
@@ -80,21 +87,27 @@ export const POST = createApiHandler(
 
     const patient = await prisma.patient.findFirst({
       where: { id: body.patientId, clinicId: ctx.clinicId },
-      select: { id: true },
+      select: { id: true, deletedAt: true },
     });
     if (!patient) return notFound();
+    // Already erased: nothing left to request.
+    if (patient.deletedAt) return err("already_erased", 409);
 
     // Don't double-up.
     const existing = await prisma.dataDeletionJob.findFirst({
       where: {
         clinicId: ctx.clinicId,
         patientId: body.patientId,
-        status: { in: ["PENDING_REVIEW", "APPROVED"] },
+        // A FAILED job is retried from the queue, not duplicated.
+        status: { in: ["PENDING_REVIEW", "APPROVED", "FAILED"] },
       },
       select: { id: true, status: true },
     });
     if (existing) {
-      return err("already_active", 409, { existingJobId: existing.id });
+      return err("already_active", 409, {
+        existingJobId: existing.id,
+        status: existing.status,
+      });
     }
 
     const now = new Date();

@@ -27,6 +27,11 @@ export interface DeletePatientDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   patient: Patient;
+  /**
+   * The way forward when the card cannot be deleted (audit PT-07): the
+   * patient's own request to erase their data becomes a DSAR request.
+   */
+  onRequestErasure?: () => void;
 }
 
 /**
@@ -42,6 +47,7 @@ export function DeletePatientDialog({
   open,
   onOpenChange,
   patient,
+  onRequestErasure,
 }: DeletePatientDialogProps) {
   const t = useTranslations("patientCard.delete");
   const router = useRouter();
@@ -108,6 +114,20 @@ export function DeletePatientDialog({
               </ul>
             ) : null}
             <p className="text-muted-foreground">{t("blockedBody")}</p>
+            {onRequestErasure ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="justify-self-start"
+                onClick={() => {
+                  onOpenChange(false);
+                  onRequestErasure();
+                }}
+              >
+                {t("blockedRequestErasure")}
+              </Button>
+            ) : null}
           </div>
         ) : null}
 

@@ -4,6 +4,7 @@
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateConversationSchema } from "@/server/schemas/conversation";
@@ -68,6 +69,8 @@ export const GET = createApiListHandler(
       },
     });
     if (!row) return notFound();
+    // A patient's correspondence opened: a chart read (audit G1-06).
+    notePatientView(prisma, request, ctx, row.patientId, "conversation", row.id);
     return ok(row);
   }
 );

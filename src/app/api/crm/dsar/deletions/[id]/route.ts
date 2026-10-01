@@ -5,9 +5,11 @@
  *   Body: `{ action: 'approve' | 'cancel', reason?: string }`.
  *
  * approve — flips PENDING_REVIEW → APPROVED. The hourly cron picks it
- *           up once `scheduledFor` is in the past.
- * cancel  — flips PENDING_REVIEW or APPROVED → CANCELLED. Patient row
- *           gets `deletionRequestedAt` cleared.
+ *           up once `scheduledFor` is in the past. A FAILED job (audit
+ *           PT-07) is approved again the same way: its retry count and
+ *           error are reset and the next tick runs it.
+ * cancel  — flips PENDING_REVIEW, APPROVED or FAILED → CANCELLED. Patient
+ *           row gets `deletionRequestedAt` cleared.
  */
 import { z } from "zod";
 
@@ -39,7 +41,7 @@ export const PATCH = createApiHandler(
     const now = new Date();
 
     if (body.action === "approve") {
-      if (job.status !== "PENDING_REVIEW") {
+      if (job.status !== "PENDING_REVIEW" && job.status !== "FAILED") {
         return err("invalid_status", 409, { current: job.status });
       }
       await prisma.dataDeletionJob.update({
@@ -48,6 +50,9 @@ export const PATCH = createApiHandler(
           status: "APPROVED",
           approvedAt: now,
           approvedByUserId: ctx.userId,
+          // A retry of a FAILED job starts over (audit PT-07).
+          attempts: 0,
+          errorMessage: null,
         },
       });
       await audit(request, {
@@ -60,13 +65,14 @@ export const PATCH = createApiHandler(
           mode: job.mode,
           approvedBy: "admin",
           adminUserId: ctx.userId,
+          retryOf: job.status === "FAILED" ? "FAILED" : undefined,
         },
       });
       return ok({ status: "APPROVED" });
     }
 
     // cancel
-    if (!["PENDING_REVIEW", "APPROVED"].includes(job.status)) {
+    if (!["PENDING_REVIEW", "APPROVED", "FAILED"].includes(job.status)) {
       return err("invalid_status", 409, { current: job.status });
     }
     const fromStatus = job.status;

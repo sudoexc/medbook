@@ -2,19 +2,33 @@
  * Phase 17 Wave 3 — DSAR encrypted-bundle packaging.
  *
  * Produces a self-describing `.zip` containing:
- *   • README.txt          — human-readable decryption instructions (RU+UZ).
- *   • data.json.enc       — AES-256-GCM ciphertext of the JSON bundle.
- *   • decrypt.sh          — reference shell script that decrypts using
- *                           the passphrase + an openssl command. The
- *                           patient is meant to run this locally.
+ *   • README.txt          — human-readable decryption instructions (RU+UZ+EN).
+ *   • data.json.enc       — the JSON bundle, encrypted in the standard
+ *                           `openssl enc` format (see below).
+ *   • data.json.enc.hmac  — HMAC-SHA256 of data.json.enc, so a wrong
+ *                           passphrase or a damaged file is reported as such.
+ *   • decrypt.sh          — the script that checks and decrypts it with the
+ *                           openssl already on any macOS or Linux machine.
  *
  * Why not standard ZIP encryption? Implementing PKZIP password-encrypted
  * entries (or AES-256 ZipCrypto) by hand is a maintenance trap — wrong
  * key derivation, wrong tag length, every ZIP tool decodes it slightly
  * differently. We instead emit a plain ZIP container with one
- * encrypted-blob entry; the patient extracts the blob normally and
- * decrypts it with a documented openssl recipe. The bundle README
- * spells out the exact command.
+ * encrypted-blob entry that a stock `openssl` decrypts.
+ *
+ * The format (audit PT-09). It used to be AES-256-GCM with the tag in the
+ * file and a decrypt.sh calling `openssl enc -d -aes-256-gcm -tag`: `openssl
+ * enc` supports no AEAD cipher and has no `-tag` option, so no patient could
+ * ever open their archive. Now it is exactly what
+ *   openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt
+ * writes («Salted__», 8-byte salt, AES-256-CBC with PKCS#7 padding; key and
+ * IV from PBKDF2-HMAC-SHA256), which OpenSSL 1.1.1+, OpenSSL 3 and macOS's
+ * LibreSSL all read. Integrity is encrypt-then-MAC: HMAC-SHA256 over the
+ * whole data.json.enc, keyed with HMAC-SHA256(encryption key,
+ * "medbook-dsar-mac"); decrypt.sh derives the same key with
+ * `openssl enc -P` and `openssl dgst -mac HMAC`, and refuses before
+ * decrypting when it does not match. A unit test runs decrypt.sh against a
+ * bundle with the local openssl.
  *
  * The ZIP container itself is a minimal hand-rolled writer (one entry
  * per file, no compression, no extra fields, no zip64). The format
@@ -31,7 +45,7 @@
  * verifiable by hand against the PKZIP spec.
  */
 
-import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
+import { createCipheriv, createHmac, pbkdf2Sync, randomBytes } from "node:crypto";
 import { Buffer } from "node:buffer";
 
 const VERSION_NEEDED = 20; // ZIP 2.0
@@ -135,33 +149,45 @@ export function buildZip(entries: Entry[]): Buffer {
   return Buffer.concat([Buffer.concat(localChunks), centralBuf, eocd]);
 }
 
+/** PBKDF2 iterations, as passed to `openssl enc -iter`. */
+export const PBKDF2_ITERATIONS = 200_000;
+const MAC_INFO = "medbook-dsar-mac";
+
+/** Key and IV the way `openssl enc -pbkdf2 -md sha256` derives them. */
+function deriveKeyIv(passphrase: string, salt: Buffer): { key: Buffer; iv: Buffer } {
+  const out = pbkdf2Sync(passphrase, salt, PBKDF2_ITERATIONS, 48, "sha256");
+  return { key: out.subarray(0, 32), iv: out.subarray(32, 48) };
+}
+
+/** The MAC key: HMAC-SHA256(encryption key, "medbook-dsar-mac"). */
+function macKeyOf(key: Buffer): Buffer {
+  return createHmac("sha256", key).update(MAC_INFO).digest();
+}
+
 /**
- * Encrypt a UTF-8 plaintext string with AES-256-GCM.
+ * Encrypt a UTF-8 plaintext in the `openssl enc -aes-256-cbc -pbkdf2 -iter
+ * 200000 -md sha256 -salt` format, plus the hex HMAC-SHA256 of the result.
  *
- * Layout of the returned Buffer:
- *   bytes 0..15   — 16-byte salt (scrypt input alongside the passphrase)
- *   bytes 16..27  — 12-byte IV
- *   bytes 28..43  — 16-byte auth tag
- *   bytes 44..    — ciphertext
- *
- * The decrypt.sh script in the bundle pulls these slices and runs
- * `openssl enc -d -aes-256-gcm` after deriving the key with scrypt.
+ * Layout of `ciphertext`:
+ *   bytes 0..7    — the ASCII magic «Salted__»
+ *   bytes 8..15   — 8-byte random salt
+ *   bytes 16..    — AES-256-CBC ciphertext, PKCS#7 padding
  */
 export function encryptBundle(
   plaintext: string,
   passphrase: string,
-): Buffer {
-  const salt = randomBytes(16);
-  const iv = randomBytes(12);
-  // scrypt — N=16384 (2^14) is the safe-but-quick default; 32 byte key.
-  const key = scryptSync(passphrase, salt, 32, { N: 16384, r: 8, p: 1 });
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
+): { ciphertext: Buffer; hmacHex: string } {
+  const salt = randomBytes(8);
+  const { key, iv } = deriveKeyIv(passphrase, salt);
+  const cipher = createCipheriv("aes-256-cbc", key, iv);
   const ciphertext = Buffer.concat([
+    Buffer.from("Salted__", "ascii"),
+    salt,
     cipher.update(Buffer.from(plaintext, "utf8")),
     cipher.final(),
   ]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([salt, iv, tag, ciphertext]);
+  const hmacHex = createHmac("sha256", macKeyOf(key)).update(ciphertext).digest("hex");
+  return { ciphertext, hmacHex };
 }
 
 /**
@@ -195,81 +221,93 @@ export function packDsarBundle(
   clinicNameRu = "",
   clinicNameUz = "",
 ): Buffer {
-  const cipher = encryptBundle(bundleJson, passphrase);
+  const { ciphertext, hmacHex } = encryptBundle(bundleJson, passphrase);
 
   const readme = [
-    "MedBook — Personal data export bundle",
+    "MedBook: personal data export",
     "",
-    `Clinic (RU): ${clinicNameRu || "—"}`,
-    `Clinic (UZ): ${clinicNameUz || "—"}`,
+    `Clinic (RU): ${clinicNameRu || "-"}`,
+    `Clinic (UZ): ${clinicNameUz || "-"}`,
     `Generated:   ${new Date().toISOString()}`,
     "",
-    "RUS: В этом архиве находится зашифрованная копия ваших данных.",
-    "     Используйте пароль, который мы прислали отдельным сообщением",
-    "     в Telegram. Запустите decrypt.sh (требуется openssl).",
+    "RUS: В этом архиве зашифрованная копия ваших данных.",
+    "     Пароль приходит отдельно: сообщением в Telegram или от сотрудника",
+    "     клиники. Распакуйте архив и запустите в его папке:",
+    "         bash decrypt.sh",
+    "     Скрипт спросит пароль и создаст файл data.json.",
+    "     Нужен только openssl: он уже есть в macOS и Linux.",
     "",
-    "UZB: Bu arxivda ma'lumotlaringizning shifrlangan nusxasi mavjud.",
-    "     Telegram orqali alohida xabarda yuborilgan parolni ishlating.",
-    "     decrypt.sh skriptini ishga tushiring (openssl talab qilinadi).",
+    "UZB: Bu arxivda ma'lumotlaringizning shifrlangan nusxasi bor.",
+    "     Parol alohida keladi: Telegram xabarida yoki klinika xodimidan.",
+    "     Arxivni oching va uning papkasida ishga tushiring:",
+    "         bash decrypt.sh",
+    "     Skript parolni so'raydi va data.json faylini yaratadi.",
+    "     Faqat openssl kerak: u macOS va Linuxda bor.",
     "",
-    "ENG: This archive contains an AES-256-GCM encrypted copy of your data.",
-    "     Use the passphrase delivered in a separate Telegram message.",
-    "     Run decrypt.sh (requires openssl) to produce data.json.",
+    "ENG: This archive holds an encrypted copy of your data.",
+    "     The passphrase comes separately (Telegram or clinic staff).",
+    "     Unpack it and run `bash decrypt.sh` in its folder; it asks for the",
+    "     passphrase and writes data.json. Requires only openssl.",
     "",
-    "Layout of data.json.enc:",
-    "  bytes 0..15   = 16-byte scrypt salt",
-    "  bytes 16..27  = 12-byte AES-GCM IV",
-    "  bytes 28..43  = 16-byte AES-GCM auth tag",
-    "  bytes 44..    = ciphertext",
+    "Manual decryption (same as decrypt.sh, without the integrity check):",
+    `  openssl enc -d -aes-256-cbc -pbkdf2 -iter ${PBKDF2_ITERATIONS} -md sha256 \\`,
+    "    -in data.json.enc -out data.json",
     "",
-    "Key derivation: scrypt(passphrase, salt, N=16384, r=8, p=1, dklen=32)",
-    "Cipher:         AES-256-GCM",
+    "Format: openssl enc, AES-256-CBC, PBKDF2-HMAC-SHA256 key and IV,",
+    `        ${PBKDF2_ITERATIONS} iterations, 8-byte salt after "Salted__".`,
+    "data.json.enc.hmac: HMAC-SHA256 of data.json.enc, keyed with",
+    `        HMAC-SHA256(encryption key, "${MAC_INFO}").`,
     "",
   ].join("\n");
 
   const decryptScript = [
     "#!/usr/bin/env bash",
-    "# decrypt.sh — DSAR bundle decryptor.",
-    "# Requires: openssl, xxd, dd.",
+    "# decrypt.sh: checks and decrypts data.json.enc into data.json.",
+    "# Requires: openssl (OpenSSL 1.1.1+, OpenSSL 3 or LibreSSL), od, awk.",
     "set -euo pipefail",
-    "",
-    'if [ -z "${PASSPHRASE:-}" ]; then',
-    '  read -srp "Enter passphrase: " PASSPHRASE',
-    '  echo',
-    'fi',
+    'cd "$(dirname "$0")"',
     "",
     'IN="data.json.enc"',
     'OUT="data.json"',
+    `ITER=${PBKDF2_ITERATIONS}`,
     "",
-    'SALT_HEX=$(dd if="$IN" bs=1 count=16 2>/dev/null | xxd -p -c 32)',
-    'IV_HEX=$(dd if="$IN" bs=1 skip=16 count=12 2>/dev/null | xxd -p -c 32)',
-    'TAG_HEX=$(dd if="$IN" bs=1 skip=28 count=16 2>/dev/null | xxd -p -c 32)',
-    'KEY_HEX=$(printf "%s" "$PASSPHRASE" | openssl kdf -keylen 32 \\',
-    '  -kdfopt digest:SHA256 \\',
-    '  -kdfopt N:16384 -kdfopt r:8 -kdfopt p:1 \\',
-    '  -kdfopt salt:"$(printf %s "$SALT_HEX" | xxd -r -p)" \\',
-    '  -kdfopt pass:"$PASSPHRASE" SCRYPT 2>/dev/null \\',
-    '  | tr -d ":\\n " || true)',
+    'if [ ! -f "$IN" ] || [ ! -f "$IN.hmac" ]; then',
+    '  echo "data.json.enc or data.json.enc.hmac is missing: unpack the whole archive first." >&2',
+    "  exit 1",
+    "fi",
+    'if [ -z "${PASSPHRASE:-}" ]; then',
+    '  read -r -s -p "Passphrase / Пароль: " PASSPHRASE',
+    "  echo",
+    "fi",
+    "export PASSPHRASE",
     "",
-    'dd if="$IN" bs=1 skip=44 2>/dev/null > /tmp/dsar.ct',
-    'openssl enc -d -aes-256-gcm \\',
-    '  -K "$KEY_HEX" \\',
-    '  -iv "$IV_HEX" \\',
-    '  -in /tmp/dsar.ct \\',
-    '  -out "$OUT" \\',
-    '  -tag "$TAG_HEX" || {',
-    '    echo "Decryption failed — wrong passphrase?" >&2',
-    '    rm -f /tmp/dsar.ct "$OUT"',
-    '    exit 1',
-    '  }',
-    'rm -f /tmp/dsar.ct',
+    "# The 8-byte salt right after the «Salted__» magic.",
+    'SALT_HEX=$(od -An -tx1 -j8 -N8 "$IN" | tr -d " \\n")',
+    "# Key the way openssl enc derives it (-P prints it without encrypting).",
+    'KEY_HEX=$(openssl enc -aes-256-cbc -pbkdf2 -iter "$ITER" -md sha256 \\',
+    '  -S "$SALT_HEX" -pass env:PASSPHRASE -P | awk -F= \'tolower($1) ~ /^key/ {gsub(/ /, "", $2); print $2}\')',
+    'if [ -z "$KEY_HEX" ]; then',
+    '  echo "openssl could not derive the key (it needs -pbkdf2: OpenSSL 1.1.1+ or LibreSSL)." >&2',
+    "  exit 1",
+    "fi",
+    `MAC_KEY=$(printf "%s" "${MAC_INFO}" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$KEY_HEX" | awk '{print $NF}')`,
+    'MAC=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$MAC_KEY" "$IN" | awk \'{print $NF}\')',
+    'EXPECTED=$(tr -d " \\r\\n" < "$IN.hmac")',
+    'if [ "$MAC" != "$EXPECTED" ]; then',
+    '  echo "Wrong passphrase or damaged archive. / Неверный пароль или архив повреждён." >&2',
+    "  exit 1",
+    "fi",
+    "",
+    'openssl enc -d -aes-256-cbc -pbkdf2 -iter "$ITER" -md sha256 \\',
+    '  -in "$IN" -out "$OUT" -pass env:PASSPHRASE',
     'echo "Wrote $OUT"',
     "",
   ].join("\n");
 
   return buildZip([
     { name: "README.txt", body: Buffer.from(readme, "utf8") },
-    { name: "data.json.enc", body: cipher },
+    { name: "data.json.enc", body: ciphertext },
+    { name: "data.json.enc.hmac", body: Buffer.from(`${hmacHex}\n`, "utf8") },
     { name: "decrypt.sh", body: Buffer.from(decryptScript, "utf8") },
   ]);
 }

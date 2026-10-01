@@ -24,6 +24,15 @@ export const GET = createApiListHandler(
     if (q.entityId) where.entityId = q.entityId;
     if (q.actorId) where.actorId = q.actorId;
     if (q.action) where.action = q.action;
+    // «Журнал по пациенту» (audit G1-10): rows about the card itself, and
+    // rows of other entities (an allergy, a visit, a DSAR job) whose meta
+    // carries the patient's id.
+    if (q.patientId) {
+      where.OR = [
+        { entityId: q.patientId },
+        { meta: { path: ["patientId"], equals: q.patientId } },
+      ];
+    }
     // The filter's dates are Tashkent days, the last one included whole.
     const createdAt = tashkentDayRange(q.from, q.to);
     if (createdAt) where.createdAt = createdAt;
@@ -31,7 +40,9 @@ export const GET = createApiListHandler(
     const take = q.limit + 1;
     const rows = await prisma.auditLog.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      // `id` breaks ties (rows of one request share a timestamp), so the
+      // cursor lands in the same place on the next page.
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       include: {
@@ -40,8 +51,10 @@ export const GET = createApiListHandler(
     });
     let nextCursor: string | null = null;
     if (rows.length > q.limit) {
-      const next = rows.pop();
-      nextCursor = next?.id ?? null;
+      rows.pop();
+      // The cursor is the LAST row sent: `skip: 1` steps over it. Pointing
+      // it at the popped look-ahead row skipped that row on every page.
+      nextCursor = rows[rows.length - 1]?.id ?? null;
     }
     return ok({ rows, nextCursor });
   }

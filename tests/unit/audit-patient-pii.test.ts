@@ -132,6 +132,15 @@ vi.mock("@/lib/prisma", () => {
       message: noop,
       conversation: { ...noop, findMany: vi.fn(async () => []) },
       patientClinicalNote: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+      // The other carriers (audit PT-07) are pinned in p5-dsar-erasure.test.ts.
+      lead: noop,
+      onlineRequest: noop,
+      notificationSend: noop,
+      communication: noop,
+      call: noop,
+      review: noop,
+      document: { findMany: vi.fn(async () => []), delete: vi.fn() },
+      visitNoteRevision: { findMany: vi.fn(async () => []), update: vi.fn() },
     },
   };
 });

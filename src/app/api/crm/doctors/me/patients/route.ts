@@ -93,6 +93,9 @@ export const GET = createApiListHandler(
     const where: Record<string, unknown> = {
       // "Patients of mine" = at least one appointment as this doctor.
       appointments: { some: { doctorId } },
+      // A card erased under a DSAR request is nobody's patient on a list
+      // any more (audit PT-07).
+      deletedAt: null,
     };
 
     // Search with the same builder as /api/crm/patients so a doctor's muscle

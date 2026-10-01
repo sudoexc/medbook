@@ -9,6 +9,7 @@
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound, conflict } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
@@ -89,6 +90,8 @@ export const GET = createApiListHandler(
       if (!doctor || doctor.id !== note.doctorId) return forbidden();
     }
 
+    // A conclusion read is a chart read (audit G1-06).
+    notePatientView(prisma, request, ctx, note.patientId, "visit_note", note.id);
     return ok(note);
   },
 );

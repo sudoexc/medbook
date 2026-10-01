@@ -37,6 +37,15 @@ export interface PatientHeroProps {
   appointments: PatientAppointment[];
   onOpenDeleteDialog: () => void;
   onOpenNewAppointmentDialog: () => void;
+  /**
+   * ADMIN only (audit PT-07, PT-09, G1-10): the patient's data export,
+   * the erasure request and the audit log filtered to this patient.
+   */
+  privacyActions?: {
+    onExportData: () => void;
+    onRequestErasure: () => void;
+    auditHref: string;
+  };
 }
 
 function ageFrom(birthDate: string | null, nowMs: number): number | null {
@@ -90,10 +99,12 @@ export function PatientHero({
   appointments,
   onOpenDeleteDialog,
   onOpenNewAppointmentDialog,
+  privacyActions,
 }: PatientHeroProps) {
   const locale = useLocale() as Locale;
   const t = useTranslations("patientCard.hero");
   const tq = useTranslations("patientCard.quickActions");
+  const tp = useTranslations("patientCard.quickActions.privacy");
   const [nowMs] = React.useState(() => Date.now());
   const [inviteOpen, setInviteOpen] = React.useState(false);
 
@@ -355,6 +366,19 @@ export function PatientHero({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {privacyActions ? (
+              <>
+                <DropdownMenuItem onClick={privacyActions.onExportData}>
+                  {tp("menuExport")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={privacyActions.onRequestErasure}>
+                  {tp("menuErasure")}
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={privacyActions.auditHref}>{tp("menuAudit")}</Link>
+                </DropdownMenuItem>
+              </>
+            ) : null}
             <DropdownMenuItem
               onClick={onOpenDeleteDialog}
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"

@@ -30,7 +30,10 @@ const state = vi.hoisted(() => ({ rows: [] as Row[] }));
 type Cond = Record<string, unknown>;
 
 function matchField(value: unknown, cond: unknown): boolean {
-  if (cond === null || typeof cond !== "object" || cond instanceof Date) {
+  // `{ deletedAt: null }` (the list hides DSAR-erased cards): a fixture row
+  // without the column is a live card, as a NULL column is in Postgres.
+  if (cond === null) return value === null || value === undefined;
+  if (typeof cond !== "object" || cond instanceof Date) {
     if (cond instanceof Date) return value instanceof Date && value.getTime() === cond.getTime();
     return value === cond;
   }

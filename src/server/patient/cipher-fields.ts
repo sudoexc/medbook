@@ -15,11 +15,8 @@
  *     contains-search is occasionally desirable; if a clinic later requests
  *     it on the encrypt list we extend this helper.
  */
-import {
-  decryptField,
-  encryptField,
-  isEncryptedField,
-} from "@/server/crypto/field-cipher";
+import { encryptField, isEncryptedField } from "@/server/crypto/field-cipher";
+import { decryptOrReport, rowRef } from "@/server/crypto/decrypt-failure";
 
 /** The shape of fields this helper touches — keep narrow on purpose. */
 export type PatientCipherInput = {
@@ -60,15 +57,19 @@ export function serializePatientForWrite<T extends PatientCipherInput>(
  * Decrypt a Patient row read from the DB. Tolerates plaintext (legacy /
  * not-yet-backfilled) values to ease migration. Returns the same row shape
  * so callers can spread into a JSON response unchanged.
+ *
+ * Never throws (audit G1-08): a field whose ciphertext will not open reads
+ * as null and is reported as ENCRYPTION_DECRYPT_FAILED, so one damaged row
+ * no longer turns the card or a list into a 500.
  */
 export function hydratePatientForRead<T extends PatientCipherRow>(row: T): T {
   if (!row || typeof row !== "object") return row;
   const out: Record<string, unknown> = { ...row };
   if ("passport" in row) {
-    out.passport = decryptIfEncrypted(row.passport ?? null);
+    out.passport = decryptOrReport(row.passport, rowRef(row, "Patient", "passport"));
   }
   if ("notes" in row) {
-    out.notes = decryptIfEncrypted(row.notes ?? null);
+    out.notes = decryptOrReport(row.notes, rowRef(row, "Patient", "notes"));
   }
   return out as T;
 }
@@ -86,12 +87,8 @@ export function hydratePatientListForRead<T extends PatientCipherRow>(
 function encryptIfPresent(value: string | null): string | null {
   if (value === null || value === undefined) return null;
   if (value === "") return ""; // empty string is meaningful — keep as-is, no need to encrypt the absence
+  // Only a real envelope passes through (strict check, audit G1-08): a note
+  // that merely starts with «v1:» is text and gets encrypted like any other.
   if (isEncryptedField(value)) return value;
   return encryptField(value);
-}
-
-function decryptIfEncrypted(value: string | null): string | null {
-  if (value === null || value === undefined) return null;
-  if (!isEncryptedField(value)) return value;
-  return decryptField(value);
 }

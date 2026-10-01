@@ -294,9 +294,16 @@ export const AUDIT_ACTION = {
   // Phase 17 Wave 3 — deletion job ran in HARD_DELETE mode and removed the
   // Patient row entirely. `entityType: "Patient"`, `entityId: <patientId>`.
   // `meta` is `{ jobId, erased: [field names] }`: the erased identity is
-  // named, never copied (audit SEC-09). Rare in practice — the default
-  // mode is ANONYMIZE.
+  // named, never copied (audit SEC-09). No longer written (audit PT-07):
+  // the card's medical records must be kept, so a HARD_DELETE request is
+  // carried out as an anonymization (PATIENT_ANONYMIZED with
+  // `requestedMode: "HARD_DELETE"`). Kept for the rows already written.
   PATIENT_HARD_DELETED: "PATIENT_HARD_DELETED",
+
+  // Audit PT-07 — the deletion executor gave up on a job after its retries
+  // (status FAILED). `entityType: "DataDeletionJob"`, `entityId: <jobId>`.
+  // `meta` is `{ patientId, attempts, errorMessage }`.
+  PATIENT_DELETION_FAILED: "PATIENT_DELETION_FAILED",
 
   // Phase 17 Wave 3 — deletion job ran in ANONYMIZE mode and scrubbed PII
   // off the Patient row while preserving aggregate analytics (visit
@@ -342,6 +349,19 @@ export const AUDIT_ACTION = {
   // `entityId: <userSessionId>`. `meta` carries `{ idleMinutes,
   // configuredMinutes }`.
   SESSION_TIMEOUT_LOGOUT: "SESSION_TIMEOUT_LOGOUT",
+
+  // Audit G1-04 — staff sign-in history. Written from the credentials
+  // `authorize()` (src/server/auth/login-audit.ts) with the real client IP
+  // and user agent. `entityType: "User"`, `entityId: <userId>` (null for an
+  // email that matches no account; then `actorLabel` is the typed email and
+  // `clinicId` is null). SUCCEEDED carries `actorId`; FAILED never does (the
+  // person typing is not proven to be the account) and its `meta` is
+  // `{ reason }`: bad_password | unknown_user | inactive | totp_required |
+  // bad_totp | bad_recovery_code | throttled. No password or code is ever
+  // stored. LOGOUT comes from the NextAuth signOut event.
+  LOGIN_SUCCEEDED: "LOGIN_SUCCEEDED",
+  LOGIN_FAILED: "LOGIN_FAILED",
+  LOGOUT: "LOGOUT",
 
   // Phase 17 Wave 2 — proxy invalidated a session because it was older
   // than the 8h hard cap. `entityType: "UserSession"`, `entityId:
@@ -633,6 +653,14 @@ export const AUDIT_ACTION = {
   // so we have a forensic record of which slice of PII left the system.
   // Distinct from PATIENT_DATA_EXPORT_* (those are DSAR per-patient JSON).
   CRM_EXPORT_REQUESTED: "CRM_EXPORT_REQUESTED",
+
+  // Audit G1-06 / INF-02 — a bulk CSV export finished: the patient file
+  // read many patients at once, so it is one row here (not a PatientView per
+  // patient). Written by the export worker and by the streaming
+  // `/api/crm/patients/export`. `entityType: "ExportJob"`, `entityId:
+  // <job.id>` (null for the stream). `meta` carries `{ kind, filters,
+  // rowCount, via }`.
+  CRM_EXPORT_COMPLETED: "CRM_EXPORT_COMPLETED",
 
   // Reactivation campaigns. `entityType: "Campaign"`, `entityId:
   // <campaignId>`.

@@ -17,6 +17,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { ticketNumberFor } from "@/server/services/ticket-number";
@@ -176,7 +177,7 @@ function derivePatientTags(p: {
 
 export const GET = createApiListHandler(
   { roles: ["DOCTOR"] },
-  async ({ ctx }) => {
+  async ({ request, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
     const doctor = await prisma.doctor.findFirst({
@@ -346,6 +347,12 @@ export const GET = createApiListHandler(
     // sugar, not a doctor's pick. Flag it so the client can label the card
     // «Следующая запись» instead of implying a visit is underway.
     const currentIsImplicitNext = current !== null && picked?.isImplicitNext === true;
+    // The current-patient card shows the patient's complaints and card note:
+    // a chart read (audit G1-06). Throttled per visit, so polling writes one
+    // row per five minutes, not one per refresh.
+    if (current) {
+      notePatientView(prisma, request, ctx, current.patientId, "doctor.current", current.appointmentId);
+    }
 
     // ──────────────────────────────────────────────────────────────────────
     // liveQueue — the walk-in FIFO from the shared projection. `queuedAt`

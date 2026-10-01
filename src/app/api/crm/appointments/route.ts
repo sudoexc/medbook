@@ -8,7 +8,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, conflict, parseQuery } from "@/server/http";
-import { normalizePhone } from "@/lib/phone";
+import { appointmentSearchOr } from "@/server/appointments/list-where";
 import {
   CreateAppointmentSchema,
   QueryAppointmentSchema,
@@ -42,24 +42,9 @@ export const GET = createApiListHandler(
         none: { status: "PAID" },
       };
     }
-    if (q.q && q.q.trim().length > 0) {
-      const term = q.q.trim();
-      const phoneDigits = term.replace(/\D/g, "");
-      const phoneNorm = normalizePhone(term);
-      const or: Array<Record<string, unknown>> = [
-        { patient: { fullName: { contains: term, mode: "insensitive" } } },
-        { patient: { phone: { contains: term } } },
-        { doctor: { nameRu: { contains: term, mode: "insensitive" } } },
-        { doctor: { nameUz: { contains: term, mode: "insensitive" } } },
-      ];
-      if (phoneDigits.length >= 3) {
-        or.push({ patient: { phoneNormalized: { contains: phoneDigits } } });
-        if (phoneNorm) {
-          or.push({ patient: { phoneNormalized: { contains: phoneNorm } } });
-        }
-      }
-      where.OR = or;
-    }
+    // Shared with the CSV export (audit INF-02).
+    const searchOr = appointmentSearchOr(q.q);
+    if (searchOr) where.OR = searchOr;
 
     // DOCTOR sees only their own records
     if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {

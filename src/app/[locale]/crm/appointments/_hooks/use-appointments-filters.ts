@@ -180,6 +180,35 @@ const BUCKET_TO_STATUS: Record<StatusBucket, string | undefined> = {
   arrived: undefined,
 };
 
+/**
+ * The CSV export's `filters` for the list on screen (audit INF-02): the
+ * resolved period (`dateMode` already turned into today's or tomorrow's
+ * Tashkent window), the status of the tile, and every other server filter.
+ * Of the time-relative tiles («скоро», «опаздывают»), which narrow the
+ * loaded rows by the minute, the two that are plain statuses travel as
+ * statuses; the others export the period they sit in.
+ */
+export function appointmentExportFilters(
+  state: AppointmentsFilterState,
+  api: AppointmentsListFilters,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const put = (k: string, v: unknown) => {
+    if (v !== undefined && v !== null && v !== "" && v !== false) out[k] = v;
+  };
+  put("dateFrom", api.from);
+  put("dateTo", api.to);
+  put("doctorId", api.doctorId);
+  put("cabinetId", api.cabinetId);
+  put("channel", api.channel);
+  put("unpaid", api.onlyUnpaid);
+  put("q", api.q);
+  if (state.bucket === "arrived") put("statuses", ["IN_PROGRESS", "COMPLETED"]);
+  else if (state.bucket === "unconfirmed") put("status", "BOOKED");
+  else put("status", api.status);
+  return out;
+}
+
 export function useAppointmentsFilters() {
   const router = useRouter();
   const pathname = usePathname();

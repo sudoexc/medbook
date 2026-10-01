@@ -15,11 +15,8 @@
  * when that happens, callers will JSON.stringify on write and JSON.parse on
  * read; the cipher boundary itself is bytes-in / bytes-out and won't care.
  */
-import {
-  decryptField,
-  encryptField,
-  isEncryptedField,
-} from "@/server/crypto/field-cipher";
+import { encryptField, isEncryptedField } from "@/server/crypto/field-cipher";
+import { decryptOrReport, rowRef } from "@/server/crypto/decrypt-failure";
 
 export type MedicalCaseCipherInput = {
   soapDraft?: string | null | undefined;
@@ -45,7 +42,11 @@ export function hydrateMedicalCaseForRead<T extends MedicalCaseCipherRow>(
   if (!row || typeof row !== "object") return row;
   const out: Record<string, unknown> = { ...row };
   if ("soapDraft" in row) {
-    out.soapDraft = decryptIfEncrypted(row.soapDraft ?? null);
+    // Never throws (audit G1-08): a damaged envelope reads as null.
+    out.soapDraft = decryptOrReport(
+      row.soapDraft,
+      rowRef(row, "MedicalCase", "soapDraft"),
+    );
   }
   return out as T;
 }
@@ -61,10 +62,4 @@ function encryptIfPresent(value: string | null): string | null {
   if (value === "") return "";
   if (isEncryptedField(value)) return value;
   return encryptField(value);
-}
-
-function decryptIfEncrypted(value: string | null): string | null {
-  if (value === null || value === undefined) return null;
-  if (!isEncryptedField(value)) return value;
-  return decryptField(value);
 }

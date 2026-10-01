@@ -22,6 +22,7 @@ import QRCode from "qrcode";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
@@ -209,6 +210,13 @@ export const GET = createApiListHandler(
         select: { id: true },
       });
       if (!doctor || doctor.id !== note.doctorId) return forbidden();
+    }
+
+    // A printed conclusion is a chart read: in «Просмотры карточек» under
+    // the patient (audit G1-06). The editor's live preview (`embed=1`) is
+    // already covered by the note's own GET.
+    if (!embed) {
+      notePatientView(prisma, request, ctx, note.patient.id, "visit_note.print", id);
     }
 
     const clinic =
@@ -1112,7 +1120,7 @@ export const GET = createApiListHandler(
           action: "visit_note.print",
           entityType: "VisitNote",
           entityId: id,
-          meta: { locale, status: note.status, type: "handout" },
+          meta: { patientId: note.patient.id, locale, status: note.status, type: "handout" },
         });
       }
 
@@ -1619,6 +1627,7 @@ export const GET = createApiListHandler(
           entityType: "VisitNote",
           entityId: id,
           meta: {
+            patientId: note.patient.id,
             locale,
             status: note.status,
             type: "package",
@@ -1650,7 +1659,7 @@ export const GET = createApiListHandler(
         action: "visit_note.print",
         entityType: "VisitNote",
         entityId: id,
-        meta: { locale, status: note.status, type: "clinical" },
+        meta: { patientId: note.patient.id, locale, status: note.status, type: "clinical" },
       });
     }
 

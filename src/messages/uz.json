@@ -368,6 +368,8 @@
       "lastVisit": "Oxirgi tashrif",
       "lastVisitFrom": "Oxirgi tashrif (dan)",
       "lastVisitTo": "Oxirgi tashrif (gacha)",
+      "visitDateFrom": "Tashrif sanasi (dan)",
+      "visitDateTo": "Tashrif sanasi (gacha)",
       "hasDebt": "Qarzdor",
       "clear": "Tozalash",
       "labelSearch": "Qidirish",
@@ -1254,7 +1256,39 @@
       "exportSuccess": "Eksport navbatga qo'yildi — Telegram-bot arxiv va parolni yuboradi.",
       "exportAlreadyRequested": "Faol eksport allaqachon bajarilmoqda.",
       "exportNoTelegramChat": "Yetkazib berish uchun bog'langan Telegram-chat yo'q.",
-      "exportError": "Eksport yaratib bo'lmadi. Keyinroq urinib ko'ring."
+      "exportError": "Eksport yaratib bo'lmadi. Keyinroq urinib ko'ring.",
+      "privacy": {
+        "menuExport": "Bemor ma'lumotlarini eksport qilish",
+        "menuErasure": "Ma'lumotlarni o'chirish so'rovi",
+        "menuAudit": "Bemor bo'yicha jurnal",
+        "exportTitle": "Bemor ma'lumotlari eksporti",
+        "exportBody": "Bemorning so'rovi bo'yicha uning barcha ma'lumotlari bilan shifrlangan arxiv. Arxiv parolini yaratilgandan so'ng bir marta ko'rsatamiz.",
+        "exportStart": "Eksport yaratish",
+        "exportStarting": "Yaratilmoqda…",
+        "exportPasswordLabel": "Arxiv paroli",
+        "exportPasswordOnce": "Parol bir marta ko'rsatiladi va hech qayerda saqlanmaydi. Uni saqlang yoki bemorga arxivdan alohida bering.",
+        "exportWhereTelegram": "Arxiv tayyor bo'lganda Telegramingizga keladi. Uni Sozlamalar → DSAR so'rovlari bo'limidan ham yuklab olish mumkin.",
+        "exportWhereDsar": "Arxiv tayyor bo'lganda uni Sozlamalar → DSAR so'rovlari bo'limidan yuklab oling.",
+        "exportHowToOpen": "Arxiv uning ichidagi decrypt.sh skripti bilan ochiladi: u shu parolni so'raydi.",
+        "copy": "Nusxa olish",
+        "copied": "Parol nusxalandi",
+        "exportAlreadyActive": "Bu bemorning eksporti allaqachon tayyorlanmoqda.",
+        "exportError": "Eksport yaratib bo'lmadi. Keyinroq urinib ko'ring.",
+        "close": "Yopish",
+        "cancel": "Bekor qilish",
+        "erasureTitle": "Bemor ma'lumotlarini o'chirish so'rovi",
+        "erasureBody": "Agar administrator so'rovni Sozlamalar → DSAR so'rovlari bo'limida tasdiqlasa, karta so'rov yaratilganidan 90 kun o'tib anonimlashtiriladi. Ungacha so'rovni bekor qilish mumkin.",
+        "erasureErased": "O'chiriladi: F.I.Sh., telefon, pasport, manzil, tug'ilgan sana, Telegram, izohlar, yozishmalar, xabarnoma matnlari, arizalar va lidlar, qo'ng'iroq yozuvlari va bemorning barcha fayllari.",
+        "erasureKept": "Tibbiy hujjatlar to'g'risidagi qonunga ko'ra qoladi: tashriflar, xulosalar, tashxislar, tayinlovlar va tahlillar, bemor ismisiz.",
+        "erasureReasonLabel": "Asos (ixtiyoriy)",
+        "erasureReasonPlaceholder": "Masalan: bemorning yozma arizasi",
+        "erasureSubmit": "So'rov yaratish",
+        "erasureSubmitting": "Yaratilmoqda…",
+        "erasureSuccess": "So'rov yaratildi. Uni Sozlamalar → DSAR so'rovlari bo'limida tasdiqlang.",
+        "erasureAlreadyActive": "Bu bemor ma'lumotlarini o'chirish so'rovi allaqachon bor, u Sozlamalar → DSAR so'rovlari bo'limida.",
+        "erasureAlreadyErased": "Bu bemorning ma'lumotlari allaqachon o'chirilgan.",
+        "erasureError": "So'rov yaratib bo'lmadi. Keyinroq urinib ko'ring."
+      }
     },
     "hero": {
       "years": "{age} yosh",
@@ -1573,6 +1607,7 @@
       "error": "O'chirib bo'lmadi",
       "blockedTitle": "Kartani o'chirib bo'lmaydi: unda allaqachon ma'lumotlar bor",
       "blockedBody": "Faqat xato bilan yaratilgan bo'sh kartani o'chirish mumkin. Agar bemor o'z ma'lumotlarini o'chirishni so'rasa, bu «DSAR so'rovlari» bo'limi orqali amalga oshiriladi.",
+      "blockedRequestErasure": "Ma'lumotlarni o'chirish so'rovini yaratish",
       "blockedCount": "{label}: {count}",
       "blockedGroups": {
         "visits": "Tashriflar va xulosalar",
@@ -4147,12 +4182,23 @@
       "subtitle": "Klinikadagi barcha o'zgarishlar filtrlar bilan.",
       "empty": "Filtrga mos yozuvlar topilmadi.",
       "loadMore": "Yana yuklash",
+      "loadError": "Jurnalni yuklab bo'lmadi. Aloqani tekshirib, qayta urining.",
+      "retry": "Qayta urinish",
+      "metaShow": "Batafsil",
+      "metaHide": "Batafsilni yopish",
       "filters": {
         "entity": "Obyekt",
         "action": "Harakat",
         "actor": "Foydalanuvchi (id)",
         "from": "Dan",
-        "to": "Gacha"
+        "to": "Gacha",
+        "object": "Obyekt (id)",
+        "patient": "Bemor",
+        "patientPlaceholder": "F.I.Sh. yoki telefon",
+        "patientClear": "Bemorni tozalash",
+        "patientNone": "Hech kim topilmadi",
+        "staff": "Xodim",
+        "staffAll": "Barcha xodimlar"
       },
       "tabs": {
         "events": "Hodisalar",
@@ -4170,7 +4216,15 @@
         "contextPatientDetail": "Bemor kartasi",
         "contextAppointmentDrawer": "Yozuv",
         "contextCaseDetail": "Kasallik tarixi",
-        "contextExport": "Eksport"
+        "contextExport": "Eksport",
+        "contextVisitNote": "Xulosa",
+        "contextVisitNotePrint": "Xulosani chop etish",
+        "contextDocumentFile": "Hujjat",
+        "contextConversation": "Yozishma",
+        "contextDoctorCard": "Shifokor kabineti: karta",
+        "contextDoctorCurrent": "Shifokor kabineti: joriy bemor",
+        "contextDoctorVisit": "Shifokor kabineti: tashrif",
+        "contextAll": "Barcha kontekstlar"
       }
     },
     "dsar": {
@@ -4194,6 +4248,8 @@
       "errorMessage": "Xatolik",
       "reason": "Sabab",
       "notes": "Izohlar",
+      "attempts": "Urinishlar: {n}",
+      "exportsPasswordHint": "Arxiv paroli eksport bemor kartasidan yaratilganda bir marta ko'rsatiladi. Telegram orqali kelgan so'rovlar parolni o'z chatida oladi.",
       "exportStatus": {
         "PENDING": "Kutilmoqda",
         "PROCESSING": "Tayyorlanmoqda",
@@ -4207,7 +4263,8 @@
         "APPROVED": "Tasdiqlangan",
         "CANCELLED": "Bekor qilingan",
         "EXECUTED": "Bajarilgan",
-        "ANONYMIZED": "Anonimlashtirildi"
+        "ANONYMIZED": "Anonimlashtirildi",
+        "FAILED": "Bajarilmadi"
       },
       "mode": {
         "ANONYMIZE": "Anonimlashtirish",
@@ -4223,13 +4280,15 @@
         "dialogCancel": "Hozir emas",
         "confirmApproveTitle": "Bemor ma'lumotlarini o'chirishni tasdiqlaysizmi?",
         "confirmApproveBody": {
-          "ANONYMIZE": "Bu qaytarib bo'lmaydigan amal. Bemorning shaxsiy ma'lumotlari tasdiqlash bilan birga anonimlashtiriladi. Yozuvlar bilan bog'lanishlar hisobot uchun saqlanadi, lekin identifikatsiya maydonlari o'chiriladi.",
-          "HARD_DELETE": "Bu qaytarib bo'lmaydigan amal. Bemorning barcha ma'lumotlari, jumladan tashriflar tarixi va tibbiy yozuvlar to'liq o'chiriladi. Tiklab bo'lmaydi."
+          "ANONYMIZE": "Bu qaytarib bo'lmaydigan amal. Rejalashtirilgan sanada bemorning shaxsiy ma'lumotlari anonimlashtiriladi: F.I.Sh., telefon, pasport, tug'ilgan sana, Telegram, yozishmalar, arizalar, xabarnoma matnlari va barcha fayllar. Tibbiy yozuvlar qonunga ko'ra bemor ismisiz saqlanadi.",
+          "HARD_DELETE": "Kartani to'liq o'chirish bajarilmaydi: klinika tibbiy yozuvlarni saqlashi shart. So'rov anonimlashtirish sifatida bajariladi: bemorning shaxsiy ma'lumotlari va fayllari o'chiriladi, tibbiy yozuvlar bemor ismisiz qoladi."
         },
         "confirmApproveAction": "O'chirishni tasdiqlash",
         "confirmCancelTitle": "So'rovni bekor qilasizmi?",
         "confirmCancelBody": "So'rov bekor qilingan deb belgilanadi. Bemor ma'lumotlari o'zgartirishsiz saqlanadi. Faqat yangi so'rov bilan qaytarish mumkin.",
-        "confirmCancelAction": "So'rovni bekor qilish"
+        "confirmCancelAction": "So'rovni bekor qilish",
+        "retry": "Qayta urinish",
+        "retrying": "Qayta urinilmoqda…"
       },
       "approveSuccess": "So'rov tasdiqlandi.",
       "cancelSuccess": "So'rov bekor qilindi.",

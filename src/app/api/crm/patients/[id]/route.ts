@@ -133,6 +133,9 @@ export const PATCH = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.patient.findUnique({ where: { id } });
     if (!before) return notFound();
+    // An erased card stays erased (audit PT-07): renaming it, or giving it
+    // a phone, would put a person back on a record the patient had removed.
+    if (before.deletedAt) return conflict("patient_erased");
 
     const data: Record<string, unknown> = serializePatientForWrite({ ...body });
     if (body.fullName !== undefined) {

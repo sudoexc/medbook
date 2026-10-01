@@ -8,6 +8,10 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound, err } from "@/server/http";
 import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
+import {
+  medicalRecordDeleteAuditMeta,
+  medicalRecordUpdateAuditMeta,
+} from "@/server/audit/patient-audit-meta";
 
 const SeveritySchema = z.enum(["MILD", "MODERATE", "SEVERE"]);
 
@@ -64,7 +68,8 @@ export const PATCH = createApiHandler(
       action: "patient.allergy.update",
       entityType: "PatientAllergy",
       entityId: allergyId,
-      meta: { patientId, fields: Object.keys(data) },
+      // Old and new values, not just field names (audit G1-07).
+      meta: medicalRecordUpdateAuditMeta(patientId, before, after),
     });
     return ok(after);
   },
@@ -88,7 +93,8 @@ export const DELETE = createApiHandler(
       action: "patient.allergy.delete",
       entityType: "PatientAllergy",
       entityId: allergyId,
-      meta: { patientId, substance: row.substance },
+      // The whole removed row, so it can be restored (audit G1-07).
+      meta: medicalRecordDeleteAuditMeta(patientId, row),
     });
     return ok({ id: allergyId, deleted: true });
   },

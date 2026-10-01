@@ -135,3 +135,29 @@ export function patientUpdateAuditMeta(before: Row, after: Row): RedactedDiff {
 export function patientSnapshotAuditMeta(row: Row): RedactedSnapshot {
   return redactedSnapshot(row, PATIENT_PII_FIELDS);
 }
+
+/**
+ * Allergies, diagnoses and chronic conditions on the card (audit G1-07):
+ * clinical facts, not identity, so the audit row keeps their values. An
+ * edit used to record only the names of the changed fields and a delete
+ * only the substance or label, so after «SEVERE anaphylaxis» was changed to
+ * MILD, or the allergy removed, nobody could say what the record had said.
+ * Now an edit keeps the old and new value of every changed field and a
+ * delete keeps the whole row.
+ */
+const NO_NAME_ONLY: ReadonlySet<string> = new Set();
+
+export function medicalRecordUpdateAuditMeta(
+  patientId: string,
+  before: Row,
+  after: Row,
+): { patientId: string } & RedactedDiff {
+  return { patientId, ...redactedDiff(before, after, NO_NAME_ONLY) };
+}
+
+export function medicalRecordDeleteAuditMeta(
+  patientId: string,
+  row: Row,
+): { patientId: string; deleted: Row } {
+  return { patientId, deleted: redactedSnapshot(row, NO_NAME_ONLY).card };
+}

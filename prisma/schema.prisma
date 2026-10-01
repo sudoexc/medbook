@@ -3535,6 +3535,9 @@ enum DataDeletionStatus {
   CANCELLED
   EXECUTED
   ANONYMIZED
+  // The executor gave up after its retries; `errorMessage` says why. An
+  // admin can approve it again (audit PT-07).
+  FAILED
 }
 
 enum DataDeletionMode {
@@ -3607,6 +3610,12 @@ model DataDeletionJob {
   // For Mini App requests: the patient is the actor. For CRM-initiated
   // requests: the User who created the job.
   requestedByUserId String?
+  // Failed executions so far (audit PT-07). A job that keeps failing used
+  // to stay APPROVED forever, retried every hour, and fifty such jobs
+  // filled the whole batch; after MAX_DELETION_ATTEMPTS it is FAILED.
+  attempts          Int                @default(0)
+  // The last failure, for the DSAR queue screen. Never patient data.
+  errorMessage      String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 

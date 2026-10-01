@@ -1,8 +1,8 @@
 /**
  * GET /api/crm/exports/[jobId]/download — stream the generated CSV.
  *
- * Phase 6 rewrites this to issue a short-lived MinIO presigned URL and
- * redirect; today it reads `/tmp/exports/<jobId>.csv` directly.
+ * Reads `/tmp/exports/<jobId>.csv`; the job and its file expire an hour
+ * after the export finished (audit INF-02), then this answers 404.
  */
 import { promises as fs } from "node:fs";
 
@@ -38,12 +38,20 @@ export const GET = createApiListHandler(
         { status: 409, headers: { "content-type": "application/json" } },
       );
     }
-    const buf = await fs.readFile(job.filePath);
+    let buf: Buffer;
+    try {
+      buf = await fs.readFile(job.filePath);
+    } catch {
+      // Swept (an hour after it finished) or lost with the container.
+      return notFound();
+    }
     return new Response(new Uint8Array(buf), {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${job.kind}-${job.id}.csv"`,
+        // A list of patients: never kept by a browser or proxy cache.
+        "Cache-Control": "private, no-store",
       },
     });
   },

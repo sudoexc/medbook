@@ -7,11 +7,8 @@
  * NOT encrypted (clinical metadata, not PII):
  *   - `drugName`, `dosage`, `schedule`, `status`, `remindersEnabled`.
  */
-import {
-  decryptField,
-  encryptField,
-  isEncryptedField,
-} from "@/server/crypto/field-cipher";
+import { encryptField, isEncryptedField } from "@/server/crypto/field-cipher";
+import { decryptOrReport, rowRef } from "@/server/crypto/decrypt-failure";
 
 export type PrescriptionCipherInput = {
   notes?: string | null | undefined;
@@ -37,7 +34,8 @@ export function hydratePrescriptionForRead<T extends PrescriptionCipherRow>(
   if (!row || typeof row !== "object") return row;
   const out: Record<string, unknown> = { ...row };
   if ("notes" in row) {
-    out.notes = decryptIfEncrypted(row.notes ?? null);
+    // Never throws (audit G1-08): a damaged envelope reads as null.
+    out.notes = decryptOrReport(row.notes, rowRef(row, "Prescription", "notes"));
   }
   return out as T;
 }
@@ -53,10 +51,4 @@ function encryptIfPresent(value: string | null): string | null {
   if (value === "") return "";
   if (isEncryptedField(value)) return value;
   return encryptField(value);
-}
-
-function decryptIfEncrypted(value: string | null): string | null {
-  if (value === null || value === undefined) return null;
-  if (!isEncryptedField(value)) return value;
-  return decryptField(value);
 }

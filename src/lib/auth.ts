@@ -49,6 +49,10 @@ import {
   rememberLoginSource,
 } from "@/server/auth/login-sources";
 import { verifyPasswordConstantTime } from "@/server/auth/password";
+import {
+  recordLoginEvent,
+  type LoginAuditEvent,
+} from "@/server/auth/login-audit";
 import { realClientIp } from "./client-ip";
 import { isUserActivityRequest } from "./user-activity";
 
@@ -121,6 +125,7 @@ async function checkStaffCredentials(
     totp: string | null;
     recoveryCode: string | null;
     ip: string;
+    userAgent: string | null;
   },
   attempt: OpenLoginAttempt,
 ) {
@@ -136,7 +141,22 @@ async function checkStaffCredentials(
     input.password,
     user?.passwordHash,
   );
-  if (!user || !user.active || !valid) return null;
+  // Every outcome goes to the audit log (audit G1-04): sign-ins and failed
+  // attempts were invisible, so a leaked password or a guessing run could
+  // not be investigated.
+  const account = user
+    ? { id: user.id, email: user.email, role: user.role, clinicId: user.clinicId ?? null }
+    : null;
+  const auditLogin = (event: LoginAuditEvent) =>
+    recordLoginEvent(event, { ip: input.ip, userAgent: input.userAgent });
+  const fail = async (reason: Extract<LoginAuditEvent, { kind: "failed" }>["reason"]) => {
+    await auditLogin({ kind: "failed", reason, account, typedEmail: input.email });
+    return null;
+  };
+  if (!user) return fail("unknown_user");
+  if (!valid) return fail("bad_password");
+  if (!user.active) return fail("inactive");
+  let via: "password" | "totp" | "recovery_code" = "password";
 
   // 2FA gate. When the user has enrolled, we require either a
   // current TOTP code or a recovery code on the same submit. The
@@ -151,14 +171,16 @@ async function checkStaffCredentials(
       // Stored secret is AES-GCM ciphertext at rest (legacy plaintext
       // tolerated until the backfill runs) — decrypt before verifying.
       if (!verifyTotpCode(readTotpSecret(user.totpSecret), totp)) {
-        return null;
+        return fail("bad_totp");
       }
+      via = "totp";
     } else if (recoveryCode) {
       const result: ConsumeResult = await consumeRecoveryCode(
         recoveryCode,
         user.recoveryCodesHash,
       );
-      if (!result.ok) return null;
+      if (!result.ok) return fail("bad_recovery_code");
+      via = "recovery_code";
       await runWithTenant({ kind: "SYSTEM" }, async () => {
         await prisma.user.update({
           where: { id: user.id },
@@ -191,12 +213,15 @@ async function checkStaffCredentials(
       // /login/2fa page (it knows the password worked because the
       // pre-flight /api/crm/auth/totp-required check returned true).
       // Not a failure: the right password must not use up the budget.
+      // Still recorded, as «second factor missing», so a password known
+      // to someone without the phone shows up in the log.
       attempt.release();
-      return null;
+      return fail("totp_required");
     }
   }
 
   attempt.succeeded();
+  await auditLogin({ kind: "succeeded", account: account!, via });
   // Never throws: a failed write only means this address is not trusted yet.
   await rememberLoginSource({ userId: user.id, email: user.email, ip: input.ip });
   return {
@@ -229,6 +254,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signOut(message) {
       const token = "token" in message ? message.token : null;
       const sid = typeof token?.sid === "string" ? token.sid : null;
+      // Sign-outs belong to the sign-in history too (audit G1-04).
+      const userId =
+        (typeof token?.userId === "string" && token.userId) ||
+        (typeof token?.sub === "string" && token.sub) ||
+        null;
+      if (userId) {
+        let reqHeaders: { get(name: string): string | null } | null = null;
+        try {
+          reqHeaders = await headers();
+        } catch {
+          // Outside a request scope: the row is still worth writing.
+        }
+        await recordLoginEvent(
+          {
+            kind: "logout",
+            account: {
+              id: userId,
+              role: typeof token?.role === "string" ? token.role : null,
+              // A SUPER_ADMIN's clinic claim is the one being impersonated,
+              // not a home clinic: their sign-out is a platform row.
+              clinicId:
+                token?.role !== "SUPER_ADMIN" && typeof token?.clinicId === "string"
+                  ? token.clinicId
+                  : null,
+            },
+          },
+          {
+            ip: reqHeaders ? realClientIp({ headers: reqHeaders }) : null,
+            userAgent: reqHeaders?.get("user-agent") ?? null,
+          },
+        );
+      }
       try {
         if (sid) {
           await deleteSessionById(sid);
@@ -304,10 +361,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           { ip, email },
           { isKnownSource: () => isKnownLoginSource(email, ip) },
         );
-        if (attempt.blocked) return null;
+        const userAgent = request?.headers?.get("user-agent") ?? null;
+        if (attempt.blocked) {
+          await recordLoginEvent(
+            { kind: "failed", reason: "throttled", account: null, typedEmail: email },
+            { ip, userAgent },
+          );
+          return null;
+        }
         try {
           return await checkStaffCredentials(
-            { email, password, totp, recoveryCode, ip },
+            { email, password, totp, recoveryCode, ip, userAgent },
             attempt,
           );
         } catch (err) {

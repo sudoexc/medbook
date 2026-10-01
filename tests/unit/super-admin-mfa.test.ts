@@ -263,10 +263,14 @@ describe("impersonated CRM requests", () => {
   });
 
   it("a SUPER_ADMIN without a clinic on a CRM list route is gated too", async () => {
+    // Audit PT-05: refused before the 2FA check, like createApiHandler does,
+    // because it may not read a clinic's data at all without a grant.
     const inner = vi.fn(async () => Response.json({ ok: true }));
     const handler = createApiListHandler({}, inner);
     const res = await handler(new Request("https://neurofax.uz/api/crm/notifications"));
-    expect(await errorOf(res)).toBe("MFA_REQUIRED");
+    expect(res.status).toBe(400);
+    expect(await errorOf(res)).toBe("ClinicNotSelected");
+    expect(inner).not.toHaveBeenCalled();
   });
 
   it("the enrolment endpoints stay reachable", async () => {

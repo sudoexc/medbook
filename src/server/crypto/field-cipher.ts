@@ -246,16 +246,28 @@ export function decryptField(value: string | null): string | null {
 }
 
 /**
- * True iff the value carries our `v<n>:` prefix. Used by the backfill /
- * rotation scripts to skip rows that are already encrypted, and by the health
- * route to slice "rows by encryption version".
+ * The exact envelope `encryptField` writes: version, a 12-byte IV (16 base64
+ * chars, no padding), a 16-byte tag (22 chars + `==`) and the ciphertext in
+ * canonical base64.
+ */
+const ENVELOPE =
+  /^v\d+:[A-Za-z0-9+/]{16}:[A-Za-z0-9+/]{22}==:(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/**
+ * True iff the value is one of our ciphertext envelopes. Used by the write
+ * boundaries (encrypt everything that is not), the read boundaries, the
+ * backfill / rotation scripts and the health route.
+ *
+ * Strict on purpose (audit G1-08): it used to accept anything that merely
+ * started with «v<n>:», so a receptionist's note «v1: первичный, v2: повтор»
+ * was stored in plain text (the write boundary took it for ciphertext) and
+ * then failed to decrypt on every read, taking the patients list down with
+ * it.
  */
 export function isEncryptedField(value: string | null): boolean {
   if (value === null || value === undefined) return false;
-  if (typeof value !== "string" || value.length < 4) return false;
-  const colon = value.indexOf(":");
-  if (colon < 2) return false;
-  return /^v\d+$/.test(value.slice(0, colon));
+  if (typeof value !== "string") return false;
+  return ENVELOPE.test(value);
 }
 
 /**

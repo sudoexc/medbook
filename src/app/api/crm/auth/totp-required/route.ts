@@ -22,6 +22,12 @@
  * 5 password checks, not 500. A right password here only gives the slot back:
  * the sign-in is not complete until NextAuth has seen the second factor.
  *
+ * The login form sends every password here first, so this is where a wrong
+ * one typed in the browser is refused: the refusal goes to the audit log as
+ * LOGIN_FAILED (`stage: "precheck"`), like the ones `authorize()` writes
+ * (audit G1-04). A right password writes nothing here; the sign-in itself
+ * is recorded by NextAuth's callback.
+ *
  * Why this is a separate endpoint instead of using signIn directly:
  *   - signIn returns null on "wrong credentials" AND on "missing 2fa". We
  *     need to distinguish them so the client can route to the right page
@@ -44,6 +50,7 @@ import {
 } from "@/server/auth/login-throttle";
 import { isKnownLoginSource } from "@/server/auth/login-sources";
 import { realClientIp } from "@/lib/client-ip";
+import { recordLoginEvent } from "@/server/auth/login-audit";
 
 const Schema = z.object({
   email: z.string().email().max(200),
@@ -64,11 +71,18 @@ export async function POST(request: Request): Promise<Response> {
   const { email, password } = parsed.data;
 
   const ip = realClientIp(request);
+  const userAgent = request.headers.get("user-agent");
   const attempt = await beginLoginAttempt(
     { ip, email },
     { isKnownSource: () => isKnownLoginSource(email, ip) },
   );
-  if (attempt.blocked) return tooManyAttemptsResponse(attempt);
+  if (attempt.blocked) {
+    await recordLoginEvent(
+      { kind: "failed", reason: "throttled", account: null, typedEmail: email, stage: "precheck" },
+      { ip, userAgent },
+    );
+    return tooManyAttemptsResponse(attempt);
+  }
 
   let user;
   let valid: boolean;
@@ -81,6 +95,9 @@ export async function POST(request: Request): Promise<Response> {
         where: { email },
         select: {
           id: true,
+          email: true,
+          role: true,
+          clinicId: true,
           passwordHash: true,
           active: true,
           totpEnabledAt: true,
@@ -95,6 +112,18 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!user || !user.active || !valid) {
     // The slot taken above already counts as this failure.
+    await recordLoginEvent(
+      {
+        kind: "failed",
+        reason: !user ? "unknown_user" : !valid ? "bad_password" : "inactive",
+        account: user
+          ? { id: user.id, email: user.email, role: user.role, clinicId: user.clinicId ?? null }
+          : null,
+        typedEmail: email,
+        stage: "precheck",
+      },
+      { ip, userAgent },
+    );
     return err("invalid_credentials", 401);
   }
   // Right password, but no session yet: NextAuth counts the real sign-in.

@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { ok, err, notFound, parseQuery } from "@/server/http";
 import {
   parseAdditionalDiagnoses,
@@ -85,6 +86,8 @@ export const GET = createApiListHandler(
     if (!hasRelationship) {
       return err("Forbidden", 403, { reason: "no_appointments_with_doctor" });
     }
+    // The doctor reading the chart is in «Просмотры карточек» (audit G1-06).
+    notePatientView(prisma, request, ctx, patientId, "doctor.card", "diagnoses");
 
     const rows = await prisma.visitNote.findMany({
       where: {

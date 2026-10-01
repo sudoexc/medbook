@@ -8,6 +8,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { notePatientView } from "@/server/audit/patient-view";
 import { ok, err, notFound } from "@/server/http";
 import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 
@@ -77,6 +78,8 @@ export const GET = createApiListHandler(
       select: { id: true },
     });
     if (!relation) return notFound();
+    // The doctor reading the chart is in «Просмотры карточек» (audit G1-06).
+    notePatientView(prisma, request, ctx, patient.id, "doctor.card", "summary");
 
     const [allergies, chronicConditions, upcoming, lastDoc] = await Promise.all([
       prisma.patientAllergy.findMany({

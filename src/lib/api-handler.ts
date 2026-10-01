@@ -227,8 +227,9 @@ async function parseBody<TBody>(
  * SUPER_ADMIN included (audit SEC-08): impersonation used to be skipped here
  * on the promise of a 2FA check at a «platform-login / grant layer» that never
  * existed, so a SUPER_ADMIN password alone read and changed any clinic's
- * medical data. An impersonating SUPER_ADMIN (and one without a clinic, on the
- * list handlers) now needs their OWN enrolment. Returns `null` to let the
+ * medical data. An impersonating SUPER_ADMIN now needs their OWN enrolment
+ * (one without a clinic never gets this far: both wrappers answer
+ * ClinicNotSelected first, audit PT-05). Returns `null` to let the
  * request proceed, or a 403 Response to block it.
  */
 async function enforceTotpEnrollment(
@@ -381,6 +382,24 @@ export function createApiListHandler(
       return json({ error: "Forbidden" }, { status });
     }
     ctx = await dropStaleBranch(ctx);
+
+    // Same gate as createApiHandler (audit PT-05). Every route on this
+    // wrapper is under /api/crm and reads one clinic's data; a SUPER_ADMIN
+    // context carries no clinicId, so the Prisma tenant extension injected
+    // nothing and GET /api/crm/patients, /patients/export and the card read
+    // every clinic's patients with no impersonation grant, no reason and no
+    // PatientView row. Platform reads have their own wrappers
+    // (createPlatformListHandler); a SUPER_ADMIN enters a clinic first.
+    if (ctx.kind === "SUPER_ADMIN") {
+      return json(
+        {
+          error: "ClinicNotSelected",
+          message:
+            "SUPER_ADMIN must impersonate a clinic before reading tenant-scoped data.",
+        },
+        { status: 400 },
+      );
+    }
 
     // GET-only handler — VIEW_ONLY does not need to block here (every method
     // routed through this wrapper is read-only by construction), but we still

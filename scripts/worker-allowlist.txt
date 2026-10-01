@@ -44,6 +44,7 @@ fix-tg11-thread-patient-links.ts
 fix-ux01-ai-mock-text.ts
 fix-vw02-stale-handouts.ts
 reminder-cadence-5d3d1d3h.ts
+_reminder-cadence-plan.ts
 
 # Encryption at rest
 encrypt-auth-secrets.ts

@@ -2695,6 +2695,8 @@
       "editDialogTitle": "Shifokor ma'lumotlari",
       "editDialogHint": "Ism, mutaxassislik va narx yozilishda, saytda va hisobotlarda ko'rinadi. Kabinet, xizmatlar, talon harfi va login alohida o'zgartiriladi.",
       "editSlugHint": "Saytdagi shifokor sahifasi manzili. Lotin harflari, raqamlar va defislar.",
+      "listedOnSite": "Saytda ko'rsatish",
+      "listedOnSiteHint": "Shifokor saytdagi «Bizning mutaxassislar» bo'limida, yozilish shaklida va o'z sahifasida ko'rinadi. Shifokor klinikada endi ishlamasa, o'chiring: qabullar tarixi saqlanadi.",
       "editFieldInvalid": "Qiymatni tekshiring: ruxsat etilmagan belgilar yoki format",
       "editSaved": "Shifokor ma'lumotlari saqlandi",
       "editFailed": "Shifokor ma'lumotlarini saqlab bo'lmadi",
@@ -3008,7 +3010,20 @@
       "deleteConfirmBody": "Shablon nofaol qilinadi va yuborishlar to'xtatiladi.",
       "cancel": "Bekor qilish",
       "testSend": "Test yuborish",
-      "testSent": "Test vazifasi navbatga qo'shildi",
+      "testSent": "Sizga Telegramda yuborildi",
+      "testSendHint": "Saqlangan shablon sizga klinika botidan Telegramda keladi",
+      "testFailed": "Testni yuborib bo'lmadi",
+      "testRefused": {
+        "channel_not_supported": "Test yuborish faqat Telegram shablonlari uchun mavjud.",
+        "bot_not_connected": "Klinikaning Telegram boti ulanmagan. Uni integratsiyalar sozlamalarida ulang.",
+        "no_staff_telegram": "Hisobingizda Telegram ID ko'rsatilmagan. Uni administrator qo'shadi: Sozlamalar, Foydalanuvchilar.",
+        "staff_not_started_bot": "Telegramda klinika botini oching, «Start» tugmasini bosing va qayta urinib ko'ring.",
+        "staff_blocked_bot": "Klinika boti Telegramda bloklangan. Uni blokdan chiqaring va qayta urinib ko'ring.",
+        "tg_timeout": "Telegram javob bermadi. Xabar yetib borgan bo'lishi mumkin, bot bilan chatni tekshiring.",
+        "tg_error": "Telegram xabarni qabul qilmadi. Keyinroq urinib ko'ring."
+      },
+      "channelEmailUnsupported": "Email (yuborilmaydi)",
+      "emailUnsupported": "Email hozircha yuborilmaydi. Shablonni Telegramga o'tkazing, aks holda u ishlamaydi.",
       "saveBeforeTest": "Avval shablonni saqlang",
       "samplePatientName": "Ivan Ivanov",
       "samplePatientFirst": "Ivan",
@@ -3919,6 +3934,9 @@
       "orphanCreateLogin": "Login yaratish",
       "resetTooShort": "Kamida 8 ta belgi — yoki yaratish uchun bo'sh qoldiring.",
       "emailEditHint": "Email o'zgartirilsa, tizimga kirish logini ham o'zgaradi.",
+      "telegramId": "Telegram ID",
+      "telegramIdHint": "Xodimning Telegramdagi raqamli ID si. Shablonlarning test yuborishlari shu yerga keladi; xodim klinika botida bir marta «Start» tugmasini bosadi.",
+      "telegramIdInvalid": "Telegram ID faqat raqamlardan iborat",
       "cannotDeactivateSelf": "O'z akkauntingizni nofaol qilib bo'lmaydi.",
       "emailTakenError": "Bu email boshqa akkauntda band.",
       "emailTakenInactiveError": "Bu emailli xodim nofaol qilingan. Uni ro'yxatda oching, «Tahrirlash» ni bosing va qayta yoqing.",
@@ -4130,7 +4148,7 @@
       },
       "knowledge": {
         "title": "Bilimlar bazasi",
-        "description": "Dorilar, yo'riqnomalar, protokollar va eslatmalar — yashirish, o'zgartirish yoki o'zinikini qo'shish."
+        "description": "Dorilar, yo'riqnomalar, protokollar va klinika tashxislari: yashirish, o'zgartirish yoki o'zinikini qo'shish."
       },
       "smsEmail": {
         "title": "SMS / Email",
@@ -4550,7 +4568,7 @@
     },
     "knowledge": {
       "title": "Bilimlar bazasi",
-      "subtitle": "Klinikangizning dorilari, tashxis bo'yicha yo'riqnomalari, protokollari va eslatmalari",
+      "subtitle": "Klinikangizning dorilari, tashxis bo'yicha yo'riqnomalari, protokollari va tashxislari",
       "tabs": {
         "drugs": "Dorilar",
         "guides": "Tashxis yo'riqnomalari",

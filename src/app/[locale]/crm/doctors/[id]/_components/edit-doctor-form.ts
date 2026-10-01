@@ -28,9 +28,13 @@ export type EditDoctorForm = {
   photoUrl: string;
   bioRu: string;
   bioUz: string;
+  /** «Показывать на сайте» (audit LD-08). */
+  listedOnSite: boolean;
 };
 
 export type EditDoctorField = keyof EditDoctorForm;
+
+type EditDoctorTextField = Exclude<EditDoctorField, "listedOnSite">;
 
 export type EditDoctorPatch = DoctorUpdateInput;
 
@@ -48,6 +52,8 @@ export function formFromDoctor(d: DoctorDetail): EditDoctorForm {
     photoUrl: d.photoUrl ?? "",
     bioRu: d.bioRu ?? "",
     bioUz: d.bioUz ?? "",
+    // A row read before the column existed counts as shown, like the default.
+    listedOnSite: d.listedOnSite !== false,
   };
 }
 
@@ -73,9 +79,9 @@ export function buildDoctorPatch(
 ): { ok: true; patch: EditDoctorPatch } | { ok: false; field: EditDoctorField } {
   const initial = formFromDoctor(d);
   const patch: EditDoctorPatch = {};
-  const changed = (k: EditDoctorField) => form[k].trim() !== initial[k].trim();
+  const changed = (k: EditDoctorTextField) => form[k].trim() !== initial[k].trim();
 
-  const required: Array<[EditDoctorField, keyof EditDoctorPatch]> = [
+  const required: Array<[EditDoctorTextField, keyof EditDoctorPatch]> = [
     ["nameRu", "nameRu"],
     ["nameUz", "nameUz"],
     ["specRu", "specializationRu"],
@@ -129,6 +135,10 @@ export function buildDoctorPatch(
       const v = form[field].trim();
       patch[key] = v === "" ? null : v;
     }
+  }
+
+  if (form.listedOnSite !== initial.listedOnSite) {
+    patch.listedOnSite = form.listedOnSite;
   }
 
   return { ok: true, patch };

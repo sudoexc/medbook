@@ -35,6 +35,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { tashkentComponents, toTashkentDate } from "../src/lib/booking-validation";
 import { seedTodayLiveQueue, todayScheduledDoctors } from "./_live-queue-seed";
 import { assertSeedAllowed } from "./_destructive-guard";
+import { wipeClinicDemoData } from "./_demo-wipe";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -156,71 +157,10 @@ async function main() {
 
   // ── 1. WIPE phase ─────────────────────────────────────────────────────────
   console.log("┌─ WIPE phase");
-  const wipeOrder = [
-    "MessageRead",
-    "Message",
-    "Conversation",
-    "MedicationReminderSend",
-    "Reminder",
-    "NotificationSend",
-    "Campaign",
-    "AppointmentService",
-    "Payment",
-    "Invoice",
-    "Document",
-    "Communication",
-    "VisitNote",
-    "Prescription",
-    "EPrescription",
-    "SickLeave",
-    "LabResult",
-    "LabOrder",
-    "CdsOverride",
-    "PatientReview",
-    "PatientFamily",
-    "PatientAllergy",
-    "PatientChronicCondition",
-    "PatientDiagnosis",
-    "PatientView",
-    "Review",
-    "Appointment",
-    "MedicalCase",
-    "Call",
-    "OnlineRequest",
-    // "Lead" deliberately absent: real site requests (audit LD-01).
-    "Action",
-    "EmptySlotSnapshot",
-    "ReferralReward",
-    "DataExportJob",
-    "DataDeletionJob",
-    "AuditLog",
-    "LLMUsage",
-    "Patient",
-  ];
-  // Discover tables + their clinicId column.
-  const tableColumns = await prisma.$queryRawUnsafe<{ table_name: string; column_name: string }[]>(
-    `SELECT table_name, column_name FROM information_schema.columns
-       WHERE table_schema = 'public' AND column_name = 'clinicId'`,
-  );
-  const hasClinicId = new Set(tableColumns.map((r) => r.table_name));
-  for (const table of wipeOrder) {
-    if (!hasClinicId.has(table)) {
-      console.log(`  · ${table}: (no clinicId column, skip)`);
-      continue;
-    }
-    try {
-      const res = await prisma.$executeRawUnsafe(
-        `DELETE FROM "${table}" WHERE "clinicId" = $1`,
-        clinicId,
-      );
-      if (res > 0) console.log(`  ✗ ${table}: -${res}`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`  ! ${table}: ${msg.slice(0, 160)}`);
-    }
-  }
-  // Reset patient counter so new patients start at P-00001.
-  await prisma.clinic.update({ where: { id: clinicId }, data: { patientCounter: 0 } });
+  // Shared with wipe-neurofax-demo: one transaction, checked against the
+  // live foreign keys first, counter set from the patients left (G2-09).
+  const wiped = await wipeClinicDemoData(prisma, clinicId);
+  console.log(`  ${wiped.deleted} rows deleted, patientCounter → ${wiped.patientCounter}`);
   console.log("└─ wipe done\n");
 
   // ── 2. SEED patients ──────────────────────────────────────────────────────

@@ -14,8 +14,12 @@
  * doctors in the CRM to declutter the working screens (today only one doctor
  * uses the system), while the doctors themselves still see patients — the
  * public price sheet lists their cabinets. Hiding them from the public site
- * would misrepresent the clinic. If a doctor actually leaves, delete the row
- * or we add a dedicated "listed on site" flag.
+ * would misrepresent the clinic. What the site shows is `listedOnSite`
+ * (audit LD-08), the «Показывать на сайте» switch on the doctor's card: a
+ * doctor who left cannot be deleted once he has history, and used to stay
+ * in «Наши специалисты», in the booking form and on his own page while
+ * patients phoned asking for him. Unlisted, he is gone from all three and
+ * from the sitemap; his page answers 404.
  *
  * Doctors with no photo render fine on the client (the sections fall back to
  * initials), so `photoUrl` is passed through as-is (may be null).
@@ -71,6 +75,11 @@ async function resolveClinicId(): Promise<string | null> {
     }),
   );
   return clinic?.id ?? null;
+}
+
+/** The doctors the public site may show: this clinic's, switched on for the site. */
+export function siteDoctorWhere(clinicId: string): { clinicId: string; listedOnSite: true } {
+  return { clinicId, listedOnSite: true };
 }
 
 function toView(
@@ -133,16 +142,15 @@ async function loadSchedules(
 
 export async function getDoctors(): Promise<DoctorView[]> {
   // Soft-degrade on DB trouble: the landing renders without the doctors
-  // section (and sitemap.ts, which runs inside `next build` where no
-  // database exists, falls back to the base pages) instead of a 500 on the
-  // clinic's public front door.
+  // section instead of a 500 on the clinic's public front door. (The
+  // sitemap reads `getSiteDoctorPages`, which does not hide an error.)
   try {
     const clinicId = await resolveClinicId();
     if (!clinicId) return [];
 
     const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.doctor.findMany({
-        where: { clinicId },
+        where: siteDoctorWhere(clinicId),
         select: {
           id: true,
           slug: true,
@@ -176,7 +184,7 @@ export async function getDoctorById(id: string): Promise<DoctorView | null> {
     const row = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.doctor.findFirst({
         // clinicId keeps the lookup scoped to this clinic even though id is a cuid.
-        where: { id, clinicId },
+        where: { id, ...siteDoctorWhere(clinicId) },
         select: {
           id: true,
           slug: true,
@@ -197,4 +205,22 @@ export async function getDoctorById(id: string): Promise<DoctorView | null> {
     console.warn(`[site] getDoctorById failed: ${(e as Error).message}`);
     return null;
   }
+}
+
+/**
+ * One sitemap entry per doctor page (audit LD-05): the listed doctors with
+ * the time their profile last changed. Unlike `getDoctors` this THROWS on a
+ * database error: a sitemap built from an empty list would tell search
+ * engines every doctor page is gone, a 500 makes them come back later.
+ */
+export async function getSiteDoctorPages(): Promise<{ id: string; updatedAt: Date }[]> {
+  const clinicId = await resolveClinicId();
+  if (!clinicId) return [];
+  return runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.doctor.findMany({
+      where: siteDoctorWhere(clinicId),
+      select: { id: true, updatedAt: true },
+      orderBy: { nameRu: "asc" },
+    }),
+  );
 }

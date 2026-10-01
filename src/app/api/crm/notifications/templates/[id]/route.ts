@@ -7,7 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateTemplateSchema } from "@/server/schemas/notification";
-import { verbatimPlaceholderLeak } from "@/server/notifications/rules";
+import {
+  templateChannelRefusal,
+  verbatimPlaceholderLeak,
+} from "@/server/notifications/rules";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -45,6 +48,15 @@ export const PATCH = createApiHandler(
     if (leak) {
       return err("UnknownPlaceholder", 400, { unknown: leak, allowed: [] });
     }
+    // No email delivery exists (audit UX-10): an EMAIL template stays off.
+    const refusal = templateChannelRefusal(
+      {
+        channel: body.channel ?? before.channel,
+        isActive: body.isActive ?? before.isActive,
+      },
+      before,
+    );
+    if (refusal) return err("ChannelNotSupported", 400, { reason: refusal });
     const after = await prisma.notificationTemplate.update({
       where: { id },
       data: body as never,

@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { LeadFormTrigger } from "@/components/sections/lead-form";
 import { getDoctorById } from "@/lib/doctors";
 import { serializeJsonLd } from "@/lib/json-ld";
-import { SITE_DOMAIN, CONTACT } from "@/lib/constants";
+import { CONTACT } from "@/lib/constants";
+import { siteSectionHref } from "@/lib/site-nav";
+import { siteAlternates, siteUrl } from "@/lib/site-urls";
 import type { Locale } from "@/types";
 import ruMessages from "@/messages/ru.json";
 import uzMessages from "@/messages/uz.json";
@@ -38,15 +40,14 @@ export async function generateMetadata({
   return {
     title,
     description,
-    alternates: {
-      canonical: `https://${SITE_DOMAIN}/${locale}/doctors/${id}`,
-      languages: { ru: `/ru/doctors/${id}`, uz: `/uz/doctors/${id}` },
-    },
+    // The address the router serves, "/doctors/<id>" for ru (audit LD-03):
+    // "/ru/doctors/<id>" answered with a redirect.
+    alternates: siteAlternates(locale, `/doctors/${id}`),
     openGraph: {
       title,
       description,
       type: "profile",
-      url: `https://${SITE_DOMAIN}/${locale}/doctors/${id}`,
+      url: siteUrl(locale, `/doctors/${id}`),
     },
   };
 }
@@ -92,7 +93,7 @@ export default async function DoctorPage({
 
       <div className="mx-auto max-w-3xl px-4 sm:px-6">
         <a
-          href={`/${locale}#doctors`}
+          href={siteSectionHref("doctors", locale, false)}
           className="mb-8 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />

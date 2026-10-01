@@ -5,34 +5,43 @@
  *
  *   1. Upserts the four canonical cascade rows from
  *      `DEFAULT_APPOINTMENT_TEMPLATES` (keys `appointment.reminder-5d` /
- *      `-3d` / `-24h` / `-3h`). An existing row with the same key gets its
- *      `triggerConfig.offsetMin` forced to the canonical value (other config
- *      keys + admin-edited body text survive). A row an admin renamed but
- *      left on a canonical offset is detected by offset and left alone —
- *      `whereForTrigger` resolves by enum + offsetMin, not key.
- *   2. Retires the ex-canon seeded pings — `appointment.reminder-5h`
- *      (-300) and `appointment.reminder-1h` (-60) — by flipping
- *      `isActive=false` + `triggerConfig.enabled=false`, so the dynamic
- *      scheduler pass doesn't keep firing them on top of the new cascade.
- *      Rows whose offset an admin customised away from the seeded value are
- *      left untouched (they're deliberate dynamic-offset variants).
+ *      `-3d` / `-24h` / `-3h`). An existing seed row with the same key gets
+ *      its `triggerConfig.offsetMin` set to the canonical value (other config
+ *      keys and the body text survive). A row an admin created or edited in
+ *      the CRM keeps the offset he gave it and is only reported. A row an
+ *      admin renamed but left on a canonical offset is detected by offset and
+ *      left alone: `whereForTrigger` resolves by enum + offsetMin, not key.
+ *   2. Switches off the SEED rows the cascade replaced (audit G2-10, see
+ *      `_reminder-cadence-plan.ts`): the ex-canon 5h / 2h / 1h pings and the
+ *      seed duplicates of a canonical band (`isActive=false` +
+ *      `triggerConfig.enabled=false`, so the dynamic scheduler pass stops
+ *      firing them). A template an admin created, edited or moved to another
+ *      offset is NEVER switched off: it is printed as `[admin]` and stays on.
+ *      (The sweep used to switch off every active template off the four
+ *      offsets, admins' «за 1 час» included, while this header said the
+ *      opposite.)
  *
- * Idempotent — safe to re-run: creates are keyed on (clinicId, key),
- * updates converge to the same values, retires skip already-inactive rows.
+ * Idempotent, safe to re-run: creates are keyed on (clinicId, key), updates
+ * converge to the same values, already-inactive rows are not read.
+ * DRY RUN by default (prints the plan); APPLY=1 writes.
  *
  * Usage (prod, after deploy):
  *
  *   docker compose exec -T worker npx tsx scripts/reminder-cadence-5d3d1d3h.ts
+ *   docker compose exec -T -e APPLY=1 worker npx tsx scripts/reminder-cadence-5d3d1d3h.ts
  *
  * Without docker: from the repo root, with `DATABASE_URL` in env:
  *
- *   npx tsx scripts/reminder-cadence-5d3d1d3h.ts
+ *   APPLY=1 npx tsx scripts/reminder-cadence-5d3d1d3h.ts
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
 import { DEFAULT_APPOINTMENT_TEMPLATES } from "../src/server/notifications/default-templates";
+import { offsetOf, planCadenceSweep } from "./_reminder-cadence-plan";
+
+const APPLY = process.env.APPLY === "1";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -46,18 +55,17 @@ const CASCADE_KEYS = [
   "appointment.reminder-3h",
 ] as const;
 
-/** The four canonical offsets — the ONLY APPOINTMENT_BEFORE offsets that stay
- *  active. Anything else (ex-canon 5h/2h/1h pings, older `reminder.*` seeds,
- *  duplicates on the same offset) is swept to inactive so neither the
- *  canonical nor the dynamic scheduler pass fires a stray reminder. */
-const CANONICAL_OFFSETS = new Set([-7200, -4320, -1440, -180]);
-
-function offsetOf(triggerConfig: unknown): number | null {
-  const cfg =
-    triggerConfig && typeof triggerConfig === "object" && !Array.isArray(triggerConfig)
-      ? (triggerConfig as { offsetMin?: unknown })
-      : {};
-  return typeof cfg.offsetMin === "number" ? cfg.offsetMin : null;
+/**
+ * Templates staff have touched in the CRM: every create and edit there
+ * writes an audit row naming the template; seeds write none.
+ */
+async function staffTouchedTemplates(clinicId: string): Promise<Set<string>> {
+  const rows = await prisma.auditLog.findMany({
+    where: { clinicId, entityType: "NotificationTemplate", entityId: { not: null } },
+    select: { entityId: true },
+    distinct: ["entityId"],
+  });
+  return new Set(rows.map((r) => r.entityId!).filter(Boolean));
 }
 
 function mergeConfig(
@@ -91,8 +99,11 @@ async function main() {
   let updatedCount = 0;
   let retiredCount = 0;
   let skippedCount = 0;
+  let leftAloneCount = 0;
 
   for (const clinic of clinics) {
+    const touched = await staffTouchedTemplates(clinic.id);
+    const movedConfig = new Map<string, Record<string, unknown>>();
     // 1. Ensure the four cascade rows exist with the canonical offsetMin.
     for (const t of cascadeDefaults) {
       const target = offsetOf(t.triggerConfig);
@@ -100,7 +111,7 @@ async function main() {
 
       const existing = await prisma.notificationTemplate.findUnique({
         where: { clinicId_key: { clinicId: clinic.id, key: t.key } },
-        select: { id: true, triggerConfig: true },
+        select: { id: true, triggerConfig: true, createdById: true },
       });
 
       if (existing) {
@@ -109,14 +120,23 @@ async function main() {
           console.log(`  [skip]   ${clinic.slug} :: ${t.key} (already ${target})`);
           continue;
         }
-        await prisma.notificationTemplate.update({
-          where: { id: existing.id },
-          data: {
-            triggerConfig: mergeConfig(existing.triggerConfig, {
-              offsetMin: target,
-            }) as never,
-          },
-        });
+        // The admin moved this band himself (audit G2-10): his choice stands.
+        if (existing.createdById || touched.has(existing.id)) {
+          skippedCount += 1;
+          console.log(
+            `  [admin]  ${clinic.slug} :: ${t.key} (offset ${offsetOf(existing.triggerConfig)} set in the CRM, left as is)`,
+          );
+          continue;
+        }
+        const moved = mergeConfig(existing.triggerConfig, { offsetMin: target });
+        // The sweep below plans on the moved offset in a dry run as well.
+        movedConfig.set(existing.id, moved);
+        if (APPLY) {
+          await prisma.notificationTemplate.update({
+            where: { id: existing.id },
+            data: { triggerConfig: moved as never },
+          });
+        }
         updatedCount += 1;
         console.log(`  [offset] ${clinic.slug} :: ${t.key} → ${target}`);
         continue;
@@ -142,78 +162,75 @@ async function main() {
         continue;
       }
 
-      await prisma.notificationTemplate.create({
-        data: {
-          clinicId: clinic.id,
-          key: t.key,
-          nameRu: t.nameRu,
-          nameUz: t.nameUz,
-          channel: t.channel,
-          category: t.category,
-          trigger: t.trigger,
-          triggerConfig: (t.triggerConfig ?? undefined) as never,
-          bodyRu: t.bodyRu,
-          bodyUz: t.bodyUz,
-          variables: t.variables,
-          isActive: true,
-        },
-      });
+      if (APPLY) {
+        await prisma.notificationTemplate.create({
+          data: {
+            clinicId: clinic.id,
+            key: t.key,
+            nameRu: t.nameRu,
+            nameUz: t.nameUz,
+            channel: t.channel,
+            category: t.category,
+            trigger: t.trigger,
+            triggerConfig: (t.triggerConfig ?? undefined) as never,
+            bodyRu: t.bodyRu,
+            bodyUz: t.bodyUz,
+            variables: t.variables,
+            isActive: true,
+          },
+        });
+      }
       createdCount += 1;
       console.log(`  [+]      ${clinic.slug} :: ${t.key} (${target})`);
     }
 
-    // 2. Sweep: keep active EXACTLY one row per canonical offset; deactivate
-    //    every other active APPOINTMENT_BEFORE row (ex-canon 5h/2h/1h pings,
-    //    older `reminder.*` seeds, and duplicates on a canonical offset).
-    //    Both the canonical (slug-based) and dynamic (offset-based) scheduler
-    //    passes then materialise the 5d/3d/1d/3h cascade and nothing else.
+    // 2. Sweep: one row stays on each canonical offset; seed rows the
+    //    cascade replaced go off; admin rows stay on (audit G2-10).
     const active = await prisma.notificationTemplate.findMany({
       where: {
         clinicId: clinic.id,
         trigger: "APPOINTMENT_BEFORE",
         isActive: true,
       },
-      select: { id: true, key: true, triggerConfig: true },
+      select: { id: true, key: true, triggerConfig: true, createdById: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     });
-    const keptCanonicalOffset = new Set<number>();
-    for (const row of active) {
-      const off = offsetOf(row.triggerConfig);
-      const isCanonical = off !== null && CANONICAL_OFFSETS.has(off);
-      // Keep the first active row on each canonical offset; prefer the
-      // canonical `appointment.reminder-*` key when duplicates exist.
-      const preferred =
-        isCanonical &&
-        !keptCanonicalOffset.has(off!) &&
-        (row.key.startsWith("appointment.reminder-") ||
-          !active.some(
-            (o) =>
-              o.id !== row.id &&
-              offsetOf(o.triggerConfig) === off &&
-              o.key.startsWith("appointment.reminder-"),
-          ));
-      if (preferred) {
-        keptCanonicalOffset.add(off!);
-        continue;
+    const sweep = planCadenceSweep(
+      active.map((r) => ({ ...r, triggerConfig: movedConfig.get(r.id) ?? r.triggerConfig })),
+      touched,
+    );
+    for (const row of sweep.retire) {
+      if (APPLY) {
+        await prisma.notificationTemplate.update({
+          where: { id: row.id },
+          data: {
+            isActive: false,
+            triggerConfig: mergeConfig(row.triggerConfig, {
+              enabled: false,
+            }) as never,
+          },
+        });
       }
-      await prisma.notificationTemplate.update({
-        where: { id: row.id },
-        data: {
-          isActive: false,
-          triggerConfig: mergeConfig(row.triggerConfig, {
-            enabled: false,
-          }) as never,
-        },
-      });
       retiredCount += 1;
       console.log(
-        `  [retire] ${clinic.slug} :: ${row.key} (${off ?? "no-offset"})`,
+        `  [retire] ${clinic.slug} :: ${row.key} (${offsetOf(row.triggerConfig) ?? "no-offset"})`,
+      );
+    }
+    for (const { row, reason } of sweep.leftAlone) {
+      leftAloneCount += 1;
+      console.log(
+        `  [admin]  ${clinic.slug} :: ${row.key} (${offsetOf(row.triggerConfig) ?? "no-offset"}) ` +
+          (reason === "admin_duplicate"
+            ? "shares a canonical band, left on; the band sends one template"
+            : "set up in the CRM, left on"),
       );
     }
   }
 
   console.log(
-    `\nDone. Created: ${createdCount}, updated: ${updatedCount}, retired: ${retiredCount}, skipped: ${skippedCount}`,
+    `\nDone. Created: ${createdCount}, updated: ${updatedCount}, retired: ${retiredCount}, ` +
+      `admin rows left on: ${leftAloneCount}, skipped: ${skippedCount}` +
+      (APPLY ? "" : "\nDRY RUN, nothing written. APPLY=1 writes."),
   );
   await prisma.$disconnect();
 }

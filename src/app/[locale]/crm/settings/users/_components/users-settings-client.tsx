@@ -57,6 +57,8 @@ type UserRow = {
   name: string;
   role: Role;
   phone: string | null;
+  /** Where the template editor's test send goes (audit UX-10). */
+  telegramId: string | null;
   active: boolean;
   createdAt: string;
   /** TOTP enrolled (the secret itself never reaches the browser). */
@@ -742,6 +744,7 @@ function EditUserDialog({
     email: string;
     role: Role;
     phone: string;
+    telegramId: string;
     active: boolean;
     doctorId: string;
   }>({
@@ -749,9 +752,12 @@ function EditUserDialog({
     email: row.email,
     role: row.role,
     phone: row.phone ?? "",
+    telegramId: row.telegramId ?? "",
     active: row.active,
     doctorId: row.doctorCard?.id ?? "",
   });
+  const telegramIdInvalid =
+    form.telegramId.trim() !== "" && !/^\d{1,20}$/.test(form.telegramId.trim());
 
   // An active DOCTOR login holds exactly one schedule card (audit ST-04): a
   // reactivated or newly promoted doctor must get one, or the cabinet has
@@ -779,6 +785,10 @@ function EditUserDialog({
           email: form.email,
           role: form.role,
           phone: form.phone || null,
+          // Sent only when edited, so saving a name never touches it.
+          ...(form.telegramId.trim() !== (row.telegramId ?? "")
+            ? { telegramId: form.telegramId.trim() || null }
+            : {}),
           active: form.active,
           ...(needsCard && form.doctorId ? { doctorId: form.doctorId } : {}),
         }),
@@ -864,6 +874,27 @@ function EditUserDialog({
               />
             </div>
           </div>
+          <div>
+            <Label htmlFor="edit-telegram">{t("users.telegramId")}</Label>
+            <Input
+              id="edit-telegram"
+              inputMode="numeric"
+              value={form.telegramId}
+              onChange={(e) => setForm({ ...form, telegramId: e.target.value })}
+              aria-invalid={telegramIdInvalid || undefined}
+            />
+            <p
+              className={
+                telegramIdInvalid
+                  ? "mt-1 text-xs text-destructive"
+                  : "mt-1 text-xs text-muted-foreground"
+              }
+            >
+              {telegramIdInvalid
+                ? t("users.telegramIdInvalid")
+                : t("users.telegramIdHint")}
+            </p>
+          </div>
           {needsCard ? (
             <div>
               <Label htmlFor="edit-doctor">{t("users.doctorBinding")}</Label>
@@ -920,6 +951,7 @@ function EditUserDialog({
               mut.isPending ||
               !form.name ||
               !form.email ||
+              telegramIdInvalid ||
               (needsCard && !form.doctorId)
             }
           >

@@ -164,20 +164,23 @@ Basic-флагах — не падает, но план-гейты (2FA-для-�
 Плейбук даёт 4 базовых шаблона, но канонический боевой каскад напоминаний —
 **5д / 3д / 1д / 3ч** (`docs/TZ-risk-outcomes.md` §7). Привести клинику к
 нему (все три скрипта идемпотентны, проходят по всем клиникам, ничего не
-удаляют и не трогают отредактированные админом тексты):
+удаляют и не трогают шаблоны, созданные или изменённые админом; последние
+два без `APPLY=1` только печатают план):
 
 ```bash
 ssh root@167.233.142.75 'cd /opt/neurofax && \
   docker compose run --rm worker npx tsx scripts/seed-notification-templates.ts && \
-  docker compose run --rm worker npx tsx scripts/backfill-new-templates.ts && \
-  docker compose run --rm worker npx tsx scripts/reminder-cadence-5d3d1d3h.ts'
+  docker compose run --rm -e APPLY=1 worker npx tsx scripts/backfill-new-templates.ts && \
+  docker compose run --rm -e APPLY=1 worker npx tsx scripts/reminder-cadence-5d3d1d3h.ts'
 ```
 
 - `seed-notification-templates.ts` — 8 дефолтных шаблонов (каскад 5д/3д/24ч/3ч
   + отмены/опоздание/неявка);
-- `backfill-new-templates.ts` — поздние ключи (`reminder.5h`, `case.repeat-due`);
-- `reminder-cadence-5d3d1d3h.ts` — сводит offsets каскада к каноническим и
-  гасит устаревшие пинги 5ч/1ч.
+- `backfill-new-templates.ts`: поздние ключи, сейчас только `case.repeat-due`
+  (напоминаний перед визитом не создаёт, аудит G2-10);
+- `reminder-cadence-5d3d1d3h.ts`: сводит offsets каскада к каноническим и
+  выключает посеянные пинги вне каскада (плейбуковое «за 2 часа», 5ч / 1ч) и
+  дубли плейбука; созданное или изменённое админом оставляет включённым.
 
 Потом админ клиники может править тексты в `/crm/settings/notifications`.
 

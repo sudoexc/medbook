@@ -3,8 +3,15 @@
 /**
  * Ф4 — /crm/settings/knowledge. ADMIN curates what doctors see in the
  * ordering drawers: hide globals, patch them per-clinic (overlay) or add
- * clinic-local rows. Four tabs = the four knowledge catalogs, plus the
- * diagnosis wordings the clinic learned from practice (audit CT-05).
+ * clinic-local rows. Three tabs = the three knowledge catalogs a doctor
+ * reaches from the visit screen, plus the diagnosis wordings the clinic
+ * learned from practice (audit CT-05).
+ *
+ * No «Памятки» tab (audit G4-04): the visit screen lost its handout picker
+ * long ago, and the patient handout is composed from the visit's own fields
+ * (handout-composer), so a handout an admin wrote here reached no patient
+ * while the tab made the feature look alive. The rows and the catalog route
+ * stay; the tab comes back together with a picker on the visit screen.
  */
 import { useTranslations } from "next-intl";
 
@@ -15,7 +22,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DiagnosesTab } from "./diagnoses-tab";
 import { DrugsTab } from "./drugs-tab";
 import { GuidesTab } from "./guides-tab";
-import { HandoutsTab } from "./handouts-tab";
 import { ProtocolsTab } from "./protocols-tab";
 
 export function KnowledgeClient() {
@@ -30,7 +36,6 @@ export function KnowledgeClient() {
           <TabsTrigger value="drugs">{t("tabs.drugs")}</TabsTrigger>
           <TabsTrigger value="guides">{t("tabs.guides")}</TabsTrigger>
           <TabsTrigger value="protocols">{t("tabs.protocols")}</TabsTrigger>
-          <TabsTrigger value="handouts">{t("tabs.handouts")}</TabsTrigger>
           <TabsTrigger value="diagnoses">{t("tabs.diagnoses")}</TabsTrigger>
         </TabsList>
         <TabsContent value="drugs" className="pt-3">
@@ -41,9 +46,6 @@ export function KnowledgeClient() {
         </TabsContent>
         <TabsContent value="protocols" className="pt-3">
           <ProtocolsTab />
-        </TabsContent>
-        <TabsContent value="handouts" className="pt-3">
-          <HandoutsTab />
         </TabsContent>
         <TabsContent value="diagnoses" className="pt-3">
           <DiagnosesTab />

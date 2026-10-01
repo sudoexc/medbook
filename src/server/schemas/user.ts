@@ -11,6 +11,16 @@ export const RoleEnum = z.enum([
   "CALL_OPERATOR",
 ]);
 
+/**
+ * A staff member's numeric Telegram user id: the chat the clinic bot writes
+ * to for the template editor's test send (audit UX-10). Digits only, so a
+ * pasted @username fails here instead of at Telegram.
+ */
+const StaffTelegramIdSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{1,20}$/, "invalid_telegram_id");
+
 export const CreateUserSchema = z
   .object({
     email: z.string().email(),
@@ -19,7 +29,7 @@ export const CreateUserSchema = z
     password: z.string().min(8).max(200).optional(),
     phone: z.string().max(40).optional().nullable(),
     photoUrl: z.string().url().optional().nullable(),
-    telegramId: z.string().optional().nullable(),
+    telegramId: StaffTelegramIdSchema.optional().nullable(),
     active: z.boolean().optional(),
     // Required when role=DOCTOR — binds the new user account to an existing
     // orphan Doctor record (Doctor.userId IS NULL). We don't create Doctor
@@ -39,7 +49,7 @@ export const UpdateUserSchema = z
     password: z.string().min(8).max(200).optional(),
     phone: z.string().max(40).optional().nullable(),
     photoUrl: z.string().url().optional().nullable(),
-    telegramId: z.string().optional().nullable(),
+    telegramId: StaffTelegramIdSchema.optional().nullable(),
     active: z.boolean().optional(),
     doctorId: z.string().optional(),
   });

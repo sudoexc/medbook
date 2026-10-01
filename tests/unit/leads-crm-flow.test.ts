@@ -17,6 +17,8 @@ import path from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CLINIC_WIPE_ORDER } from "../../scripts/_demo-wipe";
+
 type Envelope = { type: string; payload: Record<string, unknown>; tenantScope: Record<string, unknown>; surface: string };
 
 const state = {
@@ -277,8 +279,9 @@ describe("prod seed keeps real site requests", () => {
     "utf8",
   );
   it("does not wipe the Lead table", () => {
-    const wipe = src.slice(src.indexOf("const wipeOrder = ["), src.indexOf("];", src.indexOf("const wipeOrder = [")));
-    expect(wipe).not.toMatch(/^\s*"Lead",/m);
+    // The wipe list moved to scripts/_demo-wipe.ts (audit G2-09).
+    expect(src).toMatch(/wipeClinicDemoData\(prisma, clinicId\)/);
+    expect(CLINIC_WIPE_ORDER as readonly string[]).not.toContain("Lead");
   });
   it("does not create fake leads", () => {
     expect(src).not.toMatch(/prisma\.lead\.create/);

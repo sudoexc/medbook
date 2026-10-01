@@ -10,7 +10,10 @@ import {
   CreateTemplateSchema,
   QueryTemplateSchema,
 } from "@/server/schemas/notification";
-import { verbatimPlaceholderLeak } from "@/server/notifications/rules";
+import {
+  templateChannelRefusal,
+  verbatimPlaceholderLeak,
+} from "@/server/notifications/rules";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"] },
@@ -48,6 +51,12 @@ export const POST = createApiHandler(
     if (leak) {
       return err("UnknownPlaceholder", 400, { unknown: leak, allowed: [] });
     }
+    // No email delivery exists (audit UX-10): refused, not saved to fail.
+    const refusal = templateChannelRefusal(
+      { channel: body.channel, isActive: body.isActive ?? true },
+      null,
+    );
+    if (refusal) return err("ChannelNotSupported", 400, { reason: refusal });
     const createdById = ctx.kind === "TENANT" ? ctx.userId : null;
     const created = await prisma.notificationTemplate.create({
       data: {

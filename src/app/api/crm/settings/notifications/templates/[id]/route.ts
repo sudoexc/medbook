@@ -23,6 +23,7 @@ import { validate } from "@/server/notifications/template";
 import {
   allowedKeysForTemplate,
   sanitizeTriggerConfig,
+  templateChannelRefusal,
 } from "@/server/notifications/rules";
 
 const PatchSchema = z.object({
@@ -119,6 +120,17 @@ export const PATCH = createApiHandler(
     if (Object.keys(data).length === 0) {
       return err("EmptyPatch", 400);
     }
+
+    // No email delivery exists (audit UX-10): an EMAIL template is not
+    // switched on here either.
+    const refusal = templateChannelRefusal(
+      {
+        channel: (data.channel as string | undefined) ?? before.channel,
+        isActive: (data.isActive as boolean | undefined) ?? before.isActive,
+      },
+      before,
+    );
+    if (refusal) return err("ChannelNotSupported", 400, { reason: refusal });
 
     const after = await prisma.notificationTemplate.update({
       where: { id },

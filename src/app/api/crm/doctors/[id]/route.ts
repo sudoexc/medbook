@@ -43,6 +43,7 @@ import { doctorAudience, doctorSelectFor } from "@/server/doctors/doctor-view";
 import { moveFutureAppointmentsToCabinet } from "@/server/doctors/cabinet-move";
 import { isSlotOverlapViolation } from "@/server/appointments/overlap-violation";
 import { publishEventSafe } from "@/server/realtime/publish";
+import { invalidateSitePrices } from "@/lib/site-prices";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -114,6 +115,8 @@ export const PATCH = createApiHandler(
       delete data.salaryPercent;
       delete data.pricePerVisit;
       delete data.ticketPrefix;
+      // Whether the clinic shows him on its site is the clinic's call (LD-08).
+      delete data.listedOnSite;
     }
 
     // Ticket letter (audit Q-12): unique within the clinic. The unique index
@@ -243,6 +246,12 @@ export const PATCH = createApiHandler(
       });
       const after = txResult.updated;
       const movedAppointments = txResult.movedAppointments;
+      // The landing's price sheet names doctors and their prices: a doctor
+      // taken off the site (LD-08) or a new price list must show on the next
+      // page load, not after the sheet's one-minute cache.
+      if (services || after.listedOnSite !== before.listedOnSite) {
+        invalidateSitePrices();
+      }
       if (movedAppointments > 0) {
         // Reception's queue, the doctor's day and the TV boards read the
         // cabinet off the visits: wake them so they show the new room.

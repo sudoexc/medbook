@@ -3,13 +3,17 @@
  * `_drug-catalog.ts`, merged with clinical enrichment in
  * `_drug-data.ts`.
  *
- * Idempotent: wipes Drug rows (and brand rows by FK cascade) for the seeded
- * IDs, then inserts fresh. Drugs not present in the static catalog are left
- * alone (so per-clinic additions in production survive a reseed).
+ * Idempotent and additive: upserts the curated Drug rows by id and adds the
+ * curated brands a row does not carry yet. Nothing is deleted: drugs not in
+ * the static catalog (per-clinic additions, the state register import) and
+ * every brand already on a row (the register's trade names included, audit
+ * G4-10) survive a reseed. Removing a brand from the source file does not
+ * remove it from the database; that takes a data fix.
  *
  * Local: `npx tsx prisma/seed-drugs.ts`
  *
- * Production: see seed-drugs-sql.ts for raw SQL generator.
+ * Production (the worker image carries prisma/ and the scripts it imports):
+ * `docker compose exec worker npx tsx prisma/seed-drugs.ts`
  */
 import "dotenv/config";
 import { Prisma, PrismaClient, type DrugCategory } from "../src/generated/prisma/client";
@@ -18,6 +22,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { DRUGS as DRUGS_CORE } from "./_drug-catalog";
 import { DRUGS_EXTRA } from "./_drug-catalog-extra";
 import { DRUG_ENRICHMENT } from "./_drug-data";
+import { curatedBrandsToAdd } from "../scripts/_registry-plan";
 
 /**
  * Curated core plus the depth extension, kept in separate files on purpose:
@@ -37,8 +42,7 @@ async function main() {
   // fresh-install seed, but the clinic is live now and VisitPrescription rows
   // point at these ids — dropping a drug either fails on the foreign key or
   // silently detaches a prescription from its catalog entry. Brands are
-  // replaced per drug instead, since they are pure catalog data with nothing
-  // referencing them.
+  // only ever added, see below.
   void ids;
 
   let drugCount = 0;
@@ -76,19 +80,27 @@ async function main() {
       update: fields,
     });
 
-    // Brands are catalog-only (nothing references them), so replacing them
-    // wholesale keeps the list in step with the source file.
-    await prisma.drugBrand.deleteMany({ where: { drugId: d.id } });
-    if (d.brands?.length) {
+    // Add, never replace (audit G4-10): the state register import hangs its
+    // trade names on these same curated rows, and a wholesale delete here
+    // erased ~1800 of them (search by brand, the allergy and CDS matching).
+    const existing = await prisma.drugBrand.findMany({
+      where: { drugId: d.id },
+      select: { name: true },
+    });
+    const toAdd = curatedBrandsToAdd(
+      existing.map((b) => b.name),
+      d.brands ?? [],
+    );
+    if (toAdd.length > 0) {
       await prisma.drugBrand.createMany({
-        data: d.brands.map((name) => ({ drugId: d.id, name })),
+        data: toAdd.map((name) => ({ drugId: d.id, name })),
       });
     }
     drugCount += 1;
-    brandCount += d.brands?.length ?? 0;
+    brandCount += toAdd.length;
   }
 
-  console.log(`Seeded ${drugCount} drugs with ${brandCount} brand entries.`);
+  console.log(`Seeded ${drugCount} drugs, added ${brandCount} missing brand entries.`);
   const enrichmentMissing = DRUGS.filter((d) => !DRUG_ENRICHMENT[d.id]).map((d) => d.id);
   if (enrichmentMissing.length) {
     console.log(

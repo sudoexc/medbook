@@ -877,6 +877,13 @@ model Doctor {
   // Doctors raise it in their own settings when they want more appointments.
   maxBookableSlotsPerDay Int      @default(3)
   isActive               Boolean  @default(true)
+  // Shown on the public site (audit LD-08): «Наши специалисты», the booking
+  // form, /doctors/<id> and the sitemap. Separate from isActive on purpose:
+  // the clinic deactivates doctors to declutter the CRM while they still
+  // work there, and a doctor who left keeps his history (he cannot be
+  // deleted) but must disappear from the site. Defaults to true: every
+  // doctor the site showed before the flag stays on it.
+  listedOnSite           Boolean  @default(true)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 import { COLOR_SWATCHES } from "../../_components/doctor-colors";
@@ -328,6 +329,22 @@ export function EditDoctorDialog({
             <h3 className="text-sm font-semibold text-foreground">
               {t("sectionAdvanced")}
             </h3>
+            {/* Audit LD-08: what the public site shows, apart from isActive
+                (a doctor who left keeps his history and cannot be deleted). */}
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+              <div className="grid gap-0.5">
+                <Label htmlFor="ed-listed">{tp("listedOnSite")}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {tp("listedOnSiteHint")}
+                </p>
+              </div>
+              <Switch
+                id="ed-listed"
+                checked={form.listedOnSite}
+                onCheckedChange={(v) => set("listedOnSite", v)}
+                disabled={pending}
+              />
+            </div>
             <div className="grid gap-1">
               <Label htmlFor="ed-photo">{t("photoUrl")}</Label>
               <Input

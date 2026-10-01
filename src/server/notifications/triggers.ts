@@ -479,6 +479,11 @@ async function findTemplateFor(
         isActive: true,
         ...where,
       },
+      // Two active templates on one band (a playbook copy next to the
+      // canonical seed) used to resolve in whatever order Postgres returned
+      // them, so the text a patient got could change between runs (audit
+      // G2-10). The oldest wins, the id breaks a tie.
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: {
         id: true,
         bodyRu: true,

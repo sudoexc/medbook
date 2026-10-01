@@ -145,6 +145,25 @@ export const VERBATIM_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Why a template may not be saved with this channel, or null (audit UX-10).
+ *
+ * The send worker delivers Telegram (and in-app) only; an EMAIL send throws
+ * «Channel EMAIL not dispatchable», so an active EMAIL template turned every
+ * one of its sends into FAILED and grew the red counter in the top bar while
+ * the editor offered Email as if it worked. No template is created on EMAIL,
+ * switched to it or switched on with it. An old EMAIL template can still be
+ * edited while it stays off, so the admin can move it to Telegram.
+ */
+export function templateChannelRefusal(
+  next: { channel: string; isActive: boolean },
+  before: { channel: string } | null,
+): "channel_not_supported" | null {
+  if (next.channel !== "EMAIL") return null;
+  if (before?.channel === "EMAIL" && !next.isActive) return null;
+  return "channel_not_supported";
+}
+
+/**
  * The `{{…}}` keys a verbatim template's texts would leak, or null when the
  * key is not verbatim or the texts are clean. For editors that do not run
  * the full whitelist (the notification-center template form).

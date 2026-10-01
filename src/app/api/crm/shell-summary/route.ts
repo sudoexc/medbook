@@ -26,6 +26,7 @@ import { TODAY_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 import { workingMinutesOn } from "@/lib/doctor-working-windows";
 import type { TenantContext } from "@/lib/tenant-context";
 import { ONLINE_REQUEST_ROLES } from "@/server/schemas/online-request";
+import { pendingMissedCallsWhere } from "@/lib/calls/call-state";
 
 function canWorkLeads(ctx: TenantContext): boolean {
   if (ctx.kind === "SUPER_ADMIN") return true;
@@ -100,11 +101,10 @@ export const GET = createApiListHandler(
         where: { startAt: { lt: todayEnd }, endAt: { gt: todayStart } },
         select: { doctorId: true, startAt: true, endAt: true },
       }),
+      // Missed calls still waiting for a call back (audit CM-13): the badge
+      // opens the «Пропущенные» list, and «Перезвонили» takes a call off both.
       prisma.call.count({
-        where: {
-          direction: "MISSED",
-          createdAt: { gte: todayStart, lt: todayEnd },
-        },
+        where: pendingMissedCallsWhere(todayStart, todayEnd),
       }),
       prisma.conversation.count({
         where: {

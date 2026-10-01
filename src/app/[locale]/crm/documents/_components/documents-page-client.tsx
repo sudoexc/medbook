@@ -325,6 +325,7 @@ export function DocumentsPageClient() {
       <UploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
+        initialPatientId={filters.patientId || undefined}
         onUploaded={() => {
           setUploadOpen(false);
           void q.refetch();

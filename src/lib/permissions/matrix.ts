@@ -97,7 +97,8 @@ export const PERMISSION_MATRIX: ResourcePermissions[] = [
     DOCTOR: { read: "all", write: true, update: "all", delete: false },
     RECEPTIONIST: { read: "all", write: true, update: "all", delete: false },
     NURSE: { read: "all", write: false, update: "none", delete: false },
-    CALL_OPERATOR: { read: "all", write: false, update: "none", delete: false },
+    // write — «Создать карточку» for an unknown caller (audit CM-08).
+    CALL_OPERATOR: { read: "all", write: true, update: "none", delete: false },
   }),
 
   // ── Appointment ──────────────────────────────────────────────────────────
@@ -161,7 +162,9 @@ export const PERMISSION_MATRIX: ResourcePermissions[] = [
     DOCTOR: { read: "own", write: true, update: "own", delete: false },
     RECEPTIONIST: { read: "all", write: true, update: "all", delete: false },
     NURSE: { read: "all", write: false, update: "none", delete: false },
-    CALL_OPERATOR: { read: "all", write: false, update: "none", delete: false },
+    // write — the case a phone booking is filed under (audit CM-08); the
+    // clinical fields stay the doctor's.
+    CALL_OPERATOR: { read: "all", write: true, update: "none", delete: false },
   }),
 
   // ── NotificationTemplate ─────────────────────────────────────────────────

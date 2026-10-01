@@ -23,6 +23,7 @@ backfill-patient-visit-stats.ts
 close-stale-in-progress-visits.ts
 fix-ac03-event-task-lifetimes.ts
 fix-ac09-lost-callbacks.ts
+fix-cm10-call-states.ts
 fix-an01-fx-rate-convention.ts
 fix-an02-link-payments-to-visits.ts
 fix-cd02-drug-photo-urls.ts

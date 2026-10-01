@@ -104,6 +104,7 @@ export function ActionCenterClient({
   const {
     rows: actions,
     isLoading,
+    error: actionsError,
     hasMore,
     loadMore,
     isLoadingMore,
@@ -188,6 +189,7 @@ export function ActionCenterClient({
             actions={actions}
             summary={summary}
             isLoading={isLoading}
+            error={actionsError}
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMore}
@@ -551,6 +553,7 @@ function ActionsList({
   actions,
   summary,
   isLoading,
+  error,
   hasMore,
   isLoadingMore,
   onLoadMore,
@@ -560,6 +563,8 @@ function ActionsList({
   actions: ActionRow[];
   summary: ActionsSummary | undefined;
   isLoading: boolean;
+  /** A failed load is shown as such, never as «Нет задач» (audit AC-16). */
+  error: Error | null;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
@@ -601,6 +606,14 @@ function ActionsList({
               className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
             />
           ))}
+        </div>
+      ) : error && actions.length === 0 ? (
+        <div
+          role="alert"
+          className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 py-8 text-sm text-destructive"
+        >
+          <AlertTriangleIcon className="size-4" aria-hidden />
+          {td("loadError")}
         </div>
       ) : actions.length === 0 ? (
         <p className="mt-6 py-8 text-center text-sm text-muted-foreground">
@@ -1267,8 +1280,9 @@ function TodayLosses({
       key: "calls",
       label: td("missedCalls"),
       count: missedCalls,
-      // Missed calls live in the Call Center; without it there is no page.
-      href: hasCallCenter ? `/${locale}/crm/call-center` : null,
+      // Missed calls live in the Call Center's «Пропущенные» tab (audit
+      // CM-13); without the Call Center there is no page.
+      href: hasCallCenter ? `/${locale}/crm/call-center?tab=missed` : null,
     },
   ];
 

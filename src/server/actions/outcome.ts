@@ -1,17 +1,13 @@
 /**
- * Call-outcome semantics shared by the two outcome endpoints
- * (TZ-risk-outcomes §4):
- *
- *   - `POST /api/crm/actions/[id]/outcome` stamps one Action;
- *   - `POST /api/crm/action-center/risk-today/outcome` stamps every Action
- *     of one risk-today appointment, creating a NO_CONTACT_CALL row when the
- *     appointment surfaced without any (audit AC-04).
- *
- * Both must write the same status / snooze / attempt stamps and drive the
- * same appointment side effect, so the rules live here once.
+ * Call-outcome semantics (TZ-risk-outcomes §4), used by
+ * `POST /api/crm/action-center/risk-today/outcome`, which stamps every
+ * Action of one risk-today appointment, creating a NO_CONTACT_CALL row when
+ * the appointment surfaced without any (audit AC-04), and by the move saved
+ * from the risk list (`recordRescheduleOutcome`). The per-Action endpoint
+ * that shared them is retired (audit AC-19).
  *
  *   CONFIRMED     → confirmAppointment(via INBOUND_CALL) + Action DONE(outcome)
- *   RESCHEDULED   → refused by both endpoints (audit AC-10): written with the
+ *   RESCHEDULED   → refused by the endpoint (audit AC-10): written with the
  *                   same DONE stamp by a move saved from the risk list, once
  *                   the new time is committed (`recordRescheduleOutcome` in
  *                   `risk-outcome.ts`)
@@ -198,12 +194,16 @@ export async function applyOutcomeToAppointment(params: {
         actorId: params.actorId,
         via: "INBOUND_CALL",
       });
+    // Both are the patient's decision, carried out by reception: the
+    // patient is told «вы отменили запись», not the clinic's apology
+    // (audit AC-19).
     case "REFUSED":
       return cancelAppointment({
         appointmentId: params.appointmentId,
         clinicId: params.clinicId,
         actorId: params.actorId,
         reason: params.note ?? "patient:refused-on-call",
+        patientInitiated: true,
       });
     case "RETURN_LATER":
       return cancelAppointment({
@@ -212,6 +212,7 @@ export async function applyOutcomeToAppointment(params: {
         actorId: params.actorId,
         // Same code the Mini App uses for «хочу перенести».
         reason: params.note ?? "patient:wants-reschedule",
+        patientInitiated: true,
       });
     default:
       return null;

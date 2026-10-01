@@ -193,7 +193,10 @@ const AUTO_CONFIRM_CHANNELS = new Set<string>(["PHONE", "KIOSK"]);
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    // CM-08 — the call operator books the caller from the call center
+    // («Записать пациента»); the permission matrix gives him Appointment
+    // write. He books like the desk does (any doctor, PHONE auto-confirms).
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"],
     bodySchema: CreateAppointmentSchema,
   },
   async ({ body, ctx }) => {

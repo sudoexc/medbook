@@ -103,19 +103,16 @@ const CALLBACK_AT_REQUIRED = {
 };
 
 /**
- * POST /api/crm/actions/[id]/outcome body. `callbackAt` (ISO) is required for
- * CALLBACK (when to resurface) and RETURN_LATER (the return date); ignored for
- * the rest. `note` is what the patient said (reason / return context).
- */
-export const OutcomeActionSchema = OutcomeFields.refine(
-  needsCallbackAt,
-  CALLBACK_AT_REQUIRED,
-);
-
-/**
- * POST /api/crm/action-center/risk-today/outcome body: the same outcome,
- * addressed by the appointment the risk-today row stands for. A row may carry
- * several Actions or none at all (audit AC-04), so the server resolves them.
+ * POST /api/crm/action-center/risk-today/outcome body, addressed by the
+ * appointment the risk-today row stands for. A row may carry several Actions
+ * or none at all (audit AC-04), so the server resolves them. `callbackAt`
+ * (ISO) is required for CALLBACK (when to resurface) and RETURN_LATER (the
+ * return date); ignored for the rest. `note` is what the patient said
+ * (reason / return context).
+ *
+ * The per-Action `POST /api/crm/actions/[id]/outcome` is retired (audit
+ * AC-19): no screen called it, and it let a doctor cancel any visit through
+ * any task type and recorded the outcome even when the visit refused it.
  */
 export const RiskOutcomeSchema = OutcomeFields.extend({
   appointmentId: z.string().min(1),
@@ -124,5 +121,4 @@ export const RiskOutcomeSchema = OutcomeFields.extend({
 export type QueryAction = z.infer<typeof QueryActionSchema>;
 export type SnoozeActionBody = z.infer<typeof SnoozeActionSchema>;
 export type DismissActionBody = z.infer<typeof DismissActionSchema>;
-export type OutcomeActionBody = z.infer<typeof OutcomeActionSchema>;
 export type RiskOutcomeBody = z.infer<typeof RiskOutcomeSchema>;

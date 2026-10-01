@@ -25,6 +25,7 @@ import { getQueue } from "@/server/queue";
 
 import { startAnalyticsRefreshWorker } from "./analytics-refresh";
 import { startAppointmentLifecycleSweepWorker } from "./appointment-lifecycle-sweep";
+import { startCallSweepWorker } from "./call-sweep";
 import { startDataExportWorker } from "./data-export";
 import { startScheduledReportsWorker } from "./scheduled-reports";
 import { registerDsarScheduler } from "./data-deletion";
@@ -76,6 +77,11 @@ async function main() {
   // for what only time changes; a completed visit refreshes its patient
   // at once (runCompletionEffects).
   const patientSegments = startPatientSegmentsWorker();
+
+  // Audit CM-01 — a call whose PBX hangup never arrived is closed (RINGING
+  // after 10 minutes as missed, ANSWERED after 4 hours as ended) so no ghost
+  // call sits first in the call-center queue. Every 2 minutes.
+  const callSweep = startCallSweepWorker();
 
   // Phase 13 Wave 2 — Action Center recompute every 15 minutes. Iterates
   // active clinics and fires the 10 detectors per clinic via runActionEngine.
@@ -199,6 +205,7 @@ async function main() {
     trialExpiry.stop();
     lifecycleSweep.stop();
     patientSegments.stop();
+    callSweep.stop();
     actionEngine.stop();
     revenue.stop();
     preVisit.stop();

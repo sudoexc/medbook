@@ -45,6 +45,7 @@
  * relevant model. We only need an explicit clinic fetch to read `timezone`.
  */
 import { createApiListHandler } from "@/lib/api-handler";
+import { ACTION_READER_ROLES } from "@/lib/actions/roles";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
 import { clinicTodayBounds } from "@/server/actions/clinic-day";
@@ -129,7 +130,7 @@ const NO_CONTACT_RISK_CEILING = 0.7;
 const UNCONFIRMED_RISK_BASE = 0.6;
 
 export const GET = createApiListHandler(
-  { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
+  { roles: [...ACTION_READER_ROLES] },
   async ({ ctx }) => {
     if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
 

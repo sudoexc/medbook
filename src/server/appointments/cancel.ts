@@ -65,6 +65,12 @@ export type CancelInput = {
   /** Human-friendly label for audit/toasts. Auto-built from actor info when
    *  omitted. */
   actorLabel?: string;
+  /**
+   * The patient made the decision (refused or will come another day on a
+   * call with reception), though staff carried it out: the patient gets the
+   * «you cancelled» text, not the clinic's apology (audit AC-19).
+   */
+  patientInitiated?: boolean;
   /** Cascade hint: thread upstream correlationId through. New id when omitted. */
   correlationId?: string;
   causedByEventId?: string;
@@ -272,12 +278,12 @@ export async function cancelAppointment(
   await retireVisitRiskActions(prisma, input.clinicId, after.id, "CANCELLED");
 
   // TZ-notifications-cancel-sync §8.3 — surface-aware variant selection.
-  // Mini-app self-cancel gets the softer "we're around" text; everything
-  // else (CRM, call-centre, system worker) gets the apologetic "sorry,
-  // here's how to rebook" text. Outside the tx because trigger fan-out
-  // talks to the in-process scheduler, not the DB.
+  // Mini-app self-cancel, and a refusal the patient gave on the phone, get
+  // the softer "we're around" text; everything else (CRM, system worker)
+  // gets the apologetic "sorry, here's how to rebook" text. Outside the tx
+  // because trigger fan-out talks to the in-process scheduler, not the DB.
   const cancelKind =
-    surface === "MINIAPP"
+    surface === "MINIAPP" || input.patientInitiated
       ? "appointment.cancelled.by-patient"
       : "appointment.cancelled.by-staff";
   fireTrigger({ kind: cancelKind, appointmentId: after.id });

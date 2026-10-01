@@ -11,6 +11,7 @@
  * reception briefing).
  */
 import { createApiHandler } from "@/lib/api-handler";
+import { ACTION_WORKER_ROLES } from "@/lib/actions/roles";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound } from "@/server/http";
@@ -24,7 +25,7 @@ import { surfaceMoment } from "@/server/actions/repository";
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST"],
+    roles: [...ACTION_WORKER_ROLES],
     bodySchema: SnoozeActionSchema,
   },
   async ({ request, body }) => {

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { tashkentPartsOf } from "@/lib/tashkent-time";
 
 import type { CallRow, DerivedCallStatus } from "../_hooks/types";
 import { deriveStatus } from "../_hooks/types";
@@ -49,7 +50,8 @@ export function CallBubble({
   const phone = row.direction === "OUT" ? row.toNumber : row.fromNumber;
   const name = row.patient?.fullName ?? tBubble("unknownCaller");
   const timeLabel = formatLocalTime(row.createdAt);
-  const durationLabel = formatDuration(row.durationSec, row.createdAt, row.endedAt);
+  const durationLabel =
+    row.durationSec != null ? formatDurationSec(row.durationSec) : "";
 
   return (
     <button
@@ -119,24 +121,17 @@ function statusChipClass(status: DerivedCallStatus, solid: boolean): string {
   return "bg-muted text-muted-foreground";
 }
 
+/** The clinic clock (Tashkent), whatever zone the operator's computer is in. */
 function formatLocalTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const p = tashkentPartsOf(d);
+  return `${String(p.hours).padStart(2, "0")}:${String(p.minutes).padStart(2, "0")}`;
 }
 
-function formatDuration(
-  durationSec: number | null,
-  createdAt: string,
-  endedAt: string | null,
-): string {
-  if (durationSec != null) return formatDurationSec(durationSec);
-  if (!endedAt) return "";
-  const start = new Date(createdAt).getTime();
-  const end = new Date(endedAt).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "";
-  return formatDurationSec(Math.round((end - start) / 1000));
-}
+// The duration shown is the talk time the server recorded (audit CM-10).
+// Deriving it from the ring start made an unanswered call look like a
+// 40-second conversation; a call without a recorded talk time shows none.
 
 function formatDurationSec(sec: number): string {
   const m = Math.floor(sec / 60);

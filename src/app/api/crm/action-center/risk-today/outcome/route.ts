@@ -19,9 +19,16 @@
  *
  * RBAC: ADMIN, RECEPTIONIST, the roles of the canonical cancel
  * (DELETE /api/crm/appointments/[id]). «Отказался» cancels the visit, and the
- * risk-today widget lives in the CRM, which doctors do not use.
+ * risk-today widget lives in the CRM, which doctors do not use. The call
+ * operator works this list too (audit AC-16), with the outcomes that leave
+ * the visit in place or confirm it; one that cancels or moves the visit
+ * answers 403 `outcome_not_allowed` (`canRecordRiskOutcome`).
  */
 import { createApiHandler } from "@/lib/api-handler";
+import {
+  ACTION_WORKER_ROLES,
+  canRecordRiskOutcome,
+} from "@/lib/actions/roles";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { recordRiskOutcome } from "@/server/actions/risk-outcome";
@@ -30,11 +37,14 @@ import { conflict, err, notFound, ok } from "@/server/http";
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST"],
+    roles: [...ACTION_WORKER_ROLES],
     bodySchema: RiskOutcomeSchema,
   },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
+    if (!canRecordRiskOutcome(ctx.role, body.outcome)) {
+      return err("Forbidden", 403, { reason: "outcome_not_allowed" });
+    }
 
     const input = {
       outcome: body.outcome,

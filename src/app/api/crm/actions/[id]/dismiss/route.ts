@@ -2,11 +2,13 @@
  * POST /api/crm/actions/[id]/dismiss — user explicitly silences this action
  * without acting on it. Sets `dismissedAt = now` and `status='DISMISSED'`.
  *
- * RBAC: ADMIN, RECEPTIONIST, DOCTOR. DOCTOR is allowed because the spec
- * permits the assigned doctor to dismiss; richer per-row ownership checks
- * land in Wave 2 once detectors stamp doctorId on relevant rows.
+ * RBAC: ADMIN, RECEPTIONIST, CALL_OPERATOR (audit AC-16), DOCTOR. DOCTOR
+ * is allowed because the spec permits the assigned doctor to dismiss;
+ * richer per-row ownership checks land in Wave 2 once detectors stamp
+ * doctorId on relevant rows.
  */
 import { createApiHandler } from "@/lib/api-handler";
+import { ACTION_READER_ROLES } from "@/lib/actions/roles";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound } from "@/server/http";
@@ -16,7 +18,7 @@ import { actionIdFromUrl } from "@/server/actions/handler-utils";
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    roles: [...ACTION_READER_ROLES],
     bodySchema: DismissActionSchema,
   },
   async ({ request, body }) => {

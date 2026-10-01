@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 
 import type { CallRow } from "../_hooks/types";
 import { deriveStatus } from "../_hooks/types";
-import { useCallPatch } from "../_hooks/use-call-notes";
+import { EndCallError, useEndCall } from "../_hooks/use-call-notes";
 
 /**
  * Right column — operator control surface.
@@ -36,38 +36,32 @@ import { useCallPatch } from "../_hooks/use-call-notes";
  */
 export function CallActionsRail({ call }: { call: CallRow | null }) {
   const t = useTranslations("callCenter.actionsRail");
-  const patch = useCallPatch();
+  const endCall = useEndCall();
 
   const status = call ? deriveStatus(call) : null;
+  // A call is over once it has an end, whatever the status column says
+  // (audit CM-07): the buttons must not offer to end it twice.
   const canEnd =
-    Boolean(call) && status !== "ended" && status !== "missed";
+    Boolean(call) &&
+    !call?.endedAt &&
+    status !== "ended" &&
+    status !== "missed";
 
-  const onHangup = async () => {
+  // «Завершить» closes the call as a conversation, «Пропуск» as a missed
+  // call to return: the server writes status, direction and duration.
+  const onEnd = async (outcome: "ENDED" | "MISSED") => {
     if (!call) return;
     try {
-      await patch.mutateAsync({
-        id: call.id,
-        patch: { endedAt: new Date().toISOString() },
-      });
-      toast.success(t("toasts.hangupDone"));
+      await endCall.mutateAsync({ id: call.id, outcome });
+      toast.success(
+        outcome === "MISSED" ? t("toasts.markedMissed") : t("toasts.hangupDone"),
+      );
     } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
-
-  const onMarkMissed = async () => {
-    if (!call) return;
-    try {
-      await patch.mutateAsync({
-        id: call.id,
-        patch: {
-          endedAt: new Date().toISOString(),
-          tags: Array.from(new Set([...call.tags, "missed"])),
-        },
-      });
-      toast.success(t("toasts.markedMissed"));
-    } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(
+        e instanceof EndCallError && e.reason === "call_already_ended"
+          ? t("toasts.alreadyEnded")
+          : t("toasts.endFailed"),
+      );
     }
   };
 
@@ -106,15 +100,15 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             label={t("controls.hangup")}
             icon={<PhoneOffIcon className="size-5" />}
             tone="danger"
-            disabled={!canEnd || patch.isPending}
-            onClick={onHangup}
+            disabled={!canEnd || endCall.isPending}
+            onClick={() => void onEnd("ENDED")}
           />
           <ControlTile
             label={t("controls.markMissed")}
             icon={<PhoneMissedIcon className="size-5" />}
             tone="warning"
-            disabled={!canEnd || patch.isPending}
-            onClick={onMarkMissed}
+            disabled={!canEnd || endCall.isPending}
+            onClick={() => void onEnd("MISSED")}
           />
           <ControlTile
             label={t("controls.transfer")}

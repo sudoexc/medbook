@@ -23,7 +23,9 @@ function caseIdFromUrl(request: Request): string {
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    // CM-08 — the call operator's booking is attached to its case too, so
+    // a follow-up is priced within the case like any other booking.
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"],
     bodySchema: AttachAppointmentSchema,
   },
   async ({ request, body }) => {

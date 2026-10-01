@@ -3609,7 +3609,29 @@
       "unknownCaller": "Noma'lum raqam",
       "newCallToast": "{name} dan qo'ng'iroq ({phone})",
       "pollingHint": "Har 5 soniyada yangilanadi",
-      "polling": "Yangilanmoqda"
+      "polling": "Yangilanmoqda",
+      "tabsAriaLabel": "Qo'ng'iroqlar ro'yxatlari"
+    },
+    "missed": {
+      "title": "O'tkazilganlar",
+      "ariaLabel": "Bugungi o'tkazilgan qo'ng'iroqlar",
+      "loading": "Yuklanmoqda…",
+      "emptyTitle": "O'tkazilgan qo'ng'iroqlar yo'q",
+      "emptyDescription": "Bugun hech kim javob bermagan qo'ng'iroqlar shu yerda chiqadi.",
+      "markCalledBack": "Qayta qo'ng'iroq qildim",
+      "calledBack": "Qayta qo'ng'iroq qilindi",
+      "calledBackToast": "Belgilandi: qayta qo'ng'iroq qilindi",
+      "calledBackFailed": "Qo'ng'iroqni belgilab bo'lmadi"
+    },
+    "errors": {
+      "forbiddenTitle": "Qo'ng'iroqlarga ruxsat yo'q",
+      "forbiddenDescription": "Sizning rolingiz Call Center bilan ishlamaydi. Klinika administratoriga murojaat qiling.",
+      "loadFailedTitle": "Qo'ng'iroqlarni yuklab bo'lmadi",
+      "loadFailedDescription": "Ulanishni tekshiring. Ro'yxat o'zi yangilanadi."
+    },
+    "noAccess": {
+      "title": "Call Center'ga ruxsat yo'q",
+      "description": "Call Center administrator, registratura va Call Center operatorlari uchun ochiq. Klinika administratoriga murojaat qiling."
     },
     "active": {
       "ariaLabel": "Faol qo'ng'iroq",
@@ -3635,7 +3657,8 @@
         "ltv": "LTV",
         "visits": "Tashriflar",
         "avgCheck": "O'rtacha chek",
-        "balance": "Balans"
+        "balance": "Balans",
+        "noData": "ma'lumot yo'q"
       },
       "nextAppointment": {
         "ariaLabel": "Keyingi yozuv",
@@ -3691,7 +3714,9 @@
         "markedMissed": "Qo'ng'iroq o'tkazilgan deb belgilandi",
         "sipUnavailable": "Ushbu harakatdan foydalanish uchun SIP-provayderni ulang",
         "scriptCopied": "Skript nusxalandi",
-        "copyFailed": "Nusxa olib bo'lmadi"
+        "copyFailed": "Nusxa olib bo'lmadi",
+        "alreadyEnded": "Qo'ng'iroq allaqachon yakunlangan",
+        "endFailed": "Qo'ng'iroqni yakunlab bo'lmadi"
       }
     },
     "status": {
@@ -3709,6 +3734,7 @@
       "title": "Tasdiqlanishi kerak",
       "subtitle": "{count, plural, =0 {Tasdiqlanmagan yozuvlar yo'q} other {{count} ta yozuv tasdiqlanishini kutmoqda}}",
       "loading": "Yuklanmoqda…",
+      "loadError": "Tasdiqlanadigan yozuvlarni yuklab bo'lmadi",
       "call": "Qo'ng'iroq qilish",
       "open": "Yozuvni ochish",
       "confirm": "Tasdiqlash",
@@ -5329,6 +5355,10 @@
     "recomputeSuccess": "Tayyor: yaratildi {created}, yangilandi {updated}",
     "recomputeError": "Qayta hisoblab bo'lmadi: {reason}",
     "loadMore": "Yana ko'rsatish",
+    "noAccess": {
+      "title": "Vazifalar markaziga ruxsat yo'q",
+      "description": "Vazifalar markazi administrator, registratura va Call Center operatorlari uchun ochiq."
+    },
     "tabs": {
       "OPEN": "Ochiq",
       "SNOOZED": "Keyinga",
@@ -5617,6 +5647,7 @@
         "priorityLow": "Past",
         "priorityCritical": "Tanqidiy",
         "empty": "Ustuvor amallar yo'q",
+        "loadError": "Vazifalarni yuklab bo'lmadi. Ro'yxat o'zi yangilanadi.",
         "categories": {
           "calls": {
             "title": "Tasdiqlash va qo'ng'iroqlar",

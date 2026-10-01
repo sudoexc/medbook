@@ -18,22 +18,37 @@ import {
 
 import { SOURCES, type NewPatientForm, type PatientHit } from "./types";
 
+const NO_NEW_PATIENT: NewPatientForm = {
+  fullName: "",
+  phone: "",
+  gender: "",
+  source: "",
+};
+
+/**
+ * Patient search with an optional «создать нового» form. A caller that only
+ * picks an existing card (the documents upload, audit CM-05) leaves out
+ * `onToggleNew`, and the create affordances are not shown.
+ */
 export function PatientPicker({
   value,
-  newPatient,
-  newPatientForm,
+  newPatient = false,
+  newPatientForm = NO_NEW_PATIENT,
   onChangePatient,
   onToggleNew,
   onChangeNewPatient,
   disabled,
+  label,
 }: {
   value: PatientHit | null;
-  newPatient: boolean;
-  newPatientForm: NewPatientForm;
+  newPatient?: boolean;
+  newPatientForm?: NewPatientForm;
   onChangePatient: (p: PatientHit | null) => void;
-  onToggleNew: (on: boolean) => void;
-  onChangeNewPatient: (next: NewPatientForm) => void;
+  onToggleNew?: (on: boolean) => void;
+  onChangeNewPatient?: (next: NewPatientForm) => void;
   disabled?: boolean;
+  /** Overrides the field label. */
+  label?: string;
 }) {
   const t = useTranslations("appointments.newDialog.patient");
   const tSource = useTranslations("patients.source");
@@ -78,7 +93,9 @@ export function PatientPicker({
   // doesn't retype the name/phone they already entered. Pure digits / "+"
   // prefix → phone, otherwise full name. Only fills empty fields so a
   // half-completed form isn't clobbered by a second pass.
+  const canCreate = Boolean(onToggleNew);
   const openNewPatient = () => {
+    if (!onToggleNew) return;
     const trimmed = search.trim();
     if (trimmed.length > 0) {
       const hasLetters = /\p{L}/u.test(trimmed);
@@ -93,7 +110,7 @@ export function PatientPicker({
           ? { fullName: trimmed }
           : {};
       if (Object.keys(seed).length > 0) {
-        onChangeNewPatient({ ...newPatientForm, ...seed });
+        onChangeNewPatient?.({ ...newPatientForm, ...seed });
       }
     }
     onToggleNew(true);
@@ -102,7 +119,7 @@ export function PatientPicker({
 
   return (
     <div className="grid gap-1.5">
-      <Label>{t("label")}</Label>
+      <Label>{label ?? t("label")}</Label>
 
       {value && !newPatient ? (
         <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
@@ -121,7 +138,7 @@ export function PatientPicker({
             </Button>
           ) : null}
         </div>
-      ) : newPatient ? (
+      ) : newPatient && onToggleNew && onChangeNewPatient ? (
         <NewPatientInline
           values={newPatientForm}
           onChange={onChangeNewPatient}
@@ -180,18 +197,20 @@ export function PatientPicker({
                   ))}
                 </ul>
               )}
-              <button
-                type="button"
-                onClick={openNewPatient}
-                className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary hover:bg-primary/5"
-              >
-                <PlusIcon className="size-4" />
-                {t("createNew")}
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={openNewPatient}
+                  className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary hover:bg-primary/5"
+                >
+                  <PlusIcon className="size-4" />
+                  {t("createNew")}
+                </button>
+              ) : null}
             </div>
           ) : null}
 
-          {!disabled ? (
+          {!disabled && canCreate ? (
             <button
               type="button"
               onClick={openNewPatient}

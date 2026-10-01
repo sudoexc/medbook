@@ -1,6 +1,10 @@
 import * as React from "react";
+import { getTranslations } from "next-intl/server";
+import { LockIcon } from "lucide-react";
 
 import { auth } from "@/lib/auth";
+import { canWorkActionCenter } from "@/lib/actions/roles";
+import { EmptyState } from "@/components/atoms/empty-state";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { getFeatureFlagsForCurrentSession } from "@/server/platform/current-flags";
@@ -24,6 +28,20 @@ import { ActionCenterClient } from "./_components/action-center-client";
 export default async function ActionCenterPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
+  // Audit AC-16: a role the Action Center API refuses (a nurse) is told so,
+  // instead of «Нет приоритетных действий» over a swallowed 403.
+  if (!canWorkActionCenter(role)) {
+    const t = await getTranslations("actionCenter.noAccess");
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <EmptyState
+          icon={<LockIcon />}
+          title={t("title")}
+          description={t("description")}
+        />
+      </div>
+    );
+  }
   const flags = await getFeatureFlagsForCurrentSession();
   const clinicId = session?.user?.clinicId ?? null;
   const isAdmin = role === "ADMIN";

@@ -72,6 +72,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Locale } from "@/lib/format";
 import { addTashkentDays, tashkentToday } from "@/lib/tashkent-time";
+import { canRecordRiskOutcome } from "@/lib/actions/roles";
+import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role";
 
 import { useSnoozeAction } from "../_hooks/use-actions";
 import {
@@ -725,6 +727,13 @@ function OutcomeMenu({
   }) => void;
 }) {
   const t = useTranslations("actionCenter.dashboard.riskToday");
+  // A call operator records only the outcomes the server lets him (audit
+  // AC-16): the ones that cancel or move the visit are reception's.
+  const role = useCurrentRole();
+  const items = React.useMemo(
+    () => OUTCOME_ITEMS.filter((item) => canRecordRiskOutcome(role, item.outcome)),
+    [role],
+  );
   const [open, setOpen] = React.useState(false);
   const [form, setForm] = React.useState<"callback" | "return" | "refused" | null>(null);
   const [at, setAt] = React.useState(""); // yyyy-MM-ddTHH:mm | yyyy-MM-dd
@@ -790,7 +799,7 @@ function OutcomeMenu({
             <div className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t("outcomeMenu.title")}
             </div>
-            {OUTCOME_ITEMS.map(({ outcome, icon: Icon, form: target }) => (
+            {items.map(({ outcome, icon: Icon, form: target }) => (
               <button
                 key={outcome}
                 type="button"

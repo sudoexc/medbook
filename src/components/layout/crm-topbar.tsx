@@ -294,7 +294,15 @@ export function CrmTopbar({
             badge={summary?.unread.calls ?? 0}
             tone="danger"
             iconClass="text-foreground"
-            onClick={() => intlRouter.push("/crm/call-center")}
+            // The badge counts missed calls to return: it opens their list
+            // (audit CM-13).
+            onClick={() =>
+              intlRouter.push(
+                (summary?.unread.calls ?? 0) > 0
+                  ? "/crm/call-center?tab=missed"
+                  : "/crm/call-center",
+              )
+            }
           />
           <TopbarChannelIcon
             label={tTopbar("channels.telegram")}

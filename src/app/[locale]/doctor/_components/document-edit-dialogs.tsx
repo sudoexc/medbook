@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 
 import type { DocumentType } from "../documents/_hooks/use-doctor-documents";
+import { documentReplaceLock, isRenderedDocument } from "@/lib/document-guards";
 
 /** Full label map — includes CONCLUSION so rendered handouts display right. */
 export const DOCUMENT_TYPE_LABEL_KEY: Record<DocumentType, string> = {
@@ -60,6 +61,8 @@ export type EditableDocumentCheck = {
   uploadedBy?: { id: string } | null;
   visitNoteId?: string | null;
   referralId?: string | null;
+  source?: string | null;
+  signedAt?: string | null;
 };
 
 /**
@@ -72,10 +75,17 @@ export function canEditDocument(
   myUserId: string | null | undefined,
 ): boolean {
   if (!myUserId) return false;
-  if (doc.type === "CONCLUSION") return false;
-  if (doc.visitNoteId || doc.referralId) return false;
+  if (isRenderedDocument(doc)) return false;
   const ownerId = doc.uploadedById ?? doc.uploadedBy?.id ?? null;
   return ownerId === myUserId;
+}
+
+/**
+ * Of an editable document, may its file be replaced and the row deleted?
+ * Not for a signed consent or contract (CD-09); its title stays editable.
+ */
+export function canReplaceOrDeleteDocument(doc: EditableDocumentCheck): boolean {
+  return documentReplaceLock(doc) === null;
 }
 
 /**
@@ -94,6 +104,7 @@ async function patchErrorMessage(
     // Non-JSON body — fall through to the generic message.
   }
   if (code === "ReadOnlyRenderedDocument") return t("edit.errorReadOnly");
+  if (code === "SignedDocumentLocked") return t("edit.errorSigned");
   if (res.status === 403) return t("edit.errorForbidden");
   return t("edit.errorGeneric");
 }

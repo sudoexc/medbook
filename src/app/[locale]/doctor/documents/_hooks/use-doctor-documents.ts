@@ -29,6 +29,10 @@ export type DoctorDocumentRow = {
   // are read-only in this UI (PATCH rejects them server-side too).
   visitNoteId: string | null;
   referralId: string | null;
+  /** CD-06: who put it in the chart. */
+  source: "STAFF" | "PATIENT" | "SYSTEM";
+  /** Set on a signed consent/contract (CD-09: file and row locked). */
+  signedAt: string | null;
   createdAt: string;
   patient: { id: string; fullName: string } | null;
   uploadedBy: { id: string; name: string } | null;

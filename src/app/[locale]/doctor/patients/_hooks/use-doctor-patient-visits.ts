@@ -31,6 +31,8 @@ export type DoctorPatientVisitRow = {
     type: string;
     fileUrl: string;
     createdAt: string;
+    /** CD-06: STAFF | PATIENT | SYSTEM; PATIENT is badged «от пациента». */
+    source: string;
   }[];
   labs: { id: string; orderNumber: string; status: string; tests: number }[];
   medications: {

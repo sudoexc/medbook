@@ -3,12 +3,16 @@
  * POST /api/miniapp/documents?clinicSlug=…  → patient uploads a document
  *                                             (multipart/form-data: `file`,
  *                                             optional `title`, optional
- *                                             `type` ∈ DocumentType — defaults
- *                                             to OTHER).
+ *                                             `type` ∈ RESULT | OTHER —
+ *                                             defaults to OTHER).
  *
- * Patient uploads land with `uploadedById = null`; the CRM uses that null as
- * the proxy for "this came from the patient" (staff uploads always carry a
- * User id), so we avoid a schema migration for the patient-upload flag.
+ * Patient uploads land with `source = PATIENT` (audit CD-06): the CRM badges
+ * them «От пациента» and keeps them out of the «ожидают подписи» queue. The
+ * old proxy, `uploadedById = null`, also matched every conclusion the worker
+ * rendered. A patient may file only a result or an «other» paper: a
+ * consent, contract, prescription or referral is something the clinic
+ * issues, and a patient's scan labelled as one looked like the real thing
+ * to the doctor. Any other `type` is stored as OTHER.
  *
  * Both verbs act for the patient chosen in the family switcher
  * (`?onBehalfOf=`, family link checked, audit MA-18): the list used to
@@ -71,18 +75,11 @@ function quotaRefused(refusal: UploadQuotaRefusal): Response {
   );
 }
 
-const ALLOWED_DOCUMENT_TYPES = [
-  "REFERRAL",
-  "PRESCRIPTION",
-  "RESULT",
-  "CONSENT",
-  "CONTRACT",
-  "RECEIPT",
-  "OTHER",
-] as const;
-type PatientDocumentType = (typeof ALLOWED_DOCUMENT_TYPES)[number];
+/** What a patient may call his own upload (CD-06); anything else is OTHER. */
+const PATIENT_DOCUMENT_TYPES = ["RESULT", "OTHER"] as const;
+type PatientDocumentType = (typeof PATIENT_DOCUMENT_TYPES)[number];
 function isPatientDocumentType(v: string): v is PatientDocumentType {
-  return (ALLOWED_DOCUMENT_TYPES as readonly string[]).includes(v);
+  return (PATIENT_DOCUMENT_TYPES as readonly string[]).includes(v);
 }
 
 function extFromMime(mime: string, fallback: string | null): string {
@@ -287,6 +284,7 @@ export async function POST(request: Request): Promise<Response> {
           mimeType: mime,
           sizeBytes: file.size,
           uploadedById: null,
+          source: "PATIENT",
         } satisfies Prisma.DocumentUncheckedCreateInput,
         select: {
           id: true,

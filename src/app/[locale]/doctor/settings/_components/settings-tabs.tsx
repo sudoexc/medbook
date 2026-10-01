@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
+import { CLINICAL_FORMS_ISSUING } from "@/lib/clinical-forms-issuing";
 
 import { NotificationsTab } from "./notifications-tab";
 import { PresetsTab } from "./presets-tab";
@@ -19,9 +20,16 @@ type TabKey =
   | "notifications"
   | "security";
 
+// The signature is stamped only on e-prescriptions and sick-leave
+// certificates, which are not issued while CLINICAL_FORMS_ISSUING is off
+// (audit CD-07): the tab promised a signature that appeared nowhere.
+const SIGNATURE_TAB = CLINICAL_FORMS_ISSUING;
+
 const TABS: Array<{ key: TabKey; labelKey: string }> = [
   { key: "profile", labelKey: "tabs.profile" },
-  { key: "signature", labelKey: "tabs.signature" },
+  ...(SIGNATURE_TAB
+    ? [{ key: "signature" as const, labelKey: "tabs.signature" }]
+    : []),
   { key: "presets", labelKey: "tabs.presets" },
   { key: "notifications", labelKey: "tabs.notifications" },
   { key: "security", labelKey: "tabs.security" },
@@ -29,7 +37,7 @@ const TABS: Array<{ key: TabKey; labelKey: string }> = [
 
 function tabFromParam(raw: string | null): TabKey {
   if (
-    raw === "signature" ||
+    (raw === "signature" && SIGNATURE_TAB) ||
     raw === "presets" ||
     raw === "notifications" ||
     raw === "security"
@@ -80,7 +88,7 @@ export function SettingsTabs() {
       </div>
 
       {tab === "profile" ? <ProfileTab /> : null}
-      {tab === "signature" ? <SignatureTab /> : null}
+      {tab === "signature" && SIGNATURE_TAB ? <SignatureTab /> : null}
       {tab === "presets" ? <PresetsTab /> : null}
       {tab === "notifications" ? <NotificationsTab /> : null}
       {tab === "security" ? <SecurityTab locale={locale} /> : null}

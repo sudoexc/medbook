@@ -25,6 +25,8 @@ import {
   publishViaOutbox,
 } from "@/server/realtime/outbox";
 import { ok, err, parseQuery } from "@/server/http";
+import { CLINICAL_FORMS_ISSUING } from "@/lib/clinical-forms-issuing";
+import { formRetired } from "@/server/clinical-forms/retired";
 import {
   CreateEPrescriptionSchema,
   QueryEPrescriptionsSchema,
@@ -38,6 +40,9 @@ export const POST = createApiHandler(
   { roles: ["DOCTOR"], bodySchema: CreateEPrescriptionSchema },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+    // CD-07: issuing new forms is switched off (`@/lib/clinical-forms-issuing`);
+    // the list, print and cancel routes keep serving the ones issued earlier.
+    if (!CLINICAL_FORMS_ISSUING) return formRetired("e-prescription");
 
     const doctor = await prisma.doctor.findFirst({
       where: { userId: ctx.userId },
@@ -175,6 +180,8 @@ export const GET = createApiListHandler(
       where,
       orderBy: { createdAt: "desc" },
       take: q.limit,
+      // The patient card's register of issued forms names the issuer (CD-07).
+      include: { doctor: { select: { name: true } } },
     });
 
     return ok({ rows: rows.map(serialize), total: rows.length });
@@ -200,6 +207,8 @@ type EPrescriptionRow = {
   cancelledAt: Date | null;
   cancelReason: string | null;
   createdAt: Date;
+  /** Loaded by the list only; the create path serialises without it. */
+  doctor?: { name: string | null } | null;
 };
 
 function serialize(row: EPrescriptionRow) {
@@ -221,5 +230,6 @@ function serialize(row: EPrescriptionRow) {
     cancelledAt: row.cancelledAt ? row.cancelledAt.toISOString() : null,
     cancelReason: row.cancelReason,
     createdAt: row.createdAt.toISOString(),
+    doctorName: row.doctor?.name ?? null,
   };
 }

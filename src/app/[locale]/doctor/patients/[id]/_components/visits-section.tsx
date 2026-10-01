@@ -22,6 +22,7 @@ import {
   type DoctorPatientVisitRow,
 } from "../../_hooks/use-doctor-patient-visits";
 import { documentHref } from "@/lib/storage-ref";
+import { isPatientDocument } from "@/lib/document-guards";
 
 const RU_MONTHS_SHORT = [
   "янв.",
@@ -142,6 +143,7 @@ export function VisitsSection({
                   <PaperclipIcon className="size-3" />
                   {d.title}
                 </a>
+                {isPatientDocument(d) ? <PatientUploadTag /> : null}
               </li>
             ))}
             {unattached.labs.map((l) => (
@@ -337,6 +339,7 @@ function VisitEntry({
                   >
                     {d.title}
                   </a>
+                  {isPatientDocument(d) ? <PatientUploadTag /> : null}
                 </li>
               ))}
             </DetailBlock>
@@ -378,6 +381,19 @@ function VisitEntry({
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * CD-06: a file the patient sent from the Mini App, unchecked by the clinic,
+ * whatever type it carries.
+ */
+function PatientUploadTag() {
+  const t = useTranslations("doctor.patients");
+  return (
+    <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+      {t("visits.fromPatient")}
+    </span>
   );
 }
 

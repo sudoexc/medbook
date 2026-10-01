@@ -44,6 +44,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+import { documentDeleteLock, isPatientDocument } from "@/lib/document-guards";
+import { uploadDocumentFile } from "@/lib/document-upload-client";
+import { tashkentToday } from "@/lib/tashkent-time";
+
 import type { Patient } from "../../_hooks/use-patient";
 import {
   documentDownloadHref,
@@ -51,9 +55,13 @@ import {
   useCreateDocument,
   useDeleteDocument,
   usePatientDocumentsInfinite,
+  usePendingConsents,
+  useSaveSignature,
   type DocumentTypeFilter,
   type PatientDocument,
+  type SaveSignatureError,
 } from "../../_hooks/use-patient-documents";
+import { IssuedFormsSection } from "./issued-forms-section";
 import {
   DocumentPreviewDialog,
   type DocumentPreviewTarget,
@@ -101,6 +109,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   });
   const create = useCreateDocument(patient.id);
   const remove = useDeleteDocument(patient.id);
+  const saveSignature = useSaveSignature(patient.id);
   const [signOpen, setSignOpen] = React.useState(false);
   const [dragOver, setDragOver] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -132,48 +141,13 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
     } catch (err) {
       const e = err as Error;
       if (e.message === "FORBIDDEN") toast.error(t("deleteForbidden"));
+      else if (e.message === "LOCKED") toast.error(t("deleteLocked"));
       else toast.error(t("deleteError"));
     }
   }, [deleteTarget, remove, t]);
 
   const uploadOne = React.useCallback(
-    async (file: File): Promise<{
-      fileUrl: string;
-      uploadToken: string | null;
-      mimeType: string | null;
-      sizeBytes: number | null;
-    }> => {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("patientId", patient.id);
-      const res = await fetch("/api/crm/documents/upload", {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      if (!res.ok) {
-        let detail = `upload HTTP ${res.status}`;
-        try {
-          const body = (await res.json()) as { error?: string };
-          if (body?.error) detail = body.error;
-        } catch {
-          // ignore non-json error bodies
-        }
-        throw new Error(detail);
-      }
-      const data = (await res.json()) as {
-        fileUrl: string;
-        uploadToken?: string | null;
-        mimeType: string | null;
-        sizeBytes: number | null;
-      };
-      return {
-        fileUrl: data.fileUrl,
-        uploadToken: data.uploadToken ?? null,
-        mimeType: data.mimeType,
-        sizeBytes: data.sizeBytes,
-      };
-    },
+    (file: File) => uploadDocumentFile(file, patient.id),
     [patient.id],
   );
 
@@ -347,24 +321,38 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                   <span className="truncate text-sm font-medium text-foreground">
                     {doc.title}
                   </span>
+                  {/* CD-06: a patient's own upload is unverified, whatever
+                      type it carries. */}
+                  {isPatientDocument(doc) ? (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                      {t("patientBadge")}
+                    </span>
+                  ) : null}
+                  {doc.signedAt ? (
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                      {t("signedBadge")}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>
-                    {DOC_TYPES.includes(
-                      doc.type as (typeof DOC_TYPES)[number],
-                    )
-                      ? tType(
-                          doc.type.toLowerCase() as
-                            | "referral"
-                            | "prescription"
-                            | "result"
-                            | "consent"
-                            | "contract"
-                            | "receipt"
-                            | "other"
-                            | "signature",
-                        )
-                      : doc.type}
+                    {doc.type === "CONCLUSION"
+                      ? tType("conclusion")
+                      : DOC_TYPES.includes(
+                            doc.type as (typeof DOC_TYPES)[number],
+                          )
+                        ? tType(
+                            doc.type.toLowerCase() as
+                              | "referral"
+                              | "prescription"
+                              | "result"
+                              | "consent"
+                              | "contract"
+                              | "receipt"
+                              | "other"
+                              | "signature",
+                          )
+                        : doc.type}
                   </span>
                   <span>·</span>
                   <span>
@@ -373,8 +361,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                 </div>
                 <div className="mt-2 flex gap-1">
                   {doc.fileUrl.startsWith("http") ||
-                  doc.fileUrl.startsWith("/api/") ||
-                  doc.fileUrl.startsWith("data:") ? (
+                  doc.fileUrl.startsWith("/api/") ? (
                     <>
                       <Button
                         variant="outline"
@@ -385,9 +372,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                         {t("preview")}
                       </Button>
                       <a
-                        href={`${documentDownloadHref(doc.fileUrl)}${
-                          doc.fileUrl.startsWith("data:") ? "" : "&download=1"
-                        }`}
+                        href={`${documentDownloadHref(doc.fileUrl)}&download=1`}
                         target="_blank"
                         rel="noreferrer"
                         className={cn(
@@ -404,14 +389,18 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                       {t("download")}
                     </Button>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setDeleteTarget(doc)}
-                    aria-label={t("deleteAria")}
-                  >
-                    <Trash2Icon className="size-3" />
-                  </Button>
+                  {/* CD-09: conclusions, referral PDFs and signed consents
+                      are legal records; the API refuses to delete them. */}
+                  {documentDeleteLock(doc) ? null : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDeleteTarget(doc)}
+                      aria-label={t("deleteAria")}
+                    >
+                      <Trash2Icon className="size-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -432,16 +421,23 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
         </div>
       ) : null}
 
+      <IssuedFormsSection patientId={patient.id} />
+
       <SignaturePadDialog
         open={signOpen}
         onOpenChange={setSignOpen}
-        onSave={async (dataUrl) => {
-          await create.mutateAsync({
-            patientId: patient.id,
-            title: `Signature-${new Date().toISOString().slice(0, 10)}.png`,
-            fileUrl: dataUrl,
-            type: "CONSENT",
-            mimeType: "image/png",
+        patientId={patient.id}
+        onSave={async ({ canvas, consent }) => {
+          await saveSignature.mutateAsync({
+            canvas,
+            title: consent
+              ? // Room for the prefix inside the 300-character title.
+                t("signature.docTitleFor", { title: consent.title.slice(0, 280) })
+              : t("signature.docTitle", {
+                  date: formatDate(new Date(), locale, "short"),
+                }),
+            fileName: `signature-${tashkentToday()}.png`,
+            signsDocumentId: consent?.id ?? null,
           });
         }}
       />
@@ -486,21 +482,35 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   );
 }
 
-/** Minimal signature pad using native <canvas>. Saves PNG as base64 data URL. */
+/**
+ * Minimal signature pad using native <canvas>. The PNG is uploaded as a file
+ * and filed as a signed consent (CD-05); the receptionist may name the
+ * unsigned consent or contract it signs. The canvas is drawn at 1x: the
+ * signature is a record, not artwork, and a 2x bitmap only doubled the
+ * upload.
+ */
 function SignaturePadDialog({
   open,
   onOpenChange,
+  patientId,
   onSave,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onSave: (dataUrl: string) => Promise<void>;
+  patientId: string;
+  onSave: (input: {
+    canvas: HTMLCanvasElement;
+    consent: PatientDocument | null;
+  }) => Promise<void>;
 }) {
   const t = useTranslations("patientCard.documents.signature");
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const [drawing, setDrawing] = React.useState(false);
   const [hasInk, setHasInk] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [consentId, setConsentId] = React.useState<string>(NEW_CONSENT);
+  const pending = usePendingConsents(patientId, open);
+  const consents = pending.data ?? [];
 
   const clear = React.useCallback(() => {
     const c = canvasRef.current;
@@ -514,13 +524,14 @@ function SignaturePadDialog({
 
   React.useEffect(() => {
     if (!open) return;
+    setConsentId(NEW_CONSENT);
+    setHasInk(false);
     const c = canvasRef.current;
     if (!c) return;
-    c.width = c.offsetWidth * 2;
-    c.height = c.offsetHeight * 2;
+    c.width = c.offsetWidth;
+    c.height = c.offsetHeight;
     const ctx = c.getContext("2d");
     if (!ctx) return;
-    ctx.scale(2, 2);
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, c.width, c.height);
     ctx.strokeStyle = "#000";
@@ -540,6 +551,26 @@ function SignaturePadDialog({
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
         </DialogHeader>
+        {consents.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">
+              {t("consentLabel")}
+            </span>
+            <Select value={consentId} onValueChange={setConsentId}>
+              <SelectTrigger className="h-9" aria-label={t("consentLabel")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NEW_CONSENT}>{t("consentNone")}</SelectItem>
+                {consents.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <div className="rounded-md border border-border bg-white">
           <canvas
             ref={canvasRef}
@@ -567,10 +598,14 @@ function SignaturePadDialog({
         </div>
         <p className="text-xs text-muted-foreground">{t("hint")}</p>
         <DialogFooter>
-          <Button variant="outline" onClick={clear}>
+          <Button variant="outline" onClick={clear} disabled={saving}>
             {t("clear")}
           </Button>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             {t("cancel")}
           </Button>
           <Button
@@ -580,9 +615,21 @@ function SignaturePadDialog({
               if (!c) return;
               setSaving(true);
               try {
-                const dataUrl = c.toDataURL("image/png");
-                await onSave(dataUrl);
+                await onSave({
+                  canvas: c,
+                  consent: consents.find((d) => d.id === consentId) ?? null,
+                });
+                toast.success(t("saved"));
                 onOpenChange(false);
+              } catch (err) {
+                // The dialog stays open with the drawing, so a retry does
+                // not ask the patient to sign again.
+                const e = err as SaveSignatureError;
+                toast.error(
+                  e.reason === "consent_not_signable"
+                    ? t("errorConsent")
+                    : t("error"),
+                );
               } finally {
                 setSaving(false);
               }
@@ -595,3 +642,6 @@ function SignaturePadDialog({
     </Dialog>
   );
 }
+
+/** Select value for «not tied to an existing consent». */
+const NEW_CONSENT = "__new";

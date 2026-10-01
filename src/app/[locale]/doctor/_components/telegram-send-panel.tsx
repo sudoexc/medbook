@@ -32,13 +32,29 @@ import { Button } from "@/components/ui/button";
  *
  * The auto-delivery worker still exists; this is for the case it cannot
  *  cover — a patient who linked up only after the conclusion was signed.
+ *
+ * Success is shown only when the conclusion went out (audit VW-06). Before
+ * the visit is signed the button says it sends files only; right after
+ * signing, while the PDF is being rendered, the server refuses and the
+ * doctor is asked to retry in a minute.
  */
+type SendResult = {
+  sent: number;
+  failed: number;
+  conclusionIncluded?: boolean;
+  /** Why the conclusion is not among the files, when it is not. */
+  conclusion?: "included" | "not_signed" | "missing" | "failed";
+};
+
 export function TelegramSendPanel({
   patientId,
   visitNoteId,
+  signed,
 }: {
   patientId: string;
   visitNoteId: string;
+  /** False while the visit is a draft: only attachments can go out. */
+  signed?: boolean;
 }) {
   const t = useTranslations("doctor.tgSend");
   const qc = useQueryClient();
@@ -86,13 +102,24 @@ export function TelegramSendPanel({
           reason: j?.reason,
         });
       }
-      return j as { sent: number; failed: number };
+      return j as SendResult;
     },
     onSuccess: (r) => {
-      toast.success(
-        r.failed > 0
-          ? t("sentPartial", { n: r.sent, failed: r.failed })
-          : t("sent", { n: r.sent }),
+      if (r.conclusionIncluded) {
+        toast.success(
+          r.failed > 0
+            ? t("sentPartial", { n: r.sent, failed: r.failed })
+            : t("sent", { n: r.sent }),
+        );
+        return;
+      }
+      // Files went out, the conclusion did not: never a success toast.
+      toast.warning(
+        r.conclusion === "not_signed"
+          ? t("sentWithoutConclusionUnsigned", { n: r.sent })
+          : r.conclusion === "failed"
+            ? t("sentConclusionFailed", { n: r.sent })
+            : t("sentWithoutConclusionMissing", { n: r.sent }),
       );
     },
     onError: (e: Error & { reason?: string }) => {
@@ -101,6 +128,10 @@ export function TelegramSendPanel({
         // dialog instead of презенting a dead error.
         void qc.invalidateQueries({ queryKey: statusKey });
         setQrOpen(true);
+        return;
+      }
+      if (e.reason === "conclusion_rendering") {
+        toast.info(t("conclusionRendering"));
         return;
       }
       if (e.reason === "nothing_to_send") {
@@ -129,7 +160,7 @@ export function TelegramSendPanel({
           ) : (
             <SendIcon className="size-4" />
           )}
-          {t("send")}
+          {signed === false ? t("sendFiles") : t("send")}
         </Button>
       ) : (
         <Button

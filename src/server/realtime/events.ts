@@ -110,6 +110,11 @@ export const EVENT_TYPES = [
   // `/documents` list live — emitted AFTER the row + PDF exist so the refetch
   // actually finds it (unlike `referral.created`, which fires pre-render).
   "document.created",
+  // Audit CD-09: a document was renamed, retyped or got a new file, or was
+  // deleted. The Mini App held a deleted document (a dead link) until the
+  // patient reloaded. Audited by the route itself.
+  "document.updated",
+  "document.deleted",
   // Phase G8 — CDS override recorded. Lets a future quality dashboard refresh
   // its KPI tiles the moment a doctor justifies a flagged warning. Tenant
   // scope is the clinic; no PHI in the payload.
@@ -480,6 +485,10 @@ export const DocumentCreatedPayload = z
   .passthrough();
 export type DocumentCreatedEventPayload = z.infer<typeof DocumentCreatedPayload>;
 
+/** CD-09: same shape for an edit or a deletion of a document. */
+export const DocumentChangedPayload = DocumentCreatedPayload;
+export type DocumentChangedEventPayload = z.infer<typeof DocumentChangedPayload>;
+
 /**
  * Phase G7 — sick-leave lifecycle. Same shape rules as the Rx payload.
  */
@@ -743,6 +752,8 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("sickleave.cancelled", SickLeaveEventPayload),
   makeEvent("referral.created", ReferralCreatedPayload),
   makeEvent("document.created", DocumentCreatedPayload),
+  makeEvent("document.updated", DocumentChangedPayload),
+  makeEvent("document.deleted", DocumentChangedPayload),
   makeEvent("cds.override.recorded", CdsOverrideEventPayload),
   makeEvent("visit-note.draftSaved", VisitNotePayload),
   makeEvent("visit-note.finalized", VisitNotePayload),

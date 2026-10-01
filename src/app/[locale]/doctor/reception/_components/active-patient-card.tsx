@@ -282,7 +282,11 @@ export function ActivePatientCard() {
             right at the desk if needed, then push the visit's files to their
             chat. Print stays for paper people; this is for everyone else. */}
         {visitNoteId ? (
-          <TelegramSendPanel patientId={p.id} visitNoteId={visitNoteId} />
+          <TelegramSendPanel
+            patientId={p.id}
+            visitNoteId={visitNoteId}
+            signed={note ? isFinalized : undefined}
+          />
         ) : null}
 
         <div className="ml-auto inline-flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-2">

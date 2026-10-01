@@ -196,6 +196,16 @@ enum DocumentType {
   OTHER
 }
 
+// Who put a document in the chart (audit CD-06). `uploadedById = null` used to
+// stand in for «from the patient», but the conclusion and referral workers
+// write null too, so every rendered conclusion carried the «От пациента»
+// badge and a patient's own scan looked like a clinical result.
+enum DocumentSource {
+  STAFF
+  PATIENT
+  SYSTEM
+}
+
 enum LeadStatus {
   NEW
   CONTACTED
@@ -2508,6 +2518,10 @@ model Document {
   sizeBytes     Int?
   uploadedById  String?
   uploadedBy    User?        @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  // STAFF: uploaded in the CRM or the cabinet. PATIENT: sent from the Mini
+  // App, unverified by the clinic. SYSTEM: rendered by a worker from its
+  // source (conclusion, referral). Badges and filters key off this field.
+  source        DocumentSource @default(STAFF)
   // CONSENT/CONTRACT signature capture. NULL = awaiting signature; the
   // "ожидают подписи" filter keys off this. Stamped by POST .../[id]/sign.
   signedAt      DateTime?

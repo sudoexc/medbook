@@ -110,6 +110,6 @@ describe("the upload dialog", () => {
 
   it("sends the upload's type and size, and takes the bytes back on failure", () => {
     expect(dialog).toMatch(/CreateDocumentSchema\.safeParse\(\{[\s\S]*mimeType,[\s\S]*sizeBytes,/);
-    expect(dialog).toContain("discardUpload(storedUrl, uploadToken)");
+    expect(dialog).toContain("discardDocumentUpload(storedUrl, uploadToken)");
   });
 });

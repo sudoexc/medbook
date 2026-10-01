@@ -139,6 +139,8 @@ async function generateReferralDocument(
         mimeType: "application/pdf",
         sizeBytes: pdf.length,
         uploadedById: null,
+        // Rendered here, not uploaded by anyone (CD-06).
+        source: "SYSTEM",
       },
       update: {
         fileUrl: uploaded.url,

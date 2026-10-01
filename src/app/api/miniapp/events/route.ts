@@ -119,6 +119,9 @@ export const MINIAPP_DELIVERABLE_TYPES: ReadonlySet<EventType> = new Set<EventTy
   "lab.result.reviewed",
   "referral.created",
   "document.created",
+  // CD-09: a renamed or deleted document leaves the list at once.
+  "document.updated",
+  "document.deleted",
   "doctor.scheduleChanged",
   "tg.message.new",
   "tg.conversation.updated",

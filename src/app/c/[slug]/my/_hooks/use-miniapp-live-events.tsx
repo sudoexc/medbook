@@ -137,6 +137,10 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "referral.created": [["miniapp", "documents"]],
   // A rendered PDF / upload landed in the patient's Document table.
   "document.created": [["miniapp", "documents"]],
+  // CD-09: the clinic renamed or deleted a document; without these the
+  // patient kept a dead link until a reload.
+  "document.updated": [["miniapp", "documents"]],
+  "document.deleted": [["miniapp", "documents"]],
   // Schedule change invalidates every cached slot query — the user may have
   // been mid-booking and the picker needs to redraw with the new availability.
   "doctor.scheduleChanged": [["miniapp", "slots"]],

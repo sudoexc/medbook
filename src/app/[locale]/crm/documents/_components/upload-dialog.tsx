@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { CreateDocumentSchema } from "@/server/schemas/document";
+import { discardDocumentUpload } from "@/lib/document-upload-client";
 import { PatientPicker } from "@/components/appointments/new-appointment-dialog/patient-picker";
 import type { PatientHit } from "@/components/appointments/new-appointment-dialog/types";
 
@@ -67,24 +68,6 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/**
- * Take back bytes whose document was not saved. Best effort: a failure
- * here leaves the object as it was before this fix, never breaks the dialog.
- */
-async function discardUpload(fileUrl: string, uploadToken: string | null): Promise<void> {
-  if (!uploadToken) return;
-  try {
-    await fetch("/api/crm/documents/upload", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ fileUrl, uploadToken }),
-    });
-  } catch {
-    // ignore: see above
-  }
 }
 
 /** The card behind the page's `?patientId=` filter, as a picker hit. */
@@ -295,7 +278,7 @@ export function UploadDialog({
         sizeBytes,
       });
       if (!parsed.success) {
-        if (storedUrl) void discardUpload(storedUrl, uploadToken);
+        if (storedUrl) void discardDocumentUpload(storedUrl, uploadToken);
         const fieldErrors: FieldErrors = {};
         for (const issue of parsed.error.issues) {
           const key = issue.path[0];
@@ -315,7 +298,7 @@ export function UploadDialog({
         body: JSON.stringify(parsed.data),
       });
       if (!res.ok) {
-        if (storedUrl) void discardUpload(storedUrl, uploadToken);
+        if (storedUrl) void discardDocumentUpload(storedUrl, uploadToken);
         const reason = ((await res.json().catch(() => null)) as {
           reason?: string;
         } | null)?.reason;
@@ -331,7 +314,7 @@ export function UploadDialog({
       reset();
       onUploaded();
     } catch (e) {
-      if (storedUrl) void discardUpload(storedUrl, uploadToken);
+      if (storedUrl) void discardDocumentUpload(storedUrl, uploadToken);
       toast.error((e as Error).message ?? t("toastUploadError"));
     } finally {
       setSaving(false);

@@ -54,6 +54,8 @@ type VisitRow = {
     type: string;
     fileUrl: string;
     createdAt: string;
+    /** CD-06: who put it in the chart; PATIENT is badged in the timeline. */
+    source: string;
   }[];
   labs: { id: string; orderNumber: string; status: string; tests: number }[];
   medications: {
@@ -163,6 +165,7 @@ export const GET = createApiListHandler(
             type: true,
             fileUrl: true,
             createdAt: true,
+            source: true,
           },
           orderBy: { createdAt: "desc" },
         },
@@ -248,6 +251,7 @@ export const GET = createApiListHandler(
           // Private bucket: the stored URL is AccessDenied (CD-02).
           fileUrl: staffFileHref(d.fileUrl),
           createdAt: d.createdAt.toISOString(),
+          source: String(d.source),
         })),
         labs: a.labOrders.map((l) => ({
           id: l.id,
@@ -282,6 +286,7 @@ export const GET = createApiListHandler(
                 type: true,
                 fileUrl: true,
                 createdAt: true,
+                source: true,
               },
               orderBy: { createdAt: "desc" },
               take: 50,
@@ -292,6 +297,7 @@ export const GET = createApiListHandler(
             type: String(d.type),
             fileUrl: staffFileHref(d.fileUrl),
             createdAt: d.createdAt.toISOString(),
+            source: String(d.source),
           })),
           labs: (
             await prisma.labOrder.findMany({

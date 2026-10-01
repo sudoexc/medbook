@@ -187,6 +187,27 @@ export function checkUpload(
 }
 
 /**
+ * `Content-Disposition` for any file name. Header values must be ByteStrings:
+ * a bare `filename="Иванов.csv"` makes the Response constructor throw, so
+ * the name goes twice, as an ASCII fallback and as RFC 5987
+ * `filename*=UTF-8''…` that browsers prefer (audit DC-03).
+ */
+export function contentDisposition(
+  filename: string,
+  opts: { inline?: boolean } = {},
+): string {
+  const asciiName = filename.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "");
+  // `'` would end the charset prefix of an RFC 5987 value (Uzbek names
+  // carry it: «Ra'no»), so it and the other marks encodeURIComponent keeps
+  // are percent-encoded too.
+  const utf8Name = encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${opts.inline ? "inline" : "attachment"}; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`;
+}
+
+/**
  * Headers for serving a stored user file. `storedType` is whatever the
  * object was saved with (old uploads may carry anything, SVG included).
  */
@@ -202,11 +223,9 @@ export function safeFileHeaders(
       ? type
       : "application/octet-stream";
 
-  const asciiName = opts.filename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
-  const utf8Name = encodeURIComponent(opts.filename);
   const headers: Record<string, string> = {
     "Content-Type": contentType,
-    "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+    "Content-Disposition": contentDisposition(opts.filename, { inline }),
     "X-Content-Type-Options": "nosniff",
   };
   if (contentType !== "application/pdf") {

@@ -10,10 +10,19 @@ export const DocumentTypeEnum = z.enum([
   "OTHER",
 ]);
 
+export const DocumentSourceEnum = z.enum(["STAFF", "PATIENT", "SYSTEM"]);
+
 /**
  * `uploadToken` is the receipt `POST /api/crm/documents/upload` returns with
  * the `fileUrl` of the bytes it stored. A `fileUrl` into our storage is
  * accepted only with it; anything else must be an `https:` link (audit CD-08).
+ * The signature pad uploads its PNG the same way: an inline data: URL never
+ * fit the 1000-character column limit, so the pad never saved (CD-05).
+ *
+ * `signed` files a consent or contract that is already signed (the pad
+ * captures the signature itself), so it never waits in «ожидают подписи».
+ * `signsDocumentId` names an unsigned consent or contract of the same
+ * patient that this signature signs; it is stamped signed with it.
  */
 export const CreateDocumentSchema = z.object({
   patientId: z.string(),
@@ -24,6 +33,8 @@ export const CreateDocumentSchema = z.object({
   uploadToken: z.string().max(200).optional().nullable(),
   mimeType: z.string().max(120).optional().nullable(),
   sizeBytes: z.number().int().min(0).optional().nullable(),
+  signed: z.boolean().optional(),
+  signsDocumentId: z.string().min(1).max(64).optional().nullable(),
 });
 
 /**
@@ -55,6 +66,8 @@ export const QueryDocumentSchema = z.object({
   appointmentId: z.string().optional(),
   doctorId: z.string().optional(),
   type: DocumentTypeEnum.optional(),
+  /** CD-06: «от пациента» / clinic upload / rendered by the system. */
+  source: DocumentSourceEnum.optional(),
   q: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),

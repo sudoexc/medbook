@@ -139,8 +139,18 @@ vi.mock("@/server/storage/minio", () => ({
   }),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+// CD-09: edits are published to the patient's Mini App.
+const published: Array<{ type: string; payload: unknown }> = [];
+vi.mock("@/server/realtime/outbox", () => ({
+  newCorrelationId: () => "corr",
+  publishViaOutbox: vi.fn(async (_tx: unknown, input: { type: string; payload: unknown }) => {
+    published.push({ type: input.type, payload: input.payload });
+    return {};
+  }),
+}));
+
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     document: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
         if (state.doc && state.doc.id === where.id) return state.doc;
@@ -197,8 +207,11 @@ vi.mock("@/lib/prisma", () => ({
         },
       ),
     },
-  },
-}));
+    $transaction: async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> =>
+      fn(prisma),
+  };
+  return { prisma };
+});
 
 // ----- helpers -------------------------------------------------------------
 
@@ -223,6 +236,7 @@ beforeEach(() => {
   state.deletedKeys = [];
   state.updateCalls = 0;
   state.otherDocUsingKey = null;
+  published.length = 0;
 });
 
 const NEW_KEY = "clinics/c1/documents/new-key-scan.pdf";

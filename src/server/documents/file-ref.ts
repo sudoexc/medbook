@@ -15,8 +15,9 @@
  *     issued for it (`uploadToken`, an HMAC over clinic + key + expiry), and
  *     only under this clinic's `clinics/<id>/documents/` folder. Anything
  *     else pointing into our storage is refused.
- *   - Anything that is not our storage is an external link: `https:` only
- *     (or an inline raster image), never fetched, never deleted.
+ *   - Anything that is not our storage is an external link: `https:` only,
+ *     never fetched, never deleted. The signature pad uploads its PNG like
+ *     any other file (audit CD-05), so no data: value is accepted.
  *   - An object is deleted only from this clinic's documents folder, and
  *     only when no other document (or doctor signature) still uses it.
  */
@@ -93,11 +94,6 @@ export function checkDocumentFileUrl(input: {
       return { ok: false, reason: "file_not_issued" };
     }
     return { ok: true, key };
-  }
-  // The consent signature pad stores its PNG inline; a raster data: image
-  // cannot carry script. Any other data: value is refused below.
-  if (/^data:image\/(?:png|jpeg|webp);base64,/i.test(input.fileUrl.trim())) {
-    return { ok: true, key: null };
   }
   let parsed: URL;
   try {

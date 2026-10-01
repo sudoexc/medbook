@@ -40,6 +40,7 @@ import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
 import { startReferralDocumentWorker } from "./referral-document";
+import { CLINICAL_FORMS_ISSUING } from "@/lib/clinical-forms-issuing";
 import { startStaffMessagesSendWorker } from "./staff-messages-send";
 import { startVisitNoteHandoutWorker } from "./visit-note-handout";
 import { startVoiceSoapWorker } from "./voice-soap";
@@ -146,7 +147,12 @@ async function main() {
   //                        the Mini App and carries to the next clinic.
   //                        Idempotent on the @unique Document.referralId; durable
   //                        for the same reason as visit-note-handout.
-  const referralDocument = startReferralDocumentWorker();
+  //                        Not started while issuing referrals is switched off
+  //                        (audit CD-07): with no new referrals it only polled
+  //                        the database every 30 s for nothing.
+  const referralDocument = CLINICAL_FORMS_ISSUING
+    ? startReferralDocumentWorker()
+    : null;
 
   // Phase 17 Wave 3 — DSAR (Data Subject Access Requests).
   //   dsar:export      drains export jobs (bundle PII → encrypt → MinIO →
@@ -213,7 +219,7 @@ async function main() {
     medicationReminder.stop();
     medicationFollowUp.stop();
     visitNoteHandout.stop();
-    referralDocument.stop();
+    referralDocument?.stop();
     dsarScheduler.stop();
     analyticsRefresh.stop();
     scheduledReports.stop();

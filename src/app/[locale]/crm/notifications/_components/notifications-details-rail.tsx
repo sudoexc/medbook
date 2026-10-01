@@ -91,7 +91,12 @@ export function NotificationsDetailsRail({
       await retry.mutateAsync(row.id);
       toast.success(t("toasts.retried"));
     } catch (e) {
-      toast.error((e as Error).message);
+      const message = (e as Error).message;
+      toast.error(
+        message === "notification.retry.not_retryable"
+          ? t("toasts.retryNotAllowed")
+          : message,
+      );
     }
   };
   const onCancel = async () => {
@@ -188,7 +193,12 @@ export function NotificationsDetailsRail({
             size="sm"
             variant="outline"
             onClick={onRetry}
-            disabled={row.status !== "FAILED" || retry.isPending}
+            // SENDING too (audit TG-12): a send abandoned mid-flight can be
+            // put back; the API refuses one that is still in progress.
+            disabled={
+              (row.status !== "FAILED" && row.status !== "SENDING") ||
+              retry.isPending
+            }
           >
             <RotateCcwIcon className="size-3.5" />
             {t("actions.retry")}
@@ -261,8 +271,8 @@ export function NotificationsDetailsRail({
           <div className="grid grid-cols-2 gap-2 text-[12px]">
             <MiniRow label={t("context.total30d")} value={stats.last30d.total} />
             <MiniRow
-              label={t("context.delivered30d")}
-              value={stats.last30d.delivered}
+              label={t("context.sent30d")}
+              value={stats.last30d.sent}
             />
             <MiniRow
               label={t("context.failed30d")}

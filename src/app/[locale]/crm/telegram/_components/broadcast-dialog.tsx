@@ -89,7 +89,12 @@ export function BroadcastDialog({
     (scheduleAt.length > 0 && new Date(scheduleAt).getTime() > Date.now());
 
   const canSend =
-    body.trim().length > 0 && resolvable && eligible > 0 && scheduleValid;
+    body.trim().length > 0 &&
+    resolvable &&
+    eligible > 0 &&
+    // The launcher refuses an audience above the per-broadcast limit.
+    !previewData?.truncated &&
+    scheduleValid;
 
   const reset = React.useCallback(() => {
     setPhase("compose");

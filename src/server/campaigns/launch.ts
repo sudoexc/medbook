@@ -9,8 +9,10 @@
  * retried via the notifications scheduler or manual /retry endpoint).
  *
  * Idempotency: re-launching a campaign that is already SENDING or SENT is
- * a no-op that returns the prior totals. The check happens inside the tx so
- * two concurrent clicks can't double-send.
+ * a no-op that returns the prior totals. Inside the tx the DRAFT → SENDING
+ * flip is ONE conditional update and the sends are inserted only by the
+ * caller that won it (audit TG-10): a read-then-update let two concurrent
+ * launches both see DRAFT and both insert a full set of sends.
  */
 import { prisma } from "@/lib/prisma";
 import type { NotificationStatus } from "@/generated/prisma/client";
@@ -19,8 +21,7 @@ import { render } from "@/server/notifications/template";
 import { resolveAudience } from "./audience";
 import type { AudiencePatient } from "./dormant-audience";
 import type { CampaignChannel, CampaignSegment } from "@/server/schemas/campaign";
-import { enqueue } from "@/server/queue";
-import { QUEUE_NAME, JOB_NAME } from "@/server/workers/notifications-send";
+import { enqueueDelivery } from "@/server/workers/notifications-send";
 
 // The DB `Channel` enum still carries "SMS" until the Wave 5 migration
 // of `docs/TZ-sms-removal.md`. Legacy Campaign rows with channel="SMS"
@@ -195,6 +196,16 @@ export async function launchCampaign(args: {
 
   const channel = campaign.channel as CampaignChannel;
   const audienceRes = await resolveAudience({ segment, channel, now });
+  // More reachable patients than one broadcast carries: refuse rather than
+  // reach an arbitrary first slice while reporting it as everyone
+  // (audit TG-10). The composer's preview shows the same limit.
+  if (audienceRes.truncated) {
+    throw Object.assign(new Error("AudienceTooLarge"), {
+      status: 400,
+      limit: audienceRes.limit,
+      eligible: audienceRes.eligible,
+    });
+  }
 
   // Future-dated scheduling: rows carry the target time and we skip the
   // immediate enqueue below — the notifications scheduler dispatches QUEUED
@@ -233,9 +244,10 @@ export async function launchCampaign(args: {
 
   if (rows.length === 0) {
     // Mark the campaign DONE-with-zero-sends so the user gets immediate feedback
-    // and the row no longer shows up as DRAFT.
-    const updated = await prisma.campaign.update({
-      where: { id: campaign.id },
+    // and the row no longer shows up as DRAFT. Conditional, like the launch
+    // below: a concurrent launch that already took the campaign keeps it.
+    const flipped = await prisma.campaign.updateMany({
+      where: { id: campaign.id, status: "DRAFT" },
       data: {
         status: "DONE",
         startedAt: now,
@@ -244,23 +256,26 @@ export async function launchCampaign(args: {
       },
     });
     return {
-      campaignId: updated.id,
-      status: updated.status,
+      campaignId: campaign.id,
+      status: flipped.count === 1 ? "DONE" : "SENDING",
       totalCount: 0,
-      alreadyLaunched: false,
+      alreadyLaunched: flipped.count !== 1,
       scheduledFor: null,
       deferred: false,
     };
   }
 
-  // Single transaction: insert sends, flip campaign, optionally close action.
+  // Single transaction: flip campaign, insert sends, optionally close action.
   const result = await prisma.$transaction(async (tx) => {
-    // Status guard — concurrent click protection.
-    const fresh = await tx.campaign.findUnique({
-      where: { id: campaign.id },
-      select: { status: true },
+    // Concurrent-launch guard: one conditional UPDATE. Postgres row-locks the
+    // campaign for the rest of this transaction; a second launch blocks on it,
+    // re-reads the committed status (no longer DRAFT) and matches nothing, so
+    // only the winner inserts sends.
+    const claimed = await tx.campaign.updateMany({
+      where: { id: campaign.id, status: "DRAFT" },
+      data: { status: "SENDING", startedAt: now },
     });
-    if (!fresh || fresh.status !== "DRAFT") {
+    if (claimed.count !== 1) {
       return { totalCount: 0, alreadyLaunched: true as const };
     }
 
@@ -270,16 +285,12 @@ export async function launchCampaign(args: {
 
     const inserted = await tx.notificationSend.findMany({
       where: { campaignId: campaign.id, status: "QUEUED" },
-      select: { id: true },
+      select: { id: true, scheduledFor: true },
     });
 
     await tx.campaign.update({
       where: { id: campaign.id },
-      data: {
-        status: "SENDING",
-        startedAt: now,
-        totalCount: inserted.length,
-      },
+      data: { totalCount: inserted.length },
     });
 
     if (args.sourceActionId) {
@@ -297,7 +308,7 @@ export async function launchCampaign(args: {
 
     return {
       totalCount: inserted.length,
-      sendIds: inserted.map((r) => r.id),
+      sends: inserted,
       alreadyLaunched: false as const,
     };
   });
@@ -321,12 +332,14 @@ export async function launchCampaign(args: {
   // the worker does not re-check `scheduledFor`, so enqueuing now would fire
   // immediately. The scheduler is the only correct dispatch path for future rows.
   if (!deferred) {
-    for (const sendId of result.sendIds ?? []) {
+    for (const send of result.sends ?? []) {
       try {
-        await enqueue(QUEUE_NAME, JOB_NAME, { sendId });
+        // Same dedupe key the dispatch loop gives this attempt, so the
+        // loop's next pass does not queue the row a second time.
+        await enqueueDelivery(send, now);
       } catch (e) {
         console.warn(
-          `[campaign:launch] enqueue failed for sendId=${sendId}`,
+          `[campaign:launch] enqueue failed for sendId=${send.id}`,
           e instanceof Error ? e.message : String(e),
         );
       }

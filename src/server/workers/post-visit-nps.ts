@@ -8,7 +8,8 @@
  *   1. Materialise a notification through the `appointment.nps-request`
  *      trigger (TG + INAPP mirror). SMS was removed in
  *      `docs/TZ-sms-removal.md` Wave 3.
- *   2. Stamp `Appointment.npsRequestedAt = now()` to dedupe future ticks.
+ *   2. Stamp `Appointment.npsRequestedAt = now()` to dedupe future ticks,
+ *      once a row exists (the template is created on first use).
  *
  * The 4–5h window mirrors the pre-visit worker's design — wide enough that
  * a 60-minute tick can't miss it, narrow enough that a one-off long pause
@@ -72,11 +73,13 @@ export async function runPostVisitNpsTick(
         completedAt: { gte: lower, lte: upper },
         npsRequestedAt: null,
         // Phase 17 Wave 1 — exclude soft-deleted patients. The marketing
-        // opt-out gate is enforced per-row below.
-        patient: { deletedAt: null },
+        // opt-out gate is enforced per-row below. Telegram only: the rating
+        // form is a Mini App screen.
+        patient: { deletedAt: null, telegramId: { not: null }, tgBlockedAt: null },
       },
       select: {
         id: true,
+        clinicId: true,
         status: true,
         completedAt: true,
         npsRequestedAt: true,
@@ -93,10 +96,9 @@ export async function runPostVisitNpsTick(
     });
 
     let requested = 0;
+    const missingTemplate = new Set<string>();
     for (const row of rows) {
-      const patientHasContact = Boolean(
-        row.patient.telegramId || row.patient.phone,
-      );
+      const patientHasContact = Boolean(row.patient.telegramId);
       const eligible = isNpsEligible(
         {
           completedAt: row.completedAt,
@@ -115,18 +117,29 @@ export async function runPostVisitNpsTick(
       const consent = isAllowedToReceive(row.patient, "marketing");
       if (!consent.allowed) continue;
 
+      // Stamp only once a row exists (audit TG-09): stamping first marked
+      // every visit «запрошено» while no template existed to send.
       try {
-        await prisma.appointment.update({
-          where: { id: row.id },
-          data: { npsRequestedAt: now },
-        });
-        await onNpsRequest(row.id);
-        requested += 1;
+        const outcome = await onNpsRequest(row.id);
+        if (outcome.created > 0 || outcome.reason === "already_scheduled") {
+          await prisma.appointment.updateMany({
+            where: { id: row.id, npsRequestedAt: null },
+            data: { npsRequestedAt: now },
+          });
+          requested += 1;
+        } else if (outcome.reason === "no_template") {
+          missingTemplate.add(row.clinicId);
+        }
       } catch (err) {
         console.error(`[post-visit-nps] appointment ${row.id} failed`, err);
       }
     }
 
+    for (const clinicId of missingTemplate) {
+      console.warn(
+        `[post-visit-nps] clinic ${clinicId}: template appointment.nps-request is switched off, rating requests not sent`,
+      );
+    }
     return { scanned: rows.length, requested };
   });
 }

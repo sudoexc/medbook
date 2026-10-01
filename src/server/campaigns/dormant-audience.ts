@@ -8,10 +8,12 @@
  *   1. `lastVisitAt` is set AND falls inside the bucket window.
  *   2. No future-dated, non-cancelled appointment (they're already coming back).
  *   3. Patient is not soft-deleted (`deletedAt IS NULL`).
- *   4. Patient passes the marketing consent gate
- *      (`isAllowedToReceive(..., 'marketing')`).
- *   5. Patient has a Telegram id (campaigns are TG-only after
- *      `docs/TZ-sms-removal.md` Wave 3).
+ *   4. Patient passes the marketing consent gate (`marketingOptOut = false`,
+ *      the SQL form of `isAllowedToReceive(..., 'marketing')`).
+ *   5. Patient has a Telegram id and has not blocked the bot (campaigns are
+ *      TG-only after `docs/TZ-sms-removal.md` Wave 3).
+ *
+ * Every gate runs in SQL before the row limit (audit TG-10).
  *
  * The detector runs filter #1 + #2 against the WHOLE clinic, so the
  * audience returned here is always a subset. The detector's own cooldown
@@ -22,7 +24,6 @@
  * `lastCampaignAt`.
  */
 import { prisma } from "@/lib/prisma";
-import { isAllowedToReceive } from "@/server/notifications/consent-gate";
 
 import type { CampaignChannel, DormantBucket } from "@/server/schemas/campaign";
 
@@ -48,9 +49,103 @@ export type AudienceResolution = {
   total: number;
   eligible: number;
   channelBreakdown: AudienceChannelBreakdown;
+  /**
+   * More patients qualify than one broadcast may carry (`limit`). The
+   * launcher refuses such a campaign instead of quietly sending to the
+   * first `limit` (audit TG-10); the preview says so.
+   */
+  truncated: boolean;
+  limit: number;
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** The most sends one broadcast materialises. */
+export const MAX_AUDIENCE = 10_000;
+
+type PatientWhere = Record<string, unknown>;
+
+/**
+ * Audit TG-10: the reachability gates as SQL, applied BEFORE the row limit.
+ * They used to run in memory over the first N cards by `lastVisitAt desc`
+ * (NULLs first in Postgres), so a big clinic's broadcast reached only the
+ * Telegram patients who happened to sit in that slice while the preview
+ * reported it as everyone.
+ */
+const HAS_TELEGRAM: PatientWhere = {
+  AND: [{ telegramId: { not: null } }, { NOT: { telegramId: "" } }],
+};
+const NO_TELEGRAM: PatientWhere = {
+  OR: [{ telegramId: null }, { telegramId: "" }],
+};
+
+/** Reachable: marketing allowed, a Telegram chat, the bot not blocked. */
+export function reachableWhere(base: PatientWhere): PatientWhere {
+  return {
+    AND: [base, { marketingOptOut: false }, HAS_TELEGRAM, { tgBlockedAt: null }],
+  };
+}
+
+type CountDb = {
+  patient: {
+    count: (args: { where: PatientWhere }) => Promise<number>;
+    findMany: (args: Record<string, unknown>) => Promise<unknown[]>;
+  };
+};
+
+/**
+ * Count every bucket and load the reachable patients, all in SQL: the
+ * breakdown («нет Telegram», «отписались», «заблокировали бота») is exact
+ * however big the clinic, and the list stops at `MAX_AUDIENCE` reachable
+ * patients, not cards.
+ */
+export async function resolveReachable(
+  db: CountDb,
+  base: PatientWhere,
+): Promise<AudienceResolution> {
+  const [total, optedOut, noChannel, blocked, eligible, rows] = await Promise.all([
+    db.patient.count({ where: base }),
+    db.patient.count({ where: { AND: [base, { marketingOptOut: true }] } }),
+    db.patient.count({
+      where: { AND: [base, { marketingOptOut: false }, NO_TELEGRAM] },
+    }),
+    db.patient.count({
+      where: {
+        AND: [base, { marketingOptOut: false }, HAS_TELEGRAM, { tgBlockedAt: { not: null } }],
+      },
+    }),
+    db.patient.count({ where: reachableWhere(base) }),
+    db.patient.findMany({
+      where: reachableWhere(base),
+      select: {
+        id: true,
+        fullName: true,
+        phone: true,
+        telegramId: true,
+        preferredLang: true,
+        lastVisitAt: true,
+      },
+      orderBy: [{ lastVisitAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+      take: MAX_AUDIENCE,
+    }),
+  ]);
+  const patients = (rows as AudiencePatient[]).map((p) => ({
+    id: p.id,
+    fullName: p.fullName,
+    phone: p.phone,
+    telegramId: p.telegramId ?? null,
+    preferredLang: p.preferredLang,
+    lastVisitAt: p.lastVisitAt ?? null,
+  }));
+  return {
+    patients,
+    total,
+    eligible,
+    channelBreakdown: { tgReady: eligible, noChannel, optedOut, blocked },
+    truncated: eligible > MAX_AUDIENCE,
+    limit: MAX_AUDIENCE,
+  };
+}
 
 function bucketWindow(bucket: DormantBucket, now: Date): {
   minDays: number;
@@ -88,96 +183,21 @@ export async function resolveDormantAudience(args: {
   const cutoffMin = new Date(now.getTime() - minDays * MS_PER_DAY);
   const cutoffMax = maxDays === null ? null : new Date(now.getTime() - maxDays * MS_PER_DAY);
 
-  const where: Record<string, unknown> = {
+  // Patients already coming back are not dormant: the exclusion is part of
+  // the base set (SQL), not a post-filter over a truncated list (audit
+  // TG-10 — it used to run over the first 5 000 cards only).
+  const base: PatientWhere = {
     lastVisitAt: cutoffMax
       ? { lte: cutoffMin, gt: cutoffMax }
       : { lte: cutoffMin },
     deletedAt: null,
-  };
-
-  const candidates = await prisma.patient.findMany({
-    where,
-    select: {
-      id: true,
-      fullName: true,
-      phone: true,
-      telegramId: true,
-      preferredLang: true,
-      lastVisitAt: true,
-      marketingOptOut: true,
-      tgBlockedAt: true,
+    appointments: {
+      none: {
+        date: { gt: now },
+        status: { notIn: ["CANCELLED", "NO_SHOW"] },
+      },
     },
-    orderBy: { lastVisitAt: "desc" },
-    take: 5000,
-  });
-
-  if (candidates.length === 0) {
-    return {
-      patients: [],
-      total: 0,
-      eligible: 0,
-      channelBreakdown: { tgReady: 0, noChannel: 0, optedOut: 0, blocked: 0 },
-    };
-  }
-
-  // Exclude patients already coming back.
-  const candidateIds = candidates.map((p) => p.id);
-  const futureRows = await prisma.appointment.findMany({
-    where: {
-      patientId: { in: candidateIds },
-      date: { gt: now },
-      status: { notIn: ["CANCELLED", "NO_SHOW"] },
-    },
-    select: { patientId: true },
-  });
-  const futureSet = new Set(futureRows.map((r) => r.patientId));
-
-  const breakdown: AudienceChannelBreakdown = {
-    tgReady: 0,
-    noChannel: 0,
-    optedOut: 0,
-    blocked: 0,
   };
 
-  const audience: AudiencePatient[] = [];
-  for (const p of candidates) {
-    if (futureSet.has(p.id)) continue;
-
-    const consent = isAllowedToReceive(
-      { marketingOptOut: p.marketingOptOut, deletedAt: null },
-      "marketing",
-    );
-    if (!consent.allowed) {
-      if (consent.reason === "opted_out") breakdown.optedOut += 1;
-      continue;
-    }
-
-    const hasTg = (p.telegramId ?? "").length > 0;
-    if (!hasTg) {
-      breakdown.noChannel += 1;
-      continue;
-    }
-    // Blocked the bot — a send would just FAIL with 403, so drop them.
-    if (p.tgBlockedAt) {
-      breakdown.blocked += 1;
-      continue;
-    }
-    breakdown.tgReady += 1;
-
-    audience.push({
-      id: p.id,
-      fullName: p.fullName,
-      phone: p.phone,
-      telegramId: p.telegramId ?? null,
-      preferredLang: p.preferredLang as "RU" | "UZ",
-      lastVisitAt: p.lastVisitAt ?? null,
-    });
-  }
-
-  return {
-    patients: audience,
-    total: candidates.length - futureSet.size,
-    eligible: audience.length,
-    channelBreakdown: breakdown,
-  };
+  return resolveReachable(prisma as unknown as CountDb, base);
 }

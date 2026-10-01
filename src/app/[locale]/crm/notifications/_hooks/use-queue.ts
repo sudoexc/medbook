@@ -78,7 +78,14 @@ export function useRetrySend() {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) throw new Error(`Retry failed: ${res.status}`);
+      if (!res.ok) {
+        // The code (`notification.retry.not_retryable`) lets the rail say
+        // why instead of a bare status (audit TG-08).
+        const j = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(j?.error ?? `Retry failed: ${res.status}`);
+      }
       return await res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
@@ -125,16 +132,19 @@ export function useResendSend() {
   });
 }
 
+/**
+ * Outbound counts skip the in-app mirror rows, which get their own `inApp`
+ * figure (audit TG-06).
+ */
 export type StatsResponse = {
   last30d: {
     total: number;
-    delivered: number;
     sent: number;
-    read: number;
     failed: number;
     queued: number;
+    inApp: number;
   };
-  today: { sent: number; delivered: number; failed: number; queued: number };
+  today: { sent: number; inApp: number; failed: number; queued: number };
   activeTemplates: number;
   topTemplates: Array<{
     templateId: string | null;

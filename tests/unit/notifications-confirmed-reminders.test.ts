@@ -74,7 +74,9 @@ vi.mock("@/lib/prisma", () => ({
     appointment: {
       findUnique: vi.fn(async () => state.appt),
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        if (where.date) state.tickWhere = where;
+        // The tick reads the cascade's band windows as an `OR` of date ranges
+        // (audit TG-13); either shape is the tick's query.
+        if (where.date || where.OR) state.tickWhere = where;
         return state.apptRows;
       }),
     },

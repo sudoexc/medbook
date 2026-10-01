@@ -2,17 +2,27 @@
  * /api/crm/notifications/stats — dashboard aggregates for the notifications
  * center right-rail.
  *
- *   - 30d totals by status (QUEUED / SENT / DELIVERED / READ / FAILED)
- *   - today sent / delivered / failed (the KPI strip shows these so the four
- *     tiles share a single time window; `queued` is inherently realtime —
- *     "how many rows are sitting in QUEUED state right now")
+ *   - 30d totals by status over the outbound channels
+ *   - today sent / in-app / failed, and the due-now backlog
  *   - active template count
  *   - top templates by usage last 30d
+ *
+ * Audit TG-06: every Telegram reminder has an in-app mirror row that lands
+ * DELIVERED at once, so counting all rows doubled «Отправлено» and made
+ * «Доставлено» a count of Mini App banners (Telegram rows never reach
+ * DELIVERED: the bot API has no delivery receipts). Outbound KPIs now skip
+ * INAPP rows and the banners get their own tile. «Ошибки» counts rows that
+ * FAILED today (`failedAt`), not rows created today: a cascade reminder is
+ * created days before it fails. «В очереди» is what is due and not yet out,
+ * not every reminder planned for the next five days.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { ok } from "@/server/http";
+
+/** Rows that leave the clinic (Telegram today), not the in-app mirrors. */
+const OUTBOUND = { channel: { not: "INAPP" as const } };
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"] },
@@ -24,24 +34,40 @@ export const GET = createApiListHandler(
 
     const byStatus = await prisma.notificationSend.groupBy({
       by: ["status"],
-      where: { createdAt: { gte: in30 } },
+      where: { createdAt: { gte: in30 }, ...OUTBOUND },
       _count: { _all: true },
     });
-
-    const todaySent = await prisma.notificationSend.count({
-      where: { sentAt: { gte: startOfToday }, status: { in: ["SENT", "DELIVERED", "READ"] } },
-    });
-    const todayDelivered = await prisma.notificationSend.count({
+    const inApp30 = await prisma.notificationSend.count({
       where: {
-        deliveredAt: { gte: startOfToday },
+        createdAt: { gte: in30 },
+        channel: "INAPP",
         status: { in: ["DELIVERED", "READ"] },
       },
     });
+
+    const todaySent = await prisma.notificationSend.count({
+      where: {
+        sentAt: { gte: startOfToday },
+        status: { in: ["SENT", "DELIVERED", "READ"] },
+        ...OUTBOUND,
+      },
+    });
+    const todayInApp = await prisma.notificationSend.count({
+      where: {
+        deliveredAt: { gte: startOfToday },
+        status: { in: ["DELIVERED", "READ"] },
+        channel: "INAPP",
+      },
+    });
     const todayFailed = await prisma.notificationSend.count({
-      where: { createdAt: { gte: startOfToday }, status: "FAILED" },
+      where: { failedAt: { gte: startOfToday }, status: "FAILED", ...OUTBOUND },
     });
     const todayQueued = await prisma.notificationSend.count({
-      where: { status: "QUEUED" },
+      where: {
+        status: { in: ["QUEUED", "SENDING"] },
+        scheduledFor: { lte: now },
+        ...OUTBOUND,
+      },
     });
 
     const activeTemplates = await prisma.notificationTemplate.count({
@@ -50,7 +76,7 @@ export const GET = createApiListHandler(
 
     const topRaw = await prisma.notificationSend.groupBy({
       by: ["templateId"],
-      where: { createdAt: { gte: in30 }, templateId: { not: null } },
+      where: { createdAt: { gte: in30 }, templateId: { not: null }, ...OUTBOUND },
       _count: { _all: true },
       orderBy: { _count: { templateId: "desc" } },
       take: 5,
@@ -69,28 +95,22 @@ export const GET = createApiListHandler(
       nameUz: r.templateId ? tplMap.get(r.templateId)?.nameUz ?? null : null,
     }));
 
+    const countOf = (status: string) =>
+      byStatus.find((r) => r.status === status)?._count._all ?? 0;
     const total30 = byStatus.reduce((s, r) => s + r._count._all, 0);
-    const delivered =
-      byStatus.find((r) => r.status === "DELIVERED")?._count._all ?? 0;
-    const sent = byStatus.find((r) => r.status === "SENT")?._count._all ?? 0;
-    const read = byStatus.find((r) => r.status === "READ")?._count._all ?? 0;
-    const failed =
-      byStatus.find((r) => r.status === "FAILED")?._count._all ?? 0;
-    const queued =
-      byStatus.find((r) => r.status === "QUEUED")?._count._all ?? 0;
 
     return ok({
       last30d: {
         total: total30,
-        delivered: delivered + read,
-        sent,
-        read,
-        failed,
-        queued,
+        // Left the clinic; Telegram reports no delivery, so SENT is the end.
+        sent: countOf("SENT") + countOf("DELIVERED") + countOf("READ"),
+        failed: countOf("FAILED"),
+        queued: countOf("QUEUED") + countOf("SENDING"),
+        inApp: inApp30,
       },
       today: {
         sent: todaySent,
-        delivered: todayDelivered,
+        inApp: todayInApp,
         failed: todayFailed,
         queued: todayQueued,
       },

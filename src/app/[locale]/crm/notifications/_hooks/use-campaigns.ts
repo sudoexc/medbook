@@ -62,6 +62,9 @@ export type DormantPreview = {
     noChannel: number;
     optedOut: number;
   };
+  /** More reachable patients than one broadcast may carry (`limit`). */
+  truncated?: boolean;
+  limit?: number;
   sample: Array<{
     id: string;
     fullName: string;

@@ -14,8 +14,9 @@
  *      /crm/settings/notifications. The dynamic pass uses the same
  *      idempotency key (appointmentId, templateId) as the legacy pass, so
  *      it never double-schedules.
- *   3. Pick QUEUED NotificationSend rows whose `scheduledFor <= now()` and
- *      enqueue them on `notifications:send`.
+ *   3. Return rows stuck in SENDING (the worker died mid-send) to work.
+ *   4. Pick QUEUED NotificationSend rows whose `scheduledFor <= now()` and
+ *      enqueue them on `notifications:send`, one dedupe key per attempt.
  *
  * The scheduler does NOT send anything itself — it's a dispatcher. The
  * actual delivery + retry lives in `notifications-send.ts`.
@@ -23,6 +24,12 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
+import {
+  MAX_DELIVERY_ATTEMPTS,
+  SENDING_STALE_MS,
+  deliveryAttemptKey,
+  pinnedAnchor,
+} from "@/server/notifications/delivery-state";
 import { recordPatientNoChannel } from "@/server/notifications/no-channel-action";
 import {
   isTriggerEnabled,
@@ -200,6 +207,8 @@ export async function runDynamicReminders(
     clinicId: string;
     patientId: string;
     appointmentId: string;
+    /** The start the row is written for; the send worker's guard reads it. */
+    appointmentAt: Date;
     templateId: string;
     channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
@@ -267,6 +276,7 @@ export async function runDynamicReminders(
         clinicId: appt.clinicId,
         patientId: appt.patientId,
         appointmentId: appt.id,
+        appointmentAt: appt.date,
         templateId: tpl.id,
         channel,
         recipient,
@@ -286,6 +296,7 @@ export async function runDynamicReminders(
           clinicId: appt.clinicId,
           patientId: appt.patientId,
           appointmentId: appt.id,
+          appointmentAt: appt.date,
           templateId: tpl.id,
           channel: "INAPP",
           recipient: appt.patientId,
@@ -310,23 +321,116 @@ export async function runDynamicReminders(
 
 /**
  * Pick QUEUED rows whose `scheduledFor` has elapsed and hand them to the
- * send worker. Cheap, indexed query — safe to run on a tight interval. The
- * send worker's `status !== "QUEUED"` guard makes a re-dispatch idempotent
- * (a row flips to SENT well within one dispatch interval).
+ * send worker. Cheap, indexed query (`status, scheduledFor`) — safe to run on
+ * a tight interval. Each attempt goes in under its own dedupe key, so
+ * offering the same due row again five seconds later is a no-op in BullMQ
+ * instead of one more job per row per tick: a 3 000-patient broadcast used
+ * to pile up tens of thousands of duplicate jobs ahead of real sends (audit
+ * TG-12). The send worker's claim still makes any re-dispatch harmless.
  */
-async function dispatchDue(): Promise<number> {
-  const now = new Date();
+export async function dispatchDue(now: Date = new Date()): Promise<number> {
   const due = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationSend.findMany({
       where: { status: "QUEUED", scheduledFor: { lte: now } },
-      select: { id: true },
+      select: { id: true, scheduledFor: true },
+      // Oldest first, so a backlog drains in the order it was due.
+      orderBy: { scheduledFor: "asc" },
       take: 500,
     }),
-  )) as Array<{ id: string }>;
+  )) as Array<{ id: string; scheduledFor: Date }>;
   for (const s of due) {
-    await enqueue(SEND_QUEUE, SEND_JOB, { sendId: s.id });
+    await enqueue(
+      SEND_QUEUE,
+      SEND_JOB,
+      { sendId: s.id },
+      { dedupeId: deliveryAttemptKey(s) },
+    );
   }
   return due.length;
+}
+
+/**
+ * Return rows stuck in SENDING to work (audit TG-12). A row is claimed
+ * (QUEUED → SENDING) right before the network send; a worker that dies in
+ * between (a deploy mid-broadcast) left it in SENDING forever: neither sent
+ * nor failed, and invisible to the dispatch loop.
+ *
+ * Whether the patient got the message is unknown, so the abandoned attempt
+ * counts as a failed one: the row goes back to QUEUED, due now, while it has
+ * attempts left, and to FAILED (staff can still «Повторить») when it has
+ * none. A late duplicate is the lesser evil next to a lost reminder.
+ * Rows claimed before `claimedAt` existed fall back to `scheduledFor`.
+ */
+export async function sweepStuckSending(
+  now: Date = new Date(),
+): Promise<{ requeued: number; failed: number }> {
+  const staleBefore = new Date(now.getTime() - SENDING_STALE_MS);
+  const stuck = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.findMany({
+      where: {
+        status: "SENDING",
+        OR: [
+          { claimedAt: { lt: staleBefore } },
+          { claimedAt: null, scheduledFor: { lt: staleBefore } },
+        ],
+      },
+      select: {
+        id: true,
+        claimedAt: true,
+        retryCount: true,
+        appointmentId: true,
+        appointmentAt: true,
+        scheduledFor: true,
+        template: { select: { trigger: true, triggerConfig: true } },
+      },
+      take: 200,
+    }),
+  );
+  let requeued = 0;
+  let failed = 0;
+  for (const row of stuck) {
+    const attempts = row.retryCount + 1;
+    // Conditional on the claim we saw: a worker that does finish late wins.
+    const guard = { id: row.id, status: "SENDING" as const, claimedAt: row.claimedAt };
+    if (attempts >= MAX_DELIVERY_ATTEMPTS) {
+      const res = await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.updateMany({
+          where: guard,
+          data: {
+            status: "FAILED",
+            failedReason: "delivery interrupted (worker restarted mid-send)",
+            failedAt: now,
+            retryCount: attempts,
+            claimedAt: null,
+          },
+        }),
+      );
+      failed += res.count;
+      continue;
+    }
+    const res = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.notificationSend.updateMany({
+        where: guard,
+        data: {
+          status: "QUEUED",
+          failedReason: "delivery interrupted (worker restarted mid-send)",
+          retryCount: attempts,
+          // A new due moment is a new attempt key, whatever BullMQ still
+          // holds of the dead attempt.
+          scheduledFor: now,
+          claimedAt: null,
+          ...pinnedAnchor(row),
+        },
+      }),
+    );
+    requeued += res.count;
+  }
+  if (requeued + failed > 0) {
+    console.warn(
+      `[scheduler] swept stuck SENDING rows: requeued=${requeued} failed=${failed}`,
+    );
+  }
+  return { requeued, failed };
 }
 
 async function dispatchTick(): Promise<void> {
@@ -337,10 +441,11 @@ async function dispatchTick(): Promise<void> {
 async function tick(): Promise<void> {
   const triggered = await runScheduledTriggers();
   const dynamic = await runDynamicReminders();
+  const swept = await sweepStuckSending();
   const dispatched = await dispatchDue();
 
   console.info(
-    `[scheduler] tick ok triggered=${JSON.stringify(triggered)} dynamic=${JSON.stringify(dynamic)} dispatched=${dispatched}`,
+    `[scheduler] tick ok triggered=${JSON.stringify(triggered)} dynamic=${JSON.stringify(dynamic)} swept=${JSON.stringify(swept)} dispatched=${dispatched}`,
   );
 }
 

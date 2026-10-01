@@ -42,6 +42,9 @@ export type AudiencePreview = {
   total: number;
   eligible: number;
   channelBreakdown: AudienceBreakdown;
+  /** More reachable patients than one broadcast may carry (`limit`). */
+  truncated?: boolean;
+  limit?: number;
   sample: Array<{
     id: string;
     fullName: string;

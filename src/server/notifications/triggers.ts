@@ -27,11 +27,19 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
+import { formatMoney } from "@/lib/format";
+import { loadPatientFinance } from "@/server/patient/finance";
+import { paidNetTiyin } from "@/server/services/ltv-compute";
+
 import { isAllowedToReceive } from "./consent-gate";
 import {
   MANUAL_APPOINTMENT_REMINDER_KEY,
   MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
+  NPS_REQUEST_TEMPLATE,
+  PRE_VISIT_QUESTIONNAIRE_TEMPLATE,
+  type DefaultTemplate,
 } from "./default-templates";
+import { ensureClinicTemplate } from "./ensure-template";
 import { recordPatientNoChannel } from "./no-channel-action";
 import { skipsWhenConfirmed } from "./rules";
 import { render } from "./template";
@@ -268,19 +276,70 @@ export function patientLang(patient: { preferredLang?: string | null }): "ru" | 
 export function renderAppointmentBody(
   tpl: { bodyRu: string; bodyUz: string },
   appt: AppointmentWithRefs,
+  extras?: PaymentExtras,
 ): string {
   const lang =
     patientLang(appt.patient) === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
   return render(
     lang === "uz" ? tpl.bodyUz : tpl.bodyRu,
-    buildContext(appt, lang) as unknown as Record<string, unknown>,
+    buildContext(appt, lang, extras) as unknown as Record<string, unknown>,
   );
+}
+
+/** What `payment.due` knows about the debt, тийин. */
+type PaymentExtras = { paymentAmount?: number; paymentCurrency?: string };
+
+/**
+ * `{{clinic.*}}` in the patient's language. Shared by every materialiser
+ * that has no appointment to hang the clinic on (birthdays, free repeat
+ * visits): those used to render with an empty clinic, so the patient read
+ * «повторный приём в . Тел: .» (audit TG-14).
+ */
+export function clinicContext(
+  clinic: {
+    nameRu: string;
+    nameUz: string;
+    phone: string | null;
+    addressRu: string | null;
+    addressUz?: string | null;
+  },
+  lang: "ru" | "uz",
+): RenderCtx["clinic"] {
+  return {
+    name: lang === "uz" ? clinic.nameUz || clinic.nameRu : clinic.nameRu,
+    phone: clinic.phone ?? "",
+    address:
+      (lang === "uz" ? clinic.addressUz || clinic.addressRu : clinic.addressRu) ??
+      "",
+  };
+}
+
+/**
+ * A calendar day as «25 сентября» / «25-sentabr», in the clinic's zone. No
+ * year and no «г.»: the deadlines it names are days away, and the Russian
+ * long form's trailing «г.» met the template's own full stop as «г..»
+ * (audit TG-14).
+ */
+export function formatDayMonth(
+  d: Date,
+  lang: "ru" | "uz",
+  tz = "Asia/Tashkent",
+): string {
+  try {
+    return new Intl.DateTimeFormat(lang === "uz" ? "uz-Latn-UZ" : "ru-RU", {
+      day: "numeric",
+      month: "long",
+      timeZone: tz,
+    }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
 }
 
 function buildContext(
   appt: AppointmentWithRefs,
   lang: "ru" | "uz",
-  extras?: { paymentAmount?: number; paymentCurrency?: string },
+  extras?: PaymentExtras,
 ): RenderCtx {
   const tz = appt.clinic.timezone;
   return {
@@ -308,7 +367,12 @@ function buildContext(
     ...(extras
       ? {
           payment: {
-            amount: String(extras.paymentAmount ?? ""),
+            // Money is stored in тийин; the patient reads «150 000 сум»
+            // (audit TG-13: the amount used to be blank, or raw тийин).
+            amount:
+              extras.paymentAmount === undefined
+                ? ""
+                : formatMoney(extras.paymentAmount, "UZS", lang),
             currency: extras.paymentCurrency ?? "UZS",
           },
         }
@@ -551,6 +615,8 @@ async function createSend(params: {
   clinicId: string;
   patientId: string;
   appointmentId?: string | null;
+  /** The appointment start the row is written for (audit TG-08). */
+  appointmentAt?: Date | null;
   templateId: string;
   channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
   recipient: string;
@@ -563,6 +629,7 @@ async function createSend(params: {
         clinicId: params.clinicId,
         patientId: params.patientId,
         appointmentId: params.appointmentId ?? null,
+        appointmentAt: params.appointmentAt ?? null,
         templateId: params.templateId,
         channel: params.channel,
         recipient: params.recipient,
@@ -586,7 +653,12 @@ async function createSend(params: {
  *   4. one `createMany` to insert all queued rows
  */
 export async function materializeForAppointmentsBulk(
-  jobs: ReadonlyArray<{ appointmentId: string; scheduledFor: Date }>,
+  jobs: ReadonlyArray<{
+    appointmentId: string;
+    scheduledFor: Date;
+    /** `payment.due` only: the debt the body names, тийин. */
+    paymentAmount?: number;
+  }>,
   trigger: TriggerKey,
 ): Promise<{ created: number; skipped: number }> {
   if (jobs.length === 0) return { created: 0, skipped: 0 };
@@ -639,6 +711,7 @@ export async function materializeForAppointmentsBulk(
     clinicId: string;
     patientId: string;
     appointmentId: string;
+    appointmentAt: Date;
     templateId: string;
     channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
@@ -686,11 +759,20 @@ export async function materializeForAppointmentsBulk(
       skipped += 1;
       continue;
     }
-    const body = renderAppointmentBody(tpl, appt);
+    const body = renderAppointmentBody(
+      tpl,
+      appt,
+      job.paymentAmount === undefined
+        ? undefined
+        : { paymentAmount: job.paymentAmount, paymentCurrency: "UZS" },
+    );
     toInsert.push({
       clinicId: appt.clinicId,
       patientId: appt.patientId,
       appointmentId: appt.id,
+      // The start this row is written for: the send worker cancels it if
+      // the appointment moves (audit TG-08).
+      appointmentAt: appt.date,
       templateId: tpl.templateId,
       channel: tpl.channel,
       recipient,
@@ -713,6 +795,7 @@ export async function materializeForAppointmentsBulk(
         clinicId: appt.clinicId,
         patientId: appt.patientId,
         appointmentId: appt.id,
+        appointmentAt: appt.date,
         templateId: tpl.templateId,
         channel: "INAPP",
         recipient: appt.patientId,
@@ -739,56 +822,9 @@ export async function materializeForAppointmentsBulk(
  * The clinic's manual-reminder template, created from the default on first
  * use. Clinics are not seeded automatically, and a button that silently found
  * no template is exactly how «Напомнить всем» came to send nothing (AP-02).
- * `update: {}` keeps an admin's edits (text, `isActive`) untouched.
  */
-async function ensureManualReminderTemplate(clinicId: string): Promise<{
-  id: string;
-  bodyRu: string;
-  bodyUz: string;
-  channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
-  isActive: boolean;
-}> {
-  const tpl = MANUAL_APPOINTMENT_REMINDER_TEMPLATE;
-  const select = {
-    id: true,
-    bodyRu: true,
-    bodyUz: true,
-    channel: true,
-    isActive: true,
-  } as const;
-  const upsert = () =>
-    runWithTenant({ kind: "SYSTEM" }, () =>
-      prisma.notificationTemplate.upsert({
-        where: { clinicId_key: { clinicId, key: tpl.key } },
-        create: {
-          clinicId,
-          key: tpl.key,
-          nameRu: tpl.nameRu,
-          nameUz: tpl.nameUz,
-          channel: tpl.channel,
-          category: tpl.category,
-          trigger: tpl.trigger,
-          bodyRu: tpl.bodyRu,
-          bodyUz: tpl.bodyUz,
-          variables: tpl.variables,
-          isActive: true,
-        },
-        update: {},
-        select,
-      }),
-    );
-  let row;
-  try {
-    row = await upsert();
-  } catch (e) {
-    // Two desks pressing the button at once: the loser of the insert race
-    // reads the row the winner created.
-    if ((e as { code?: unknown } | null)?.code !== "P2002") throw e;
-    row = await upsert();
-  }
-  return row as typeof row & {
-    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
-  };
+function ensureManualReminderTemplate(clinicId: string) {
+  return ensureClinicTemplate(clinicId, MANUAL_APPOINTMENT_REMINDER_TEMPLATE);
 }
 
 export type ManualReminderResult = {
@@ -865,6 +901,7 @@ export async function materializeManualReminders(params: {
     clinicId: string;
     patientId: string;
     appointmentId: string;
+    appointmentAt: Date;
     templateId: string;
     channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
@@ -894,6 +931,7 @@ export async function materializeManualReminders(params: {
       clinicId: appt.clinicId,
       patientId: appt.patientId,
       appointmentId: appt.id,
+      appointmentAt: appt.date,
       templateId: tpl.id,
       body,
       scheduledFor: params.now,
@@ -931,19 +969,57 @@ export async function materializeManualReminders(params: {
   };
 }
 
+/**
+ * Why a single materialisation made no row. The patient-experience workers
+ * stamp «уведомлено» only when a row exists (audit TG-09) and log the rest.
+ */
+export type MaterializeOutcome = {
+  created: number;
+  skipped: number;
+  reason?:
+    | "no_appointment"
+    | "no_template"
+    | "confirmed"
+    | "already_scheduled"
+    | "no_recipient";
+};
+
+/**
+ * Triggers whose worker finds its template by slug and whose template no
+ * seed creates: the default is created for the clinic on first use. A row an
+ * admin switched off stays off (`ensureClinicTemplate` never updates).
+ */
+const PROVISIONED_TEMPLATES: Partial<Record<TriggerKey, DefaultTemplate>> = {
+  "appointment.pre-visit-questionnaire": PRE_VISIT_QUESTIONNAIRE_TEMPLATE,
+  "appointment.nps-request": NPS_REQUEST_TEMPLATE,
+};
+
 async function materializeForAppointment(
   apptId: string,
   trigger: TriggerKey,
   scheduledFor: Date,
-): Promise<{ created: number; skipped: number }> {
+  options: {
+    /**
+     * Raise a PATIENT_NO_CHANNEL call task when the patient has no Telegram.
+     * Off for Mini App flows (questionnaire, rating): a call cannot fill a
+     * Mini App form, and reception would get a task per visit.
+     */
+    noChannelAction?: boolean;
+  } = {},
+): Promise<MaterializeOutcome> {
   const appt = await loadAppointment(apptId);
-  if (!appt) return { created: 0, skipped: 0 };
-  const tpl = await findTemplateFor(appt.clinicId, trigger);
-  if (!tpl) return { created: 0, skipped: 1 };
+  if (!appt) return { created: 0, skipped: 0, reason: "no_appointment" };
+  let tpl = await findTemplateFor(appt.clinicId, trigger);
+  const provisioned = PROVISIONED_TEMPLATES[trigger];
+  if (!tpl && provisioned) {
+    await ensureClinicTemplate(appt.clinicId, provisioned);
+    tpl = await findTemplateFor(appt.clinicId, trigger);
+  }
+  if (!tpl) return { created: 0, skipped: 1, reason: "no_template" };
   // A PHONE / KIOSK booking is confirmed at creation: its T-3d «подтвердите»
   // row would only be cancelled by the worker, so it is not built.
   if (isPointlessForConfirmed(trigger, tpl, appt)) {
-    return { created: 0, skipped: 1 };
+    return { created: 0, skipped: 1, reason: "confirmed" };
   }
   const already = await alreadyScheduled({
     clinicId: appt.clinicId,
@@ -951,25 +1027,28 @@ async function materializeForAppointment(
     appointmentId: appt.id,
     templateId: tpl.templateId,
   });
-  if (already) return { created: 0, skipped: 1 };
+  if (already) return { created: 0, skipped: 1, reason: "already_scheduled" };
   const recipient = pickRecipient(tpl.channel, appt.patient);
   if (!recipient) {
     // Wave 4 of `docs/TZ-sms-removal.md` — compensator for TG-less patients.
-    await recordPatientNoChannel({
-      clinicId: appt.clinicId,
-      patientId: appt.patientId,
-      patientName: appt.patient.fullName,
-      triggerKey: trigger,
-      appointmentId: appt.id,
-      appointmentAt: appt.date,
-    });
-    return { created: 0, skipped: 1 };
+    if (options.noChannelAction !== false) {
+      await recordPatientNoChannel({
+        clinicId: appt.clinicId,
+        patientId: appt.patientId,
+        patientName: appt.patient.fullName,
+        triggerKey: trigger,
+        appointmentId: appt.id,
+        appointmentAt: appt.date,
+      });
+    }
+    return { created: 0, skipped: 1, reason: "no_recipient" };
   }
   const body = renderAppointmentBody(tpl, appt);
   await createSend({
     clinicId: appt.clinicId,
     patientId: appt.patientId,
     appointmentId: appt.id,
+    appointmentAt: appt.date,
     templateId: tpl.templateId,
     channel: tpl.channel,
     recipient,
@@ -987,6 +1066,7 @@ async function materializeForAppointment(
       clinicId: appt.clinicId,
       patientId: appt.patientId,
       appointmentId: appt.id,
+      appointmentAt: appt.date,
       templateId: tpl.templateId,
       channel: "INAPP",
       recipient: appt.patientId,
@@ -1047,33 +1127,38 @@ export async function onAppointmentRunningLate(
 /**
  * Phase 16 Wave 2 — Pre-visit questionnaire push.
  *
- * Materialise a notification ~24h before the appointment with a deeplink to
- * the Mini App questionnaire form. Caller (the worker) is responsible for
- * stamping `preVisitNotifiedAt` on the Appointment row to dedupe future
- * ticks; this function only writes the `NotificationSend` row.
+ * Materialise a notification ~24h before the appointment; the send worker
+ * attaches the Mini App button that opens the questionnaire form. The
+ * template is created for the clinic on first use (audit TG-09). Caller (the
+ * worker) stamps `preVisitNotifiedAt` once a row exists, never before: the
+ * outcome says whether it does.
  */
 export async function onPreVisitQuestionnaire(
   appointmentId: string,
-): Promise<void> {
-  await materializeForAppointment(
+): Promise<MaterializeOutcome> {
+  return materializeForAppointment(
     appointmentId,
     "appointment.pre-visit-questionnaire",
     new Date(),
+    { noChannelAction: false },
   );
 }
 
 /**
  * Phase 16 Wave 2 — Post-visit NPS push.
  *
- * Materialise a notification ~4h after the appointment lands in COMPLETED
- * with a deeplink to the Mini App NPS form. Caller stamps `npsRequestedAt`
- * to dedupe future ticks.
+ * Materialise a notification ~4h after the appointment lands in COMPLETED;
+ * the send worker attaches the Mini App button of the rating form. Caller
+ * stamps `npsRequestedAt` once a row exists (audit TG-09).
  */
-export async function onNpsRequest(appointmentId: string): Promise<void> {
-  await materializeForAppointment(
+export async function onNpsRequest(
+  appointmentId: string,
+): Promise<MaterializeOutcome> {
+  return materializeForAppointment(
     appointmentId,
     "appointment.nps-request",
     new Date(),
+    { noChannelAction: false },
   );
 }
 
@@ -1242,21 +1327,31 @@ export async function runScheduledTriggers(): Promise<{
   caseRepeats: number;
 }> {
   const now = new Date();
-  // 121h horizon covers every canonical band — the 5d (120h) ping is the
-  // farthest.
-  const horizon = new Date(now.getTime() + 121 * 60 * 60 * 1000);
+  const HOUR_MS = 60 * 60 * 1000;
+  // Only the four one-hour band windows are read (audit TG-13). The query
+  // used to pull every visit of the next 121 hours with `take: 500` and no
+  // order, so on a busy week the rows of a band could fall outside the
+  // arbitrary 500 and the reminder was never built.
+  const bandWindow = (hours: number) => ({
+    date: {
+      gt: new Date(now.getTime() + (hours - 1) * HOUR_MS),
+      lte: new Date(now.getTime() + hours * HOUR_MS),
+    },
+  });
 
   const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
       where: {
-        date: { gte: now, lte: horizon },
+        OR: [bandWindow(120), bandWindow(72), bandWindow(24), bandWindow(3)],
         // CONFIRMED too (audit TG-03): every PHONE / KIOSK booking is
         // confirmed at creation and still needs its 5d / 1d / 3h reminders.
         // The T-3d band drops confirmed visits in the materialiser.
         status: { in: ["BOOKED", "CONFIRMED", "WAITING"] },
       },
       select: { id: true, date: true, confirmedAt: true },
-      take: 500,
+      orderBy: [{ date: "asc" }, { id: "asc" }],
+      // Four hours of visits across every clinic: far above any real load.
+      take: 5000,
     }),
   );
 
@@ -1271,7 +1366,7 @@ export async function runScheduledTriggers(): Promise<{
   const jobs3h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   for (const r of rows) {
     const start = r.date.getTime();
-    const until = start - Date.now();
+    const until = start - now.getTime();
     if (until > 0 && until <= 120 * 60 * 60 * 1000 && until > 119 * 60 * 60 * 1000) {
       jobs5d.push({
         appointmentId: r.id,
@@ -1308,9 +1403,9 @@ export async function runScheduledTriggers(): Promise<{
   const reminders1d = res1d.created;
   const reminders3h = res3h.created;
 
-  const birthdays = await runBirthdays();
-  const paymentsDue = await runPaymentsDue();
-  const caseRepeats = await runCaseRepeatReminders();
+  const birthdays = await runBirthdays(now);
+  const paymentsDue = await runPaymentsDue(now);
+  const caseRepeats = await runCaseRepeatReminders(now);
   return {
     reminders5d,
     reminders3d,
@@ -1322,165 +1417,347 @@ export async function runScheduledTriggers(): Promise<{
   };
 }
 
-async function runBirthdays(): Promise<number> {
-  // Find patients whose birthday (month + day) matches today. Idempotent
-  // via template+patient+(no appointment)+status filter.
-  const now = new Date();
-  const month = now.getUTCMonth() + 1;
-  const day = now.getUTCDate();
-  // Phase 17 Wave 1 — birthday is marketing. Soft-deleted + opted-out
-  // patients are excluded at the SQL layer; we still re-check via the
-  // consent gate below to keep the boolean logic in one place.
-  const patients = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.patient.findMany({
-      where: {
-        birthDate: { not: null },
-        marketingOptOut: false,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        clinicId: true,
-        fullName: true,
-        phone: true,
-        telegramId: true,
-        birthDate: true,
-        marketingOptOut: true,
-        deletedAt: true,
-      },
-      take: 2000,
-    }),
-  );
-  // Filter to today's birthdays in memory, then bulk-materialize. The
-  // consent re-check is a belt-and-braces guard; the WHERE above already
-  // excludes opt-outs.
-  const matches = patients.filter((p) => {
-    if (!p.birthDate) return false;
-    const bm = p.birthDate.getUTCMonth() + 1;
-    const bd = p.birthDate.getUTCDate();
-    if (bm !== month || bd !== day) return false;
-    return isAllowedToReceive(p, "marketing").allowed;
-  });
-  if (matches.length === 0) return 0;
+/** Birthday greetings go out from this clinic-local hour on (09:00). */
+const BIRTHDAY_LOCAL_HOUR = 9;
 
-  const clinicIds = Array.from(new Set(matches.map((p) => p.clinicId)));
-  const tplEntries = await Promise.all(
-    clinicIds.map(async (cid) => {
-      const tpl = await findTemplateFor(cid, "birthday");
-      return [cid, tpl] as const;
-    }),
-  );
-  const templates = new Map(tplEntries);
+/**
+ * Clinic id → the local day its birthday pass already ran for. The pass is
+ * daily work: it used to scan up to 2 000 patient cards of every clinic every
+ * minute and filter the birthdays in memory, so in a clinic with more cards
+ * the greeting reached only whoever sat in the first 2 000 rows (audit
+ * TG-13). Process memory is enough: a restart re-runs the day, and the
+ * per-patient dedupe below makes that a no-op.
+ */
+const birthdayPassDone = new Map<string, string>();
 
-  const tplIds = Array.from(
-    new Set(
-      tplEntries
-        .map(([, t]) => t?.templateId)
-        .filter((x): x is string => Boolean(x)),
-    ),
-  );
-  // Idempotency: birthday rows have no appointmentId, so the dedupe key is
-  // (patientId, templateId). One bulk query covers every match.
-  const existing =
-    tplIds.length === 0
-      ? []
-      : await runWithTenant({ kind: "SYSTEM" }, () =>
-          prisma.notificationSend.findMany({
-            where: {
-              patientId: { in: matches.map((p) => p.id) },
-              templateId: { in: tplIds },
-              appointmentId: null,
-              status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
-            },
-            select: { patientId: true, templateId: true },
-          }),
-        );
-  const existingSet = new Set(
-    existing.map((e) => `${e.patientId}|${e.templateId}`),
-  );
-
-  const toInsert: Array<{
-    clinicId: string;
-    patientId: string;
-    appointmentId: null;
-    templateId: string;
-    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
-    recipient: string;
-    body: string;
-    scheduledFor: Date;
-    status: "QUEUED";
-  }> = [];
-
-  for (const p of matches) {
-    const tpl = templates.get(p.clinicId);
-    if (!tpl) continue;
-    if (existingSet.has(`${p.id}|${tpl.templateId}`)) continue;
-    const recipient = pickRecipient(tpl.channel, {
-      phone: p.phone,
-      telegramId: p.telegramId,
-    });
-    if (!recipient) continue;
-    const body = render(tpl.bodyRu, {
-      patient: {
-        name: p.fullName,
-        firstName: firstName(p.fullName),
-        phone: p.phone,
-      },
-      clinic: { name: "", phone: "", address: "" },
-    });
-    toInsert.push({
-      clinicId: p.clinicId,
-      patientId: p.id,
-      appointmentId: null,
-      templateId: tpl.templateId,
-      channel: tpl.channel,
-      recipient,
-      body,
-      scheduledFor: new Date(),
-      status: "QUEUED",
-    });
-  }
-
-  if (toInsert.length === 0) return 0;
-  await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.notificationSend.createMany({
-      data: toInsert as never,
-      skipDuplicates: true,
-    }),
-  );
-  return toInsert.length;
+/** Test hook: forget which clinics already ran today. */
+export function __resetBirthdayPassForTests(): void {
+  birthdayPassDone.clear();
 }
 
-async function runPaymentsDue(): Promise<number> {
-  // Appointments that are COMPLETED >24h ago and have no PAID payment
-  // for the full priceFinal amount.
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.appointment.findMany({
-      where: {
-        status: "COMPLETED",
-        completedAt: { lte: cutoff },
-        priceFinal: { gt: 0 },
-      },
+/** Calendar parts of `now` on the wall clock of `tz`. */
+export function localDayParts(
+  now: Date,
+  tz: string,
+): { ymd: string; year: number; month: number; day: number; hour: number } {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-GB", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23",
+      timeZone: tz,
+    }).formatToParts(now);
+  } catch {
+    return localDayParts(now, "Asia/Tashkent");
+  }
+  const pick = (t: string) =>
+    Number.parseInt(parts.find((p) => p.type === t)?.value ?? "0", 10);
+  const year = pick("year");
+  const month = pick("month");
+  const day = pick("day");
+  return {
+    ymd: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    year,
+    month,
+    day,
+    hour: pick("hour"),
+  };
+}
+
+/**
+ * Birth days (UTC month/day, as birth dates are stored) greeted on a local
+ * calendar day. 29 February birthdays are greeted on 28 February when the
+ * year has no 29th, rather than never.
+ */
+export function birthdayDaysFor(
+  year: number,
+  month: number,
+  day: number,
+): { month: number; days: number[] } {
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  if (month === 2 && day === 28 && !leap) return { month: 2, days: [28, 29] };
+  return { month, days: [day] };
+}
+
+async function runBirthdays(now: Date = new Date()): Promise<number> {
+  // Templates first: without an active birthday template the pass costs one
+  // query instead of a scan of the patient table.
+  const tpls = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationTemplate.findMany({
+      where: { trigger: "PATIENT_BIRTHDAY", isActive: true },
       select: {
         id: true,
         clinicId: true,
-        patientId: true,
-        priceFinal: true,
-        payments: { select: { amount: true, status: true, currency: true } },
+        bodyRu: true,
+        bodyUz: true,
+        channel: true,
       },
-      take: 500,
+      orderBy: { createdAt: "asc" },
     }),
   );
-  const now = new Date();
-  const jobs: Array<{ appointmentId: string; scheduledFor: Date }> = [];
-  for (const r of rows) {
-    const paid = r.payments
-      .filter((p) => p.status === "PAID")
-      .reduce((s, p) => s + p.amount, 0);
-    const due = (r.priceFinal ?? 0) - paid;
-    if (due <= 0) continue;
-    jobs.push({ appointmentId: r.id, scheduledFor: now });
+  if (tpls.length === 0) return 0;
+  const tplByClinic = new Map<string, (typeof tpls)[number]>();
+  for (const t of tpls) if (!tplByClinic.has(t.clinicId)) tplByClinic.set(t.clinicId, t);
+
+  const clinics = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.clinic.findMany({
+      where: { id: { in: Array.from(tplByClinic.keys()) } },
+      select: {
+        id: true,
+        nameRu: true,
+        nameUz: true,
+        phone: true,
+        addressRu: true,
+        addressUz: true,
+        timezone: true,
+      },
+    }),
+  );
+
+  let created = 0;
+  for (const clinic of clinics) {
+    const tpl = tplByClinic.get(clinic.id);
+    if (!tpl) continue;
+    const local = localDayParts(now, clinic.timezone || "Asia/Tashkent");
+    // The clinic's own day and hour: on UTC the day turned at 05:00 in
+    // Tashkent and greetings went out at five in the morning.
+    if (local.hour < BIRTHDAY_LOCAL_HOUR) continue;
+    if (birthdayPassDone.get(clinic.id) === local.ymd) continue;
+
+    const { month, days } = birthdayDaysFor(local.year, local.month, local.day);
+    const d1 = days[0]!;
+    const d2 = days[days.length - 1]!;
+    // Month and day in SQL. Marketing consent and soft delete as well (the
+    // consent gate is re-checked below). A year-only birth date is stored as
+    // 1 January 00:00 UTC (`birthDateFromYear`): the doctor gave a year, so
+    // nobody is congratulated on a date we made up.
+    const ids = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Patient"
+        WHERE "clinicId" = ${clinic.id}
+          AND "deletedAt" IS NULL
+          AND "marketingOptOut" = false
+          AND "birthDate" IS NOT NULL
+          AND EXTRACT(MONTH FROM "birthDate")::int = ${month}::int
+          AND EXTRACT(DAY FROM "birthDate")::int IN (${d1}::int, ${d2}::int)
+          AND NOT (
+            EXTRACT(MONTH FROM "birthDate")::int = 1
+            AND EXTRACT(DAY FROM "birthDate")::int = 1
+            AND "birthDate"::time = TIME '00:00:00'
+          )`,
+    );
+
+    if (ids.length > 0) {
+      const patients = await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.patient.findMany({
+          where: { clinicId: clinic.id, id: { in: ids.map((r) => r.id) } },
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            telegramId: true,
+            preferredLang: true,
+            marketingOptOut: true,
+            deletedAt: true,
+          },
+        }),
+      );
+      // One greeting per birthday: a row from the last ~10 months is this
+      // year's. Without the window the first greeting blocked every later
+      // birthday for good.
+      const since = new Date(now.getTime() - 300 * 24 * 60 * 60 * 1000);
+      const existing = await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.findMany({
+          where: {
+            clinicId: clinic.id,
+            patientId: { in: patients.map((p) => p.id) },
+            templateId: tpl.id,
+            appointmentId: null,
+            status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+            createdAt: { gte: since },
+          },
+          select: { patientId: true },
+        }),
+      );
+      const greeted = new Set(existing.map((e) => e.patientId));
+
+      const toInsert: Array<Record<string, unknown>> = [];
+      for (const p of patients) {
+        if (greeted.has(p.id)) continue;
+        if (!isAllowedToReceive(p, "marketing").allowed) continue;
+        const channel = tpl.channel as "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+        const recipient = pickRecipient(channel, p);
+        if (!recipient) continue;
+        const lang = patientLang(p) === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
+        const body = render(lang === "uz" ? tpl.bodyUz : tpl.bodyRu, {
+          patient: {
+            name: p.fullName,
+            firstName: firstName(p.fullName),
+            phone: p.phone,
+          },
+          clinic: clinicContext(clinic, lang),
+        });
+        toInsert.push({
+          clinicId: clinic.id,
+          patientId: p.id,
+          appointmentId: null,
+          templateId: tpl.id,
+          channel,
+          recipient,
+          body,
+          scheduledFor: now,
+          status: "QUEUED",
+        });
+      }
+      if (toInsert.length > 0) {
+        await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.notificationSend.createMany({
+            data: toInsert as never,
+            skipDuplicates: true,
+          }),
+        );
+        created += toInsert.length;
+      }
+    }
+    birthdayPassDone.set(clinic.id, local.ymd);
+  }
+  return created;
+}
+
+/** How far back an unpaid visit still gets its one payment.due reminder. */
+const PAYMENT_DUE_LOOKBACK_DAYS = 7;
+
+/**
+ * The debt a payment.due message may name, тийин, or null for «no message».
+ * The visit must be short of its price by the payments filed under it, and
+ * the patient must owe money overall: a deposit taken on the «Оплаты» tab
+ * belongs to no visit but settles it all the same. Never more than either.
+ */
+export function paymentDueAmount(input: {
+  priceFinal: number;
+  paidOnVisit: number;
+  patientDebt: number | null;
+}): number | null {
+  const visitDue = input.priceFinal - input.paidOnVisit;
+  if (visitDue <= 0) return null;
+  if (input.patientDebt === null || input.patientDebt <= 0) return null;
+  return Math.min(visitDue, input.patientDebt);
+}
+
+/**
+ * payment.due — one reminder per visit that is still unpaid a day after it
+ * was completed (audit TG-13).
+ *
+ * Only in clinics that record payments in the CRM (`paymentsTrackedSince`)
+ * and only for visits completed since then: elsewhere every visit looks
+ * unpaid and the patient would be told they owe the full price. The pass
+ * used to load 500 arbitrary COMPLETED visits a minute with no unpaid filter
+ * and no order, and rendered «сумма к оплате: » with an empty amount.
+ */
+async function runPaymentsDue(now: Date = new Date()): Promise<number> {
+  const tpls = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationTemplate.findMany({
+      where: { key: "payment.due", isActive: true },
+      select: { id: true, clinicId: true },
+    }),
+  );
+  if (tpls.length === 0) return 0;
+  const tplIdsByClinic = new Map<string, string[]>();
+  for (const t of tpls) {
+    tplIdsByClinic.set(t.clinicId, [...(tplIdsByClinic.get(t.clinicId) ?? []), t.id]);
+  }
+
+  const clinics = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.clinic.findMany({
+      where: {
+        id: { in: Array.from(tplIdsByClinic.keys()) },
+        paymentsTrackedSince: { not: null },
+      },
+      select: { id: true, paymentsTrackedSince: true },
+    }),
+  );
+
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const lookback = new Date(
+    now.getTime() - PAYMENT_DUE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const jobs: Array<{ appointmentId: string; scheduledFor: Date; paymentAmount: number }> = [];
+
+  for (const clinic of clinics) {
+    const since = clinic.paymentsTrackedSince!;
+    const from = since.getTime() > lookback.getTime() ? since : lookback;
+    if (from.getTime() >= cutoff.getTime()) continue;
+    const visits = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.appointment.findMany({
+        where: {
+          clinicId: clinic.id,
+          status: "COMPLETED",
+          completedAt: { gte: from, lte: cutoff },
+          priceFinal: { gt: 0 },
+        },
+        select: {
+          id: true,
+          patientId: true,
+          priceFinal: true,
+          payments: {
+            where: { status: "PAID" },
+            select: { amount: true, refundedAmount: true, currency: true, fxRate: true },
+          },
+        },
+        orderBy: [{ completedAt: "asc" }, { id: "asc" }],
+        take: 2000,
+      }),
+    );
+    if (visits.length === 0) continue;
+
+    // Visits already reminded drop out before any per-patient work.
+    const reminded = new Set(
+      (
+        await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.notificationSend.findMany({
+            where: {
+              appointmentId: { in: visits.map((v) => v.id) },
+              templateId: { in: tplIdsByClinic.get(clinic.id) ?? [] },
+              status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+            },
+            select: { appointmentId: true },
+          }),
+        )
+      ).map((r) => r.appointmentId),
+    );
+    const fresh = visits.filter((v) => !reminded.has(v.id));
+    if (fresh.length === 0) continue;
+
+    const rate = (
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.exchangeRate.findFirst({
+          where: { clinicId: clinic.id },
+          orderBy: { date: "desc" },
+          select: { rateUsd: true },
+        }),
+      )
+    )?.rateUsd ?? null;
+    const debtByPatient = new Map<string, number | null>();
+    for (const v of fresh) {
+      const paidOnVisit = paidNetTiyin(v.payments, rate);
+      if ((v.priceFinal ?? 0) - paidOnVisit <= 0) continue;
+      if (!debtByPatient.has(v.patientId)) {
+        const finance = await runWithTenant({ kind: "SYSTEM" }, () =>
+          loadPatientFinance(clinic.id, v.patientId),
+        );
+        debtByPatient.set(v.patientId, finance.debt);
+      }
+      const amount = paymentDueAmount({
+        priceFinal: v.priceFinal ?? 0,
+        paidOnVisit,
+        patientDebt: debtByPatient.get(v.patientId) ?? null,
+      });
+      if (amount === null) continue;
+      jobs.push({ appointmentId: v.id, scheduledFor: now, paymentAmount: amount });
+    }
   }
   const res = await materializeForAppointmentsBulk(jobs, "payment.due");
   return res.created;
@@ -1493,31 +1770,64 @@ async function runPaymentsDue(): Promise<number> {
  * booked a follow-up.
  *
  * Algorithm per tick:
- *   1. Load every OPEN case with at least one non-CANCELLED/NO_SHOW visit.
+ *   1. Load, page by page, the OPEN cases that can still be in a window: a
+ *      live visit on a free-repeat service within the longest window, and
+ *      no reminder on file yet (both in SQL, audit TG-13: the pass used to
+ *      load 2 000 arbitrary open cases with every visit and filter in JS).
  *   2. For each case, find the chronological first visit (date asc) and
  *      pull its primary service's `freeRepeatDays`. If null → skip.
  *   3. Compute deadline = firstVisit.date + freeRepeatDays * 24h.
  *      Reminder fires when `now` is inside
  *      `[deadline - daysBefore * 24h, deadline)`.
- *   4. Skip if the case has any future BOOKED/WAITING appointment after
- *      the first visit — the patient is already coming back.
- *   5. Skip if a NotificationSend with this (caseId, templateId) already
- *      exists in any non-FAILED status (idempotency).
- *   6. Materialize the row (TG via channel resolver + parallel INAPP
- *      for TG-using patients).
+ *   4. Skip if the case has any future BOOKED/CONFIRMED/WAITING appointment
+ *      after the first visit — the patient is already coming back.
+ *   5. Materialize the row (TG via channel resolver + parallel INAPP
+ *      for TG-using patients), in the patient's language with the clinic's
+ *      real name and phone (audit TG-14: they used to render empty).
  *
  * `daysBefore` defaults to 2; admins can override via the template's
  * `triggerConfig.daysBefore` in /crm/settings/notifications.
  */
-async function runCaseRepeatReminders(): Promise<number> {
-  type TplRow = {
-    id: string;
-    clinicId: string;
-    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
-    bodyRu: string;
-    bodyUz: string;
-    triggerConfig: unknown;
+type CaseRepeatTpl = {
+  id: string;
+  clinicId: string;
+  channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+  bodyRu: string;
+  bodyUz: string;
+  triggerConfig: unknown;
+};
+
+type CaseRepeatClinic = {
+  id: string;
+  nameRu: string;
+  nameUz: string;
+  phone: string | null;
+  addressRu: string | null;
+  addressUz: string | null;
+  timezone: string;
+};
+
+type CaseRepeatCase = {
+  id: string;
+  clinicId: string;
+  patientId: string;
+  patient: {
+    fullName: string;
+    phone: string;
+    telegramId: string | null;
+    preferredChannel: string;
+    preferredLang: "RU" | "UZ";
   };
+  appointments: Array<{
+    id: string;
+    date: Date;
+    status: string;
+    primaryService: { freeRepeatDays: number | null } | null;
+  }>;
+};
+
+async function runCaseRepeatReminders(now: Date = new Date()): Promise<number> {
+  type TplRow = CaseRepeatTpl;
   const templates = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationTemplate.findMany({
       where: { trigger: "CASE_REPEAT_DUE", isActive: true },
@@ -1538,78 +1848,106 @@ async function runCaseRepeatReminders(): Promise<number> {
     if (!tplByClinic.has(t.clinicId)) tplByClinic.set(t.clinicId, t);
   }
   const clinicIds = Array.from(tplByClinic.keys());
+  const tplIds = templates.map((t) => t.id);
 
-  // Load every OPEN case in those clinics. We'll filter further in JS — the
-  // population is small (cases per clinic ~ patient count) and we save a
-  // multi-hop join on `Service.freeRepeatDays`.
-  type CaseRow = {
-    id: string;
-    clinicId: string;
-    patientId: string;
-    patient: {
-      fullName: string;
-      phone: string;
-      telegramId: string | null;
-      preferredChannel: string;
-    };
-    appointments: Array<{
-      id: string;
-      date: Date;
-      status: string;
-      primaryService: { freeRepeatDays: number | null } | null;
-    }>;
-  };
-  const cases = (await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.medicalCase.findMany({
-      where: { clinicId: { in: clinicIds }, status: "OPEN" },
+  // The longest free-repeat window bounds how old a first visit can be.
+  const longest = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.service.aggregate({
+      where: { clinicId: { in: clinicIds }, freeRepeatDays: { gt: 0 } },
+      _max: { freeRepeatDays: true },
+    }),
+  );
+  const maxDays = longest._max.freeRepeatDays ?? 0;
+  if (maxDays <= 0) return 0;
+
+  const clinics = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.clinic.findMany({
+      where: { id: { in: clinicIds } },
       select: {
         id: true,
-        clinicId: true,
-        patientId: true,
-        patient: {
-          select: {
-            fullName: true,
-            phone: true,
-            telegramId: true,
-            preferredChannel: true,
-          },
-        },
-        appointments: {
-          orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-          select: {
-            id: true,
-            date: true,
-            status: true,
-            primaryService: { select: { freeRepeatDays: true } },
-          },
-        },
+        nameRu: true,
+        nameUz: true,
+        phone: true,
+        addressRu: true,
+        addressUz: true,
+        timezone: true,
       },
-      take: 2000,
     }),
-  )) as CaseRow[];
-
-  if (cases.length === 0) return 0;
-
-  // Idempotency: pull every (caseId, templateId) pair already on file in
-  // one query. The new (clinicId, caseId, templateId) index makes this an
-  // ix-only scan.
-  const tplIds = templates.map((t) => t.id);
-  const caseIds = cases.map((c) => c.id);
-  const existing = (await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.notificationSend.findMany({
-      where: {
-        caseId: { in: caseIds },
-        templateId: { in: tplIds },
-        status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
-      },
-      select: { caseId: true, templateId: true },
-    }),
-  )) as Array<{ caseId: string | null; templateId: string | null }>;
-  const existingSet = new Set(
-    existing.map((e) => `${e.caseId}|${e.templateId}`),
   );
+  const clinicById = new Map<string, CaseRepeatClinic>(clinics.map((c) => [c.id, c]));
 
-  const now = new Date();
+  type CaseRow = CaseRepeatCase;
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const windowStart = new Date(now.getTime() - maxDays * dayMs);
+  const PAGE = 500;
+  let cursor: string | null = null;
+  let created = 0;
+
+  for (;;) {
+    const page = (await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.medicalCase.findMany({
+        where: {
+          clinicId: { in: clinicIds },
+          status: "OPEN",
+          appointments: {
+            some: {
+              status: { notIn: ["CANCELLED", "NO_SHOW"] },
+              date: { gte: windowStart },
+              primaryService: { freeRepeatDays: { gt: 0 } },
+            },
+          },
+          notificationSends: {
+            none: {
+              templateId: { in: tplIds },
+              status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+            },
+          },
+        },
+        select: {
+          id: true,
+          clinicId: true,
+          patientId: true,
+          patient: {
+            select: {
+              fullName: true,
+              phone: true,
+              telegramId: true,
+              preferredChannel: true,
+              preferredLang: true,
+            },
+          },
+          appointments: {
+            orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              date: true,
+              status: true,
+              primaryService: { select: { freeRepeatDays: true } },
+            },
+          },
+        },
+        orderBy: { id: "asc" },
+        take: PAGE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      }),
+    )) as CaseRow[];
+    if (page.length === 0) break;
+    created += await materializeCaseRepeats(page, tplByClinic, clinicById, now);
+    if (page.length < PAGE) break;
+    cursor = page[page.length - 1]!.id;
+  }
+  return created;
+}
+
+/** Build and insert the case-repeat rows of one page of cases. */
+async function materializeCaseRepeats(
+  cases: CaseRepeatCase[],
+  tpls: Map<string, CaseRepeatTpl>,
+  clinicsById: Map<string, CaseRepeatClinic>,
+  at: Date,
+): Promise<number> {
+  const dayMs = 24 * 60 * 60 * 1000;
   type Insert = {
     clinicId: string;
     patientId: string;
@@ -1625,9 +1963,9 @@ async function runCaseRepeatReminders(): Promise<number> {
   const toInsert: Insert[] = [];
 
   for (const kase of cases) {
-    const tpl = tplByClinic.get(kase.clinicId);
-    if (!tpl) continue;
-    if (existingSet.has(`${kase.id}|${tpl.id}`)) continue;
+    const tpl = tpls.get(kase.clinicId);
+    const clinic = clinicsById.get(kase.clinicId);
+    if (!tpl || !clinic) continue;
 
     // First non-cancelled/no-show appointment determines the window anchor.
     const firstVisit = kase.appointments.find(
@@ -1637,12 +1975,13 @@ async function runCaseRepeatReminders(): Promise<number> {
     const days = firstVisit.primaryService?.freeRepeatDays ?? null;
     if (!days || days <= 0) continue;
 
-    // Skip if patient already has a future appointment in this case (BOOKED
-    // or WAITING) — they're coming back, no nudge needed.
+    // Skip if patient already has a future appointment in this case — they
+    // are coming back, no nudge needed. CONFIRMED counts: every phone
+    // booking is confirmed at creation.
     const hasFutureBooked = kase.appointments.some(
       (a) =>
         a.id !== firstVisit.id &&
-        (a.status === "BOOKED" || a.status === "WAITING") &&
+        (a.status === "BOOKED" || a.status === "CONFIRMED" || a.status === "WAITING") &&
         a.date.getTime() > firstVisit.date.getTime(),
     );
     if (hasFutureBooked) continue;
@@ -1656,17 +1995,16 @@ async function runCaseRepeatReminders(): Promise<number> {
         ? cfg.daysBefore
         : 2;
 
-    const dayMs = 24 * 60 * 60 * 1000;
     const deadline = firstVisit.date.getTime() + days * dayMs;
     const fireFrom = deadline - daysBefore * dayMs;
-    if (now.getTime() < fireFrom) continue;
-    if (now.getTime() >= deadline) continue; // window already closed
+    if (at.getTime() < fireFrom) continue;
+    if (at.getTime() >= deadline) continue; // window already closed
 
     const recipient = pickRecipient(tpl.channel, kase.patient);
     if (!recipient) {
       // Wave 4 of `docs/TZ-sms-removal.md` — compensator for TG-less
       // patients on the case-repeat band. `firstVisit` is the anchor row,
-      // not the upcoming visit (cases that already have a future BOOKED
+      // not the upcoming visit (cases that already have a future booking
       // are skipped above), so we surface the case anchor date as the
       // appointment context instead.
       await recordPatientNoChannel({
@@ -1680,11 +2018,10 @@ async function runCaseRepeatReminders(): Promise<number> {
       continue;
     }
 
-    const daysLeft = Math.max(
-      1,
-      Math.ceil((deadline - now.getTime()) / dayMs),
-    );
-    const body = render(tpl.bodyRu, {
+    const daysLeft = Math.max(1, Math.ceil((deadline - at.getTime()) / dayMs));
+    const lang =
+      patientLang(kase.patient) === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
+    const body = render(lang === "uz" ? tpl.bodyUz : tpl.bodyRu, {
       patient: {
         name: kase.patient.fullName,
         firstName: firstName(kase.patient.fullName),
@@ -1692,9 +2029,13 @@ async function runCaseRepeatReminders(): Promise<number> {
       },
       case: {
         daysLeft: String(daysLeft),
-        deadline: formatDate(new Date(deadline)),
+        deadline: formatDayMonth(
+          new Date(deadline),
+          lang,
+          clinic.timezone || "Asia/Tashkent",
+        ),
       },
-      clinic: { name: "", phone: "", address: "" },
+      clinic: clinicContext(clinic, lang),
     } as unknown as Record<string, unknown>);
 
     toInsert.push({
@@ -1706,7 +2047,7 @@ async function runCaseRepeatReminders(): Promise<number> {
       channel: tpl.channel,
       recipient,
       body,
-      scheduledFor: now,
+      scheduledFor: at,
       status: "QUEUED",
     });
 
@@ -1727,7 +2068,7 @@ async function runCaseRepeatReminders(): Promise<number> {
         channel: "INAPP",
         recipient: kase.patientId,
         body,
-        scheduledFor: now,
+        scheduledFor: at,
         status: "QUEUED",
       });
     }
@@ -2015,3 +2356,10 @@ export function fireTrigger(payload: FireTriggerPayload): void {
   // Fire-and-forget: not awaited. In Node this runs on the next turn.
   void run();
 }
+
+// Test-only exports of the scheduler's daily and per-tick passes.
+export {
+  runBirthdays as _runBirthdaysForTests,
+  runPaymentsDue as _runPaymentsDueForTests,
+  runCaseRepeatReminders as _runCaseRepeatRemindersForTests,
+};

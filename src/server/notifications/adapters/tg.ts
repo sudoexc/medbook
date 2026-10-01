@@ -16,6 +16,8 @@ export type TgInlineKeyboardButton = {
   text: string;
   callback_data?: string;
   url?: string;
+  /** Opens the clinic Mini App at `url` (the questionnaire, the rating). */
+  web_app?: { url: string };
 };
 
 export type TgReplyMarkupPayload = {

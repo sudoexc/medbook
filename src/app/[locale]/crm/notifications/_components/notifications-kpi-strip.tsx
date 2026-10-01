@@ -17,7 +17,7 @@ import { useNotificationsStats } from "../_hooks/use-queue";
 type Tone = "success" | "warning" | "info" | "destructive";
 
 type TileDef = {
-  key: "sent" | "delivered" | "queued" | "failed";
+  key: "sent" | "inApp" | "queued" | "failed";
   icon: LucideIcon;
   tone: Tone;
 };
@@ -32,7 +32,8 @@ const TONE_CLASS: Record<Tone, string> = {
 
 const TILES: TileDef[] = [
   { key: "sent", icon: CheckCircle2Icon, tone: "success" },
-  { key: "delivered", icon: MailCheckIcon, tone: "info" },
+  // Mini App banners, apart from what left the clinic (audit TG-06).
+  { key: "inApp", icon: MailCheckIcon, tone: "info" },
   { key: "queued", icon: ClockIcon, tone: "warning" },
   { key: "failed", icon: AlertTriangleIcon, tone: "destructive" },
 ];
@@ -52,11 +53,11 @@ export function NotificationsKpiStrip() {
   }
 
   // C3 alignment: all four tiles share the same "today" snapshot. `queued`
-  // remains a realtime count (sends still in QUEUED state right now), which
+  // remains a realtime count (sends due and not out yet right now), which
   // is the only window that makes sense for it.
   const values: Record<TileDef["key"], number> = {
     sent: data?.today.sent ?? 0,
-    delivered: data?.today.delivered ?? 0,
+    inApp: data?.today.inApp ?? 0,
     queued: data?.today.queued ?? 0,
     failed: data?.today.failed ?? 0,
   };

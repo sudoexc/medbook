@@ -1,15 +1,19 @@
 /**
  * Phase 16 Wave 2 — Pre-visit questionnaire worker.
  *
- * Hourly tick. For every BOOKED/WAITING appointment whose `startsAt` lands
- * inside a 23–25h-from-now window, with a TG-eligible patient, and which
- * has not yet been notified or submitted, we:
+ * Hourly tick. For every BOOKED/CONFIRMED/WAITING appointment whose
+ * `startsAt` lands inside a 23–25h-from-now window, with a Telegram patient
+ * (the form lives in the Mini App), and which has not yet been notified or
+ * submitted, we:
  *
  *   1. Materialise a notification through the
  *      `appointment.pre-visit-questionnaire` trigger (TG + INAPP for TG
- *      patients). SMS was removed in `docs/TZ-sms-removal.md` Wave 3.
+ *      patients). SMS was removed in `docs/TZ-sms-removal.md` Wave 3. The
+ *      template is created for the clinic on first use.
  *   2. Stamp `Appointment.preVisitNotifiedAt = now()` so future ticks skip
- *      it.
+ *      it, only once a row exists (audit TG-09: the stamp used to come
+ *      first, so with no template every visit read «уведомлено» and nothing
+ *      was ever sent).
  *
  * Eligibility logic is centralised in `src/lib/patient-experience/pre-visit.ts
  * → isPreVisitEligible(...)` so the unit tests can exercise the window
@@ -63,16 +67,19 @@ export async function runPreVisitTick(now: Date = new Date()): Promise<{
     const rows = await prisma.appointment.findMany({
       where: {
         date: { gte: lower, lte: upper },
-        status: { in: ["BOOKED", "WAITING"] },
+        // CONFIRMED: phone and kiosk bookings are confirmed at creation.
+        status: { in: ["BOOKED", "CONFIRMED", "WAITING"] },
         preVisitNotifiedAt: null,
         preVisitSubmittedAt: null,
         // Phase 17 Wave 1 — never poke a soft-deleted patient. Marketing
         // opt-out is intentionally NOT checked: pre-visit questionnaires
-        // are transactional (see file-header comment).
-        patient: { deletedAt: null },
+        // are transactional (see file-header comment). Telegram only: the
+        // form is a Mini App screen, nothing else can open it.
+        patient: { deletedAt: null, telegramId: { not: null }, tgBlockedAt: null },
       },
       select: {
         id: true,
+        clinicId: true,
         date: true,
         status: true,
         preVisitNotifiedAt: true,
@@ -88,10 +95,9 @@ export async function runPreVisitTick(now: Date = new Date()): Promise<{
     });
 
     let notified = 0;
+    const missingTemplate = new Set<string>();
     for (const row of rows) {
-      const patientHasContact = Boolean(
-        row.patient.telegramId || row.patient.phone,
-      );
+      const patientHasContact = Boolean(row.patient.telegramId);
       const eligible = isPreVisitEligible(
         {
           startsAt: row.date,
@@ -104,16 +110,20 @@ export async function runPreVisitTick(now: Date = new Date()): Promise<{
       );
       if (!eligible) continue;
 
-      // Stamp first, then send. A double-tick race is harmless — the
-      // template materialiser also dedupes by (appointmentId, templateId)
-      // — but stamping first is cheaper than re-querying.
+      // Materialise first, stamp after, and only when a row exists (or was
+      // already there). A switched-off template leaves the visit unstamped,
+      // so turning it back on within the window still reaches the patient.
       try {
-        await prisma.appointment.update({
-          where: { id: row.id },
-          data: { preVisitNotifiedAt: now },
-        });
-        await onPreVisitQuestionnaire(row.id);
-        notified += 1;
+        const outcome = await onPreVisitQuestionnaire(row.id);
+        if (outcome.created > 0 || outcome.reason === "already_scheduled") {
+          await prisma.appointment.updateMany({
+            where: { id: row.id, preVisitNotifiedAt: null },
+            data: { preVisitNotifiedAt: now },
+          });
+          notified += 1;
+        } else if (outcome.reason === "no_template") {
+          missingTemplate.add(row.clinicId);
+        }
       } catch (err) {
         console.error(
           `[pre-visit-questionnaire] appointment ${row.id} failed`,
@@ -122,6 +132,11 @@ export async function runPreVisitTick(now: Date = new Date()): Promise<{
       }
     }
 
+    for (const clinicId of missingTemplate) {
+      console.warn(
+        `[pre-visit-questionnaire] clinic ${clinicId}: template appointment.pre-visit-questionnaire is switched off, questionnaires not sent`,
+      );
+    }
     return { scanned: rows.length, notified };
   });
 }

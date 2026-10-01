@@ -219,6 +219,80 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
   MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
 ];
 
+/**
+ * Patient-experience pushes whose worker looks its template up by slug
+ * (audit TG-09, TG-15). No seed, onboarding playbook or script ever created
+ * these rows, so the questionnaire, the visit rating and the medication
+ * reminders never went out while the visits were stamped «уведомлено» and
+ * the doctor's «Напоминать в Telegram» switch looked on. The workers now
+ * create the row on first use (`ensureClinicTemplate`); an admin may edit
+ * or switch it off in /crm/notifications like any other template.
+ *
+ * The questionnaire and the rating carry a Mini App button (see the send
+ * worker), so the text points at it instead of naming a link.
+ */
+export const PRE_VISIT_QUESTIONNAIRE_KEY = "appointment.pre-visit-questionnaire";
+export const NPS_REQUEST_KEY = "appointment.nps-request";
+export const MEDICATION_REMINDER_KEY = "medication.reminder";
+
+export const PRE_VISIT_QUESTIONNAIRE_TEMPLATE: DefaultTemplate = {
+  key: PRE_VISIT_QUESTIONNAIRE_KEY,
+  nameRu: "Анкета перед приёмом",
+  nameUz: "Qabul oldidan so'rovnoma",
+  channel: "TG",
+  category: "REMINDER",
+  bodyRu:
+    "{{patient.firstName}}, ваш приём у {{appointment.doctor}} {{appointment.date}} в {{appointment.time}} ({{clinic.name}}). Чтобы врач подготовился заранее, расскажите о жалобах, аллергиях и лекарствах: это займёт пару минут. Нажмите кнопку ниже.",
+  bodyUz:
+    "{{patient.firstName}}, {{appointment.doctor}} qabulingiz {{appointment.date}} kuni soat {{appointment.time}} da ({{clinic.name}}). Shifokor oldindan tayyorlanishi uchun shikoyatlar, allergiya va dorilar haqida yozing: bir necha daqiqa vaqt oladi. Quyidagi tugmani bosing.",
+  // No dedicated enum: the worker's hourly tick schedules it, the slug finds it.
+  trigger: "CRON",
+  triggerConfig: null,
+  variables: [
+    "patient.firstName",
+    "appointment.date",
+    "appointment.time",
+    "appointment.doctor",
+    "clinic.name",
+  ],
+};
+
+export const NPS_REQUEST_TEMPLATE: DefaultTemplate = {
+  key: NPS_REQUEST_KEY,
+  nameRu: "Оценка визита",
+  nameUz: "Tashrifni baholash",
+  channel: "TG",
+  category: "TRANSACTIONAL",
+  bodyRu:
+    "{{patient.firstName}}, спасибо, что были сегодня в {{clinic.name}}. Оцените, пожалуйста, приём у {{appointment.doctor}} от 1 до 10: это помогает нам становиться лучше. Нажмите кнопку ниже.",
+  bodyUz:
+    "{{patient.firstName}}, bugun {{clinic.name}} ga kelganingiz uchun rahmat. Iltimos, {{appointment.doctor}} qabulini 1 dan 10 gacha baholang: bu bizga yaxshilanishga yordam beradi. Quyidagi tugmani bosing.",
+  trigger: "CRON",
+  triggerConfig: null,
+  variables: ["patient.firstName", "appointment.doctor", "clinic.name"],
+};
+
+export const MEDICATION_REMINDER_TEMPLATE: DefaultTemplate = {
+  key: MEDICATION_REMINDER_KEY,
+  nameRu: "Напоминание о приёме лекарства",
+  nameUz: "Dori qabul qilish eslatmasi",
+  channel: "TG",
+  category: "REMINDER",
+  bodyRu:
+    "{{patient.firstName}}, в {{time}} пора принять {{drug.name}} {{drug.dosage}}. Отметить приём можно в приложении клиники.",
+  bodyUz:
+    "{{patient.firstName}}, soat {{time}} da {{drug.name}} {{drug.dosage}} qabul qilish vaqti. Qabulni klinika ilovasida belgilashingiz mumkin.",
+  trigger: "CRON",
+  triggerConfig: null,
+  variables: ["patient.firstName", "drug.name", "drug.dosage", "time"],
+};
+
+export const PATIENT_EXPERIENCE_TEMPLATES: DefaultTemplate[] = [
+  PRE_VISIT_QUESTIONNAIRE_TEMPLATE,
+  NPS_REQUEST_TEMPLATE,
+  MEDICATION_REMINDER_TEMPLATE,
+];
+
 /** Idempotent upsert array shaped for `prisma.notificationTemplate.create`. */
 export function defaultAppointmentTemplatesForClinic(
   clinicId: string,

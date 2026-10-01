@@ -5,15 +5,21 @@
  * not on a closed medical case, whose schedule.times[] contains the current
  * local hour:
  *
- *   1. Compute the canonical UTC anchor (`scheduledFor`) for the tick via
- *      `isPrescriptionDueInWindow` (pure helper).
+ *   1. Compute the canonical UTC anchor (`scheduledFor`) of every dose in
+ *      the tick via `dosesDueInWindow` (pure helper): 08:00 and 08:30 are
+ *      two reminders.
  *   2. INSERT a `MedicationReminderSend(prescriptionId, scheduledFor)` row
  *      with status PENDING. The unique constraint on
  *      (prescriptionId, scheduledFor) makes the second tick a no-op.
- *   3. Materialise a TG notification via the `medication.reminder`
- *      template, mirrored to INAPP for TG-eligible patients (same
- *      "free secondary touch" logic as appointment reminders). SMS was
- *      removed in `docs/TZ-sms-removal.md` Wave 3.
+ *   3. Materialise the push via the `medication.reminder` template: an
+ *      INAPP banner always, Telegram too while the template is on and the
+ *      patient has a chat. SMS was removed in `docs/TZ-sms-removal.md`
+ *      Wave 3.
+ *
+ * Audit TG-15: no seed or onboarding ever created `medication.reminder`, and
+ * without it the worker skipped both pushes, so the doctor's «Напоминать
+ * пациенту в Telegram» switch did nothing. The template is now created for
+ * the clinic on first use, and the banner falls back to the default text.
  *
  * The `MedicationReminderSend` row is the source of truth the patient
  * dashboard reads — they tap "Принял / Пропустил / Отложить" on it. The
@@ -25,12 +31,17 @@
  */
 import { prisma } from "@/lib/prisma";
 import {
-  isPrescriptionDueInWindow,
+  dosesDueInWindow,
   parseSchedule,
 } from "@/lib/patient-experience/medication-schedule";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { isAllowedToReceive } from "@/server/notifications/consent-gate";
+import { MEDICATION_REMINDER_TEMPLATE } from "@/server/notifications/default-templates";
+import {
+  ensureClinicTemplate,
+  type EnsuredTemplate,
+} from "@/server/notifications/ensure-template";
 import { render } from "@/server/notifications/template";
 import { getQueue } from "@/server/queue";
 
@@ -54,7 +65,9 @@ type ActivePrescription = {
     fullName: string;
     phone: string;
     telegramId: string | null;
+    tgBlockedAt: Date | null;
     preferredChannel: string;
+    preferredLang: "RU" | "UZ";
     marketingOptOut: boolean | null;
     deletedAt: Date | null;
   };
@@ -88,11 +101,40 @@ function localHourMinute(date: Date, tz: string): string {
 
 function pickRecipient(
   channel: Channel,
-  patient: { phone: string; telegramId: string | null },
+  patient: { phone: string; telegramId: string | null; tgBlockedAt?: Date | null },
 ): string | null {
-  if (channel === "TG") return patient.telegramId;
+  // A patient who blocked the bot would only produce a FAILED row.
+  if (channel === "TG") return patient.tgBlockedAt ? null : patient.telegramId;
   if (channel === "EMAIL") return patient.phone;
   return null;
+}
+
+/**
+ * The reminder text: the template in the patient's language (a blank Uzbek
+ * text falls back to Russian). A course with no dosage typed leaves no stray
+ * space before the punctuation.
+ */
+export function renderMedicationReminder(
+  tpl: { bodyRu: string; bodyUz: string },
+  ctx: {
+    lang: "RU" | "UZ";
+    patientName: string;
+    drugName: string;
+    dosage: string;
+    time: string;
+    clinicName: string;
+  },
+): string {
+  const uz = ctx.lang === "UZ" && tpl.bodyUz.trim() !== "";
+  return render(uz ? tpl.bodyUz : tpl.bodyRu, {
+    patient: { name: ctx.patientName, firstName: firstName(ctx.patientName) },
+    drug: { name: ctx.drugName, dosage: ctx.dosage },
+    time: ctx.time,
+    deeplink: "/my/medications",
+    clinic: { name: ctx.clinicName },
+  })
+    .replace(/[ \t]+([.,!?:;)])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ");
 }
 
 /**
@@ -137,7 +179,9 @@ export async function runMedicationReminderTick(
             fullName: true,
             phone: true,
             telegramId: true,
+            tgBlockedAt: true,
             preferredChannel: true,
+            preferredLang: true,
             marketingOptOut: true,
             deletedAt: true,
           },
@@ -157,30 +201,24 @@ export async function runMedicationReminderTick(
 
     if (rows.length === 0) return { scanned: 0, created: 0 };
 
-    // Pull the `medication.reminder` template per clinic in one query (slug
-    // match — no dedicated NotificationTrigger enum).
+    // The clinic's `medication.reminder` template, created from the default
+    // on first use (audit TG-15). An admin's edits and off switch are kept.
     const clinicIds = Array.from(new Set(rows.map((r) => r.clinicId)));
-    const templates = (await prisma.notificationTemplate.findMany({
-      where: {
-        clinicId: { in: clinicIds },
-        key: "medication.reminder",
-        isActive: true,
-      },
-      select: {
-        id: true,
-        clinicId: true,
-        bodyRu: true,
-        bodyUz: true,
-        channel: true,
-      },
-    })) as Array<{
-      id: string;
-      clinicId: string;
-      bodyRu: string;
-      bodyUz: string;
-      channel: Channel;
-    }>;
-    const tplByClinic = new Map(templates.map((t) => [t.clinicId, t]));
+    const tplByClinic = new Map<string, EnsuredTemplate | null>();
+    for (const clinicId of clinicIds) {
+      try {
+        tplByClinic.set(
+          clinicId,
+          await ensureClinicTemplate(clinicId, MEDICATION_REMINDER_TEMPLATE),
+        );
+      } catch (err) {
+        console.error(
+          `[medication-reminder] clinic ${clinicId}: could not create the medication.reminder template, in-app reminders only`,
+          err,
+        );
+        tplByClinic.set(clinicId, null);
+      }
+    }
 
     let created = 0;
 
@@ -195,98 +233,107 @@ export async function runMedicationReminderTick(
       if (!consent.allowed) continue;
 
       const tz = rx.clinic.timezone || "Asia/Tashkent";
-      const due = isPrescriptionDueInWindow(sched, now, tz);
-      if (!due) continue;
-
-      // Idempotency gate: (prescriptionId, scheduledFor) is unique. Try the
-      // insert; on conflict we move on. We still create the row even if the
-      // template is missing — the in-app dashboard works without a push.
-      let send;
-      try {
-        send = await prisma.medicationReminderSend.create({
-          data: {
-            clinicId: rx.clinicId,
-            prescriptionId: rx.id,
-            patientId: rx.patientId,
-            scheduledFor: due.dueAt,
-            sentAt: null,
-            status: "PENDING",
-          },
-        });
-      } catch {
-        continue; // unique violation — another tick already inserted
+      const tpl = tplByClinic.get(rx.clinicId) ?? null;
+      for (const dueAt of dosesDueInWindow(sched, now, tz)) {
+        if (await materializeDose(rx, tpl, dueAt, tz, now)) created += 1;
       }
-
-      const tpl = tplByClinic.get(rx.clinicId);
-      if (!tpl) {
-        created += 1;
-        continue;
-      }
-
-      const recipient = pickRecipient(tpl.channel, rx.patient);
-      const localTime = localHourMinute(due.dueAt, tz);
-      const body = render(tpl.bodyRu, {
-        patient: {
-          name: rx.patient.fullName,
-          firstName: firstName(rx.patient.fullName),
-        },
-        drug: { name: rx.drugName, dosage: rx.dosage },
-        time: localTime,
-        deeplink: "/my/medications",
-        clinic: { name: rx.clinic.nameRu },
-      });
-
-      // Push side. INAPP always — the dashboard relies on it for the banner
-      // count. TG only if we have a recipient.
-      try {
-        await prisma.notificationSend.create({
-          data: {
-            clinicId: rx.clinicId,
-            patientId: rx.patientId,
-            templateId: tpl.id,
-            channel: "INAPP",
-            recipient: rx.patientId,
-            body,
-            scheduledFor: due.dueAt,
-            status: "QUEUED",
-          } as never,
-        });
-        if (
-          recipient &&
-          tpl.channel !== "INAPP" &&
-          tpl.channel !== "VISIT" &&
-          tpl.channel !== "CALL"
-        ) {
-          await prisma.notificationSend.create({
-            data: {
-              clinicId: rx.clinicId,
-              patientId: rx.patientId,
-              templateId: tpl.id,
-              channel: tpl.channel,
-              recipient,
-              body,
-              scheduledFor: due.dueAt,
-              status: "QUEUED",
-            } as never,
-          });
-        }
-        // Mark the reminder as "sent" — the patient still has to respond.
-        await prisma.medicationReminderSend.update({
-          where: { id: send.id },
-          data: { sentAt: now },
-        });
-      } catch (err) {
-        console.error(
-          `[medication-reminder] push failed for prescription ${rx.id}`,
-          err,
-        );
-      }
-
-      created += 1;
     }
 
     return { scanned: rows.length, created };
   });
+}
+
+/**
+ * One dose: the dashboard row, then the push. Returns false when another
+ * tick already took this dose.
+ */
+async function materializeDose(
+  rx: ActivePrescription,
+  tpl: EnsuredTemplate | null,
+  dueAt: Date,
+  tz: string,
+  now: Date,
+): Promise<boolean> {
+  // Idempotency gate: (prescriptionId, scheduledFor) is unique. Try the
+  // insert; on conflict we move on. The row is the source of truth the
+  // patient dashboard reads, push or no push.
+  let send;
+  try {
+    send = await prisma.medicationReminderSend.create({
+      data: {
+        clinicId: rx.clinicId,
+        prescriptionId: rx.id,
+        patientId: rx.patientId,
+        scheduledFor: dueAt,
+        sentAt: null,
+        status: "PENDING",
+      },
+    });
+  } catch {
+    return false; // unique violation — another tick already inserted
+  }
+
+  const lang = rx.patient.preferredLang === "UZ" ? "UZ" : "RU";
+  // A switched-off template still leaves the in-app banner (the Mini App
+  // dashboard counts on it); only the Telegram push follows the switch. A
+  // template that could not be created leaves the banner in default words.
+  const text = tpl ?? MEDICATION_REMINDER_TEMPLATE;
+  const body = renderMedicationReminder(text, {
+    lang,
+    patientName: rx.patient.fullName,
+    drugName: rx.drugName,
+    dosage: rx.dosage,
+    time: localHourMinute(dueAt, tz),
+    clinicName: lang === "UZ" ? rx.clinic.nameUz || rx.clinic.nameRu : rx.clinic.nameRu,
+  });
+  const tgChannel = tpl?.isActive ? tpl.channel : null;
+  const recipient = tgChannel ? pickRecipient(tgChannel, rx.patient) : null;
+
+  try {
+    await prisma.notificationSend.create({
+      data: {
+        clinicId: rx.clinicId,
+        patientId: rx.patientId,
+        templateId: tpl?.id ?? null,
+        channel: "INAPP",
+        recipient: rx.patientId,
+        body,
+        scheduledFor: dueAt,
+        status: "QUEUED",
+      } as never,
+    });
+    if (
+      tgChannel &&
+      recipient &&
+      tgChannel !== "INAPP" &&
+      tgChannel !== "VISIT" &&
+      tgChannel !== "CALL"
+    ) {
+      await prisma.notificationSend.create({
+        data: {
+          clinicId: rx.clinicId,
+          patientId: rx.patientId,
+          templateId: tpl!.id,
+          channel: tgChannel,
+          recipient,
+          body,
+          scheduledFor: dueAt,
+          status: "QUEUED",
+        } as never,
+      });
+    }
+    // Mark the reminder as "sent" — the patient still has to respond.
+    await prisma.medicationReminderSend.update({
+      where: { id: send.id },
+      data: { sentAt: now },
+    });
+  } catch (err) {
+    console.error(
+      `[medication-reminder] push failed for prescription ${rx.id}`,
+      err,
+    );
+  }
+  return true;
 }
 
 /** Start the worker (idempotent). */

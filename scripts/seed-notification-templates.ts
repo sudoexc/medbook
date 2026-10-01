@@ -1,7 +1,9 @@
 /**
- * Idempotent seeder for the 8 default notification templates introduced in
- * TZ-notifications-cancel-sync.md. Iterates every existing Clinic and
- * upserts each row from `DEFAULT_APPOINTMENT_TEMPLATES`. Safe to re-run —
+ * Idempotent seeder for the default notification templates introduced in
+ * TZ-notifications-cancel-sync.md, plus the patient-experience pushes
+ * (pre-visit questionnaire, visit rating, medication reminder; audit TG-09 /
+ * TG-15 — their workers also create them on first use). Iterates every
+ * existing Clinic and creates each missing row. Safe to re-run —
  * existing rows are detected by `(clinicId, key)` and left untouched (so
  * an admin's manual edits survive a re-seed).
  *
@@ -17,7 +19,10 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
-import { DEFAULT_APPOINTMENT_TEMPLATES } from "../src/server/notifications/default-templates";
+import {
+  DEFAULT_APPOINTMENT_TEMPLATES,
+  PATIENT_EXPERIENCE_TEMPLATES,
+} from "../src/server/notifications/default-templates";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -34,7 +39,7 @@ async function main() {
   let skippedCount = 0;
 
   for (const clinic of clinics) {
-    for (const t of DEFAULT_APPOINTMENT_TEMPLATES) {
+    for (const t of [...DEFAULT_APPOINTMENT_TEMPLATES, ...PATIENT_EXPERIENCE_TEMPLATES]) {
       const existing = await prisma.notificationTemplate.findUnique({
         where: { clinicId_key: { clinicId: clinic.id, key: t.key } },
         select: { id: true },

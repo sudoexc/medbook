@@ -9,8 +9,9 @@
  *
  * Retry policy: up to 3 attempts. Backoff between retries indexes
  * BACKOFF_MS by the row's current retryCount (0-based) — first retry 60s,
- * second 300s, with 1800s as the ceiling. On final failure the row is
- * marked FAILED and left for the UI to retry via
+ * second 300s, with 1800s as the ceiling. The backoff moves `scheduledFor`,
+ * so the 5s dispatch loop does not hand the row back early (audit TG-12).
+ * On final failure the row is marked FAILED and left for the UI to retry via
  * POST /api/crm/notifications/sends/[id]/retry.
  *
  * ## Running
@@ -28,6 +29,12 @@ import { runWithTenant } from "@/lib/tenant-context";
 
 import { resolveAdapters } from "@/server/notifications/adapters";
 import { recordNotificationDelivery } from "@/server/notifications/record-delivery";
+import {
+  MAX_DELIVERY_ATTEMPTS,
+  deliveryAttemptKey,
+  pinnedAnchor,
+  reminderAnchorMs,
+} from "@/server/notifications/delivery-state";
 import { mirrorNotificationToConversation } from "@/server/conversations/notification-mirror";
 import { getRateLimiter } from "@/server/notifications/rate-limit";
 import { enqueue, getQueue } from "@/server/queue";
@@ -40,12 +47,90 @@ import { isTgBlockedError } from "@/server/telegram/send-errors";
 export const QUEUE_NAME = "notifications:send";
 export const JOB_NAME = "deliver";
 
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = MAX_DELIVERY_ATTEMPTS;
 /** Clock slack between the web and worker processes for the «not yet due» check. */
 const FUTURE_SLACK_MS = 5_000;
 const BACKOFF_MS = [60_000, 300_000, 1_800_000];
+/** How far a rate-limited send is pushed back. Not a failed attempt. */
+const RATE_LIMIT_DEFER_MS = 60_000;
 
 export type DeliverJob = { sendId: string };
+
+/**
+ * Hand one delivery attempt to the queue. The dedupe key ties it to the
+ * row's current `scheduledFor`, so the dispatch loop re-offering the same
+ * attempt every 5 s, or a direct enqueue racing the loop, never stacks
+ * duplicate jobs (audit TG-12). The job waits until `scheduledFor`.
+ */
+export async function enqueueDelivery(
+  send: { id: string; scheduledFor: Date },
+  now: Date = new Date(),
+): Promise<void> {
+  const delay = Math.max(0, send.scheduledFor.getTime() - now.getTime());
+  await enqueue(
+    QUEUE_NAME,
+    JOB_NAME,
+    { sendId: send.id },
+    { delay, dedupeId: deliveryAttemptKey(send) },
+  );
+}
+
+/**
+ * Template keys whose message is only useful with a way into the Mini App
+ * screen it talks about: the pre-visit questionnaire and the visit rating
+ * have no entry on the Mini App home, so without this button the patient
+ * reads «заполните анкету» and has nowhere to tap (audit TG-09).
+ */
+const MINI_APP_BUTTONS: Record<
+  string,
+  { path: string; ru: string; uz: string }
+> = {
+  "appointment.pre-visit-questionnaire": {
+    path: "pre-visit",
+    ru: "📝 Заполнить анкету",
+    uz: "📝 So'rovnomani to'ldirish",
+  },
+  "appointment.nps-request": {
+    path: "nps",
+    ru: "⭐ Оценить визит",
+    uz: "⭐ Tashrifni baholash",
+  },
+};
+
+/**
+ * The public https origin the Mini App is served from, or null. Telegram
+ * opens `web_app` buttons over https only, so a plain-http dev origin gets
+ * no button rather than a broken one.
+ */
+function publicOrigin(): string | null {
+  const raw = (
+    process.env.PUBLIC_BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  return raw.startsWith("https://") ? raw : null;
+}
+
+/** The `web_app` button that opens the screen a message asks to use. */
+export function miniAppButtonFor(send: {
+  appointmentId: string | null;
+  templateKey: string | null;
+  clinicSlug: string | null;
+  lang: "RU" | "UZ" | null;
+}): { text: string; web_app: { url: string } } | null {
+  const spec = send.templateKey ? MINI_APP_BUTTONS[send.templateKey] : undefined;
+  if (!spec || !send.appointmentId || !send.clinicSlug) return null;
+  const origin = publicOrigin();
+  if (!origin) return null;
+  return {
+    text: send.lang === "UZ" ? spec.uz : spec.ru,
+    web_app: {
+      url: `${origin}/c/${send.clinicSlug}/my/${spec.path}/${send.appointmentId}`,
+    },
+  };
+}
 
 /**
  * D-1 — atomically claim a QUEUED send for dispatch. The flip QUEUED→SENDING
@@ -54,14 +139,15 @@ export type DeliverJob = { sendId: string };
  * parallelism in Phase 6) exactly one caller wins the row and performs the
  * external send. Losers get `count === 0` and bail without re-sending. The
  * transient-retry path resets the row to QUEUED so a later attempt re-claims
- * it; a row stranded in SENDING (worker crashed mid-send) is recoverable via
- * the /retry endpoint.
+ * it; a row stranded in SENDING (worker crashed mid-send) is returned to
+ * work by the scheduler's sweep once `claimedAt` is stale (audit TG-12), or
+ * by staff via the /retry endpoint.
  */
 async function claimForDispatch(sendId: string): Promise<boolean> {
   const claimed = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationSend.updateMany({
       where: { id: sendId, status: "QUEUED" },
-      data: { status: "SENDING" },
+      data: { status: "SENDING", claimedAt: new Date() },
     }),
   );
   return claimed.count === 1;
@@ -87,10 +173,14 @@ async function deliver(job: DeliverJob): Promise<void> {
     prisma.notificationSend.findUnique({
       where: { id: job.sendId },
       include: {
-        patient: { select: { id: true, phone: true, telegramId: true } },
+        patient: {
+          select: { id: true, phone: true, telegramId: true, preferredLang: true },
+        },
         // `triggerConfig.offsetMin` tells us which cascade band this row is,
         // which is what makes the stale-time guard below possible.
         template: { select: { key: true, trigger: true, triggerConfig: true } },
+        // The slug builds the Mini App link of questionnaire / rating messages.
+        clinic: { select: { slug: true } },
       },
     }),
   );
@@ -188,18 +278,22 @@ async function deliver(job: DeliverJob): Promise<void> {
     // safety net for anything that slips past it (a race with an in-flight
     // dispatch, a direct DB edit, a legacy row predating the fix).
     //
-    // A band's row is valid only if it still sits `offsetMin` before the
-    // CURRENT start. Rows whose template has no numeric offset are left alone
-    // — we can't infer an expected time for them, and refusing to send would
-    // be worse than sending.
+    // A row is valid only while the appointment still starts when the row
+    // was written for. The row records that start (`appointmentAt`), so a
+    // retry, a backoff or a staff «Повторить» that moved `scheduledFor` is
+    // not mistaken for a reschedule (audit TG-08: every manual retry of a
+    // reminder used to end CANCELLED here). Older rows derive it from
+    // `scheduledFor - offsetMin`. Rows with neither are left alone: we can't
+    // infer an expected time for them, and refusing to send would be worse
+    // than sending.
     const offsetMin = (send.template?.triggerConfig as { offsetMin?: unknown } | null)
       ?.offsetMin;
-    if (appt && typeof offsetMin === "number") {
-      const expectedAt = appt.date.getTime() + offsetMin * 60_000;
+    const anchorMs = reminderAnchorMs(send, offsetMin);
+    if (appt && anchorMs !== null) {
       // One minute of slack: `scheduledFor` is stored to the millisecond but
       // the scheduler ticks on a 60s cadence, so exact equality would flag
       // healthy rows.
-      const driftMs = Math.abs(expectedAt - send.scheduledFor.getTime());
+      const driftMs = Math.abs(appt.date.getTime() - anchorMs);
       if (driftMs > 60_000) {
         await runWithTenant({ kind: "SYSTEM" }, () =>
           prisma.notificationSend.updateMany({
@@ -256,6 +350,7 @@ async function deliver(job: DeliverJob): Promise<void> {
           data: {
             status: "FAILED",
             failedReason: message.slice(0, 500),
+            failedAt: new Date(),
             retryCount: { increment: 1 },
           },
         }),
@@ -270,9 +365,20 @@ async function deliver(job: DeliverJob): Promise<void> {
   // harmless rounding error against the TG bucket.
   const ok = await limiter.check(send.patientId, "TG");
   if (!ok) {
-    // Defer: push the job back by 60s. We don't count this against the
-    // retry budget — rate limit is a policy decision, not a failure.
-    await enqueue(QUEUE_NAME, JOB_NAME, { sendId: send.id }, { delay: 60_000 });
+    // Defer: push the row back by 60s. We don't count this against the
+    // retry budget — rate limit is a policy decision, not a failure. The
+    // deferral moves `scheduledFor`: a delayed job alone was overtaken by
+    // the 5s dispatch loop, which saw the row still due (audit TG-12).
+    const deferred = new Date(Date.now() + RATE_LIMIT_DEFER_MS);
+    const moved = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.notificationSend.updateMany({
+        where: { id: send.id, status: "QUEUED" },
+        data: { scheduledFor: deferred, ...pinnedAnchor(send) },
+      }),
+    );
+    if (moved.count === 1) {
+      await enqueueDelivery({ id: send.id, scheduledFor: deferred });
+    }
     return;
   }
 
@@ -291,6 +397,12 @@ async function deliver(job: DeliverJob): Promise<void> {
       const wantsConfirmButton =
         Boolean(send.appointmentId) &&
         (isManualReminder || (isBeforeReminder && !alreadyConfirmed));
+      const miniAppButton = miniAppButtonFor({
+        appointmentId: send.appointmentId,
+        templateKey: send.template?.key ?? null,
+        clinicSlug: send.clinic?.slug ?? null,
+        lang: send.patient?.preferredLang ?? null,
+      });
       const replyMarkup = wantsConfirmButton
         ? {
             inline_keyboard: [
@@ -302,7 +414,9 @@ async function deliver(job: DeliverJob): Promise<void> {
               ],
             ],
           }
-        : undefined;
+        : miniAppButton
+          ? { inline_keyboard: [[miniAppButton]] }
+          : undefined;
       // D-1 — claim the row immediately before the irreversible network send.
       if (!(await claimForDispatch(send.id))) return;
       const res = await adapters.tg.send(
@@ -394,20 +508,32 @@ async function deliver(job: DeliverJob): Promise<void> {
     // retry waits 60s, not 300s. The old `nextAttempt` index skipped
     // BACKOFF_MS[0] entirely.
     const delay = BACKOFF_MS[Math.min(send.retryCount, BACKOFF_MS.length - 1)]!;
-    await runWithTenant({ kind: "SYSTEM" }, () =>
-      prisma.notificationSend.update({
-        where: { id: send.id },
+    // The backoff moves `scheduledFor` (audit TG-12): the row used to go back
+    // to QUEUED with its old, long-past time, so the 5s dispatch loop resent
+    // it at once and a two-minute Telegram outage burnt all three attempts.
+    const nextAt = new Date(Date.now() + delay);
+    const released = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.notificationSend.updateMany({
+        // SENDING: our claim. QUEUED: the attempt failed before claiming
+        // (a channel with no adapter); it still spends the attempt, or the
+        // row would be offered back every 5 s forever.
+        where: { id: send.id, status: { in: ["SENDING", "QUEUED"] } },
         data: {
           // D-1 — release the SENDING claim back to QUEUED so the scheduler +
-          // retry endpoint re-pick it. The delayed re-enqueue below and the
-          // dispatch loop may both fire; the next claim dedupes them.
+          // retry endpoint re-pick it. The delayed job below and the dispatch
+          // loop offer the same attempt under one dedupe key.
           status: "QUEUED",
           failedReason: message.slice(0, 500),
           retryCount: nextAttempt,
+          scheduledFor: nextAt,
+          claimedAt: null,
+          ...pinnedAnchor(send),
         },
       }),
     );
-    await enqueue(QUEUE_NAME, JOB_NAME, { sendId: send.id }, { delay });
+    if (released.count === 1) {
+      await enqueueDelivery({ id: send.id, scheduledFor: nextAt });
+    }
   }
 }
 

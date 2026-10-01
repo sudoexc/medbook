@@ -72,6 +72,8 @@ vi.mock("@/server/notifications/template", () => ({ render: () => "text" }));
 vi.mock("@/lib/patient-experience/medication-schedule", () => ({
   parseSchedule: () => ({ times: ["09:00"] }),
   isPrescriptionDueInWindow: () => ({ dueAt: new Date("2026-09-28T04:00:00Z") }),
+  // The tick reminds every dose of the hour (audit TG-15).
+  dosesDueInWindow: () => [new Date("2026-09-28T04:00:00Z")],
 }));
 vi.mock("@/lib/prisma", () => {
   type Where = {
@@ -156,12 +158,26 @@ vi.mock("@/lib/prisma", () => {
     prisma: {
       ...tx,
       $transaction: vi.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
-      notificationTemplate: { findMany: vi.fn(async () => []) },
+      notificationTemplate: {
+        findMany: vi.fn(async () => []),
+        // The tick creates the clinic's medication.reminder template on
+        // first use (audit TG-15).
+        upsert: vi.fn(async () => ({
+          id: "tpl-med",
+          bodyRu: "{{drug.name}}",
+          bodyUz: "",
+          channel: "TG",
+          isActive: true,
+          triggerConfig: null,
+        })),
+      },
+      notificationSend: { create: vi.fn(async () => ({})) },
       medicationReminderSend: {
         create: vi.fn(async ({ data }: { data: { prescriptionId: string } }) => {
           state.sends.push(data.prescriptionId);
           return { id: `s-${data.prescriptionId}` };
         }),
+        update: vi.fn(async () => ({})),
       },
     },
   };

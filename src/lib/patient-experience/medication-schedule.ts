@@ -158,21 +158,38 @@ export function isPrescriptionDueInWindow(
   now: Date,
   tz: string,
 ): { dueAt: Date } | null {
+  const doses = dosesDueInWindow(schedule, now, tz);
+  return doses.length > 0 ? { dueAt: doses[0]! } : null;
+}
+
+/**
+ * Every dose of the tick window that contains `now`: one UTC anchor per
+ * `schedule.times[]` entry in the current local hour, earliest first.
+ * 08:00 and 08:30 are two doses (audit TG-15: `find` used to keep the first
+ * and drop the second). Each anchor is its own
+ * (prescriptionId, scheduledFor) key on `MedicationReminderSend`.
+ */
+export function dosesDueInWindow(
+  schedule: ParsedSchedule,
+  now: Date,
+  tz: string,
+): Date[] {
   // Window guard.
-  if (now.getTime() < schedule.startsAt.getTime()) return null;
+  if (now.getTime() < schedule.startsAt.getTime()) return [];
   if (schedule.days !== null) {
     const endMs =
       schedule.startsAt.getTime() + schedule.days * 24 * 60 * 60 * 1000;
-    if (now.getTime() >= endMs) return null;
+    if (now.getTime() >= endMs) return [];
   }
   const hhmm = localHHmm(now, tz);
   const hourPart = hhmm.slice(0, 2);
-  // Match entries in `times[]` whose hour equals the current local hour.
-  const match = schedule.times.find((t) => t.slice(0, 2) === hourPart);
-  if (!match) return null;
   const ymd = localYYYYMMDD(now, tz);
-  const dueAt = tzDateToUtc(ymd, match, tz);
-  return { dueAt };
+  // Entries in `times[]` whose hour equals the current local hour.
+  return Array.from(
+    new Set(schedule.times.filter((t) => t.slice(0, 2) === hourPart)),
+  )
+    .sort()
+    .map((t) => tzDateToUtc(ymd, t, tz));
 }
 
 /**

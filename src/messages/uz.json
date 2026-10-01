@@ -2890,6 +2890,10 @@
         "label": "Yetkazildi",
         "hint": "Bugun"
       },
+      "inApp": {
+        "label": "Ilovada",
+        "hint": "Bugun"
+      },
       "queued": {
         "label": "Navbatda",
         "hint": "Hozir"
@@ -2949,12 +2953,14 @@
       "context": {
         "title": "30 kun",
         "total30d": "Jami",
+        "sent30d": "Yuborildi",
         "delivered30d": "Yetkazildi",
         "failed30d": "Xatolar",
         "activeTemplates": "Shablonlar"
       },
       "toasts": {
         "retried": "Qayta navbatga qo'yildi",
+        "retryNotAllowed": "Faqat muvaffaqiyatsiz yoki uzilib qolgan yuborishni takrorlash mumkin",
         "cancelled": "Yuborish bekor qilindi",
         "resent": "Qayta yuborish navbatga qo'yildi",
         "stubAction": "Amal keyingi relizda paydo bo'ladi"
@@ -3116,6 +3122,7 @@
         "tgReady": "Telegram bilan",
         "noChannel": "Kanalsiz",
         "optedOut": "Obunadan chiqqan",
+        "tooLarge": "Qabul qiluvchilar {limit} tadan ko'p. Bitta tarqatma {limit} tadan ortiq bemorga yuborilmaydi, torroq segmentni tanlang.",
         "sample": "Misollar"
       },
       "launch": {
@@ -3231,6 +3238,7 @@
         "noChannel": "Telegramsiz",
         "optedOut": "Voz kechgan",
         "blocked": "Bloklagan",
+        "tooLarge": "Qabul qiluvchilar {limit} tadan ko'p. Bitta tarqatma {limit} tadan ortiq bemorga yuborilmaydi, auditoriyani toraytiring.",
         "pickAudience": "Qabul qiluvchilar sonini ko'rish uchun auditoriyani tanlang.",
         "counting": "Qabul qiluvchilar sanalmoqda…",
         "sampleName": "Ali",

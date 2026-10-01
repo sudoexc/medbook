@@ -20,90 +20,20 @@
  *
  * The returned `AudienceResolution` is the exact shape the launcher
  * materialises NotificationSend rows from, so the composer's live preview count
- * matches the number of sends that actually fire.
+ * matches the number of sends that actually fire. Every gate is SQL, applied
+ * before the `MAX_AUDIENCE` limit; a bigger audience is reported as
+ * `truncated` and refused at launch, never cut silently (audit TG-10).
  */
 import { prisma } from "@/lib/prisma";
-import { isAllowedToReceive } from "@/server/notifications/consent-gate";
 
 import {
   resolveDormantAudience,
-  type AudiencePatient,
-  type AudienceChannelBreakdown,
+  resolveReachable,
   type AudienceResolution,
 } from "./dormant-audience";
 import type { CampaignChannel, CampaignSegment } from "@/server/schemas/campaign";
 
 export type { AudiencePatient, AudienceResolution } from "./dormant-audience";
-
-// Bounded fetch — a single broadcast materialises at most this many sends.
-const MAX_AUDIENCE = 10_000;
-
-type CandidateRow = {
-  id: string;
-  fullName: string;
-  phone: string;
-  telegramId: string | null;
-  preferredLang: "RU" | "UZ";
-  lastVisitAt: Date | null;
-  marketingOptOut: boolean;
-  tgBlockedAt: Date | null;
-};
-
-/**
- * Apply the consent + channel gates to a candidate list and tally the
- * breakdown. Shared by every non-dormant broadcast kind.
- */
-function filterEligible(
-  candidates: CandidateRow[],
-  channel: CampaignChannel,
-): AudienceResolution {
-  const breakdown: AudienceChannelBreakdown = {
-    tgReady: 0,
-    noChannel: 0,
-    optedOut: 0,
-    blocked: 0,
-  };
-  const audience: AudiencePatient[] = [];
-
-  for (const p of candidates) {
-    const consent = isAllowedToReceive(
-      { marketingOptOut: p.marketingOptOut, deletedAt: null },
-      "marketing",
-    );
-    if (!consent.allowed) {
-      if (consent.reason === "opted_out") breakdown.optedOut += 1;
-      continue;
-    }
-
-    const hasTg = (p.telegramId ?? "").length > 0;
-    if (!hasTg) {
-      breakdown.noChannel += 1;
-      continue;
-    }
-    // Blocked the bot — a send would just FAIL with 403, so drop them.
-    if (p.tgBlockedAt) {
-      breakdown.blocked += 1;
-      continue;
-    }
-    if (channel === "TG") breakdown.tgReady += 1;
-
-    audience.push({
-      id: p.id,
-      fullName: p.fullName,
-      phone: p.phone,
-      telegramId: p.telegramId ?? null,
-      preferredLang: p.preferredLang,
-      lastVisitAt: p.lastVisitAt ?? null,
-    });
-  }
-
-  return {
-    patients: audience,
-    total: candidates.length,
-    eligible: audience.length,
-    channelBreakdown: breakdown,
-  };
-}
 
 /**
  * Build the `where` filter for the non-dormant broadcast kinds. `deletedAt`
@@ -136,21 +66,10 @@ export async function resolveAudience(args: {
     });
   }
 
-  const candidates = (await prisma.patient.findMany({
-    where: broadcastWhere(segment),
-    select: {
-      id: true,
-      fullName: true,
-      phone: true,
-      telegramId: true,
-      preferredLang: true,
-      lastVisitAt: true,
-      marketingOptOut: true,
-      tgBlockedAt: true,
-    },
-    orderBy: { lastVisitAt: "desc" },
-    take: MAX_AUDIENCE,
-  })) as CandidateRow[];
-
-  return filterEligible(candidates, channel);
+  // Consent, Telegram and block gates run in SQL before the row limit
+  // (audit TG-10): they used to run in memory over the first 10 000 cards.
+  return resolveReachable(
+    prisma as unknown as Parameters<typeof resolveReachable>[0],
+    broadcastWhere(segment),
+  );
 }

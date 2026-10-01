@@ -108,6 +108,8 @@ export function NewCampaignWizard() {
     name.trim().length >= 2 &&
     !!preview &&
     preview.eligible > 0 &&
+    // The launcher refuses an audience above the per-broadcast limit.
+    !preview.truncated &&
     !submitting;
 
   async function onLaunch() {
@@ -351,6 +353,11 @@ function AudienceCard({
             <Stat label={t("noChannel")} value={preview.channelBreakdown.noChannel} />
             <Stat label={t("optedOut")} value={preview.channelBreakdown.optedOut} />
           </dl>
+          {preview.truncated ? (
+            <p className="text-xs text-destructive">
+              {t("tooLarge", { limit: preview.limit ?? 0 })}
+            </p>
+          ) : null}
           {preview.sample.length > 0 ? (
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

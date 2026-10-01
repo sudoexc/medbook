@@ -99,6 +99,9 @@ export class BullmqQueueAdapter implements QueueAdapter {
     await this.getQueueFor(queueName).add(jobName, data, {
       delay: opts?.delay,
       jobId: opts?.jobId,
+      // Simple-mode deduplication: holds while the job waits or runs and is
+      // released when it completes or fails (audit TG-12).
+      ...(opts?.dedupeId ? { deduplication: { id: opts.dedupeId } } : {}),
     });
   }
 

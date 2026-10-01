@@ -57,7 +57,15 @@ export function isPreVisitEligible(row: {
   if (row.preVisitNotifiedAt !== null) return false;
   if (row.preVisitSubmittedAt !== null) return false;
   if (!row.patientHasContact) return false;
-  if (row.status !== "BOOKED" && row.status !== "WAITING") return false;
+  // CONFIRMED too (audit TG-09): every phone booking is confirmed at
+  // creation, so leaving it out skipped the bulk of the clinic's visits.
+  if (
+    row.status !== "BOOKED" &&
+    row.status !== "CONFIRMED" &&
+    row.status !== "WAITING"
+  ) {
+    return false;
+  }
   // 23–25h window from now.
   const ms = row.startsAt.getTime() - now.getTime();
   const lower = 23 * 60 * 60 * 1000;

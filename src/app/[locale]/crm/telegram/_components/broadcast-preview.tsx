@@ -122,6 +122,12 @@ export function BroadcastPreview({
         />
       </div>
 
+      {preview?.truncated ? (
+        <p className="text-[12px] text-destructive">
+          {t("preview.tooLarge", { limit: preview.limit ?? 0 })}
+        </p>
+      ) : null}
+
       {!resolvable ? (
         <p className="text-[12px] text-muted-foreground">
           {t("preview.pickAudience")}

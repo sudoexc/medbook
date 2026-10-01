@@ -2721,10 +2721,27 @@ model NotificationSend {
   readAt        DateTime?
   failedReason  String?
   externalId    String?
+  /// Failed delivery attempts. A successful send leaves it as is, so a row
+  /// that went out first time reads 0 (audit TG-06).
   retryCount    Int                   @default(0)
   createdAt     DateTime              @default(now())
+  /// Appointment.date this row was written for (appointment-bound rows). The
+  /// send worker's stale-time guard compares it with the appointment's
+  /// current start, so a retry, a backoff or a manual «Повторить» may move
+  /// `scheduledFor` without the reminder being taken for a rescheduled one
+  /// (audit TG-08). Null on rows built before the column existed.
+  appointmentAt DateTime?
+  /// When a worker claimed the row (QUEUED → SENDING). A row left in SENDING
+  /// past the sweep timeout (worker died mid-send) goes back to work
+  /// (audit TG-12).
+  claimedAt     DateTime?
+  /// When the row reached FAILED. «Ошибки сегодня» counts by it: cascade
+  /// reminders are created days before they fail (audit TG-06).
+  failedAt      DateTime?
 
   @@index([clinicId, status, scheduledFor])
+  // The dispatch loop polls «QUEUED and due» across clinics every 5 s.
+  @@index([status, scheduledFor])
   @@index([clinicId, patientId, createdAt])
   @@index([clinicId, campaignId])
   @@index([clinicId, caseId, templateId])

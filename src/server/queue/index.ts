@@ -44,6 +44,12 @@ export type JobHandler<T = unknown> = (data: T) => Promise<void> | void;
 export type EnqueueOptions = {
   delay?: number; // ms
   jobId?: string;
+  /**
+   * While a job enqueued under this key waits or runs, enqueuing another one
+   * under it does nothing (BullMQ `deduplication`). Unlike `jobId`, the key
+   * is free again once the job has finished, failed included.
+   */
+  dedupeId?: string;
 };
 
 export interface QueueAdapter {
@@ -73,6 +79,8 @@ class InMemoryQueueAdapter implements QueueAdapter {
   private handlers = new Map<HandlerKey, JobHandler<unknown>>();
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private intervals = new Set<ReturnType<typeof setInterval>>();
+  /** Dedupe keys of jobs waiting to run: a second enqueue under one is a no-op. */
+  private pendingDedupe = new Set<string>();
 
   async enqueue<T>(
     queueName: string,
@@ -90,8 +98,14 @@ class InMemoryQueueAdapter implements QueueAdapter {
       );
       return;
     }
+    const dedupeKey = opts?.dedupeId ? `${queueName}:${opts.dedupeId}` : null;
+    if (dedupeKey) {
+      if (this.pendingDedupe.has(dedupeKey)) return;
+      this.pendingDedupe.add(dedupeKey);
+    }
     const delay = Math.max(0, opts?.delay ?? 0);
     const run = async () => {
+      if (dedupeKey) this.pendingDedupe.delete(dedupeKey);
       try {
         await handler(data);
       } catch (e) {
@@ -156,6 +170,7 @@ class InMemoryQueueAdapter implements QueueAdapter {
     this.timers.clear();
     this.intervals.clear();
     this.handlers.clear();
+    this.pendingDedupe.clear();
   }
 }
 

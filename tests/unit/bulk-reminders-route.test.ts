@@ -58,15 +58,12 @@ vi.mock("@/server/notifications/triggers", () => ({
   }),
 }));
 
-vi.mock("@/server/queue", () => ({
-  enqueue: vi.fn(async (_q: string, _j: string, data: { sendId: string }) => {
-    state.enqueued.push(data.sendId);
-  }),
-}));
-
+// Audit TG-12: the route hands rows over through `enqueueDelivery`, which
+// carries the per-attempt dedupe key the dispatch loop uses too.
 vi.mock("@/server/workers/notifications-send", () => ({
-  QUEUE_NAME: "notifications:send",
-  JOB_NAME: "deliver",
+  enqueueDelivery: vi.fn(async (send: { id: string }) => {
+    state.enqueued.push(send.id);
+  }),
 }));
 
 beforeEach(() => {

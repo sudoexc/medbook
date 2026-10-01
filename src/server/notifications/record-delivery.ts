@@ -6,7 +6,8 @@
  * round-trips). The kernel collapses both into one transaction:
  *
  *   1. Flip the row to its terminal status (SENT / DELIVERED / FAILED) and
- *      stamp the corresponding timestamps + externalId + retryCount delta.
+ *      stamp the corresponding timestamps + externalId (+ the final
+ *      retryCount and failedAt on failure).
  *   2. Emit the matching envelope (`notification.sent` for SENT/DELIVERED,
  *      `notification.failed` for the terminal failure) via the outbox so the
  *      pumper materialises an AuditLog row (failure only — `notification.failed`
@@ -98,11 +99,13 @@ export async function recordNotificationDelivery(
     if (input.outcome.kind === "sent") {
       await tx.notificationSend.update({
         where: { id: input.send.id },
+        // retryCount counts failed attempts and is left alone here: bumping
+        // it on success made every message that went out first time show
+        // «1 попытка повтора» (audit TG-06).
         data: {
           status: "SENT",
           sentAt: input.outcome.sentAt,
           externalId: input.outcome.externalId,
-          retryCount: { increment: 1 },
         },
       });
     } else if (input.outcome.kind === "delivered") {
@@ -113,7 +116,6 @@ export async function recordNotificationDelivery(
           sentAt: input.outcome.sentAt,
           deliveredAt: input.outcome.deliveredAt,
           externalId: input.outcome.externalId,
-          retryCount: { increment: 1 },
         },
       });
     } else {
@@ -123,6 +125,9 @@ export async function recordNotificationDelivery(
           status: "FAILED",
           failedReason: input.outcome.failedReason.slice(0, 500),
           retryCount: input.outcome.retryCount,
+          // «Ошибки сегодня» counts by this, not by createdAt: a cascade
+          // reminder is created days before it fails (audit TG-06).
+          failedAt: new Date(),
         },
       });
     }

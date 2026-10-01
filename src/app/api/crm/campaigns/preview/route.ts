@@ -33,6 +33,10 @@ export const POST = createApiHandler(
       total: res.total,
       eligible: res.eligible,
       channelBreakdown: res.channelBreakdown,
+      // Audit TG-10: more reachable patients than one broadcast carries;
+      // the launcher refuses, the composer says so before.
+      truncated: res.truncated,
+      limit: res.limit,
       sample,
     });
   },

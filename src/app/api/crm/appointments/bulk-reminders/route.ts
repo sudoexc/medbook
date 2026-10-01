@@ -26,11 +26,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { err, ok } from "@/server/http";
 import { materializeManualReminders } from "@/server/notifications/triggers";
-import { enqueue } from "@/server/queue";
-import {
-  JOB_NAME as SEND_JOB,
-  QUEUE_NAME as SEND_QUEUE,
-} from "@/server/workers/notifications-send";
+import { enqueueDelivery } from "@/server/workers/notifications-send";
 
 const BulkRemindersSchema = z.object({
   appointmentIds: z.array(z.string().min(1)).min(1).max(500),
@@ -61,8 +57,10 @@ export const POST = createApiHandler(
     });
 
     // Only the rows created above: never another row of these appointments.
+    // They are due `now`; the dedupe key matches the one the dispatch loop would
+    // use for them, so the two never queue the same row twice.
     await Promise.all(
-      result.sendIds.map((id) => enqueue(SEND_QUEUE, SEND_JOB, { sendId: id })),
+      result.sendIds.map((id) => enqueueDelivery({ id, scheduledFor: now }, now)),
     );
 
     await audit(request, {

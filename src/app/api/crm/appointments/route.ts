@@ -17,6 +17,7 @@ import { bookAppointment } from "@/server/appointments/book";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { isOnClinicDay } from "@/lib/appointment-transitions";
 import { findStandingAutoNoShows } from "@/server/appointments/auto-no-show";
+import { canEditPrice, priceFieldsIn } from "@/lib/appointments/price-edit";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -201,6 +202,17 @@ export const POST = createApiHandler(
       doctorId = self.id;
     }
 
+    // Audit AP-03 — a typed price, discount or line price overrides the
+    // pricing engine: reception's and the administrator's call. The doctor's
+    // own booking dialog never sends one.
+    const priceFields = priceFieldsIn(body);
+    if (priceFields.length > 0 && !canEditPrice(ctx.role)) {
+      return err("Forbidden", 403, {
+        reason: "role_cannot_edit_price",
+        fields: priceFields,
+      });
+    }
+
     const actorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST";
     const actorUserId = ctx.userId || null;
 
@@ -258,6 +270,10 @@ export const POST = createApiHandler(
           return err("BadStartAt", 400, { reason: "bad_start_at" });
         case "bad_channel":
           return err("BadChannel", 422, { reason: "bad_channel" });
+        case "patient_not_found":
+          return err("PatientInvalid", 422, { reason: "patient_not_found" });
+        case "case_not_found":
+          return err("CaseInvalid", 422, { reason: "case_not_found" });
       }
     }
 

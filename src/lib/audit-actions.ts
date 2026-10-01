@@ -67,6 +67,11 @@ export const AUDIT_ACTION = {
   // after }` queue statuses. One of the two ways a row leaves NO_SHOW (the
   // other is APPOINTMENT_STATUS_REVERTED). Historical lowercase.
   APPOINTMENT_QUEUE_STATUS: "appointment.queue-status",
+  // Audit AP-03 — staff set a visit's price by hand (final price, discount
+  // or a line's price) through PATCH /api/crm/appointments/[id].
+  // `entityType: "Appointment"`; `meta` carries `{ fields, before, after }`
+  // with `priceFinal`, `discountPct`, `discountAmount` on both sides.
+  APPOINTMENT_PRICE_OVERRIDE: "appointment.price_override",
 
   // Phase 13 — Action Center lifecycle. `entityType: "Action"` for all of
   // these. `meta` carries `{ type, payload, oldStatus, newStatus, ... }` plus

@@ -11,27 +11,39 @@
  *   version: string,
  *   uptime: number,      // seconds since this Node process started
  *   checks: {
- *     db:      { status: "ok" | "down" | "timeout", latencyMs?, error? },
+ *     db:      { status: "ok" | "down" | "timeout", latencyMs? },
  *     redis:   { status: "ok" | "not_configured" | "down" | "timeout", … },
  *     minio:   { status: "ok" | "not_configured" | "down" | "timeout", … },
- *     workers: { status: "ok" | "idle", queues?: string[] }
+ *     workers: { status: "ok" | "degraded" | "down" | "not_configured" | "timeout",
+ *                processAgeSec, staleLoops, outbox, notifications }
  *   },
  *   generatedAt: string
  * }
+ *
+ * Workers (audit INF-01): the worker container beats a heartbeat in Redis
+ * (`src/server/observability/worker-heartbeat.ts`). A missing or stopped
+ * process beat is `down`; a late loop, an outbox row undelivered for over a
+ * minute, a dead-lettered event in the last day or a due notification stuck
+ * for half an hour is `degraded`. Either makes the overall status
+ * `degraded` (HTTP 200: the site itself still serves), which the watchdog
+ * (`ops/watchdog.sh`) alerts on. The check used to return `ok` hard-coded.
+ *
+ * The probe is public, so it never returns error text (a DB error message
+ * names hosts and users); details go to the server log.
  */
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { getOpsRedis } from "@/server/observability/worker-heartbeat";
+import { checkWorkerHealth } from "@/server/observability/worker-health";
 
 const CHECK_TIMEOUT_MS = 5_000;
 
 type Check = {
-  status: "ok" | "down" | "not_configured" | "timeout" | "idle";
+  status: "ok" | "down" | "not_configured" | "timeout" | "degraded";
   latencyMs?: number;
-  error?: string;
   details?: string;
-  queues?: string[];
 };
 
 async function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T | "__timeout__"> {
@@ -52,43 +64,32 @@ async function checkDb(): Promise<Check> {
     if (res === "__timeout__") return { status: "timeout" };
     return { status: "ok", latencyMs: Date.now() - started };
   } catch (e) {
-    return {
-      status: "down",
-      latencyMs: Date.now() - started,
-      error: e instanceof Error ? e.message.slice(0, 200) : "unknown",
-    };
+    logCheckError("db", e);
+    return { status: "down", latencyMs: Date.now() - started };
   }
 }
 
+function logCheckError(check: string, e: unknown): void {
+  console.warn(`[health] ${check}: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}`);
+}
+
 async function checkRedis(): Promise<Check> {
-  const url = process.env.REDIS_URL;
-  if (!url) return { status: "not_configured", details: "REDIS_URL unset — in-memory fallback active" };
+  if (!process.env.REDIS_URL) {
+    return { status: "not_configured", details: "REDIS_URL unset — in-memory fallback active" };
+  }
   const started = Date.now();
   try {
-    // Lazy import so tests / dev without ioredis installed don't fail.
-    const mod = (await import("ioredis")) as unknown as {
-      default: new (url: string) => {
-        ping: () => Promise<string>;
-        quit: () => Promise<unknown>;
-        disconnect: () => void;
-      };
-    };
-    const Redis = mod.default;
-    const client = new Redis(url);
-    const res = await withTimeout(() => client.ping(), CHECK_TIMEOUT_MS);
-    try {
-      await client.quit();
-    } catch {
-      client.disconnect();
-    }
+    // One shared connection (audit INF-01): this public probe used to open a
+    // new TCP connection to Redis on every request.
+    const res = await withTimeout(async () => {
+      const client = await getOpsRedis();
+      return client ? client.ping() : "NO_CLIENT";
+    }, CHECK_TIMEOUT_MS);
     if (res === "__timeout__") return { status: "timeout" };
     return { status: res === "PONG" ? "ok" : "down", latencyMs: Date.now() - started };
   } catch (e) {
-    return {
-      status: "down",
-      latencyMs: Date.now() - started,
-      error: e instanceof Error ? e.message.slice(0, 200) : "unknown",
-    };
+    logCheckError("redis", e);
+    return { status: "down", latencyMs: Date.now() - started };
   }
 }
 
@@ -111,25 +112,9 @@ async function checkMinio(): Promise<Check> {
     if (res === "__timeout__") return { status: "timeout" };
     return { status: res ? "ok" : "down", latencyMs: Date.now() - started };
   } catch (e) {
-    return {
-      status: "down",
-      latencyMs: Date.now() - started,
-      error: e instanceof Error ? e.message.slice(0, 200) : "unknown",
-    };
+    logCheckError("minio", e);
+    return { status: "down", latencyMs: Date.now() - started };
   }
-}
-
-function checkWorkers(): Check {
-  // The worker process is a separate container; from the app's POV we can
-  // only verify the queue abstraction has been bootstrapped. If REDIS_URL
-  // is set we're in BullMQ mode — real worker liveness should be checked
-  // via its own /metrics or container healthcheck.
-  const queues = ["notifications:send", "notifications:scheduler", "exports"];
-  return {
-    status: "ok",
-    queues,
-    details: process.env.REDIS_URL ? "bullmq" : "in-memory",
-  };
 }
 
 function pkgVersion(): string {
@@ -137,15 +122,20 @@ function pkgVersion(): string {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const [db, redis, minio] = await Promise.all([checkDb(), checkRedis(), checkMinio()]);
-  const workers = checkWorkers();
+  const [db, redis, minio, workers] = await Promise.all([
+    checkDb(),
+    checkRedis(),
+    checkMinio(),
+    checkWorkerHealth(),
+  ]);
 
-  // Critical checks: db. Redis/minio degrade rather than fail when unset.
+  // Critical checks: db. Redis/minio/workers degrade rather than fail: the
+  // site still serves while the background loops are down.
   const critical = [db];
   const downCritical = critical.some((c) => c.status === "down" || c.status === "timeout");
 
   const anyDown = [db, redis, minio, workers].some(
-    (c) => c.status === "down" || c.status === "timeout",
+    (c) => c.status === "down" || c.status === "timeout" || c.status === "degraded",
   );
   const status: "ok" | "degraded" | "down" = downCritical
     ? "down"

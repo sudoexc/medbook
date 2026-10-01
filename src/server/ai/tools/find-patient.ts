@@ -102,6 +102,7 @@ export const findPatientTool: Tool<FindPatientInput> = {
       ok: true,
       data: { patients: data },
       summary,
+      names: data.map((p) => p.fullName),
       chips: data.map((p) => ({
         kind: "patient" as const,
         label: p.fullName,

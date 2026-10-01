@@ -93,6 +93,8 @@ vi.mock("@/lib/prisma", () => {
         where.id.in.map((id) => ({ id })),
       ),
     },
+    // The booking kernel checks the patient is this clinic's (audit AP-03).
+    patient: { findFirst: vi.fn(async () => ({ id: "p1" })) },
     service: {
       findMany: vi.fn(
         async ({ where }: { where: { id?: { in?: string[] }; clinicId?: string; isActive?: boolean } }) =>

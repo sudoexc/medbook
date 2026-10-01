@@ -22,9 +22,15 @@
  * caller-supplied value.
  */
 
+import { randomUUID } from "node:crypto";
+
 import { getEventBus } from "./event-bus";
 import { clinicChannel } from "./channels";
-import type { EventEnvelope } from "./envelope";
+import {
+  EventEnvelopeSchema,
+  type EventEnvelope,
+  type EventEnvelopeInput,
+} from "./envelope";
 import {
   AppEventSchema,
   type AppEvent,
@@ -123,4 +129,39 @@ export async function broadcastEnvelope(
     await publishEnvelopeToRedis(envelope);
   }
   return { local: true, redis };
+}
+
+/**
+ * Broadcast a v2 envelope without storing it (audit INF-04). For
+ * high-frequency events nobody replays: the doctor's autosave
+ * (`visit-note.draftSaved`, every debounced keystroke) wrote an
+ * `EventOutbox` row each time, which the pumper scanned and nothing ever
+ * deleted, while no surface listens to it. Call it AFTER the mutation
+ * committed, so a rolled-back write announces nothing. Never throws: an
+ * event lost here costs nothing, the data is saved.
+ */
+export function publishEphemeralEnvelope<P = unknown>(
+  input: EventEnvelopeInput<P>,
+): void {
+  try {
+    const envelope = {
+      ...input,
+      eventId: randomUUID(),
+      at: new Date().toISOString(),
+    };
+    const parsed = EventEnvelopeSchema.safeParse(envelope);
+    if (!parsed.success) {
+      console.warn(
+        `[realtime] ephemeral "${String(input.type)}" dropped: ${
+          parsed.error.issues[0]?.message ?? "schema mismatch"
+        }`,
+      );
+      return;
+    }
+    broadcastEnvelope(parsed.data as EventEnvelope).catch((e) => {
+      console.warn(`[realtime] ephemeral broadcast failed: ${(e as Error)?.message ?? e}`);
+    });
+  } catch (e) {
+    console.warn(`[realtime] ephemeral broadcast failed: ${(e as Error)?.message ?? e}`);
+  }
 }

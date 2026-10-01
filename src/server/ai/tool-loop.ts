@@ -21,6 +21,12 @@
  * Token / cost accounting: we sum the per-call values from `LLMResponse` so
  * the API endpoint can audit & display the total spend of the whole
  * exchange, not just the last hop.
+ *
+ * Redaction (audit AC-12): tool summaries go back to the model as text and
+ * name patients and doctors («Первый: Каримова Дилноза»). Every name a tool
+ * returns joins `knownNames` for the following calls, so the proxy swaps
+ * them for `<NAME_N>` before the provider sees them. The loop used to pass
+ * `knownNames: []`, which redacts only phones, passports and e-mails.
  */
 
 import { callLLM, type LLMResponse } from "./llm";
@@ -115,6 +121,8 @@ export async function askAssistant(
   let outputTokens = 0;
   let costUzs = 0;
   let lastText = "";
+  // Names the tools have surfaced so far: never sent to the provider as is.
+  const knownNames = new Set<string>();
 
   const tools = getToolDescriptors();
 
@@ -128,7 +136,7 @@ export async function askAssistant(
       tools,
       temperature: 0.2,
       maxTokens: 1024,
-      knownNames: [],
+      knownNames: Array.from(knownNames),
     });
 
     inputTokens += resp.inputTokens;
@@ -160,6 +168,13 @@ export async function askAssistant(
         const result = await executeTool(call.name, call.input, ctx);
         ok = result.ok;
         summary = result.summary;
+        for (const name of result.names ?? []) {
+          // A placeholder like «—» for a missing name is not a name.
+          const trimmed = name?.trim();
+          if (trimmed && trimmed.length >= 2 && /\p{L}/u.test(trimmed)) {
+            knownNames.add(trimmed);
+          }
+        }
         if (result.chips && result.chips.length > 0) {
           chips.push(...result.chips);
         }

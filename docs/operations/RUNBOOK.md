@@ -274,13 +274,34 @@ docker compose exec -T postgres psql -U medbook -d medbook -tc \
 | Что | Значение |
 |---|---|
 | Крон | `*/5 * * * * cd /opt/neurofax && ./ops/watchdog.sh` |
-| Куда алерты | Telegram, `WATCHDOG_TG_CHAT_ID` в `.env` (бот берётся из `TELEGRAM_BOT_TOKEN`) |
+| Куда алерты | Telegram: `ALERT_TG_TOKEN` (токен бота) и `ALERT_TG_CHAT_ID` в `.env`; старые имена `TELEGRAM_BOT_TOKEN` / `WATCHDOG_TG_CHAT_ID` тоже работают. Без них сторож только пишет лог |
 | Состояние | `/var/lib/medbook-watchdog.state` (`ok` / `bad`) |
 
 Сообщения приходят **только на переходах** состояния: одно при падении, одно
 при восстановлении. Долгая авария не превращается в спам каждые 5 минут.
 Проверяются все подсистемы из health (`db`, `redis`, `minio`, `workers`) — в
 тексте алерта перечислены все упавшие, а не первая попавшаяся.
+
+`workers` в health настоящий (audit INF-01): воркер раз в 30 секунд пишет пульс
+в Redis (хэш `medbook:worker:heartbeats`), каждый периодический цикл пишет свой
+пульс после тика. Нет пульса процесса дольше 2 минут: `workers=down`; цикл
+опоздал на два тика, строка outbox не доставлена дольше минуты, событие ушло в
+DEAD за последние сутки, уведомление висит в QUEUED полчаса после срока:
+`workers=degraded`. Общий статус тогда `degraded` (HTTP 200), сторож шлёт
+алерт. У контейнера `worker` есть healthcheck (файл пульса), его видно в
+`docker compose ps`.
+
+```bash
+curl -s https://neurofax.uz/api/health | jq .checks.workers
+```
+
+Сертификаты (audit INF-03): сторож проверяет сертификат, который nginx отдаёт
+прямо сейчас, для хостов из `WATCHDOG_CERT_HOSTS` (по умолчанию `neurofax.uz`),
+и шлёт алерт, если до конца меньше 14 дней. Продление: certbot после каждого
+обновления запускает deploy hook `ops/certbot/request-nginx-reload.sh`, тот
+кладёт флаг в volume `letsencrypt`; крон `ops/nginx-reload-on-renew.sh` (раз в
+час) делает `nginx -t` и `nginx -s reload`, флаг снимает. Лог:
+`/var/log/medbook-nginx-reload.log`.
 
 Проверить, что сторож жив:
 

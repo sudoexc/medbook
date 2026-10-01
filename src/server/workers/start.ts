@@ -18,7 +18,13 @@
  *   3. Starts the `notifications-scheduler` every minute.
  *   4. Logs + keeps the process alive.
  */
+import { writeFileSync } from "node:fs";
+
 import { registerActionScheduler } from "@/server/actions/scheduler";
+import {
+  resetHeartbeats,
+  startProcessHeartbeat,
+} from "@/server/observability/worker-heartbeat";
 import { registerRevenueSchedulers } from "@/server/revenue/scheduler";
 import { startTgPollingWorkers } from "@/server/telegram/poll";
 import { getQueue } from "@/server/queue";
@@ -31,7 +37,7 @@ import { registerDsarScheduler } from "./data-deletion";
 import { startMedicationReminderWorker } from "./medication-reminder";
 import { startNotificationsSendWorker } from "./notifications-send";
 import { startNotificationsSchedulerWorker } from "./notifications-scheduler";
-import { startOutboxPumperWorker } from "./outbox-pumper";
+import { startOutboxPumperWorker, startOutboxRetentionWorker } from "./outbox-pumper";
 import { startPatientSummaryRefreshWorker } from "./patient-summary-refresh";
 import { startPatientSegmentsWorker } from "./patient-segments";
 import { startPostVisitNpsWorker } from "./post-visit-nps";
@@ -44,6 +50,14 @@ import { startVoiceSoapWorker } from "./voice-soap";
 
 async function main() {
   console.info("[workers] starting…");
+  // Audit INF-01 — liveness for /api/health and the container healthcheck.
+  // The recorded loops are cleared first, so a loop that no longer exists
+  // in this build cannot linger as forever late; every loop registered
+  // below beats again on registration and after each tick.
+  await resetHeartbeats();
+  const processHeartbeat = startProcessHeartbeat((path, data) =>
+    writeFileSync(path, data),
+  );
   startNotificationsSendWorker();
   const scheduler = startNotificationsSchedulerWorker(60_000);
 
@@ -57,6 +71,9 @@ async function main() {
   // FOR UPDATE SKIP LOCKED so multiple worker replicas don't double-deliver.
   // See `docs/TZ-cross-surface-sync.md` §5.
   const outboxPumper = startOutboxPumperWorker(200);
+  // Audit INF-04 — hourly retention: DELIVERED rows go after 7 days, DEAD
+  // after 30. Without it every event (and its patient data) stayed forever.
+  const outboxRetention = startOutboxRetentionWorker();
   // Phase 9e — flip TRIAL→PAST_DUE for clinics whose 30-day trial elapsed.
   // Same 60s cadence as the notifications scheduler: cheap query, idempotent.
   const trialExpiry = startTrialExpirySchedulerWorker(60_000);
@@ -190,6 +207,8 @@ async function main() {
     scheduler.stop();
     staffMessages.stop();
     outboxPumper.stop();
+    outboxRetention.stop();
+    processHeartbeat.stop();
     trialExpiry.stop();
     lifecycleSweep.stop();
     patientSegments.stop();

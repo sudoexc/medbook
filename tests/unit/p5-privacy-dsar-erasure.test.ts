@@ -83,6 +83,7 @@ vi.mock("@/lib/prisma", () => {
         updateMany: rec("message", "updateMany"),
       },
       patientClinicalNote: { deleteMany: rec("patientClinicalNote", "deleteMany") },
+      eventOutbox: { deleteMany: rec("eventOutbox", "deleteMany") },
       reminder: { deleteMany: rec("reminder", "deleteMany") },
       lead: { updateMany: rec("lead", "updateMany") },
       onlineRequest: { updateMany: rec("onlineRequest", "updateMany") },
@@ -347,6 +348,21 @@ describe("chat attachments and reminders", () => {
     await executeDeletionJob("job_1");
     expect(callsOf("reminder")).toEqual([
       { model: "reminder", op: "deleteMany", args: { where: { patientId: "p1" } } },
+    ]);
+  });
+
+  // Audit INF-04: an event envelope names the patient («пришёл» carries his
+  // full name) and stays in the outbox up to a week for the SSE replay.
+  it("the realtime events about the patient leave the outbox, in his clinic only", async () => {
+    await executeDeletionJob("job_1");
+    const calls = callsOf("eventOutbox");
+    expect(calls).toHaveLength(1);
+    const where = calls[0]!.args.where as { clinicId: string; OR: unknown[] };
+    expect(where.clinicId).toBe(state.job!.clinicId);
+    expect(where.OR).toEqual([
+      { envelope: { path: ["tenantScope", "patientId"], equals: "p1" } },
+      { envelope: { path: ["actor", "patientId"], equals: "p1" } },
+      { envelope: { path: ["actor", "onBehalfOfPatientId"], equals: "p1" } },
     ]);
   });
 });

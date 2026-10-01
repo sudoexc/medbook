@@ -179,6 +179,20 @@ async function scrubPatientPhiCarriers(
       contactUsername: null,
     },
   });
+  // Realtime events about him (audit INF-04): an envelope carries his full
+  // name («пришёл», a booking), and delivered rows stay up to a week for
+  // the SSE replay. Undelivered ones go too; an event about an erased
+  // patient has nobody left to inform.
+  await prisma.eventOutbox.deleteMany({
+    where: {
+      clinicId,
+      OR: [
+        { envelope: { path: ["tenantScope", "patientId"], equals: patientId } },
+        { envelope: { path: ["actor", "patientId"], equals: patientId } },
+        { envelope: { path: ["actor", "onBehalfOfPatientId"], equals: patientId } },
+      ],
+    },
+  });
   // The doctor's clinical note (audit PT-11) is free text about the person.
   await prisma.patientClinicalNote.deleteMany({ where: { patientId } });
   // So is a doctor's reminder about him («Позвонить Иванову по МРТ»): the

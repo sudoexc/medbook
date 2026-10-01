@@ -219,7 +219,9 @@ export type BookResult =
         | "outside_schedule"
         | "in_past"
         | "bad_start_at"
-        | "bad_channel";
+        | "bad_channel"
+        | "patient_not_found"
+        | "case_not_found";
       until?: string;
     };
 
@@ -260,6 +262,29 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
   if (!doctor.isActive) return { ok: false, reason: "doctor_inactive" };
   if (!doctor.cabinet?.isActive) return { ok: false, reason: "cabinet_inactive" };
   const cabinetId = doctor.cabinetId;
+
+  // Audit AP-03 — the ids come from the client. The tenant scope filters
+  // reads, not the foreign keys written here: a patient of another clinic
+  // was booked as is (and his card then read back through the visit), and
+  // any case id was attached, making the visit a free repeat on somebody
+  // else's treatment. The patient must be this clinic's, the case this
+  // patient's.
+  const patient = await prisma.patient.findFirst({
+    where: { id: input.patientId, clinicId: input.clinicId },
+    select: { id: true },
+  });
+  if (!patient) return { ok: false, reason: "patient_not_found" };
+  if (input.medicalCaseId) {
+    const medicalCase = await prisma.medicalCase.findFirst({
+      where: {
+        id: input.medicalCaseId,
+        clinicId: input.clinicId,
+        patientId: input.patientId,
+      },
+      select: { id: true },
+    });
+    if (!medicalCase) return { ok: false, reason: "case_not_found" };
+  }
 
   // Service catalog — used for duration + base price snapshot.
   const serviceLines = input.services ?? [];

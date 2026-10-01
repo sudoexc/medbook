@@ -1,11 +1,19 @@
 # MedBook / NeuroFax — recommended host crontab.
 # Install with: `crontab ops/crontab.example` (on the deploy host, as the
-# user that owns the repo checkout).
+# user that owns the repo checkout), or merge the lines into the existing
+# root crontab (`crontab -l` first: neighbours on this host have theirs).
 #
-# The docker-compose `certbot` sidecar handles renewal, so we only need
-# the nightly database backup here.
+# The docker-compose `certbot` sidecar renews certificates; nginx picks a
+# renewed one up only on reload, which the hourly line below does when the
+# certbot deploy hook asked for it (audit INF-03).
 
 MAILTO=""
 
-# Nightly Postgres backup → MinIO, 03:00 UTC.
-0 3 * * * cd /opt/medbook && ./ops/backup.sh >> /var/log/medbook-backup.log 2>&1
+# Nightly Postgres backup → MinIO, 03:15 UTC.
+15 3 * * * cd /opt/neurofax && ./ops/backup.sh >> /var/log/medbook-backup.log 2>&1
+
+# Health watchdog: /api/health (workers included) + TLS expiry, every 5 min.
+*/5 * * * * cd /opt/neurofax && ./ops/watchdog.sh >> /var/log/medbook-watchdog.log 2>&1
+
+# Reload nginx after certbot renewed a certificate (no-op otherwise).
+23 * * * * cd /opt/neurofax && ./ops/nginx-reload-on-renew.sh >> /var/log/medbook-nginx-reload.log 2>&1

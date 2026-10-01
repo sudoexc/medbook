@@ -13,6 +13,20 @@ export const CHANNELS = [
 
 export type ChannelType = (typeof CHANNELS)[number];
 
+/**
+ * The booking channel a chat implies (audit G6-02). «Записать» in a
+ * Telegram conversation opened the dialog on PHONE, so the visit counted as
+ * a phone booking in the channel reports and, PHONE being an auto-confirm
+ * channel, came out confirmed although the patient confirmed nothing. A
+ * TELEGRAM booking stays unconfirmed and gets the confirmation request.
+ * Undefined keeps the dialog's default.
+ */
+export function bookingChannelForConversation(
+  channel: string | null | undefined,
+): ChannelType | undefined {
+  return channel === "TG" ? "TELEGRAM" : undefined;
+}
+
 export const SOURCES = [
   "WEBSITE",
   "TELEGRAM",

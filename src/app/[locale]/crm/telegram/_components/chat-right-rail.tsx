@@ -47,6 +47,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
+import { bookingChannelForConversation } from "@/components/appointments/new-appointment-dialog/types";
 import {
   PhoneOwnerMismatchError,
   PhoneOwnerPrompt,
@@ -300,10 +301,14 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
         conversation={conversation}
       />
 
+      {/* The rail's «Записать» and the composer's quick action both open
+          this dialog: a booking made from the chat is a Telegram booking,
+          not a phone one, and is not auto-confirmed (audit G6-02). */}
       <NewAppointmentDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         patientId={patientId}
+        initialChannel={bookingChannelForConversation(conversation.channel)}
         onCreated={() => {
           setDialogOpen(false);
           toast.success(t("appointmentCreated"));

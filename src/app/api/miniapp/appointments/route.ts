@@ -223,6 +223,11 @@ export const POST = createMiniAppHandler(
           // Unreachable from this route (channel is hardcoded TELEGRAM) —
           // kept for switch exhaustiveness over BookResult.
           return err("bad_channel", 422);
+        case "patient_not_found":
+        case "case_not_found":
+          // The acting patient comes from the session and no case id is
+          // passed, so neither is expected here (audit AP-03 kernel check).
+          return err(result.reason, 422);
       }
     }
 

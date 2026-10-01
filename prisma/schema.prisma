@@ -2947,6 +2947,10 @@ model EventOutbox {
 
   // Pumper poll — narrow PENDING rows per clinic by createdAt.
   @@index([clinicId, status, createdAt])
+  // The pumper polls every clinic at once (no clinicId in its WHERE), and the
+  // retention sweep deletes by status and age: both need status first, or
+  // every 200 ms tick reads the whole table (audit INF-04).
+  @@index([status, createdAt])
   // Replay cursor — `/api/events?since=<eventId>` reads DELIVERED rows after
   // the cursor's createdAt.
   @@index([clinicId, createdAt])

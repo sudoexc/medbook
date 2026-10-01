@@ -35,6 +35,8 @@ import Redis from "ioredis";
 import type { Redis as RedisClient } from "ioredis";
 import { Queue, Worker, type Job } from "bullmq";
 
+import { recordHeartbeat } from "@/server/observability/worker-heartbeat";
+
 import type { EnqueueOptions, JobHandler, QueueAdapter } from "./index";
 
 // Bound Redis growth: keep the last N terminal jobs for debugging, drop the
@@ -62,6 +64,9 @@ export class BullmqQueueAdapter implements QueueAdapter {
   private readonly queues = new Map<string, Queue>();
   private readonly workers = new Map<string, Worker>();
   private readonly handlers = new Map<HandlerKey, JobHandler<unknown>>();
+  // Cadence of every repeating job this process scheduled, so the worker can
+  // beat its heartbeat after each tick (audit INF-01).
+  private readonly repeatEvery = new Map<HandlerKey, number>();
 
   constructor() {
     this.queueConnection = this.makeConnection();
@@ -116,7 +121,8 @@ export class BullmqQueueAdapter implements QueueAdapter {
     const worker = new Worker(
       bullQueueName(queueName),
       async (job: Job) => {
-        const h = this.handlers.get(`${queueName}:${job.name}` as HandlerKey);
+        const jobKey = `${queueName}:${job.name}` as HandlerKey;
+        const h = this.handlers.get(jobKey);
         if (!h) {
           console.warn(
             `[queue:bullmq] ${queueName}:${job.name} fired but no handler`,
@@ -124,6 +130,8 @@ export class BullmqQueueAdapter implements QueueAdapter {
           return;
         }
         await h(job.data);
+        const every = this.repeatEvery.get(jobKey);
+        if (every !== undefined) recordHeartbeat(jobKey, every);
       },
       { connection },
     );
@@ -142,6 +150,10 @@ export class BullmqQueueAdapter implements QueueAdapter {
     data: T,
     intervalMs: number,
   ): { stop: () => void } {
+    const key = `${queueName}:${jobName}` as HandlerKey;
+    this.repeatEvery.set(key, intervalMs);
+    // Registered now: a loop whose first tick never comes still goes stale.
+    recordHeartbeat(key, intervalMs);
     void this.getQueueFor(queueName)
       .upsertJobScheduler(
         jobName,
@@ -176,6 +188,7 @@ export class BullmqQueueAdapter implements QueueAdapter {
     this.workers.clear();
     this.queues.clear();
     this.handlers.clear();
+    this.repeatEvery.clear();
     this.workerConnections.length = 0;
   }
 }

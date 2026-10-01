@@ -108,6 +108,8 @@ vi.mock("@/lib/prisma", () => ({
         cabinet: { isActive: true },
       })),
     },
+    // The booking kernel checks the patient is this clinic's (audit AP-03).
+    patient: { findFirst: vi.fn(async () => ({ id: "p1" })) },
     service: {
       findUnique: vi.fn(async () => null),
       findMany: vi.fn(async () => []),

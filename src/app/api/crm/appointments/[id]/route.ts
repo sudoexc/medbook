@@ -61,6 +61,7 @@ import {
 } from "@/server/visit-notes/revisions";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 import { recordRescheduleOutcome } from "@/server/actions/risk-outcome";
+import { canEditPrice, priceFieldsIn } from "@/lib/appointments/price-edit";
 import {
   loadDoctorMoveTerms,
   loadDoctorServiceTerms,
@@ -202,6 +203,18 @@ export const PATCH = createApiHandler(
       before.doctor.userId !== ctx.userId
     ) {
       return forbidden();
+    }
+
+    // Audit AP-03 — overriding the price (final price, discount, a line's
+    // price) is the front desk's and the administrator's call; a doctor's
+    // own PATCH could zero his visit's bill. The patient and the case are
+    // refused by the schema (400); a queue move without a status too.
+    const priceFields = priceFieldsIn(body);
+    if (priceFields.length > 0 && ctx.kind === "TENANT" && !canEditPrice(ctx.role)) {
+      return err("Forbidden", 403, {
+        reason: "role_cannot_edit_price",
+        fields: priceFields,
+      });
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -869,14 +882,14 @@ export const PATCH = createApiHandler(
     delete (data as { services?: unknown }).services;
 
     // Recompute pricing whenever any input that could affect free-repeat
-    // changed: date moved, the service set was edited, the medical-case
-    // attachment shifted, or visit-level discount fields were touched. We
-    // call the helper inside the same tx so the row never observes a
-    // transient inconsistent state.
+    // changed: date moved, the service set was edited, or visit-level
+    // discount fields were touched. We call the helper inside the same tx so
+    // the row never observes a transient inconsistent state. (The case
+    // attachment changes only through attach/detach since AP-03, which
+    // reprice on their own.)
     const recomputeNeeded =
       timeChanged ||
       services !== undefined ||
-      body.medicalCaseId !== undefined ||
       body.serviceId !== undefined ||
       discountChanged;
     // A change to the visit's own services is staff asking to bill something
@@ -897,16 +910,10 @@ export const PATCH = createApiHandler(
       (body.status === "CANCELLED" || body.status === "NO_SHOW") &&
       before.status !== body.status;
     // Date changes can flip the chronological order of the case, so every
-    // sibling needs re-pricing too. Same for moving an appointment between
-    // cases via PATCH (the dedicated attach/detach routes handle that case
-    // for themselves; this branch covers callers who use PATCH directly).
-    const caseChanged =
-      body.medicalCaseId !== undefined &&
-      body.medicalCaseId !== before.medicalCaseId;
+    // sibling needs re-pricing too.
     const siblingRepriceNeeded =
       statusKillsVisit ||
-      (timeChanged && before.medicalCaseId !== null) ||
-      caseChanged;
+      (timeChanged && before.medicalCaseId !== null);
 
     const patchCorrelationId = newCorrelationId();
     const runPatchTx = <T,>(fn: (tx: TxClient) => Promise<T>): Promise<T> =>
@@ -968,17 +975,9 @@ export const PATCH = createApiHandler(
         ? await recomputeAppointmentPrice(tx, id, { servicesEdited })
         : null;
       // Now repropagate to every sibling whose "first vs repeat" answer
-      // could have flipped from this single change. Cover both old and new
-      // cases when the appointment moved between cases.
-      if (siblingRepriceNeeded) {
-        const targetCases = new Set<string>();
-        if (updated.medicalCaseId) targetCases.add(updated.medicalCaseId);
-        if (caseChanged && before.medicalCaseId) {
-          targetCases.add(before.medicalCaseId);
-        }
-        for (const cid of targetCases) {
-          await recomputeCaseAppointments(tx, cid);
-        }
+      // could have flipped from this single change.
+      if (siblingRepriceNeeded && updated.medicalCaseId) {
+        await recomputeCaseAppointments(tx, updated.medicalCaseId);
       }
       // Re-read so the response reflects price fields that recompute may
       // have rewritten.
@@ -1056,6 +1055,28 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    // Audit AP-03 — a hand-set price gets its own row, findable without
+    // reading every update diff: who overrode what, from what, to what.
+    if (priceFields.length > 0) {
+      await audit(request, {
+        action: AUDIT_ACTION.APPOINTMENT_PRICE_OVERRIDE,
+        entityType: "Appointment",
+        entityId: id,
+        meta: {
+          fields: priceFields,
+          before: {
+            priceFinal: before.priceFinal,
+            discountPct: before.discountPct,
+            discountAmount: before.discountAmount,
+          },
+          after: {
+            priceFinal: after.priceFinal,
+            discountPct: after.discountPct,
+            discountAmount: after.discountAmount,
+          },
+        },
+      });
+    }
     // Phase 11 — high-signal reschedule audit. Emit a dedicated
     // APPOINTMENT_RESCHEDULED row whenever any of the slot-defining fields
     // (start time, end time, doctor, cabinet) actually changed. Status-only

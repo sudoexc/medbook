@@ -37,6 +37,8 @@
  *  - retries are the worker's responsibility (see `notifications-send.ts`)
  */
 
+import { recordHeartbeat } from "@/server/observability/worker-heartbeat";
+
 import { BullmqQueueAdapter } from "./bullmq-adapter";
 
 export type JobHandler<T = unknown> = (data: T) => Promise<void> | void;
@@ -126,12 +128,16 @@ class InMemoryQueueAdapter implements QueueAdapter {
     intervalMs: number,
   ): { stop: () => void } {
     const key = `${queueName}:${jobName}` as HandlerKey;
+    // Liveness (audit INF-01): the loop beats once on registration and after
+    // every tick that returns, so /api/health sees a loop that stopped.
+    recordHeartbeat(key, intervalMs);
     const timer = setInterval(() => {
       const handler = this.handlers.get(key);
       if (!handler) return;
       void (async () => {
         try {
           await handler(data);
+          recordHeartbeat(key, intervalMs);
         } catch (e) {
           console.error(`[queue] repeat ${queueName}:${jobName} failed`, e);
         }

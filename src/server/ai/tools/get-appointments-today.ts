@@ -120,6 +120,7 @@ export const getAppointmentsTodayTool: Tool<GetAppointmentsTodayInput> = {
       ok: true,
       data: { appointments: data, totalToday },
       summary,
+      names: data.flatMap((a) => [a.patientName, a.doctorName]),
       chips: data.slice(0, 5).map((a) => ({
         kind: "appointment" as const,
         label: `${a.time} · ${a.patientName}`,

@@ -117,6 +117,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Audit INF-01: the worker touches this file every 30s
+    # (src/server/observability/worker-heartbeat.ts). Older than 2 min means
+    # the process or its event loop is stuck; `docker compose ps` shows it.
+    # /api/health judges each loop on its own from the Redis heartbeats.
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('fs').statSync('/tmp/medbook-worker.heartbeat');process.exit(Date.now()-s.mtimeMs<120000?0:1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   nginx:
     image: nginx:alpine
@@ -138,7 +148,15 @@ services:
     volumes:
       - letsencrypt:/etc/letsencrypt
       - ./nginx/www:/var/www/certbot
-    # Renewal loop: try every 12h; reload nginx on success.
+      # Audit INF-03: certbot runs every executable in renewal-hooks/deploy
+      # after each certificate it renews (the loop below and a manual
+      # `certbot renew` alike). The hook only drops a flag in the shared
+      # volume: this container has no Docker access. The host cron
+      # (ops/nginx-reload-on-renew.sh, ops/crontab.example) sees the flag and
+      # reloads nginx, which otherwise kept serving the old certificate from
+      # memory until the next deploy happened to reload it.
+      - ./ops/certbot/request-nginx-reload.sh:/etc/letsencrypt/renewal-hooks/deploy/medbook-request-nginx-reload.sh:ro
+    # Renewal loop: try every 12h; the deploy hook above asks for the reload.
     entrypoint: >
       /bin/sh -c 'trap exit TERM;
         while :; do

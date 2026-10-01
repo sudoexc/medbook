@@ -72,6 +72,7 @@ vi.mock("@/server/notifications/template", () => ({ render: () => "text" }));
 vi.mock("@/lib/patient-experience/medication-schedule", () => ({
   parseSchedule: () => ({ times: ["09:00"] }),
   isPrescriptionDueInWindow: () => ({ dueAt: new Date("2026-09-28T04:00:00Z") }),
+  isCourseFinished: () => false,
 }));
 vi.mock("@/lib/prisma", () => {
   type Where = {

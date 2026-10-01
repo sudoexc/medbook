@@ -11,11 +11,16 @@ import { ok, err, forbidden, notFound } from "@/server/http";
 import { ReceptionAiInputSchema } from "@/server/schemas/reception-ai";
 import { generateClarifyingQuestions } from "@/server/ai/reception-clarifying";
 
+import { aiDisabledResponse, isAiEnabled } from "@/server/ai/availability";
+
 import { loadReceptionAiContext } from "../_lib/reception-context";
 
 export const POST = createApiHandler(
   { roles: ["DOCTOR"], bodySchema: ReceptionAiInputSchema },
   async ({ body, ctx }) => {
+    // AI paused (audit AC-12): refused before any context is loaded or a
+    // model called.
+    if (!isAiEnabled()) return aiDisabledResponse();
     if (ctx.kind !== "TENANT") return forbidden();
     const loaded = await loadReceptionAiContext(body.noteId, ctx.userId);
     if (!loaded.ok) {

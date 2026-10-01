@@ -25,14 +25,21 @@
  * so the call is still owed to them; the row surfaces at its time as before
  * and leaves through its own expiry.
  *
+ * The same goes for a Mini App check-in nobody answered
+ * (SELF_CHECK_IN_UNHANDLED, review of G3-01): «Пришёл», «Не пришёл» or a
+ * cancel settles it. So does a move to another day, which drops the check-in
+ * (`checkInResetOnMove`): reception has decided, and a fresh tap on the new
+ * day raises a new task.
+ *
  * Caller MUST be inside `runWithTenant(...)` (the engine is).
  */
 import {
-  RISK_ACTION_TYPES,
   RISK_TODAY_APPOINTMENT_STATUSES,
-  riskDedupeKeysOf,
+  VISIT_BOUND_ACTION_TYPES,
+  visitBoundDedupeKeysOf,
   type ActionPayload,
 } from "@/lib/actions/types";
+import { checkedInOnVisitDay } from "@/lib/appointments/self-check-in";
 import type { TenantScopedPrisma } from "@/lib/prisma";
 
 import { holdsPromisedCall, retireActions } from "./repository";
@@ -48,6 +55,13 @@ const EXPECTED: ReadonlySet<string> = new Set(RISK_TODAY_APPOINTMENT_STATUSES);
 
 /** The visit is over and the patient did not come to it. */
 const NOT_ATTENDED: ReadonlySet<string> = new Set(["CANCELLED", "NO_SHOW"]);
+
+/**
+ * What the retire knows of a visit: its status, and whether it still carries
+ * a check-in for its own day (unknown on the single-visit path, which only
+ * sees a status change).
+ */
+type VisitState = { status: string; checkedIn?: boolean };
 
 type LiveRiskRow = {
   id: string;
@@ -80,13 +94,21 @@ function apptIdOf(p: ActionPayload | null): string | null {
  */
 function mootRows(
   live: LiveRiskRow[],
-  statusOf: ReadonlyMap<string, string>,
+  visitOf: ReadonlyMap<string, VisitState>,
 ): Array<LiveRiskRow & { reason: string }> {
   const moot = [];
   for (const row of live) {
     const apptId = apptIdOf(row.payload);
-    const status = apptId ? statusOf.get(apptId) : undefined;
-    if (status === undefined || EXPECTED.has(status)) continue;
+    const visit = apptId ? visitOf.get(apptId) : undefined;
+    if (visit === undefined) continue;
+    const { status } = visit;
+    if (EXPECTED.has(status)) {
+      // Still a booking, but moved off the day of the check-in.
+      if (row.type === "SELF_CHECK_IN_UNHANDLED" && visit.checkedIn === false) {
+        moot.push({ ...row, reason: "check_in_cleared" });
+      }
+      continue;
+    }
     // Only a snoozed row still holds its promise; an OPEN row's outcome is a
     // leftover of an earlier occurrence.
     if (holdsPromisedCall(row) && NOT_ATTENDED.has(status)) continue;
@@ -102,7 +124,7 @@ export async function retireMootRiskActions(
   const live = (await prisma.action.findMany({
     where: {
       clinicId,
-      type: { in: [...RISK_ACTION_TYPES] },
+      type: { in: [...VISIT_BOUND_ACTION_TYPES] },
       status: { in: ["OPEN", "SNOOZED"] },
     },
     select: LIVE_RISK_SELECT,
@@ -114,11 +136,13 @@ export async function retireMootRiskActions(
 
   const appts = (await prisma.appointment.findMany({
     where: { id: { in: apptIds } },
-    select: { id: true, status: true },
-  })) as Array<{ id: string; status: string }>;
-  const statusOf = new Map(appts.map((a) => [a.id, a.status]));
+    select: { id: true, status: true, date: true, arrivedAt: true },
+  })) as Array<{ id: string; status: string; date: Date; arrivedAt: Date | null }>;
+  const visitOf = new Map<string, VisitState>(
+    appts.map((a) => [a.id, { status: a.status, checkedIn: checkedInOnVisitDay(a) }]),
+  );
 
-  return retireActions(prisma, clinicId, mootRows(live, statusOf), "visit_not_ahead");
+  return retireActions(prisma, clinicId, mootRows(live, visitOf), "visit_not_ahead");
 }
 
 /**
@@ -139,17 +163,17 @@ export async function retireVisitRiskActions(
     const live = (await prisma.action.findMany({
       where: {
         clinicId,
-        dedupeKey: { in: riskDedupeKeysOf(appointmentId) },
+        dedupeKey: { in: visitBoundDedupeKeysOf(appointmentId) },
         status: { in: ["OPEN", "SNOOZED"] },
       },
       select: LIVE_RISK_SELECT,
     })) as LiveRiskRow[];
     if (live.length === 0) return 0;
-    const statusOf = new Map([[appointmentId, status]]);
+    const visitOf = new Map<string, VisitState>([[appointmentId, { status }]]);
     return await retireActions(
       prisma,
       clinicId,
-      mootRows(live, statusOf),
+      mootRows(live, visitOf),
       "visit_not_ahead",
     );
   } catch (e) {

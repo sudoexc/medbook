@@ -9,7 +9,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * «Отметился в приложении · 14:05» (audit G3-01): the patient pressed «Я на
- * месте» in the Mini App and the desk has not marked him «Пришёл» yet. Shown
+ * месте» in the Mini App on the visit's day and the desk has not marked him
+ * «Пришёл» yet. Shown
  * on every reception list and on the appointment card until then; renders
  * nothing for any other row, so callers can drop it in unconditionally.
  */
@@ -19,6 +20,8 @@ export function SelfCheckInBadge({
 }: {
   row: {
     arrivedAt?: string | Date | null;
+    /** The visit's start: a check-in counts only on its own clinic day. */
+    date: string | Date;
     status: string;
     queueStatus?: string | null;
   };

@@ -169,12 +169,22 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     callbackAt: "2026-05-10T04:00:00.000Z",
     note: "после командировки",
   },
+  // Audit G3-01 (review) — a Mini App check-in nobody answered.
+  SELF_CHECK_IN_UNHANDLED: {
+    type: "SELF_CHECK_IN_UNHANDLED",
+    appointmentId: "apt_11",
+    patientId: "p_11",
+    patientName: "Рахимов Бекзод",
+    doctorName: "Султанов А.",
+    appointmentAt: "2026-05-07T09:00:00.000Z",
+    arrivedAt: "2026-05-07T08:52:00.000Z",
+  },
 };
 
 describe("ACTION_TYPES surface", () => {
-  it("ACTION_TYPES has exactly 16 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6 + MA-04 + AC-04 + AC-09)", () => {
-    expect(ACTION_TYPES.length).toBe(16);
-    expect(new Set(ACTION_TYPES).size).toBe(16);
+  it("ACTION_TYPES has exactly 17 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6 + MA-04 + AC-04 + AC-09 + G3-01)", () => {
+    expect(ACTION_TYPES.length).toBe(17);
+    expect(new Set(ACTION_TYPES).size).toBe(17);
   });
 
   it("ACTION_SEVERITIES + ACTION_STATUSES are non-empty and unique", () => {
@@ -281,6 +291,11 @@ describe("dedupeKeyFor", () => {
         "PATIENT_CALLBACK",
         SAMPLE_PAYLOADS.PATIENT_CALLBACK,
         { ...SAMPLE_PAYLOADS.PATIENT_CALLBACK, appointmentId: "apt_98" },
+      ],
+      [
+        "SELF_CHECK_IN_UNHANDLED",
+        SAMPLE_PAYLOADS.SELF_CHECK_IN_UNHANDLED,
+        { ...SAMPLE_PAYLOADS.SELF_CHECK_IN_UNHANDLED, appointmentId: "apt_97" },
       ],
     ];
     for (const [, a, b] of variants) {
@@ -408,6 +423,8 @@ describe("compile-time discriminated-union narrowing", () => {
         case "NO_CONTACT_CALL":
           return p.patientName;
         case "PATIENT_CALLBACK":
+          return p.patientName;
+        case "SELF_CHECK_IN_UNHANDLED":
           return p.patientName;
         default: {
           const _exhaustive: never = p;

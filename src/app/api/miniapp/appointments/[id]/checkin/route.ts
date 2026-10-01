@@ -27,6 +27,7 @@ import {
   publishViaOutbox,
 } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
+import { checkedInOnVisitDay } from "@/lib/appointments/self-check-in";
 
 const CHECKINABLE = new Set(["BOOKED", "CONFIRMED"]);
 
@@ -66,8 +67,11 @@ export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
     return err("not_checkinable", 409, { reason: "not_checkinable" });
   }
   // Idempotent: re-entering the Mini App resets client state, so a second
-  // tap must not spam the desk with another patient.arrived toast.
-  if (appt.arrivedAt) return ok({ ok: true, already: true });
+  // tap must not spam the desk with another patient.arrived toast. Only a
+  // check-in made on this visit's own day counts: a stamp left over from the
+  // day the visit was moved off is replaced, so the real tap still reaches
+  // the desk (review of G3-01).
+  if (checkedInOnVisitDay(appt)) return ok({ ok: true, already: true });
 
   // "Today" = the clinic's Tashkent day — server-local midnight is 05:00
   // Tashkent on the UTC prod box and would reject valid same-day check-ins.
@@ -103,10 +107,11 @@ export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
       time,
     },
   };
-  // Atomic claim: only the request that flips arrivedAt from null publishes,
-  // so two simultaneous taps still yield exactly one desk toast.
+  // Atomic claim: only the request that flips arrivedAt from what was read
+  // (null, or a stale stamp) publishes, so two simultaneous taps still yield
+  // exactly one desk toast.
   const claimed = await prisma.appointment.updateMany({
-    where: { id: appt.id, arrivedAt: null },
+    where: { id: appt.id, arrivedAt: appt.arrivedAt },
     data: { arrivedAt: new Date() },
   });
   if (claimed.count === 0) return ok({ ok: true, already: true });

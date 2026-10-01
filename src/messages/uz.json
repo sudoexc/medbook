@@ -5573,6 +5573,11 @@
         "label": "Bemorga qayta qo'ng'iroq",
         "title": "{reason, select, RETURN_LATER {{patientName}: qo'ng'iroq qiling, keyinroq kelmoqchi edi} other {{patientName}: kelishilganidek qayta qo'ng'iroq qiling}}",
         "body": "{hasNote, select, yes {«{note}». } other {}}{reason, select, RETURN_LATER {{slotDate} {slotTime} dagi yozuv bemor iltimosi bilan bekor qilindi. Qo'ng'iroq qilib, qulay kunga yozing.} other {{slotDate} {slotTime} dagi yozuv bo'yicha qo'ng'iroq. Shifokor: {doctorName}.}}"
+      },
+      "SELF_CHECK_IN_UNHANDLED": {
+        "label": "Belgi qo'ydi, lekin qabul qilinmadi",
+        "title": "{patientName}: ilovada {arrivedTime} da belgi qo'ydi, lekin «Keldi» belgilanmagan",
+        "body": "Yozuv {slotDate} {slotTime}, shifokor {doctorName}. Bemor «Men keldim» tugmasini bosdi, lekin navbatga qo'yilmadi, shuning uchun yozuv kelmadi deb belgilanmadi. Nima bo'lganini aniqlang va yozuvni yoping: «Keldi», «Kelmadi» yoki ko'chirish."
       }
     },
     "dashboard": {

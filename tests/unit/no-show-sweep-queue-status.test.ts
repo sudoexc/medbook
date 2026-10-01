@@ -14,7 +14,7 @@
  * no no-show message. (queue-status refusing to revive a row whose `status`
  * is already terminal is pinned in queue-status-visit-day.test.ts.)
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = {
   id: string;
@@ -32,6 +32,8 @@ type Row = {
   queuedAt: Date | null;
   medicalCaseId?: string | null;
   arrivedAt?: Date | null;
+  patient?: { fullName: string };
+  doctor?: { nameRu: string };
 };
 
 const h = vi.hoisted(() => ({
@@ -39,6 +41,9 @@ const h = vi.hoisted(() => ({
   publishes: [] as Array<{ type: string; payload: Record<string, unknown> }>,
   recomputeCase: vi.fn(async (_tx: unknown, _caseId: string) => [] as unknown[]),
   retireRisk: vi.fn(async () => 0),
+  /** Reception tasks raised so far, by dedupe key (G3-01 review). */
+  taskKeys: new Set<string>(),
+  upsertAction: vi.fn(),
   /** Whether the case reprice ran inside the transaction. */
   inTx: false,
 }));
@@ -99,6 +104,9 @@ vi.mock("@/server/pricing/recompute-appointment-price", () => ({
 vi.mock("@/server/actions/in-clinic", () => ({
   retireVisitRiskActions: h.retireRisk,
 }));
+vi.mock("@/server/actions/repository", () => ({
+  upsertAction: h.upsertAction,
+}));
 vi.mock("@/lib/prisma", () => {
   const prisma = {
     appointment: {
@@ -131,6 +139,9 @@ import {
   _tickForTests as tick,
   autoNoShowWhere,
   selectAutoNoShows,
+  selfCheckInSweepWhere,
+  splitCheckedInPastCutoff,
+  SELF_CHECK_IN_LOOKBACK_HOURS,
 } from "@/server/workers/appointment-lifecycle-sweep";
 
 const HOUR = 60 * 60_000;
@@ -161,6 +172,25 @@ beforeEach(() => {
   h.fireTrigger.mockClear();
   h.recomputeCase.mockClear();
   h.retireRisk.mockClear();
+  h.taskKeys = new Set();
+  // The real upsert is keyed by (clinic, dedupe key): created once, then a
+  // silent refresh (its closed-row rules live in action-snooze-expiry).
+  h.upsertAction.mockReset();
+  h.upsertAction.mockImplementation(
+    async (_p: unknown, clinicId: string, payload: { type: string; appointmentId: string }) => {
+      const key = `${clinicId}|${payload.type}:${payload.appointmentId}`;
+      const created = !h.taskKeys.has(key);
+      h.taskKeys.add(key);
+      return {
+        id: `act_${payload.appointmentId}`,
+        created,
+        severity: "high",
+        payloadChanged: false,
+        severityChanged: false,
+        keptClosed: false,
+      };
+    },
+  );
   h.inTx = false;
   h.publishes = [];
 });
@@ -221,6 +251,7 @@ describe("Q-14: the auto no-show moves both status columns", () => {
       mockImplementationOnce: (fn: () => Promise<unknown>) => void;
     };
     findMany.mockImplementationOnce(async () => []); // stale-visit scan
+    findMany.mockImplementationOnce(async () => []); // check-in pass
     findMany.mockImplementationOnce(async () => {
       const scanned = state.rows.map((r) => ({ ...r }));
       state.rows[0].status = "WAITING";
@@ -373,6 +404,7 @@ describe("AP-04: the auto no-show has the effects of every no-show", () => {
       mockImplementationOnce: (fn: () => Promise<unknown>) => void;
     };
     findMany.mockImplementationOnce(async () => []); // stale-visit scan
+    findMany.mockImplementationOnce(async () => []); // check-in pass
     findMany.mockImplementationOnce(async () => {
       const scanned = state.rows.map((r) => ({ ...r }));
       state.rows[0].status = "WAITING";
@@ -408,6 +440,16 @@ describe("AP-04: the auto no-show has the effects of every no-show", () => {
 });
 
 describe("G3-01: a patient who checked in from the Mini App is not a no-show", () => {
+  // A check-in counts on the visit's own clinic day only (review), so the
+  // clock is pinned: rows built relative to «now» must not straddle midnight.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T12:00:00.000Z")); // 17:00 Tashkent
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("a booking with «Я на месте» is left alone, and gets no message", async () => {
     state.rows = [
       row({ id: "checked_in", arrivedAt: new Date(Date.now() - 2.5 * HOUR) }),
@@ -432,6 +474,7 @@ describe("G3-01: a patient who checked in from the Mini App is not a no-show", (
       mockImplementationOnce: (fn: () => Promise<unknown>) => void;
     };
     findMany.mockImplementationOnce(async () => []); // stale-visit scan
+    findMany.mockImplementationOnce(async () => []); // check-in pass
     findMany.mockImplementationOnce(async () => {
       const scanned = state.rows.map((r) => ({ ...r }));
       state.rows[0].arrivedAt = new Date();
@@ -494,5 +537,182 @@ describe("G3-01: a patient who checked in from the Mini App is not a no-show", (
       new Date(),
     );
     expect(picked).toEqual([]);
+  });
+});
+
+describe("G3-01 review: an unanswered check-in is reception's task, a stale stamp is nothing", () => {
+  // 17:00 Tashkent on 01.10; the auto no-show cutoff is 16:00 (11:00Z).
+  const NOW = new Date("2026-10-01T12:00:00.000Z");
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // The 14:00 visit, tapped «Я на месте» at 13:55, nobody pressed «Пришёл».
+  const unanswered = (over: Partial<Row> = {}) =>
+    row({
+      id: "in_hall",
+      date: new Date("2026-10-01T09:00:00.000Z"),
+      endDate: new Date("2026-10-01T09:30:00.000Z"),
+      arrivedAt: new Date("2026-10-01T08:55:00.000Z"),
+      patient: { fullName: "Рахимов Бекзод" },
+      doctor: { nameRu: "Султанов А." },
+      ...over,
+    });
+  // Tapped on 24.09 at 09:10, never met, moved by reception to today 14:00
+  // before moves dropped the stamp.
+  const STALE_TAP = new Date("2026-09-24T04:10:00.000Z");
+
+  const createdPublishes = () => h.publishes.filter((p) => p.type === "action.created");
+
+  it("at the cutoff the booking stays, reception gets one task on it, the patient no message", async () => {
+    state.rows = [unanswered()];
+
+    await tick();
+
+    expect(state.rows[0]).toMatchObject({ status: "CONFIRMED", queueStatus: "CONFIRMED" });
+    expect(h.fireTrigger).not.toHaveBeenCalledWith({
+      kind: "appointment.no-show",
+      appointmentId: "in_hall",
+    });
+    expect(h.upsertAction).toHaveBeenCalledTimes(1);
+    expect(h.upsertAction).toHaveBeenCalledWith(
+      expect.anything(),
+      "c1",
+      {
+        type: "SELF_CHECK_IN_UNHANDLED",
+        appointmentId: "in_hall",
+        patientId: "p1",
+        patientName: "Рахимов Бекзод",
+        doctorName: "Султанов А.",
+        appointmentAt: "2026-10-01T09:00:00.000Z",
+        arrivedAt: "2026-10-01T08:55:00.000Z",
+      },
+      // Lives until a person settles it or the visit moves on.
+      { expiresAt: null },
+    );
+    expect(createdPublishes()).toEqual([
+      {
+        type: "action.created",
+        payload: { id: "act_in_hall", type: "SELF_CHECK_IN_UNHANDLED", severity: "high" },
+      },
+    ]);
+
+    // Ten minutes later: the same task, nothing new announced.
+    await tick();
+    expect(createdPublishes()).toHaveLength(1);
+    expect(state.rows[0].status).toBe("CONFIRMED");
+  });
+
+  it("not before the cutoff: the desk still has its badge and alert", async () => {
+    // The 16:00 visit ends 16:30, half an hour short of its cutoff.
+    state.rows = [
+      unanswered({
+        date: new Date("2026-10-01T11:00:00.000Z"),
+        endDate: new Date("2026-10-01T11:30:00.000Z"),
+        arrivedAt: new Date("2026-10-01T10:55:00.000Z"),
+      }),
+    ];
+
+    await tick();
+
+    expect(h.upsertAction).not.toHaveBeenCalled();
+  });
+
+  it("a stamp from the day the visit was moved off is swept like any booking", async () => {
+    state.rows = [unanswered({ id: "moved", arrivedAt: STALE_TAP })];
+
+    await tick();
+
+    expect(state.rows[0]).toMatchObject({ status: "NO_SHOW", queueStatus: "NO_SHOW" });
+    expect(h.fireTrigger).toHaveBeenCalledWith({
+      kind: "appointment.no-show",
+      appointmentId: "moved",
+    });
+    expect(h.upsertAction).not.toHaveBeenCalled();
+  });
+
+  it("his real tap landing between the scan and the write wins over the stale stamp", async () => {
+    state.rows = [unanswered({ id: "moved", arrivedAt: STALE_TAP })];
+    const { prisma } = await import("@/lib/prisma");
+    const findMany = vi.mocked(prisma.appointment.findMany) as unknown as {
+      mockImplementationOnce: (fn: () => Promise<unknown>) => void;
+    };
+    findMany.mockImplementationOnce(async () => []); // stale-visit scan
+    findMany.mockImplementationOnce(async () => {
+      const scanned = state.rows.map((r) => ({ ...r }));
+      state.rows[0].arrivedAt = new Date(); // the Mini App re-claims it
+      return scanned;
+    });
+
+    await tick();
+
+    expect(state.rows[0].status).toBe("CONFIRMED");
+    expect(h.fireTrigger).not.toHaveBeenCalledWith({
+      kind: "appointment.no-show",
+      appointmentId: "moved",
+    });
+  });
+
+  it("the running-late text reaches a patient whose only stamp is from another day", async () => {
+    const start = new Date(NOW.getTime() - 30 * 60_000);
+    state.rows = [
+      row({
+        id: "on_the_way",
+        date: start,
+        endDate: new Date(start.getTime() + 30 * 60_000),
+        arrivedAt: STALE_TAP,
+      }),
+      // The tick reaches the running-late pass only with a stale row too.
+      row({ id: "stale" }),
+    ];
+
+    await tick();
+
+    expect(h.fireTrigger).toHaveBeenCalledWith({
+      kind: "appointment.running-late",
+      appointmentId: "on_the_way",
+    });
+  });
+
+  it("past the lookback window an undecided visit is not rescanned", async () => {
+    const end = new Date(NOW.getTime() - (60 + (SELF_CHECK_IN_LOOKBACK_HOURS + 1) * 60) * 60_000);
+    state.rows = [
+      unanswered({
+        date: new Date(end.getTime() - 30 * 60_000),
+        endDate: end,
+        arrivedAt: new Date(end.getTime() - 35 * 60_000),
+      }),
+    ];
+
+    await tick();
+
+    expect(h.upsertAction).not.toHaveBeenCalled();
+    expect(state.rows[0].status).toBe("CONFIRMED");
+  });
+
+  it("the pure split and selector read the same rule", () => {
+    const cutoff = new Date(NOW.getTime() - 60 * 60_000);
+    expect(selfCheckInSweepWhere(cutoff)).toMatchObject({
+      arrivedAt: { not: null },
+      channel: { not: "WALKIN" },
+      endDate: {
+        lt: cutoff,
+        gte: new Date(cutoff.getTime() - SELF_CHECK_IN_LOOKBACK_HOURS * HOUR),
+      },
+    });
+
+    const fresh = { ...unanswered(), status: "CONFIRMED" as const, queueStatus: "CONFIRMED" as const };
+    const stale = { ...fresh, id: "moved", arrivedAt: STALE_TAP };
+    const walkin = { ...fresh, id: "walkin", channel: "WALKIN" };
+    const split = splitCheckedInPastCutoff([fresh, stale, walkin], NOW);
+    expect(split.answer.map((r) => r.id)).toEqual(["in_hall"]);
+    expect(split.sweep.map((r) => r.id)).toEqual(["moved"]);
+
+    // The no-show selector: a stale stamp protects nothing, a real one does.
+    expect(selectAutoNoShows([fresh, stale], NOW).map((r) => r.id)).toEqual(["moved"]);
   });
 });

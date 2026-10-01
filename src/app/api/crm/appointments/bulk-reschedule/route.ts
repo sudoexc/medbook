@@ -30,6 +30,7 @@ import { tashkentComponents } from "@/lib/booking-validation";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { checkInResetOnMove } from "@/lib/appointments/self-check-in";
 
 export const POST = createApiHandler(
   {
@@ -206,6 +207,9 @@ export const POST = createApiHandler(
             // Keep the display column in lockstep — `time` is Tashkent wall
             // clock (prod runs UTC; a bare shift would leave it stale).
             time: tashkentComponents(p.newStart).time,
+            // A shift onto another clinic day drops a Mini App check-in made
+            // for the old one, as the single PATCH does (review of G3-01).
+            ...checkInResetOnMove(p.oldStart, p.newStart),
           },
         });
 

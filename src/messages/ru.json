@@ -5573,6 +5573,11 @@
         "label": "Перезвонить пациенту",
         "title": "{reason, select, RETURN_LATER {{patientName}: перезвонить, хотел прийти позже} other {{patientName}: перезвонить, как договорились}}",
         "body": "{hasNote, select, yes {«{note}». } other {}}{reason, select, RETURN_LATER {Запись {slotDate} в {slotTime} отменена по просьбе пациента. Позвоните и запишите на удобный день.} other {Звонок по записи {slotDate} в {slotTime}. Врач: {doctorName}.}}"
+      },
+      "SELF_CHECK_IN_UNHANDLED": {
+        "label": "Отметился, но не принят",
+        "title": "{patientName}: отметился в приложении в {arrivedTime}, но не отмечен «Пришёл»",
+        "body": "Запись {slotDate} в {slotTime}, врач {doctorName}. Пациент нажал «Я на месте», а в очередь его не поставили, поэтому запись не отмечена неявкой. Узнайте, что случилось, и закройте запись: «Пришёл», «Не пришёл» или перенос."
       }
     },
     "dashboard": {

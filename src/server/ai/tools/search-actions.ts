@@ -49,6 +49,7 @@ const TYPE_LABEL_RU: Record<ActionType, string> = {
   TELEGRAM_LINK_CONFLICT: "Telegram привязан к другой карте",
   NO_CONTACT_CALL: "Звонок пациенту, который давно не на связи",
   PATIENT_CALLBACK: "Перезвонить пациенту, как договорились",
+  SELF_CHECK_IN_UNHANDLED: "Отметился в приложении, но не принят",
 };
 
 const TYPE_LABEL_UZ: Record<ActionType, string> = {
@@ -68,6 +69,7 @@ const TYPE_LABEL_UZ: Record<ActionType, string> = {
   TELEGRAM_LINK_CONFLICT: "Telegram boshqa kartaga bog'langan",
   NO_CONTACT_CALL: "Uzoq vaqt aloqa bo'lmagan bemorga qo'ng'iroq",
   PATIENT_CALLBACK: "Kelishilganidek bemorga qayta qo'ng'iroq",
+  SELF_CHECK_IN_UNHANDLED: "Ilovada belgi qo'ydi, lekin qabul qilinmadi",
 };
 
 export const searchActionsTool: Tool<SearchActionsInput> = {

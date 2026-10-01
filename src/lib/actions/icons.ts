@@ -21,6 +21,7 @@ import {
   MessageCircleOffIcon,
   PhoneOffIcon,
   RotateCwIcon,
+  SmartphoneIcon,
   UsersIcon,
   UsersRoundIcon,
   type LucideIcon,
@@ -47,6 +48,8 @@ export const ACTION_ICONS: Record<ActionType, LucideIcon> = {
   NO_CONTACT_CALL: MessageCircleOffIcon,
   // Same glyph as «Перезвонить позже» in the risk-today outcome menu.
   PATIENT_CALLBACK: AlarmClockIcon,
+  // Same glyph as the «Отметился в приложении» badge on reception's lists.
+  SELF_CHECK_IN_UNHANDLED: SmartphoneIcon,
 };
 
 /** Tailwind colour-token classes for severity dots, borders, and badge tones. */

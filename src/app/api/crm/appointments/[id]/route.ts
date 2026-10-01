@@ -68,6 +68,7 @@ import {
   restoredStatusOf,
   revivesBooking,
 } from "@/server/appointments/revert-restore";
+import { checkInResetOnMove } from "@/lib/appointments/self-check-in";
 
 /** Who may record a risk-today outcome: the roles of its endpoint (and
  *  SUPER_ADMIN, whom the handler lets through every role list). */
@@ -803,6 +804,13 @@ export const PATCH = createApiHandler(
       data.queueStatus = "CONFIRMED";
       data.queuedAt = null;
     }
+    // Review of G3-01: a Mini App «Я на месте» belongs to the day it was
+    // made. The Mini App refuses to move a checked-in visit, so this is the
+    // path such a visit moves by; moved to another clinic day it drops the
+    // stamp. Otherwise the new day showed «Отметился в приложении», the
+    // sweep never marked a real no-show, and the patient's tap on the new
+    // day was swallowed as a repeat.
+    if (timeChanged) Object.assign(data, checkInResetOnMove(before.date, startAt));
 
     // Q-05 — arrival and the call only on the visit's own clinic day, judged
     // on the slot as it will be after this PATCH. `canTransitionAt` above

@@ -154,6 +154,16 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     callbackAt: "2026-05-10T04:00:00.000Z",
     note: "после командировки",
   },
+  // Audit G3-01 (review) — a Mini App check-in nobody answered.
+  SELF_CHECK_IN_UNHANDLED: {
+    type: "SELF_CHECK_IN_UNHANDLED",
+    appointmentId: "apt_11",
+    patientId: "p_11",
+    patientName: "Рахимов Бекзод",
+    doctorName: "Султанов А.",
+    appointmentAt: "2026-05-07T09:00:00.000Z",
+    arrivedAt: "2026-05-07T08:52:00.000Z",
+  },
 };
 
 /**

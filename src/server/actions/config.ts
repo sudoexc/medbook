@@ -103,7 +103,9 @@ export const PATIENT_NO_CHANNEL_TTL_HOURS = 48;
 // to the wrong card stays wrong until reception merges or dismisses, so the
 // task lives until a person closes it. PATIENT_CALLBACK has none either: it is
 // a call promised to the patient, and a promise does not lapse on its own
-// (audit AC-09).
+// (audit AC-09). SELF_CHECK_IN_UNHANDLED neither: a booking whose patient said
+// he was here stays undecided until a person settles it, and the task goes
+// with the visit's booking state (`retireMootRiskActions`), not with time.
 
 /**
  * A detector row somebody closed is kept closed while its signal holds (audit

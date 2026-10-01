@@ -17,6 +17,7 @@ import {
   RefreshCwIcon,
   SendIcon,
   SettingsIcon,
+  SmartphoneIcon,
   SparklesIcon,
   TrendingDownIcon,
   UsersIcon,
@@ -466,6 +467,7 @@ const ACTION_CTA: Record<
   TELEGRAM_LINK_CONFLICT: { cta: "ctaOpen", tone: "warning", Icon: UsersIcon },
   NO_CONTACT_CALL: { cta: "ctaCall", tone: "violet", Icon: PhoneIcon },
   PATIENT_CALLBACK: { cta: "ctaCallback", tone: "primary", Icon: PhoneIcon },
+  SELF_CHECK_IN_UNHANDLED: { cta: "ctaOpen", tone: "warning", Icon: SmartphoneIcon },
 };
 
 // Type helper so TypeScript knows the keys are valid i18n paths.
@@ -503,6 +505,8 @@ const CATEGORY_MAP: Record<ActionType, CategoryKey> = {
   VISIT_FOLLOW_UP_DUE: "calls",
   NO_CONTACT_CALL: "calls",
   PATIENT_CALLBACK: "calls",
+  // The patient may be in the hall: find him or call him, then settle the visit.
+  SELF_CHECK_IN_UNHANDLED: "calls",
   EMPTY_SLOT_TOMORROW: "slots",
   IDLE_ROOM: "slots",
   LOW_DOCTOR_SCHEDULE: "slots",

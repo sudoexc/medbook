@@ -3,7 +3,8 @@
  * against in-memory tables:
  *
  *   TG-21  a second reschedule notifies again and rebuilds the bands of the
- *          new start, even where the old start's band was already SENT; an
+ *          new start, even where the old start's band was already SENT; a
+ *          move back to a start an earlier notice named notifies too; an
  *          unsent «перенесён» is voided by the next move;
  *   TG-18  the cascade top-up (`appointment.updated`) cancels reminders still
  *          queued for another start;
@@ -149,8 +150,8 @@ vi.mock("@/lib/prisma", () => {
         ),
       },
       notificationSend: {
-        findFirst: vi.fn(async ({ where }: { where: Row }) =>
-          db.sends.find((s) => matches(s, where)) ?? null,
+        findFirst: vi.fn(async ({ where, orderBy }: { where: Row; orderBy?: unknown }) =>
+          ordered(db.sends.filter((s) => matches(s, where)), orderBy)[0] ?? null,
         ),
         findMany: vi.fn(async ({ where }: { where: Row }) =>
           db.sends.filter((s) => matches(s, where)),
@@ -296,6 +297,9 @@ beforeEach(() => {
 
 async function moveTo(start: Date) {
   const { onAppointmentRescheduled } = await import("@/server/notifications/triggers");
+  // Each move is its own event, minutes apart: rows of two moves never share
+  // a `createdAt`.
+  vi.advanceTimersByTime(60_000);
   db.appts[0]!.date = start;
   await onAppointmentRescheduled("apt_1");
 }
@@ -334,6 +338,56 @@ describe("rescheduling twice (TG-21)", () => {
       expect(fresh, id).toHaveLength(1);
       expect(fresh[0]!.scheduledFor).toEqual(new Date(WED.getTime() + offset * 60_000));
     }
+  });
+
+  it("notifies a move back to a start an earlier notice named (Mon → Tue → Wed → Tue)", async () => {
+    await moveTo(TUE);
+    markAllSent();
+    await moveTo(WED);
+    markAllSent();
+    await moveTo(TUE);
+
+    const notices = tg((s) => s.templateId === "tpl_resched");
+    expect(notices.map((n) => n.appointmentAt)).toEqual([TUE, WED, TUE]);
+    expect(notices[2]!.status).toBe("QUEUED");
+    expect(notices[2]!.body).toContain("13 октября");
+    expect(notices[2]!.body).toContain("12:00");
+  });
+
+  it("notifies the fourth move of Mon → Tue → Mon → Tue", async () => {
+    await moveTo(TUE);
+    markAllSent();
+    await moveTo(MON);
+    markAllSent();
+    await moveTo(TUE);
+
+    const notices = tg((s) => s.templateId === "tpl_resched");
+    expect(notices.map((n) => n.appointmentAt)).toEqual([TUE, MON, TUE]);
+    expect(notices[2]!.status).toBe("QUEUED");
+  });
+
+  it("still sends one notice when the same move fires twice after the first went out", async () => {
+    await moveTo(TUE);
+    markAllSent();
+    await moveTo(TUE);
+    expect(tg((s) => s.templateId === "tpl_resched")).toHaveLength(1);
+  });
+
+  it("counts a notice of a template switched off since for the same move", async () => {
+    await moveTo(TUE);
+    markAllSent();
+    db.templates.find((t) => t.id === "tpl_resched")!.isActive = false;
+    db.templates.push(
+      tpl("tpl_resched_2", {
+        trigger: "APPOINTMENT_RESCHEDULED",
+        bodyRu: "Новое время: {{appointment.date}} {{appointment.time}}",
+      }),
+    );
+    await moveTo(TUE);
+    expect(tg((s) => String(s.templateId).startsWith("tpl_resched"))).toHaveLength(1);
+
+    await moveTo(WED);
+    expect(tg((s) => s.templateId === "tpl_resched_2")).toHaveLength(1);
   });
 
   it("voids an unsent notice about the previous move", async () => {

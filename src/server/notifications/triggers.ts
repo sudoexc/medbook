@@ -654,7 +654,8 @@ function isStartKeyed(trigger: TriggerKey): boolean {
  * Whether a row written before `appointmentAt` existed, whose start cannot
  * be derived, still counts as «already sent for this start». It does, so a
  * row a deploy straddles is never doubled; except «перенесён», which is
- * fired once per move: an old one is always about an earlier start.
+ * about a move: an old one is always about an earlier start (the single
+ * path gates it by `rescheduleNoticeIsCurrent` instead).
  */
 function unknownStartCovers(trigger: TriggerKey): boolean {
   return trigger !== "appointment.rescheduled";
@@ -712,6 +713,41 @@ async function alreadyScheduled(params: {
     }),
   );
   return existing !== null;
+}
+
+/**
+ * Idempotency gate of «перенесён» (audit TG-21): whether the visit's newest
+ * live notice already names its current start. Keyed by start like the
+ * bands, a move back to a start an earlier notice named (Tue → Wed → Tue)
+ * found that old SENT «вторник» and stayed silent, so the patient's last
+ * message said Wednesday. Only the newest notice counts: a repeat fire of
+ * the same move still collapses, a return to an earlier start notifies
+ * again. Every «перенесён» template counts, so switching the active template
+ * between two fires of one move does not double it. A legacy row without a
+ * stamped start never matches (`unknownStartCovers`).
+ */
+async function rescheduleNoticeIsCurrent(appt: {
+  id: string;
+  clinicId: string;
+  patientId: string;
+  date: Date;
+}): Promise<boolean> {
+  const latest = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.findFirst({
+      where: {
+        clinicId: appt.clinicId,
+        patientId: appt.patientId,
+        appointmentId: appt.id,
+        status: { in: [...LIVE_SEND_STATUSES] },
+        template: whereForTrigger("appointment.rescheduled")!,
+      },
+      // `id` only breaks a tie between the Telegram row and its INAPP mirror,
+      // which carry the same start.
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { appointmentAt: true },
+    }),
+  );
+  return latest?.appointmentAt?.getTime() === appt.date.getTime();
 }
 
 /**
@@ -1207,15 +1243,18 @@ async function materializeForAppointment(
   if (isPointlessForConfirmed(trigger, tpl, appt)) {
     return { created: 0, skipped: 1, reason: "confirmed" };
   }
-  const already = await alreadyScheduled({
-    clinicId: appt.clinicId,
-    patientId: appt.patientId,
-    appointmentId: appt.id,
-    templateId: tpl.templateId,
-    sameStart: isStartKeyed(trigger)
-      ? sameStartWhere(appt.date, offsetOf(tpl.triggerConfig), unknownStartCovers(trigger))
-      : undefined,
-  });
+  const already =
+    trigger === "appointment.rescheduled"
+      ? await rescheduleNoticeIsCurrent(appt)
+      : await alreadyScheduled({
+          clinicId: appt.clinicId,
+          patientId: appt.patientId,
+          appointmentId: appt.id,
+          templateId: tpl.templateId,
+          sameStart: isStartKeyed(trigger)
+            ? sameStartWhere(appt.date, offsetOf(tpl.triggerConfig), unknownStartCovers(trigger))
+            : undefined,
+        });
   if (already) return { created: 0, skipped: 1, reason: "already_scheduled" };
   const reach = await reachAppointmentPatient(
     tpl.channel,

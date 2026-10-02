@@ -8542,7 +8542,8 @@
     "chatFile": "Заключение врача.pdf",
     "chatMsg": "Назначения и рекомендации после приёма",
     "chatReminder": "Напоминание: завтра контрольный визит в 10:00",
-    "botHandle": "@neurofaxbot"
+    "botHandle": "@neurofaxbot",
+    "cta": "Открыть бота в Telegram"
   },
   "directions": {
     "mapTitle": "Клиника NeuroFax на карте",

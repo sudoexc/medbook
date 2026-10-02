@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
+
+import { staffThemeApplies } from "@/lib/theme-scope";
 
 export type Theme = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
@@ -40,10 +43,14 @@ function applyClass(resolved: ResolvedTheme) {
  * prevent FOUC, which triggers a React 19 warning ("Scripts inside React
  * components are never executed when rendering on the client").
  *
- * The FOUC script lives in `app/layout.tsx`'s `<head>` instead — it runs
+ * The FOUC script (THEME_INIT_SCRIPT, rendered by `app/layout.tsx`) runs
  * once before hydration to set the right `dark` class on `<html>`. After
  * hydration, this provider takes over: it reads localStorage, listens to
  * system preference changes, and re-applies the resolved class on toggle.
+ *
+ * The choice is the staff's and applies on staff surfaces only; every other
+ * page (the public site, tickets, sign-up) is painted light whatever is
+ * stored (audit LD-17). `resolvedTheme` is the theme actually painted.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = React.useState<Theme>("light");
@@ -61,10 +68,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  const resolvedTheme: ResolvedTheme = theme === "system" ? systemTheme : theme;
+  const pathname = usePathname();
+  const chosen: ResolvedTheme = theme === "system" ? systemTheme : theme;
+  const resolvedTheme: ResolvedTheme = staffThemeApplies(pathname)
+    ? chosen
+    : "light";
 
   // Re-apply the class whenever the resolved value changes. This handles
-  // user toggles, OS dark-mode changes, and storage events from other tabs.
+  // user toggles, OS dark-mode changes, storage events from other tabs, and
+  // navigation between a staff surface and the public site.
   React.useEffect(() => {
     applyClass(resolvedTheme);
   }, [resolvedTheme]);

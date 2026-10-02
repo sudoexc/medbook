@@ -25,6 +25,16 @@ const META: Record<string, { title: string; description: string }> = {
   },
 };
 
+/**
+ * The link preview picture (Telegram, search, messengers): the clinic logo on
+ * a white 1200x630 card, the size `summary_large_image` expects. Without it a
+ * shared link came with no picture at all (audit LD-12). Relative to the
+ * layout's metadataBase.
+ */
+export const SITE_OG_IMAGES = [
+  { url: "/og-image.png", width: 1200, height: 630, alt: SITE_NAME },
+];
+
 /** The landing's title and description in `locale` (ru for anything else). */
 export function siteMeta(locale: string): { title: string; description: string } {
   return META[locale] ?? META.ru!;
@@ -48,5 +58,6 @@ export function siteOpenGraph(
     siteName: SITE_NAME,
     locale: locale === "uz" ? "uz_UZ" : "ru_RU",
     type: "website",
+    images: SITE_OG_IMAGES,
   };
 }

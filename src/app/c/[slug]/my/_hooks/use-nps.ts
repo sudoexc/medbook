@@ -8,7 +8,8 @@
  * resubmit instead of an editable form).
  *
  * POST → score (1..10) + optional comment. Server returns 409 with
- * `reason: "already_submitted"` if the patient already rated this visit;
+ * `reason: "already_submitted"` if the patient already rated this visit,
+ * or `reason: "not_completed"` if the visit has not taken place;
  * the React Query mutation surfaces that as a typed Error.data field.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

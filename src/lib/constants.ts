@@ -11,10 +11,19 @@ export const SITE_DOMAIN = "neurofax.uz";
 export const DEFAULT_CLINIC_SLUG =
   process.env.NEXT_PUBLIC_DEFAULT_CLINIC_SLUG ?? "neurofax";
 
+/**
+ * The clinic's live Telegram bot (@neurofaxbot since 16.09.2026). The site
+ * sells «the conclusion comes to Telegram» and the FAQ says «write to us in
+ * Telegram», but the link was a "#" placeholder, so the footer hid it and the
+ * showcase named the bot as plain text (audit LD-16). The showcase's
+ * `tgShowcase.botHandle` text must name the same bot.
+ */
+export const TELEGRAM_BOT_USERNAME = "neurofaxbot";
+
 export const CONTACT = {
   phone: "+998 71 275 28 18",
   email: "info@neurofax.uz",
-  telegram: "#",
+  telegram: `https://t.me/${TELEGRAM_BOT_USERNAME}`,
   instagram: "#",
   address: {
     ru: "Ташкент, 13 квартал, ул. Лутфий 26-1, 100138",

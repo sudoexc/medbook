@@ -428,6 +428,7 @@ export const uzDict = {
     thankYouLow:
       "Rahmat! Fikringizni administratsiyaga yetkazdik — tez orada siz bilan bog‘lanamiz.",
     alreadySubmitted: "Siz bu tashrif uchun allaqachon baho qoldirgansiz.",
+    notCompleted: "Tashrifni qabuldan keyin baholash mumkin.",
     yourScore: "Sizning bahoyingiz: {score}/10",
     notFound: "Yozuv topilmadi.",
     forbidden: "Bu yozuvga ruxsat yo‘q.",

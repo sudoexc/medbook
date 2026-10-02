@@ -1,5 +1,7 @@
 import { useTranslations } from "next-intl";
-import { BellIcon, CheckIcon, FileTextIcon } from "lucide-react";
+import { BellIcon, CheckIcon, FileTextIcon, SendIcon } from "lucide-react";
+
+import { CONTACT } from "@/lib/constants";
 
 /**
  * The clinic's real differentiator, sold as such: after the visit the doctor
@@ -34,6 +36,16 @@ export function TelegramShowcase() {
                 </li>
               ))}
             </ul>
+            {/* The way into the bot the section sells (audit LD-16). */}
+            <a
+              href={CONTACT.telegram}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-8 inline-flex h-12 items-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <SendIcon className="h-4 w-4" />
+              {t("cta")}
+            </a>
           </div>
 
           {/* Phone mockup — plain CSS, mirrors the bot's actual messages. */}
@@ -48,9 +60,14 @@ export function TelegramShowcase() {
                     <p className="text-sm font-semibold text-foreground">
                       {t("chatName")}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <a
+                      href={CONTACT.telegram}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-muted-foreground hover:text-primary"
+                    >
                       {t("botHandle")}
-                    </p>
+                    </a>
                   </div>
                 </div>
 

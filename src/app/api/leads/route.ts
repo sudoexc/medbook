@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { resolvePublicClinic } from "@/lib/public-clinic";
 import { rateLimit } from "@/lib/rate-limit";
@@ -34,8 +33,6 @@ const LeadSchema = z.object({
   locale: z.enum(["ru", "uz"]).default("ru"),
 });
 
-const VALID_STATUSES = ["NEW", "CONTACTED", "CONVERTED", "CANCELLED"] as const;
-
 /** Absolute origin for links in emails (env first, request origin fallback). */
 function appBaseUrl(request: Request): string {
   return (
@@ -43,56 +40,12 @@ function appBaseUrl(request: Request): string {
     new URL(request.url).origin
   );
 }
-type LeadStatus = (typeof VALID_STATUSES)[number];
 
-export async function GET(request: Request) {
-  // Staff-only and tenant-scoped. The previous version authorised via
-  // isAuthorizedOrPin (no clinic context) and queried Lead unscoped, leaking
-  // every tenant's lead volume/list to any authenticated caller. We now scope
-  // to the caller's clinic through a TENANT context.
-  const session = await auth();
-  if (!session?.user) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const clinicId = session.user.clinicId;
-  if (!clinicId) {
-    // SUPER_ADMIN without an active impersonation has no home clinic.
-    return Response.json({ error: "No clinic context" }, { status: 403 });
-  }
-
-  const url = new URL(request.url);
-  return runWithTenant(
-    {
-      kind: "TENANT",
-      clinicId,
-      userId: session.user.id,
-      role: session.user.role,
-    },
-    async () => {
-      if (url.searchParams.get("countNew") === "true") {
-        const count = await prisma.lead.count({ where: { status: "NEW" } });
-        return Response.json({ count });
-      }
-
-      const status = url.searchParams.get("status");
-      const limitRaw = Number(url.searchParams.get("limit"));
-      const limit =
-        Number.isFinite(limitRaw) && limitRaw > 0
-          ? Math.min(Math.floor(limitRaw), 200)
-          : 50;
-      const statusFilter = VALID_STATUSES.includes(status as LeadStatus)
-        ? { status: status as LeadStatus }
-        : {};
-
-      const leads = await prisma.lead.findMany({
-        where: statusFilter,
-        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-        take: limit,
-      });
-      return Response.json(leads);
-    },
-  );
-}
+// No GET here (audit LD-11). The old one checked only for a session, so a
+// nurse or a doctor could read every request's name and phone, though the
+// role matrix gives them no access to leads. Nothing called it: the CRM
+// «Заявки» screen reads /api/crm/online-requests, which keeps the desk,
+// call center and admin roles (ONLINE_REQUEST_ROLES).
 
 export async function POST(request: Request) {
   // Rate limit: 10 submissions per minute per IP. The real peer address, not

@@ -56,10 +56,20 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
 
   const existingReview = query.data?.review ?? null;
   const alreadySubmitted = Boolean(existingReview) || Boolean(submitResult);
-  const canSubmit = score !== null && !submit.isPending && !alreadySubmitted;
+  // Only a visit that took place can be rated; the server refuses the rest
+  // (audit MA-23), so a link opened ahead of time shows no form.
+  const notRateable =
+    !alreadySubmitted &&
+    query.data != null &&
+    query.data.appointment.status !== "COMPLETED";
+  const canSubmit =
+    score !== null && !submit.isPending && !alreadySubmitted && !notRateable;
+  // A second tap lands before the re-render that greys the MainButton.
+  const submittingRef = React.useRef(false);
 
   const onSubmit = React.useCallback(async () => {
-    if (score === null) return;
+    if (score === null || submittingRef.current) return;
+    submittingRef.current = true;
     setErrMsg(null);
     try {
       const res = await submit.mutateAsync({
@@ -73,9 +83,12 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
       const err = e as Error & { data?: { reason?: string } };
       const reason = err.data?.reason;
       if (reason === "already_submitted") setErrMsg(t.nps.alreadySubmitted);
+      else if (reason === "not_completed") setErrMsg(t.nps.notCompleted);
       else if (reason === "forbidden") setErrMsg(t.nps.forbidden);
       else if (reason === "not_found") setErrMsg(t.nps.notFound);
       else setErrMsg(t.nps.error);
+    } finally {
+      submittingRef.current = false;
     }
   }, [submit, score, comment, tg, t]);
 
@@ -84,7 +97,7 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
       text: submit.isPending ? t.nps.saving : t.nps.submit,
       active: Boolean(canSubmit),
       progress: submit.isPending,
-      visible: !alreadySubmitted,
+      visible: !alreadySubmitted && !notRateable,
       onClick: onSubmit,
     });
   }, [
@@ -93,6 +106,7 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
     canSubmit,
     onSubmit,
     alreadySubmitted,
+    notRateable,
     t.nps.saving,
     t.nps.submit,
   ]);
@@ -138,6 +152,8 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
       </div>
     );
   }
+
+  if (notRateable) return <MEmpty>{t.nps.notCompleted}</MEmpty>;
 
   return (
     <div>

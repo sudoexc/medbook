@@ -7,6 +7,7 @@ import { serializeJsonLd } from "@/lib/json-ld";
 import { CONTACT } from "@/lib/constants";
 import { siteSectionHref } from "@/lib/site-nav";
 import { siteAlternates, siteUrl } from "@/lib/site-urls";
+import { SITE_OG_IMAGES } from "@/lib/site-meta";
 import type { Locale } from "@/types";
 import ruMessages from "@/messages/ru.json";
 import uzMessages from "@/messages/uz.json";
@@ -38,7 +39,9 @@ export async function generateMetadata({
     .replace("{specialty}", doctor.specialty[loc]);
 
   return {
-    title,
+    // Absolute: the message already ends in «| NeuroFax», and the layout's
+    // «%s | NeuroFax» template doubled the brand (audit LD-12).
+    title: { absolute: title },
     description,
     // The address the router serves, "/doctors/<id>" for ru (audit LD-03):
     // "/ru/doctors/<id>" answered with a redirect.
@@ -48,6 +51,8 @@ export async function generateMetadata({
       description,
       type: "profile",
       url: siteUrl(locale, `/doctors/${id}`),
+      // A page's openGraph replaces the layout's whole block, image included.
+      images: SITE_OG_IMAGES,
     },
   };
 }

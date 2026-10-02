@@ -1,8 +1,10 @@
 import type { Viewport } from "next";
 import { Inter } from "next/font/google";
+import { getLocale } from "next-intl/server";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { THEME_INIT_SCRIPT } from "@/lib/theme-scope";
 
 // Without an explicit viewport export this custom root layout ships NO
 // viewport meta at all — phones lay the site out at 980px and scale it down,
@@ -17,24 +19,28 @@ const inter = Inter({
   subsets: ["latin", "cyrillic"],
 });
 
-// Inline FOUC-prevention: must run before paint via dangerouslySetInnerHTML
-// (React 19 warns when scripts are rendered as React children).
-// Default to light unless the user explicitly chose dark or system+OS-dark.
-const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);var r=document.documentElement;if(d){r.classList.add('dark');r.style.colorScheme='dark'}else{r.style.colorScheme='light'}}catch(e){}})();`;
+// Inline FOUC-prevention (THEME_INIT_SCRIPT, lib/theme-scope): must run
+// before paint via dangerouslySetInnerHTML (React 19 warns when scripts are
+// rendered as React children). Dark only on staff surfaces (audit LD-17).
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // The request's locale, so the server HTML of /uz says lang="uz" (audit
+  // LD-12): crawlers read the HTML, not the client fix-up in LocaleHtmlLang,
+  // which still covers a switch of language without a reload. Routes outside
+  // the locale middleware (kiosk, TV, Mini App) get the default, ru.
+  const locale = await getLocale();
   return (
     <html
-      lang="ru"
+      lang={locale}
       suppressHydrationWarning
       className={`${inter.variable} h-full antialiased scroll-smooth`}
     >
       <body className="min-h-full flex flex-col font-sans">
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <ThemeProvider>
           {children}
           <Toaster position="top-right" />

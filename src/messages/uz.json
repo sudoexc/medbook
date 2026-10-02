@@ -8542,7 +8542,8 @@
     "chatFile": "Shifokor xulosasi.pdf",
     "chatMsg": "Qabuldan keyingi tayinlovlar va tavsiyalar",
     "chatReminder": "Eslatma: ertaga soat 10:00 da nazorat tashrifi",
-    "botHandle": "@neurofaxbot"
+    "botHandle": "@neurofaxbot",
+    "cta": "Botni Telegramda ochish"
   },
   "directions": {
     "mapTitle": "NeuroFax klinikasi xaritada",

@@ -11,11 +11,13 @@ type ToasterProps = ComponentProps<typeof Sonner>
  * anywhere to fire notifications. See https://sonner.emilkowal.ski/
  */
 function Toaster({ ...props }: ToasterProps) {
-  const { theme = "system" } = useTheme()
+  // The painted theme, not the stored choice: off the staff surfaces the
+  // page is light whatever is stored (audit LD-17).
+  const { resolvedTheme } = useTheme()
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={resolvedTheme}
       className="toaster group"
       toastOptions={{
         classNames: {

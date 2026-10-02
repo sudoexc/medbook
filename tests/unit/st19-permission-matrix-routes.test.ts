@@ -22,6 +22,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { CALL_CENTER_ROLES } from "@/lib/calls/roles";
+import { WALKIN_TICKET_ROLES } from "@/lib/crm-topbar";
 import { ONLINE_REQUEST_ROLES } from "@/server/schemas/online-request";
 import { CLINICAL_NOTE_ROLES } from "@/server/patient/clinical-note";
 import {
@@ -40,6 +41,7 @@ const SHARED_ROLE_LISTS: Record<string, readonly string[]> = {
   CALL_CENTER_ROLES,
   ONLINE_REQUEST_ROLES,
   CLINICAL_NOTE_ROLES,
+  WALKIN_TICKET_ROLES,
 };
 
 type Method = "GET" | "POST" | "PATCH" | "DELETE";

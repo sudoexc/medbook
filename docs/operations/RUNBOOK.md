@@ -402,16 +402,14 @@ ssh root@167.233.142.75 'ls -lh /var/backups/medbook/*/ | tail -20; tail -5 /var
 
 ### 4.1.2 Проверить, что дамп реально восстанавливается
 
-Раз в пару месяцев — разворачиваем во временную базу, сверяем и удаляем:
+Раз в пару месяцев — разворачиваем во временную базу, сверяем и удаляем.
+Скрипт грузит дамп одной транзакцией с остановкой на первой ошибке, сверяет
+число строк Patient, Appointment, VisitNote и Document с дампом и при любом
+расхождении завершается с ненулевым кодом (без строки «dry run OK»):
 
 ```bash
 ssh root@167.233.142.75
-cd /opt/neurofax
-DUMP=$(ls -t /var/backups/medbook/*/pg-*.sql.gz | head -1)
-docker compose exec -T postgres psql -U medbook -d postgres -c "CREATE DATABASE restore_test;"
-gunzip -c "$DUMP" | docker compose exec -T postgres psql -U medbook -d restore_test -q
-docker compose exec -T postgres psql -U medbook -d restore_test -tAc 'select count(*) from "Patient"'
-docker compose exec -T postgres psql -U medbook -d postgres -c "DROP DATABASE restore_test;"
+cd /opt/neurofax && DRY_RUN=1 ./ops/restore.sh
 ```
 
 ### 4.2 Ручной дамп Postgres (перед рискованными операциями)
@@ -434,8 +432,12 @@ cd /opt/neurofax && ./ops/restore.sh pg-medbook-<timestamp>.sql.gz
 
 ```bash
 gunzip -c medbook-2026-08-20.sql.gz | \
-  docker compose exec -T postgres psql -U medbook -d medbook
+  docker compose exec -T postgres psql -v ON_ERROR_STOP=1 --single-transaction \
+  -U medbook -d medbook -f -
 ```
+
+Без `-v ON_ERROR_STOP=1` psql продолжает после ошибки и выходит с кодом 0,
+то есть «успешно» заливает половину базы.
 
 ⚠️ проверить на практике оба пути — с миграции на Hetzner restore не
 прогонялся.

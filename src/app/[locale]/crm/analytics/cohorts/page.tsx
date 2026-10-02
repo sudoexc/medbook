@@ -21,14 +21,9 @@ import { CohortHeatmapClient } from "./_components/cohort-heatmap-client";
  * ADMIN-only — non-admins land on a 404 (matches Phase 9d's pattern of not
  * disclosing pro surfaces).
  */
-export default async function CohortAnalyticsPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
-  const { locale } = await params;
+export default async function CohortAnalyticsPage() {
   const session = await auth();
-  if (!session?.user) redirect(`/${locale}/login`);
+  if (!session?.user) redirect("/login");
   if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
     notFound();
   }

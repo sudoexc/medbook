@@ -20,14 +20,9 @@ import { DoctorPerformanceClient } from "./_components/doctor-performance-client
  * series (last 6 months) so each row gets a tiny SVG trend line without an
  * extra HTTP round-trip.
  */
-export default async function DoctorPerformancePage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
-  const { locale } = await params;
+export default async function DoctorPerformancePage() {
   const session = await auth();
-  if (!session?.user) redirect(`/${locale}/login`);
+  if (!session?.user) redirect("/login");
   if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
     notFound();
   }

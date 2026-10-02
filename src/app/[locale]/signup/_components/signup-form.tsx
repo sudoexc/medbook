@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import Link from "next/link";
 
 import { useTranslations } from "next-intl";
 
@@ -237,12 +238,10 @@ export function SignupForm({ locale }: { locale: SupportedLocale }) {
       </CardContent>
       <CardFooter className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
         <p>{t("footnote")}</p>
-        <a
-          href={preferredLocale === "ru" ? "/login" : `/${preferredLocale}/login`}
-          className="text-primary underline underline-offset-2"
-        >
+        {/* /login lives outside the [locale] segment (`/uz/login` is a 404). */}
+        <Link href="/login" className="text-primary underline underline-offset-2">
           {t("loginCta")}
-        </a>
+        </Link>
       </CardFooter>
     </Card>
   );

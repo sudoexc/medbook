@@ -143,7 +143,9 @@ export function ConfirmClient({
   }
 
   const { data } = view;
-  const loginHref = data.locale === "ru" ? "/login" : `/${data.locale}/login`;
+  // /login lives outside the [locale] segment, so `/uz/login` is a 404
+  // (audit SEC-13); the login page itself is locale-neutral.
+  const loginHref = "/login";
 
   return (
     <Card className="w-full max-w-md">

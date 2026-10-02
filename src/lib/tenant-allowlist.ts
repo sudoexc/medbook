@@ -130,6 +130,9 @@ export const READ_OPERATIONS = new Set<string>([
 export const MUTATE_BY_WHERE_OPERATIONS = new Set<string>([
   "update",
   "updateMany",
+  // Prisma 7 operation; without it here a TENANT-context call would fall
+  // through to the "unsupported operation" guard in src/lib/prisma.ts.
+  "updateManyAndReturn",
   "upsert",
   "delete",
   "deleteMany",

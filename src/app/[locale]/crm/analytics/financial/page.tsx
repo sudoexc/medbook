@@ -25,14 +25,9 @@ import { FinancialDashboardClient } from "./_components/financial-dashboard-clie
  * is allowed when they have impersonated a clinic (clinicId on the session),
  * so platform owners can review tenant analytics without a separate UI.
  */
-export default async function FinancialAnalyticsPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
-  const { locale } = await params;
+export default async function FinancialAnalyticsPage() {
   const session = await auth();
-  if (!session?.user) redirect(`/${locale}/login`);
+  if (!session?.user) redirect("/login");
   if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
     notFound();
   }

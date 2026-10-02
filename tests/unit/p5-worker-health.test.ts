@@ -31,6 +31,9 @@ vi.mock("@/lib/prisma", () => ({
         backlog.overdueAt ? { scheduledFor: backlog.overdueAt } : null,
       ),
     },
+    // INF-16 undelivered patient documents: none here.
+    visitNote: { findMany: vi.fn(async () => []), findFirst: vi.fn(async () => null) },
+    referral: { findFirst: vi.fn(async () => null) },
   },
 }));
 

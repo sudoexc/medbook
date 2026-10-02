@@ -26,7 +26,7 @@ export default async function VisitsIndexPage({
     session.user.role !== "DOCTOR" ||
     !session.user.clinicId
   ) {
-    redirect(`/${locale}/login`);
+    redirect("/login");
   }
 
   const patientId = await runWithTenant(

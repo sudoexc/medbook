@@ -20,7 +20,7 @@ export default async function NewReportPage({
 }): Promise<React.JSX.Element> {
   const { locale } = await params;
   const session = await auth();
-  if (!session?.user) redirect(`/${locale}/login`);
+  if (!session?.user) redirect("/login");
   if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
     notFound();
   }

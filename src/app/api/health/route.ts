@@ -12,7 +12,7 @@
  *   uptime: number,      // seconds since this Node process started
  *   checks: {
  *     db:      { status: "ok" | "down" | "timeout", latencyMs? },
- *     redis:   { status: "ok" | "not_configured" | "down" | "timeout", … },
+ *     redis:   { status: "ok" | "not_configured" | "degraded" | "down" | "timeout", … },
  *     minio:   { status: "ok" | "not_configured" | "down" | "timeout", … },
  *     workers: { status: "ok" | "degraded" | "down" | "not_configured" | "timeout",
  *                processAgeSec, staleLoops, outbox, notifications }
@@ -28,6 +28,10 @@
  * `degraded` (HTTP 200: the site itself still serves), which the watchdog
  * (`ops/watchdog.sh`) alerts on. The check used to return `ok` hard-coded.
  *
+ * Redis also reports `degraded` when this process tried to subscribe to the
+ * realtime channel and has not managed to (audit INF-17): Redis answers
+ * PING, yet no worker event reaches this process's SSE clients.
+ *
  * The probe is public, so it never returns error text (a DB error message
  * names hosts and users); details go to the server log.
  */
@@ -37,6 +41,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { getOpsRedis } from "@/server/observability/worker-heartbeat";
 import { checkWorkerHealth } from "@/server/observability/worker-health";
+import { isRedisSubscriptionHealthy } from "@/server/realtime/redis-adapter";
 
 const CHECK_TIMEOUT_MS = 5_000;
 
@@ -86,6 +91,13 @@ async function checkRedis(): Promise<Check> {
       return client ? client.ping() : "NO_CLIENT";
     }, CHECK_TIMEOUT_MS);
     if (res === "__timeout__") return { status: "timeout" };
+    if (res === "PONG" && !isRedisSubscriptionHealthy()) {
+      return {
+        status: "degraded",
+        latencyMs: Date.now() - started,
+        details: "realtime subscription not active yet, retrying",
+      };
+    }
     return { status: res === "PONG" ? "ok" : "down", latencyMs: Date.now() - started };
   } catch (e) {
     logCheckError("redis", e);

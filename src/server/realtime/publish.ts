@@ -116,7 +116,9 @@ export function publishEventSafe(
  * can emit `id: <eventId>` lines for `Last-Event-ID` reconnects.
  *
  * Returns whether Redis fan-out was attempted (same contract as
- * `publishEvent`).
+ * `publishEvent`). Unlike `publishEvent`, a failed Redis PUBLISH rejects
+ * with `RedisPublishError` (audit INF-17): the pumper must retry the row,
+ * since in the worker process the local bus has no listeners.
  */
 export async function broadcastEnvelope(
   envelope: EventEnvelope,

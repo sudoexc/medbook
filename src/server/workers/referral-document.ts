@@ -20,6 +20,7 @@ import { getQueue } from "@/server/queue";
 import { uploadObject } from "@/server/storage/minio";
 import { renderReferralPdf } from "@/server/referrals/referral-pdf";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
+import { SweepBackoff, logSweepFailure } from "@/server/workers/sweep-backoff";
 
 export const QUEUE_NAME = "doctor:referral-document";
 export const JOB_NAME = "referral-document-tick";
@@ -32,6 +33,16 @@ const TICK_INTERVAL_MS = 30 * 1000;
  */
 const BACKFILL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const BATCH = 25;
+
+// Failed referrals wait out a growing delay outside the sweep query, so
+// broken rows cannot fill the batch and starve new ones (audit INF-16).
+// A referral is not edited after creation, so one version covers it.
+const referralBackoff = new SweepBackoff();
+
+/** Test seam: forget every remembered failure. */
+export function __resetSweepBackoffForTests(): void {
+  referralBackoff.clear();
+}
 
 type DoctorName = { name: string; doctor: { nameRu: string; nameUz: string } | null };
 
@@ -180,12 +191,14 @@ export async function runReferralDocumentTick(
   const since = new Date(now.getTime() - BACKFILL_WINDOW_MS);
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const waiting = referralBackoff.waiting(now.getTime());
     const referrals = (await prisma.referral.findMany({
       where: {
         createdAt: { gte: since },
         // No referral document yet — what makes the sweep converge.
         document: { is: null },
         patient: { deletedAt: null },
+        ...(waiting.length > 0 ? { id: { notIn: waiting } } : {}),
       },
       select: {
         id: true,
@@ -214,8 +227,10 @@ export async function runReferralDocumentTick(
       try {
         await generateReferralDocument(ref, now);
         generated += 1;
+        referralBackoff.succeed(ref.id);
       } catch (err) {
-        console.error(`[referral-document] referral ${ref.id} failed`, err);
+        const attempts = referralBackoff.fail(ref.id, "", now.getTime());
+        logSweepFailure("referral-document", `referral ${ref.id}`, attempts, err);
       }
     }
 

@@ -30,7 +30,7 @@ export default async function BillingPage(props: {
 }) {
   const { locale } = await props.params;
   const session = await auth();
-  if (!session?.user) redirect(`/${locale}/login`);
+  if (!session?.user) redirect("/login");
 
   const role = session.user.role;
   if (role !== "ADMIN" && role !== "SUPER_ADMIN") {

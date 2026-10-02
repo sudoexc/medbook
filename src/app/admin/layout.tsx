@@ -31,7 +31,7 @@ export default async function AdminLayout({
 }) {
   const access = await adminPageAccess();
   if (access.kind === "anonymous") {
-    redirect("/ru/login");
+    redirect("/login");
   }
   if (access.kind === "owes_mfa") {
     redirect(SUPER_ADMIN_ENROL_PATH);

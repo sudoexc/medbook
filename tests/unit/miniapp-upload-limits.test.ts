@@ -468,5 +468,5 @@ printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n/dev/sda1 10
     expect(readFileSync(path.join(dir, "disk.state"), "utf8").trim()).toBe("ok");
     // The health state never moved: one alert does not swallow the other.
     expect(existsSync(path.join(dir, "health.state"))).toBe(false);
-  });
+  }, 20_000); // runs the real watchdog shell script; slow under a full-suite load
 });

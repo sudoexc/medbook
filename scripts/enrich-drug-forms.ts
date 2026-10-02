@@ -22,12 +22,14 @@ import { join } from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { mergeDrugForms, type DrugFormEntry } from "./_registry-plan";
+
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 const APPLY = process.env.APPLY === "1";
 
-type FormEntry = { form: string; strengths: string[] };
+type FormEntry = DrugFormEntry;
 type RegistryEntity = {
   nameRu: string;
   forms: FormEntry[];
@@ -36,35 +38,6 @@ type RegistryEntity = {
 
 const norm = (s: string) =>
   s.toLowerCase().replace(/[®™]/g, "").replace(/\s+/g, " ").trim();
-
-/** Strengths differ only by spacing in the register («200мг» vs «200 мг»). */
-const normStrength = (s: string) =>
-  s.toLowerCase().replace(/\s+/g, "").replace(",", ".");
-
-function mergeForms(current: FormEntry[], incoming: FormEntry[]): FormEntry[] {
-  const byForm = new Map<string, Set<string>>();
-  const order: string[] = [];
-  for (const src of [current, incoming]) {
-    for (const f of src) {
-      if (!f?.form) continue;
-      if (!byForm.has(f.form)) {
-        byForm.set(f.form, new Set());
-        order.push(f.form);
-      }
-      const set = byForm.get(f.form)!;
-      for (const s of f.strengths ?? []) {
-        // Keep the first spelling seen for a strength, drop duplicates.
-        if (![...set].some((v) => normStrength(v) === normStrength(s))) {
-          set.add(s);
-        }
-      }
-    }
-  }
-  return order.map((form) => ({
-    form,
-    strengths: [...(byForm.get(form) ?? [])],
-  }));
-}
 
 async function main() {
   const payload = JSON.parse(
@@ -103,7 +76,7 @@ async function main() {
       continue;
     }
     const current = Array.isArray(d.forms) ? (d.forms as FormEntry[]) : [];
-    const merged = mergeForms(current, hit.forms);
+    const merged = mergeDrugForms(current, hit.forms);
     const same =
       JSON.stringify(merged.map((f) => [f.form, f.strengths.length])) ===
       JSON.stringify(current.map((f) => [f.form, f.strengths.length]));

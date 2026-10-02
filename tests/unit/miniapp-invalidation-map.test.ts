@@ -71,6 +71,22 @@ describe("MINIAPP_INVALIDATION_MAP", () => {
     expect(keys).toContain("miniapp/appointments");
   });
 
+  // G3-07: the worker renders the conclusion PDF after finalize and only then
+  // emits document.created; the «Заключение готово» card and the PDF buttons
+  // read `conclusionUrl` from the appointments and visit-summary queries.
+  it("refreshes the appointments and visit-summary screens when a document lands", () => {
+    const keys = (MINIAPP_INVALIDATION_MAP["document.created"] ?? []).map((p) =>
+      p.join("/"),
+    );
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        "miniapp/documents",
+        "miniapp/appointments",
+        "miniapp/visit-summary",
+      ]),
+    );
+  });
+
   // The server-side v1 delivery allow-list (MINIAPP_DELIVERABLE_TYPES) must be
   // a subset of what the client knows how to act on — otherwise the mini-app
   // would stream a v1 event the client silently ignores (wasted frame) or,

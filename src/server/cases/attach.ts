@@ -29,11 +29,13 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { TenantContext } from "@/lib/tenant-context";
 import {
   recomputeAppointmentPrice,
   type RecomputeResult,
 } from "@/server/pricing/recompute-appointment-price";
-import type { Actor, Surface } from "@/server/realtime/envelope";
+import type { Actor, ActorRole, Surface } from "@/server/realtime/envelope";
+import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 
 /** Either the prisma singleton or the `$transaction` callback parameter. */
 type PrismaTx =
@@ -87,6 +89,85 @@ export type CaseAttachAuditActor = {
   surface: Surface;
   correlationId?: string | null;
 };
+
+/** The staff member behind a CRM attach or detach, for its events. */
+export function staffCaseActor(
+  ctx: TenantContext,
+  clinicId: string,
+): CaseAttachAuditActor {
+  const userId = ctx.kind === "TENANT" ? ctx.userId : null;
+  const role = ctx.kind === "TENANT" ? ctx.role : null;
+  const actorRole: ActorRole =
+    role === "DOCTOR" ? "DOCTOR" : role === "ADMIN" ? "ADMIN" : "RECEPTIONIST";
+  const surface: Surface =
+    role === "DOCTOR"
+      ? "DOCTOR_CABINET"
+      : role === "CALL_OPERATOR"
+        ? "CALL_CENTER"
+        : "CRM";
+  return {
+    clinicId,
+    actor: {
+      role: actorRole,
+      userId,
+      patientId: null,
+      onBehalfOfPatientId: null,
+      label: userId ? `user:${userId}` : "user:anonymous",
+    },
+    surface,
+  };
+}
+
+/**
+ * `appointment.updated` for every visit an attach or detach touched (audit
+ * G3-13): the moved visit changed case, and it and its siblings were
+ * re-priced («Итого», a free repeat). Nothing was published, so other staff
+ * screens and the patient's Mini App kept the old price until a reload.
+ * Call it inside the attach's transaction, after the re-pricing, so the
+ * events leave only with the change.
+ */
+export async function publishCaseRepricing(
+  tx: PrismaTx,
+  who: CaseAttachAuditActor,
+  appointmentIds: Iterable<string>,
+): Promise<void> {
+  const ids = [...new Set(appointmentIds)];
+  if (ids.length === 0) return;
+  const rows = await tx.appointment.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      doctorId: true,
+      patientId: true,
+      cabinetId: true,
+      status: true,
+      date: true,
+    },
+  });
+  const correlationId = who.correlationId ?? newCorrelationId();
+  for (const r of rows) {
+    await publishViaOutbox(tx, {
+      correlationId,
+      actor: who.actor,
+      surface: who.surface,
+      tenantScope: {
+        clinicId: who.clinicId,
+        doctorId: r.doctorId,
+        patientId: r.patientId,
+        appointmentId: r.id,
+      },
+      type: "appointment.updated",
+      payload: {
+        appointmentId: r.id,
+        doctorId: r.doctorId,
+        patientId: r.patientId,
+        cabinetId: r.cabinetId,
+        status: r.status,
+        date: r.date.toISOString(),
+      },
+    });
+  }
+}
 
 /**
  * `appointment.free_repeat_applied` for every visit the attach made free,

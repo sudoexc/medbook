@@ -10,6 +10,10 @@
  *   - G4-09: the preset seeds walked the doctors of every clinic;
  *   - G4-10: seed-drugs deleted every brand of each curated drug, the state
  *     register's ~1800 trade names on those rows with them;
+ *   - G2-18: it also wrote the source form list over `forms`, taking back the
+ *     register's forms that enrich-drug-forms.ts had merged in;
+ *   - G2-20: seed-drug-interactions wiped the CDS pairs and re-inserted them
+ *     one by one outside a transaction, and no ops doc ran it;
  *   - G4-11: seed-protocols only touches global rows (already fixed in P3,
  *     re-checked here).
  */
@@ -18,7 +22,13 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { curatedBrandsToAdd } from "../../scripts/_registry-plan";
+import { DRUGS } from "../../prisma/_drug-catalog";
+import { DRUGS_EXTRA } from "../../prisma/_drug-catalog-extra";
+import {
+  DRUG_INTERACTIONS,
+  planDrugInteractionRows,
+} from "../../prisma/_drug-interactions-data";
+import { curatedBrandsToAdd, mergeDrugForms } from "../../scripts/_registry-plan";
 
 const root = path.resolve(__dirname, "../..");
 const read = (f: string) => readFileSync(path.join(root, f), "utf8");
@@ -112,6 +122,89 @@ describe("G4-10: seed-drugs adds curated brands and deletes none", () => {
     const src = read("prisma/seed-drugs.ts");
     expect(src).not.toMatch(/drugBrand\.deleteMany/);
     expect(src).toMatch(/curatedBrandsToAdd\(/);
+  });
+});
+
+describe("G2-18: seed-drugs unions dosage forms instead of overwriting them", () => {
+  it("keeps every stored form and strength, adds the source ones, folds spacing", () => {
+    const source = [
+      { form: "POWDER", strengths: ["200 мг", "600 мг"] },
+      { form: "TAB", strengths: ["600 мг"] },
+    ];
+    // What enrich-drug-forms.ts left on the row: the register's injectable.
+    const stored = [
+      { form: "POWDER", strengths: ["200мг", "100 мг"] },
+      { form: "INJ", strengths: ["300 мг/3 мл"] },
+    ];
+    expect(mergeDrugForms(source, stored)).toEqual([
+      { form: "POWDER", strengths: ["200 мг", "600 мг", "100 мг"] },
+      { form: "TAB", strengths: ["600 мг"] },
+      { form: "INJ", strengths: ["300 мг/3 мл"] },
+    ]);
+    // Idempotent: a second reseed changes nothing.
+    const once = mergeDrugForms(source, stored);
+    expect(mergeDrugForms(source, once)).toEqual(once);
+    expect(mergeDrugForms(source, [])).toEqual(source);
+    expect(
+      mergeDrugForms(
+        [{ form: "TAB", strengths: ["2,5 мг"] }],
+        [{ form: "TAB", strengths: ["2.5мг"] }],
+      ),
+    ).toEqual([{ form: "TAB", strengths: ["2,5 мг"] }]);
+  });
+
+  it("merges the stored forms in the upsert update and shares the helper with the enrichment", () => {
+    const src = read("prisma/seed-drugs.ts");
+    expect(src).toMatch(/update: \{ \.\.\.fields, forms: mergeDrugForms\(forms, storedForms\) \}/);
+    expect(read("scripts/enrich-drug-forms.ts")).toMatch(/mergeDrugForms\(current, hit\.forms\)/);
+  });
+});
+
+describe("G2-20: seed-drug-interactions replaces the set in one transaction", () => {
+  const pair = (a: string, b: string, advice = "x") => ({
+    a,
+    b,
+    severity: "MAJOR" as const,
+    advice,
+  });
+
+  it("normalises pair order, drops mirror duplicates and reports unknown drugs", () => {
+    const { rows, skipped } = planDrugInteractionRows(
+      [
+        pair("warfarin", "aspirin", "first"),
+        pair("aspirin", "warfarin", "mirror"),
+        pair("ghost", "aspirin"),
+      ],
+      new Set(["warfarin", "aspirin"]),
+    );
+    expect(rows).toEqual([
+      {
+        drugAId: "aspirin",
+        drugBId: "warfarin",
+        severity: "MAJOR",
+        mechanism: null,
+        advice: "first",
+        riskDiagnoses: [],
+      },
+    ]);
+    expect(skipped).toEqual(["ghost ↔ aspirin"]);
+  });
+
+  it("every curated pair resolves against the static catalog seed-drugs writes", () => {
+    const ids = new Set([...DRUGS, ...DRUGS_EXTRA].map((d) => d.id));
+    const { rows, skipped } = planDrugInteractionRows(DRUG_INTERACTIONS, ids);
+    expect(skipped).toEqual([]);
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it("deletes and inserts inside one $transaction, never row by row, and the runbook runs it", () => {
+    const src = read("prisma/seed-drug-interactions.ts");
+    expect(src).toMatch(/prisma\.\$transaction\(\[\s*prisma\.drugInteraction\.deleteMany\(\{\}\),\s*prisma\.drugInteraction\.createMany\(/);
+    expect(src).not.toMatch(/drugInteraction\.create\(/);
+    expect(src).toMatch(/process\.exitCode = 1/);
+    const runbook = read("docs/operations/RUNBOOK.md");
+    expect(runbook).toContain("prisma/seed-drug-interactions.ts");
+    expect(runbook).toContain('SELECT count(*) FROM \\"DrugInteraction\\"');
   });
 });
 

@@ -12,7 +12,16 @@
  *     risk tasks at once;
  *   - `retireSettledDebt`: a payment that settles a visit closes its debt.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const published = vi.hoisted(
+  () => [] as Array<{ clinicId: string; type: string; payload: unknown }>,
+);
+vi.mock("@/server/realtime/publish", () => ({
+  publishEventSafe: (clinicId: string, ev: { type: string; payload: unknown }) => {
+    published.push({ clinicId, type: ev.type, payload: ev.payload });
+  },
+}));
 
 import { retireVanishedSignals } from "@/server/actions/repository";
 import { retireVisitRiskActions } from "@/server/actions/in-clinic";
@@ -103,6 +112,7 @@ beforeEach(() => {
   store.rows.clear();
   store.audits = [];
   store.appointment = null;
+  published.length = 0;
 });
 
 describe("retireVanishedSignals", () => {
@@ -212,6 +222,26 @@ describe("retireVisitRiskActions", () => {
       "visit_cancelled",
       "visit_cancelled",
     ]);
+  });
+
+  it("announces every task it closes as action.updated, and nothing for a visit ahead (G3-11)", async () => {
+    seedRisk();
+    await retireVisitRiskActions(prisma, "c1", "ap1", "CANCELLED");
+    expect(published).toEqual([
+      {
+        clinicId: "c1",
+        type: "action.updated",
+        payload: { id: "unconf", type: "UNCONFIRMED_24H", severity: "medium" },
+      },
+      {
+        clinicId: "c1",
+        type: "action.updated",
+        payload: { id: "risk", type: "NO_SHOW_RISK_HIGH", severity: "medium" },
+      },
+    ]);
+    published.length = 0;
+    await retireVisitRiskActions(prisma, "c1", "ap1", "CONFIRMED");
+    expect(published).toEqual([]);
   });
 
   it("a completed visit closes every pre-arrival task", async () => {

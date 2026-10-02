@@ -639,6 +639,25 @@ ssh root@167.233.142.75 'ls -l /var/backups/medbook/$(date -u +%F)/; grep -E "re
 prisma/seed-protocols.ts`. `prisma/seed-handouts.ts` выключает только
 глобальные памятки, памятки клиники не трогает.
 
+`prisma/seed-drugs.ts` только добавляет: бренды и формы, которые уже есть у
+препарата (из госреестра, из `enrich-drug-forms.ts`), сохраняет.
+
+Пары взаимодействий для проверки назначений (таблица `DrugInteraction`, общая
+для всех клиник) миграции не заполняют. На новом сервере таблица пуста, и
+проверка видит только классовые правила из кода. Поэтому после
+`prisma/seed-drugs.ts` и при каждой правке `prisma/_drug-interactions-data.ts`:
+
+```bash
+ssh root@167.233.142.75 'cd /opt/neurofax && docker compose exec -T worker npx tsx prisma/seed-drug-interactions.ts'
+ssh root@167.233.142.75 'cd /opt/neurofax && docker compose exec -T postgres \
+  psql -U medbook -d medbook -tc "SELECT count(*) FROM \"DrugInteraction\";"'
+```
+
+Сид заменяет весь набор одной транзакцией: проверка назначений во время
+прогона видит старый набор, а не пустую таблицу. Счётчик после прогона больше
+нуля. Если сид пишет `ERROR: skipped` и завершается с кодом 1, в каталоге нет
+препарата из пары: сначала `prisma/seed-drugs.ts`.
+
 Предохранитель: последний рубеж, а не разрешение. Если команда из старой
 заметки, истории терминала или памяти предлагает «освежить демо» на проде,
 она устарела.

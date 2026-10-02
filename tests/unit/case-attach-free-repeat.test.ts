@@ -35,6 +35,8 @@ const store = vi.hoisted(() => ({
   appts: [] as Appt[],
   cases: [] as Case[],
   audits: [] as Array<Record<string, unknown>>,
+  /** Outbox rows: what the re-pricing announced (G3-13). */
+  events: [] as Array<{ type: string; tenantScope: Record<string, unknown>; payload: Record<string, unknown> }>,
   calls: [] as string[],
   lock: Promise.resolve() as Promise<void>,
 }));
@@ -77,8 +79,21 @@ function makeTx() {
         async ({
           where,
         }: {
-          where: { medicalCaseId: string; OR?: unknown };
+          where: { medicalCaseId?: string; OR?: unknown; id?: { in: string[] } };
         }) => {
+          // publishCaseRepricing's read of the visits it announces.
+          if (where.id) {
+            return store.appts
+              .filter((a) => where.id!.in.includes(a.id))
+              .map((a) => ({
+                id: a.id,
+                doctorId: "d1",
+                patientId: a.patientId,
+                cabinetId: null,
+                status: a.status,
+                date: a.date,
+              }));
+          }
           const rows = store.appts
             .filter((a) => a.medicalCaseId === where.medicalCaseId)
             .filter((a) =>
@@ -129,6 +144,25 @@ function makeTx() {
         store.audits.push(data);
         return data;
       }),
+    },
+    eventOutbox: {
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: {
+            envelope: {
+              type: string;
+              tenantScope: Record<string, unknown>;
+              payload: Record<string, unknown>;
+            };
+          };
+        }) => {
+          const { type, tenantScope, payload } = data.envelope;
+          store.events.push({ type, tenantScope, payload });
+          return { id: "outbox_stub" };
+        },
+      ),
     },
   };
 }
@@ -221,6 +255,7 @@ beforeEach(() => {
   store.appts = [];
   store.cases = [];
   store.audits = [];
+  store.events = [];
   store.calls = [];
   store.lock = Promise.resolve();
 });
@@ -323,6 +358,13 @@ describe("POST /api/miniapp/appointments/[id]/attach-case", () => {
     });
     // The eligibility read happens under the per-patient case lock.
     expect(store.calls.slice(0, 2)).toEqual(["lock", "read-appointment"]);
+    // G3-13: every re-priced visit of the case is announced, patient-scoped,
+    // so reception and the Mini App show the new price without a reload.
+    expect(store.events.map((e) => [e.type, e.payload.appointmentId]).sort()).toEqual([
+      ["appointment.updated", "first"],
+      ["appointment.updated", "repeat"],
+    ]);
+    expect(store.events[0]!.tenantScope).toMatchObject({ clinicId: "c1", patientId: "p1", doctorId: "d1" });
   });
 
   /**

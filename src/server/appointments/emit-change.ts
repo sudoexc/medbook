@@ -15,6 +15,7 @@
 
 import type { Appointment } from "@/generated/prisma/client";
 
+import { previousDoctorField } from "@/lib/appointments/event-doctors";
 import { publishViaOutbox, type OutboxTx } from "@/server/realtime/outbox";
 import type {
   ActorRole,
@@ -32,8 +33,13 @@ export type EmitAppointmentChangeInput = {
   tx: OutboxTx;
   /** What kind of envelope to emit on the appointment channel. */
   kind: AppointmentEmitKind;
-  /** Pre-update appointment snapshot for `previousStatus` + queue diff. */
-  before: Pick<Appointment, "status" | "queueStatus">;
+  /**
+   * Pre-update appointment snapshot for `previousStatus` + queue diff, and
+   * `doctorId` for `previousDoctorId` when the visit changed doctor (G3-12).
+   * Optional: a path that cannot change the doctor may leave it out.
+   */
+  before: Pick<Appointment, "status" | "queueStatus"> &
+    Partial<Pick<Appointment, "doctorId">>;
   /** Post-update row — payload reads doctorId/patientId/cabinetId/status/date. */
   after: Pick<
     Appointment,
@@ -79,9 +85,17 @@ export async function emitAppointmentChangeViaOutbox(
     },
   } as const;
 
+  // The previous doctor's screens drop events naming only the new one, so a
+  // transfer names both (audit G3-12).
+  const doctorChange = previousDoctorField(
+    input.before.doctorId,
+    input.after.doctorId,
+  );
+
   const payload = {
     appointmentId: input.after.id,
     doctorId: input.after.doctorId,
+    ...doctorChange,
     patientId: input.after.patientId,
     cabinetId: input.after.cabinetId,
     status: input.after.status,
@@ -104,6 +118,7 @@ export async function emitAppointmentChangeViaOutbox(
       payload: {
         appointmentId: input.after.id,
         doctorId: input.after.doctorId,
+        ...doctorChange,
         queueStatus: input.after.queueStatus,
         previousStatus: input.before.queueStatus,
       },

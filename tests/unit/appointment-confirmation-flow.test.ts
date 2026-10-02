@@ -257,6 +257,26 @@ vi.mock("@/lib/prisma", () => {
       ),
     },
     action: {
+      // G3-11: the confirm reads the rows it closes so it can announce them.
+      findMany: vi.fn(
+        async ({
+          where,
+        }: {
+          where: {
+            clinicId: string;
+            dedupeKey: string;
+            status: { in: Array<"OPEN" | "SNOOZED"> };
+          };
+        }) =>
+          state.actions
+            .filter(
+              (row) =>
+                row.clinicId === where.clinicId &&
+                row.dedupeKey === where.dedupeKey &&
+                where.status.in.includes(row.status as "OPEN" | "SNOOZED"),
+            )
+            .map((row) => ({ id: row.id, type: "UNCONFIRMED_24H", severity: "low" })),
+      ),
       updateMany: vi.fn(
         async ({
           where,
@@ -615,10 +635,16 @@ describe("A. Happy loop — TELEGRAM appointment 36h ahead", () => {
     expect(audit.meta.statusAfter).toBe("CONFIRMED");
     expect(audit.meta.statusFlipped).toBe(true);
 
-    // Realtime fan-out — both envelopes land in the outbox (B.2 routing).
-    expect(state.publishes).toHaveLength(2);
+    // Realtime fan-out — both envelopes land in the outbox (B.2 routing),
+    // after the closed task's action.updated (G3-11).
+    expect(state.publishes).toHaveLength(3);
     const types = state.publishes.map((p) => p.type).sort();
-    expect(types).toEqual(["appointment.statusChanged", "queue.updated"]);
+    expect(types).toEqual(["action.updated", "appointment.statusChanged", "queue.updated"]);
+    expect(state.publishes.find((p) => p.type === "action.updated")?.payload).toEqual({
+      id: "act_1",
+      type: "UNCONFIRMED_24H",
+      severity: "low",
+    });
 
     // 3) Detector re-run — confirmed row no longer satisfies predicate.
     const second = await detector.detectUnconfirmed24h(

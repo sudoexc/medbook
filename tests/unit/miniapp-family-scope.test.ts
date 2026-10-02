@@ -129,6 +129,7 @@ vi.mock("@/server/cases/attach", () => ({
   }),
   attachAppointmentToCase: vi.fn(async () => []),
   auditFreeRepeats: vi.fn(),
+  publishCaseRepricing: vi.fn(),
   miniAppAttachRefusal: vi.fn(() => null),
   MINIAPP_ATTACH_PAYMENT_FILTER: { status: { not: "UNPAID" } },
 }));

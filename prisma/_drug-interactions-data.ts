@@ -344,3 +344,47 @@ export const DRUG_INTERACTIONS: InteractionSeed[] = [
     advice: "Принимать препарат железа с витамином C; разделять с ИПП.",
   },
 ];
+
+/** One DrugInteraction row as prisma/seed-drug-interactions.ts writes it. */
+export type InteractionRow = {
+  drugAId: string;
+  drugBId: string;
+  severity: InteractionSeed["severity"];
+  mechanism: string | null;
+  advice: string;
+  riskDiagnoses: string[];
+};
+
+/**
+ * The rows the seed writes: pair order normalised (a < b) so a mirror entry
+ * never becomes a second row against the (drugAId, drugBId) unique key, the
+ * first entry of a pair winning; pairs naming a drug the catalog does not
+ * have are returned apart, for the seed to report as an error (audit G2-20).
+ */
+export function planDrugInteractionRows(
+  seeds: readonly InteractionSeed[],
+  knownDrugIds: ReadonlySet<string>,
+): { rows: InteractionRow[]; skipped: string[] } {
+  const rows: InteractionRow[] = [];
+  const skipped: string[] = [];
+  const seen = new Set<string>();
+  for (const it of seeds) {
+    if (!knownDrugIds.has(it.a) || !knownDrugIds.has(it.b)) {
+      skipped.push(`${it.a} ↔ ${it.b}`);
+      continue;
+    }
+    const [drugAId, drugBId] = it.a < it.b ? [it.a, it.b] : [it.b, it.a];
+    const key = `${drugAId}\u0000${drugBId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      drugAId,
+      drugBId,
+      severity: it.severity,
+      mechanism: it.mechanism ?? null,
+      advice: it.advice,
+      riskDiagnoses: it.riskDiagnoses ?? [],
+    });
+  }
+  return { rows, skipped };
+}

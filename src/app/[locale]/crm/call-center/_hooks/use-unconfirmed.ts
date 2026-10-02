@@ -17,6 +17,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+import type { EventType } from "@/server/realtime/events";
 import { ACTIONABLE_STATUSES, SEVERITY_RANK } from "@/lib/actions/types";
 import {
   ACTIONS_LIST_POLL_MS,
@@ -31,9 +32,21 @@ type PageShape = { rows: ActionRow[]; nextCursor: string | null };
 
 const UNCONFIRMED_LIMIT = 30;
 
+const UNCONFIRMED_KEY = [
+  "actions",
+  "list",
+  { type: ["UNCONFIRMED_24H"], status: ACTIONABLE_STATUSES, limit: UNCONFIRMED_LIMIT },
+] as const;
+
+/** Appointment events that settle a «К подтверждению» row. */
+export const UNCONFIRMED_SAFETY_EVENTS: ReadonlyArray<EventType> = [
+  "appointment.statusChanged",
+  "appointment.cancelled",
+];
+
 export function useUnconfirmedActions() {
   const query = useQuery<UnconfirmedActionRow[], Error>({
-    queryKey: ["actions", "list", { type: ["UNCONFIRMED_24H"], status: ACTIONABLE_STATUSES, limit: UNCONFIRMED_LIMIT }],
+    queryKey: UNCONFIRMED_KEY,
     queryFn: async ({ signal }) => {
       const sp = new URLSearchParams();
       sp.append("type", "UNCONFIRMED_24H");
@@ -73,6 +86,13 @@ export function useUnconfirmedActions() {
   useLiveQueryInvalidation({
     events: ["action.created", "action.updated"],
     queryKey: ["actions"],
+  });
+  // Safety net (audit G3-11): a confirm or a cancel settles the row even if
+  // the action.updated that closes its task is lost. Only this list's key,
+  // so the action center does not refetch on every status change.
+  useLiveQueryInvalidation({
+    events: UNCONFIRMED_SAFETY_EVENTS,
+    queryKey: UNCONFIRMED_KEY,
   });
 
   return query;

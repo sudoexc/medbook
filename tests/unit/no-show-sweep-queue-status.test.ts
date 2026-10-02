@@ -217,6 +217,23 @@ describe("Q-14: the auto no-show moves both status columns", () => {
     ).toBe(true);
   });
 
+  it("both no-show events name the patient, so the Mini App stream delivers them (G3-09)", async () => {
+    state.rows = [row({ id: "booking" })];
+
+    await tick();
+
+    const sent = h.publishes.filter(
+      (p) =>
+        p.payload.appointmentId === "booking" &&
+        (p.type === "queue.updated" || p.type === "appointment.statusChanged"),
+    );
+    expect(sent.map((p) => p.type).sort()).toEqual([
+      "appointment.statusChanged",
+      "queue.updated",
+    ]);
+    for (const p of sent) expect(p.payload.patientId).toBe("p1");
+  });
+
   it("a SKIPPED walk-in registered two hours ago is left alone, no message", async () => {
     const registered = new Date(Date.now() - 2 * HOUR);
     state.rows = [

@@ -32,6 +32,7 @@ import type { Appointment } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { tashkentComponents } from "@/lib/booking-validation";
 import { patientRescheduleRefusal } from "@/lib/appointments/patient-reschedule";
+import { previousDoctorField } from "@/lib/appointments/event-doctors";
 import {
   isWithinBookingHorizon,
   MINIAPP_MAX_SERVICES_PER_BOOKING,
@@ -305,6 +306,9 @@ export async function reschedulePatientAppointment(
         payload: {
           appointmentId: after.id,
           doctorId: after.doctorId,
+          // A patient picking another doctor: the previous one's screens
+          // drop events that name only the new doctor (audit G3-12).
+          ...previousDoctorField(before.doctorId, after.doctorId),
           patientId: after.patientId,
           cabinetId: after.cabinetId,
           status: after.status,
@@ -321,6 +325,7 @@ export async function reschedulePatientAppointment(
         payload: {
           appointmentId: after.id,
           doctorId: after.doctorId,
+          ...previousDoctorField(before.doctorId, after.doctorId),
           queueStatus: after.queueStatus,
         },
       });

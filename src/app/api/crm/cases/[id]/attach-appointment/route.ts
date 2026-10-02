@@ -13,7 +13,11 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { AttachAppointmentSchema } from "@/server/schemas/medical-case";
-import { attachAppointmentToCase } from "@/server/cases/attach";
+import {
+  attachAppointmentToCase,
+  publishCaseRepricing,
+  staffCaseActor,
+} from "@/server/cases/attach";
 
 function caseIdFromUrl(request: Request): string {
   // /api/crm/cases/[id]/attach-appointment → [id] is segment[-2].
@@ -28,7 +32,7 @@ export const POST = createApiHandler(
     roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"],
     bodySchema: AttachAppointmentSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const caseId = caseIdFromUrl(request);
 
     const mcase = await prisma.medicalCase.findUnique({
@@ -62,13 +66,20 @@ export const POST = createApiHandler(
     // Attach + reprice every visit whose "first vs repeat" position can flip
     // (the visit, the destination case, the case it left). Shared with the
     // Mini App paths so the price never depends on the channel (PT-02).
-    const recomputed = await prisma.$transaction((tx) =>
-      attachAppointmentToCase(tx, {
+    // Every re-priced visit is announced in the same transaction (G3-13).
+    const recomputed = await prisma.$transaction(async (tx) => {
+      const results = await attachAppointmentToCase(tx, {
         appointmentId: appt.id,
         caseId,
         previousCaseId: appt.medicalCaseId,
-      }),
-    );
+      });
+      await publishCaseRepricing(
+        tx,
+        staffCaseActor(ctx, mcase.clinicId),
+        results.map((r) => r.appointmentId),
+      );
+      return results;
+    });
 
     const updated = await prisma.appointment.findUniqueOrThrow({
       where: { id: appt.id },

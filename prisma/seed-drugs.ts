@@ -3,12 +3,15 @@
  * `_drug-catalog.ts`, merged with clinical enrichment in
  * `_drug-data.ts`.
  *
- * Idempotent and additive: upserts the curated Drug rows by id and adds the
- * curated brands a row does not carry yet. Nothing is deleted: drugs not in
+ * Idempotent and additive: upserts the curated Drug rows by id, unions their
+ * dosage forms with the ones already stored, and adds the curated brands a
+ * row does not carry yet. Nothing is deleted: drugs not in
  * the static catalog (per-clinic additions, the state register import) and
  * every brand already on a row (the register's trade names included, audit
- * G4-10) survive a reseed. Removing a brand from the source file does not
- * remove it from the database; that takes a data fix.
+ * G4-10) and every form or strength already on a row (the register's, merged
+ * by scripts/enrich-drug-forms.ts, audit G2-18) survive a reseed. Removing a
+ * brand or a form from the source file does not remove it from the database;
+ * that takes a data fix.
  *
  * Local: `npx tsx prisma/seed-drugs.ts`
  *
@@ -22,7 +25,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { DRUGS as DRUGS_CORE } from "./_drug-catalog";
 import { DRUGS_EXTRA } from "./_drug-catalog-extra";
 import { DRUG_ENRICHMENT } from "./_drug-data";
-import { curatedBrandsToAdd } from "../scripts/_registry-plan";
+import {
+  curatedBrandsToAdd,
+  mergeDrugForms,
+  type DrugFormEntry,
+} from "../scripts/_registry-plan";
 
 /**
  * Curated core plus the depth extension, kept in separate files on purpose:
@@ -74,10 +81,21 @@ async function main() {
       active: true,
     };
 
+    // Union, never replace (audit G2-18): enrich-drug-forms.ts adds the
+    // register's forms to these rows (the injectable АЦЦ), and writing the
+    // source list over them took those back on every reseed, so the
+    // prescription constructor stopped offering the form.
+    const stored = await prisma.drug.findUnique({
+      where: { id: d.id },
+      select: { forms: true },
+    });
+    const rawForms = stored?.forms;
+    const storedForms = Array.isArray(rawForms) ? (rawForms as DrugFormEntry[]) : [];
+
     await prisma.drug.upsert({
       where: { id: d.id },
       create: { id: d.id, ...fields },
-      update: fields,
+      update: { ...fields, forms: mergeDrugForms(forms, storedForms) },
     });
 
     // Add, never replace (audit G4-10): the state register import hangs its

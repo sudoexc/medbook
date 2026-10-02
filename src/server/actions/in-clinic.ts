@@ -38,9 +38,12 @@ import {
   VISIT_BOUND_ACTION_TYPES,
   visitBoundDedupeKeysOf,
   type ActionPayload,
+  type ActionSeverity,
+  type ActionType,
 } from "@/lib/actions/types";
 import { checkedInOnVisitDay } from "@/lib/appointments/self-check-in";
 import type { TenantScopedPrisma } from "@/lib/prisma";
+import { publishEventSafe } from "@/server/realtime/publish";
 
 import { holdsPromisedCall, retireActions } from "./repository";
 
@@ -170,12 +173,23 @@ export async function retireVisitRiskActions(
     })) as LiveRiskRow[];
     if (live.length === 0) return 0;
     const visitOf = new Map<string, VisitState>([[appointmentId, { status }]]);
-    return await retireActions(
-      prisma,
-      clinicId,
-      mootRows(live, visitOf),
-      "visit_not_ahead",
-    );
+    const moot = mootRows(live, visitOf);
+    const retired = await retireActions(prisma, clinicId, moot, "visit_not_ahead");
+    // Announce each closed task (audit G3-11): the «К подтверждению» widget
+    // and the action center refresh only on action.*, so a visit cancelled
+    // in the Mini App stayed on the operators' lists until their next poll.
+    // This runs after the visit's commit, so the bus is safe here.
+    for (const row of moot) {
+      publishEventSafe(clinicId, {
+        type: "action.updated",
+        payload: {
+          id: row.id,
+          type: row.type as ActionType,
+          severity: row.severity as ActionSeverity,
+        },
+      });
+    }
+    return retired;
   } catch (e) {
     console.warn(
       `[actions.retireVisitRiskActions] ${appointmentId} skipped: ${

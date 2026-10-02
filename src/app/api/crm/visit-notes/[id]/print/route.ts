@@ -23,6 +23,7 @@ import QRCode from "qrcode";
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { notePatientView } from "@/server/audit/patient-view";
+import { withClinicDrugPhotos } from "@/server/catalog/drug-photos";
 import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
@@ -92,8 +93,13 @@ function pickPrintType(request: Request): "clinical" | "handout" | "package" {
 
 // ?embed=1 — live-предпросмотр в iframe редактора: без панели печати и без
 // audit-записи (иначе каждый автосейв плодил бы visit_note.print в журнале).
+// Only inside a frame (audit VW-23): the same URL opened as a page of its
+// own renders the full document and prints with Cmd+P, so a top-level
+// navigation (Sec-Fetch-Dest: document) is a print like any other, with
+// its print bar and its audit row.
 function pickEmbed(request: Request): boolean {
-  return new URL(request.url).searchParams.get("embed") === "1";
+  if (new URL(request.url).searchParams.get("embed") !== "1") return false;
+  return request.headers.get("sec-fetch-dest") !== "document";
 }
 
 function escapeHtml(input: string | null | undefined): string {
@@ -213,11 +219,12 @@ export const GET = createApiListHandler(
     }
 
     // A printed conclusion is a chart read: in «Просмотры карточек» under
-    // the patient (audit G1-06). The editor's live preview (`embed=1`) is
-    // already covered by the note's own GET.
-    if (!embed) {
-      notePatientView(prisma, request, ctx, note.patient.id, "visit_note.print", id);
-    }
+    // the patient (audit G1-06). The editor's live preview (`embed=1`) too
+    // (audit VW-23): it renders the whole document, and the route is open
+    // to ADMIN for any note, so skipping it left a read with no trace. The
+    // helper writes one row per viewer, note and 5 minutes, so a preview
+    // reloading on every autosave stays one entry.
+    notePatientView(prisma, request, ctx, note.patient.id, "visit_note.print", id);
 
     const clinic =
       ctx.kind === "TENANT"
@@ -838,8 +845,7 @@ export const GET = createApiListHandler(
             print: "Chop etish / PDF",
             generated: "Tayyorlandi",
             packsTitle: "Qadoq qanday ko'rinadi",
-            emptyHint:
-              "Eslatma hali shakllantirilmagan. Iltimos, qabul oynasida \"Shakllantirish\" tugmasini bosing.",
+            emptyHint: "Bu tashrif bo'yicha tavsiyalar yozilmagan.",
           }
         : {
             title: "Памятка для пациента",
@@ -849,8 +855,7 @@ export const GET = createApiListHandler(
             print: "Печать / PDF",
             generated: "Подготовлено",
             packsTitle: "Как выглядит упаковка",
-            emptyHint:
-              "Памятка ещё не сформирована. На экране приёма нажмите «Сформировать», затем повторите печать.",
+            emptyHint: "Рекомендаций по этому приёму не записано.",
           };
 
     // The handout is stored in the patient's language (audit VW-07). Printed
@@ -861,8 +866,17 @@ export const GET = createApiListHandler(
       ? note.patientHandoutMarkdown
       : null;
     const storedLocale = composedHandoutLocale(storedHandout);
+    // A draft has no stored handout: it is composed at the signature, and
+    // since the handout tab left the screen nothing else writes it. Printed
+    // before signing (the package button works on a draft), it is composed
+    // here the same way, so the patient's sheet carries what the doctor has
+    // written so far instead of a hint to press a button that no longer
+    // exists (audit VW-24).
+    const composeNow =
+      (storedHandout && storedLocale && storedLocale !== locale) ||
+      (!storedHandout && note.status === "DRAFT");
     const handoutMarkdown =
-      storedHandout && storedLocale && storedLocale !== locale
+      composeNow
         ? (composeNoteHandout(
             {
               patient: note.patient,
@@ -897,9 +911,15 @@ export const GET = createApiListHandler(
     // the stored URL is either the private bucket (AccessDenied) or our
     // proxy, which a PDF viewer with no session cannot open (CD-02). A dev
     // `/uploads/…` file stays a URL, made absolute for the same reason.
+    // A global drug's photo is in the clinic's overlay, not on the row
+    // (audit VW-27).
+    const photographed = await withClinicDrugPhotos(
+      note.clinicId,
+      note.visitPrescriptions,
+    );
     const packShots = (
       await Promise.all(
-        note.visitPrescriptions.map(async (rx) => {
+        photographed.map(async (rx) => {
           const stored = (rx as { drug?: { photoUrl: string | null } | null })
             .drug?.photoUrl;
           const photo = clinic

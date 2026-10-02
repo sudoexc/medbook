@@ -35,6 +35,7 @@ import { ok, err, notFound, forbidden } from "@/server/http";
 import { fetchObject } from "@/server/storage/minio";
 import { sendDocument } from "@/server/telegram/send";
 import { clinicReadableKey } from "@/server/documents/file-ref";
+import { withClinicDrugPhotos } from "@/server/catalog/drug-photos";
 import { conclusionDeliveryState } from "@/server/visit-notes/conclusion-delivery";
 
 /** Telegram caps media groups; ten is plenty for one visit's paperwork. */
@@ -81,6 +82,7 @@ export const POST = createApiHandler(
           orderBy: { sortOrder: "asc" },
           select: {
             displayName: true,
+            drugId: true,
             drug: { select: { photoUrl: true } },
           },
         },
@@ -197,7 +199,11 @@ export const POST = createApiHandler(
     // pictures are the help. Failures here never spoil the send — the
     // patient already has everything that matters.
     let packsSent = 0;
-    for (const rx of note.visitPrescriptions) {
+    // A global drug's photo is in the clinic's overlay (audit VW-27).
+    for (const rx of await withClinicDrugPhotos(
+      note.clinic.id,
+      note.visitPrescriptions,
+    )) {
       const photo = rx.drug?.photoUrl;
       if (!photo) continue;
       const key = clinicReadableKey(photo, note.clinic.id, "packShot");

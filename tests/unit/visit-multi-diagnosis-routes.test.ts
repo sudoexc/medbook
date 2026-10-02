@@ -152,6 +152,8 @@ vi.mock("@/lib/prisma", () => {
       }),
       // No other signed note carries anything.
       count: vi.fn(async () => 0),
+      // The conditional claim of the draft (VW-19): this note is a draft.
+      updateMany: vi.fn(async () => ({ count: 1 })),
     },
     visitPrescription: {
       findMany: vi.fn(async () => []),

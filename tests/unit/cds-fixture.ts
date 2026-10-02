@@ -19,6 +19,8 @@ export type FixtureDrug = {
   pregnancyCat: "A" | "B" | "C" | "D" | "X" | "UNKNOWN";
   contraindications: string[];
   brands: { name: string }[];
+  /** Null or absent: the global catalog; set: one clinic's own drug. */
+  clinicId?: string | null;
 };
 
 export const CURATED: FixtureDrug[] = DRUGS.map((d) => {
@@ -106,6 +108,7 @@ type DrugWhere = {
   id?: In;
   atcCode?: In;
   NOT?: { inn?: { startsWith?: string } };
+  OR?: Array<{ clinicId?: string | null }>;
 };
 type PairWhere = { OR: Array<{ drugAId?: In; drugBId?: In }> };
 
@@ -122,7 +125,11 @@ export function makeCdsPrisma() {
             !(
               where.NOT?.inn?.startsWith &&
               d.inn.startsWith(where.NOT.inn.startsWith)
-            ),
+            ) &&
+            (!where.OR ||
+              where.OR.some(
+                (c) => "clinicId" in c && c.clinicId === (d.clinicId ?? null),
+              )),
         ),
       ),
     },

@@ -15,6 +15,8 @@ export type PatientDiagnosisRow = {
   additionalDiagnoses: VisitDiagnosis[];
   doctorName: string;
   doctorSpecialty: string | null;
+  /** The caller signed this visit: only then can its page be opened. */
+  mine: boolean;
 };
 
 export function patientDiagnosesKey(patientId: string) {

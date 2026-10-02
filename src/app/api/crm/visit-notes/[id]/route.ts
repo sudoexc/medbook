@@ -38,6 +38,7 @@ import {
   resolveFollowUpWrite,
 } from "@/lib/visit-follow-up";
 import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
+import { withClinicDrugPhotos } from "@/server/catalog/drug-photos";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { publishEphemeralEnvelope } from "@/server/realtime/publish";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
@@ -53,6 +54,12 @@ function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? "";
 }
+
+/**
+ * Thrown inside the PATCH transaction when another write moved the note on
+ * between the version check and the write; rolls the PATCH back whole.
+ */
+class VersionMovedOn extends Error {}
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR"] },
@@ -93,7 +100,14 @@ export const GET = createApiListHandler(
 
     // A conclusion read is a chart read (audit G1-06).
     notePatientView(prisma, request, ctx, note.patientId, "visit_note", note.id);
-    return ok(note);
+    // The clinic's photo of a global drug lives in its overlay (VW-27).
+    return ok({
+      ...note,
+      visitPrescriptions: await withClinicDrugPhotos(
+        note.clinicId,
+        note.visitPrescriptions,
+      ),
+    });
   },
 );
 
@@ -365,6 +379,23 @@ export const PATCH = createApiHandler(
     let draftSaved: EventEnvelopeInput | null = null;
 
     const updated = await prisma.$transaction(async (tx) => {
+      // VW-22 — the version check above compares against a read made
+      // outside this transaction, so two windows saving the same version at
+      // once both passed it and the later one silently overwrote the other.
+      // Re-check it as a conditional write that takes the row lock: it
+      // rewrites updatedAt with its own value (no change), and a concurrent
+      // writer waits on the lock, re-reads the row, finds the version gone
+      // and matches nothing. Only for a client that sent a version: its
+      // autosaves are serialised per note (use-visit-note.ts), so its own
+      // writes never race each other.
+      if (body.expectedUpdatedAt != null) {
+        const held = await tx.visitNote.updateMany({
+          where: { id, updatedAt: before.updatedAt },
+          data: { updatedAt: before.updatedAt },
+        });
+        if (held.count === 0) throw new VersionMovedOn();
+      }
+
       // Ф2 — structured prescriptions: replace-all, consistent with the
       // autosave model (the editor always sends the full current list).
       // Runs before the note update so the returned include is fresh.
@@ -492,7 +523,19 @@ export const PATCH = createApiHandler(
         };
       }
       return row;
+    }).catch((e: unknown) => {
+      if (e instanceof VersionMovedOn) return null;
+      throw e;
     });
+    if (!updated) {
+      const current = await prisma.visitNote.findUnique({
+        where: { id },
+        select: { updatedAt: true },
+      });
+      return conflict("version_conflict", {
+        currentUpdatedAt: (current?.updatedAt ?? before.updatedAt).toISOString(),
+      });
+    }
     if (draftSaved) publishEphemeralEnvelope(draftSaved);
 
     await audit(request, {
@@ -577,6 +620,13 @@ export const PATCH = createApiHandler(
       }
     }
 
-    return ok(updated);
+    // The rows come back with photos the way GET returns them (VW-27).
+    return ok({
+      ...updated,
+      visitPrescriptions: await withClinicDrugPhotos(
+        updated.clinicId,
+        updated.visitPrescriptions,
+      ),
+    });
   },
 );

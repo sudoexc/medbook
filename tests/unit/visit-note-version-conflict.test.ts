@@ -41,6 +41,12 @@ const state = {
   updateCalls: 0,
   publishes: 0,
   audits: 0,
+  /** Note reads so far; a barrier below waits for both racers' reads. */
+  reads: 0,
+  /** Transactions run one at a time, as the row lock serialises them. */
+  txChain: Promise.resolve() as Promise<unknown>,
+  /** Resolves once this many reads happened, before any transaction. */
+  readBarrier: null as null | { want: number; open: () => void; gate: Promise<void> },
 };
 
 function makeNote(overrides: Partial<VisitNote> = {}): VisitNote {
@@ -102,13 +108,29 @@ vi.mock("@/server/realtime/outbox", () => ({
 // Prisma mock — only the surface this PATCH actually touches. `update`
 // mimics the real `@updatedAt` behaviour: every accepted write moves
 // `updatedAt` strictly forward, which is what the lock compares against.
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     visitNote: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+        state.reads += 1;
+        if (state.readBarrier && state.reads >= state.readBarrier.want) {
+          state.readBarrier.open();
+        }
         if (state.note && state.note.id === where.id) return state.note;
         return null;
       }),
+      // The in-transaction version re-check (VW-22): matches only while the
+      // row still carries the version the PATCH read.
+      updateMany: vi.fn(
+        async ({ where }: { where: { id: string; updatedAt?: Date } }) => {
+          const n = state.note;
+          if (!n || n.id !== where.id) return { count: 0 };
+          if (where.updatedAt && where.updatedAt.getTime() !== n.updatedAt.getTime()) {
+            return { count: 0 };
+          }
+          return { count: 1 };
+        },
+      ),
       update: vi.fn(
         async ({
           where,
@@ -139,12 +161,15 @@ vi.mock("@/lib/prisma", () => ({
     },
     $transaction: vi.fn(
       async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
-        const { prisma } = await import("@/lib/prisma");
-        return fn(prisma);
+        if (state.readBarrier) await state.readBarrier.gate;
+        const run = state.txChain.then(() => fn(prisma));
+        state.txChain = run.catch(() => undefined);
+        return run;
       },
     ),
-  },
-}));
+  };
+  return { prisma };
+});
 
 // ----- helpers -------------------------------------------------------------
 
@@ -167,6 +192,9 @@ beforeEach(() => {
   state.updateCalls = 0;
   state.publishes = 0;
   state.audits = 0;
+  state.reads = 0;
+  state.txChain = Promise.resolve();
+  state.readBarrier = null;
 });
 
 // ----- tests ---------------------------------------------------------------
@@ -251,6 +279,27 @@ describe("PATCH /api/crm/visit-notes/[id] — optimistic locking", () => {
     );
     expect(resB.status).toBe(409);
     expect(state.note?.bodyMarkdown).toBe("A2");
+  });
+
+  // Audit VW-22: both windows read the same version before either wrote.
+  // The check outside the transaction passes for both; the conditional
+  // write inside it lets only the first through.
+  it("two concurrent PATCHes with one version: one 200, the other 409", async () => {
+    const PATCH = await loadPatch();
+    let open = () => {};
+    const gate = new Promise<void>((r) => (open = r));
+    state.readBarrier = { want: 2, open, gate };
+    const [a, b] = await Promise.all([
+      PATCH(patchReq({ bodyMarkdown: "window A", expectedUpdatedAt: T0.toISOString() })),
+      PATCH(patchReq({ bodyMarkdown: "window B", expectedUpdatedAt: T0.toISOString() })),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect(state.updateCalls).toBe(1);
+    const loser = a.status === 409 ? a : b;
+    const body = (await loser.json()) as { reason: string; currentUpdatedAt: string };
+    expect(body.reason).toBe("version_conflict");
+    expect(body.currentUpdatedAt).toBe(state.note!.updatedAt.toISOString());
+    expect(state.note?.bodyMarkdown).toBe(a.status === 200 ? "window A" : "window B");
   });
 
   it("keeps accepting token-less PATCHes (legacy last-write-wins callers)", async () => {

@@ -254,10 +254,22 @@ function ref(d: { id: string; nameRu: string; inn: string }) {
 }
 
 /**
+ * The Drug rows one clinic may see: the global catalog plus its own. Drug is
+ * cross-tenant (MODELS_WITHOUT_TENANT), so nothing scopes it automatically;
+ * without this a drug another clinic's admin added under a real INN would
+ * resolve this clinic's lines and drive its warnings with foreign data
+ * (audit VW-14).
+ */
+function drugTenantWhere(clinicId: string) {
+  return { OR: [{ clinicId: null }, { clinicId }] };
+}
+
+/**
  * The whole searchable catalog, read at most once per check and only when
  * a text line, an unlinked course or a combination needs it.
  */
-function catalogLoader() {
+function catalogLoader(clinicId: string) {
+  const tenant = drugTenantWhere(clinicId);
   let rows: Promise<DrugPick[]> | null = null;
   let full: DrugTextIndex<DrugPick> | null = null;
   let substances: DrugTextIndex<DrugPick> | null = null;
@@ -268,11 +280,17 @@ function catalogLoader() {
         // name and no clinical data. Letting them into text resolution would
         // let «Кеторол 10 мг» shadow ketorolac — and, Drug being cross-tenant,
         // in every clinic — and silence allergy/interaction warnings.
-        where: { active: true, NOT: { inn: { startsWith: "clinic:" } } },
+        where: {
+          active: true,
+          NOT: { inn: { startsWith: "clinic:" } },
+          ...tenant,
+        },
         select: DRUG_SELECT,
       })
       .then((found) => found.map(pick)));
   return {
+    /** The tenant filter every other Drug read of this check must carry. */
+    tenant,
     /** Every name, brand and INN: resolves a written line. */
     async textIndex(): Promise<DrugTextIndex<DrugPick>> {
       full ??= buildDrugTextIndex(await load());
@@ -400,6 +418,7 @@ async function substanceViews(
               atcCode: { in: [...atcs] },
               active: true,
               NOT: { inn: { startsWith: "clinic:" } },
+              ...catalog.tenant,
             },
             select: DRUG_SELECT,
           })
@@ -561,7 +580,7 @@ async function loadCurrentTherapy(args: {
     linkedIds.length > 0
       ? (
           await prisma.drug.findMany({
-            where: { id: { in: linkedIds } },
+            where: { id: { in: linkedIds }, ...args.catalog.tenant },
             select: DRUG_SELECT,
           })
         ).map(pick)
@@ -649,7 +668,7 @@ export function visitConditions(
 export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult> {
   const { clinicId, patientId, prescriptionLines, diagnosisCode } = input;
   const now = input.now ?? new Date();
-  const catalog = catalogLoader();
+  const catalog = catalogLoader(clinicId);
 
   const { hits: textHits, unresolved } = await resolveDrugs(
     prescriptionLines,
@@ -668,7 +687,7 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     pinnedIds.length > 0
       ? (
           await prisma.drug.findMany({
-            where: { id: { in: pinnedIds } },
+            where: { id: { in: pinnedIds }, ...catalog.tenant },
             select: DRUG_SELECT,
           })
         ).map(pick)

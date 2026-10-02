@@ -181,10 +181,12 @@ export function buildMedicationGrid(
         row.timesOfDay.includes(t) ? dose : "",
       ) as MedicationGridRow["cells"];
       const head = formatPrescriptionHead(row);
+      // Either language falls back on the other, as in
+      // formatPrescriptionLine (audit VW-20).
       const note =
         (locale === "uz"
           ? row.instructionUz?.trim() || row.instructionRu?.trim()
-          : row.instructionRu?.trim()) ?? "";
+          : row.instructionRu?.trim() || row.instructionUz?.trim()) ?? "";
       return {
         // No slot selected (e.g. "по требованию") — keep the dose visible
         // by folding it into the name column.

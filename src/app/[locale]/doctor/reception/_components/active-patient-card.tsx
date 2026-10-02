@@ -130,8 +130,10 @@ export function ActivePatientCard() {
     );
   };
 
-  // Ф5 — one button prints the whole visit package: conclusion + handout +
-  // issued e-prescriptions + referrals, page-broken for a single Cmd+P.
+  // Ф5 — one button prints the whole visit package: conclusion + handout
+  // (composed from the draft until it is signed, VW-24), page-broken for a
+  // single Cmd+P. E-prescriptions and referrals issued before their dialogs
+  // left the screen still print with it.
   const onPrintPackage = () => {
     if (!visitNoteId) return;
     window.open(

@@ -65,6 +65,21 @@ export function isValidUzPhone(input: string | null | undefined): boolean {
 }
 
 /**
+ * Whether staff may put this number on a patient's card (audit VW-26): an
+ * Uzbek number in any usual spelling, or a foreign one written in full with
+ * «+» and its country code (a patient from abroad). «123» used to pass, and
+ * the number is what reminders go to and what the Telegram link matches.
+ * A «+998» number must be a whole Uzbek one, not pass as foreign.
+ */
+export function isValidCardPhone(input: string | null | undefined): boolean {
+  if (isValidUzPhone(input)) return true;
+  const raw = (input ?? "").trim();
+  if (!raw.startsWith("+") || !PHONE_CHARS.test(raw)) return false;
+  const digits = raw.replace(/\D/g, "");
+  return !digits.startsWith("998") && digits.length >= 10 && digits.length <= 15;
+}
+
+/**
  * Return all phone variants worth trying when searching the DB, so a user
  * who typed "901234567" in the kiosk still matches a patient stored as
  * "+998901234567". Returns a deduplicated array with the canonical form first.

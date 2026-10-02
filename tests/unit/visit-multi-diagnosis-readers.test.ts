@@ -285,6 +285,37 @@ describe("the patient's diagnosis history («Было раньше»)", () => {
       additionalDiagnoses: [TENSION],
     });
   });
+
+  // Audit VW-15: the visit page 404s for another doctor's visit, so the
+  // card needs to know which rows it may link.
+  it("marks the caller's own visits, not another doctor's", async () => {
+    const row = (id: string, doctorId: string): Row => ({
+      id,
+      appointmentId: `apt_${id}`,
+      finalizedAt: new Date("2026-09-01T07:00:00Z"),
+      diagnosisCode: "G43.0",
+      diagnosisName: "Мигрень без ауры",
+      additionalDiagnoses: [],
+      doctorId,
+      doctor: { nameRu: "Врач", specializationRu: null },
+      appointment: { date: new Date("2026-09-01T06:00:00Z") },
+    });
+    state.noteRows = [row("vn_own", "doc_1"), row("vn_other", "doc_2")];
+    vi.resetModules();
+    const { GET } = await import(
+      "@/app/api/crm/doctors/me/patients/[patientId]/diagnoses/route"
+    );
+    const res = await GET(
+      new Request("https://x/api/crm/doctors/me/patients/p1/diagnoses"),
+    );
+    const { rows } = (await res.json()) as { rows: Row[] };
+    expect(rows.map((r) => [r.visitNoteId, r.mine])).toEqual([
+      ["vn_own", true],
+      ["vn_other", false],
+    ]);
+    const select = (state.findManyArgs.at(-1)!.select ?? {}) as Row;
+    expect(select.doctorId).toBe(true);
+  });
 });
 
 describe("the conclusions list search", () => {

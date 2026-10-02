@@ -26,6 +26,7 @@ vi.mock("@/app/[locale]/doctor/reception/_hooks/use-cds-drug-check", async (orig
 }));
 vi.mock("@/app/[locale]/doctor/reception/_hooks/use-cds-overrides", () => ({
   useCreateCdsOverride: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useAcknowledgedCdsWarnings: () => ({ data: undefined }),
 }));
 vi.mock("@/app/[locale]/doctor/reception/_hooks/use-patient-history", () => ({
   useRecordAllergy: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),

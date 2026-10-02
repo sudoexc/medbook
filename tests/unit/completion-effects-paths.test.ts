@@ -250,6 +250,8 @@ function mountRouteMocks() {
         findUnique: vi.fn(async () => state.note),
         findFirst: vi.fn(async () => null),
         update: vi.fn(async ({ data }: { data: Row }) => ({ ...state.note, ...data })),
+        // The conditional claim of the draft (VW-19): this note is a draft.
+        updateMany: vi.fn(async () => ({ count: 1 })),
       },
       visitNoteRevision: {
         findFirst: vi.fn(async () => null),

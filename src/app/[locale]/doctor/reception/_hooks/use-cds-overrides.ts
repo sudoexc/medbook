@@ -6,7 +6,7 @@
  * hook is intentionally minimal (no per-patient cache invalidation —
  * the analytics dashboard reads via a separate key).
  */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export type CdsOverrideReason =
   | "CLINICALLY_JUSTIFIED"
@@ -69,6 +69,35 @@ export function useCreateCdsOverride() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["doctor", "analytics"] });
       qc.invalidateQueries({ queryKey: ["cds-overrides"] });
+    },
+  });
+}
+
+/**
+ * The warning keys already acknowledged on this visit note (audit VW-25).
+ * «Я учёл» lived only in the card's state: switching tabs or reloading
+ * showed the acknowledged warnings red again, and acknowledging them again
+ * wrote a duplicate CdsOverride. The rows are the record, so the card reads
+ * them back. Under the `["cds-overrides"]` prefix the mutation above
+ * invalidates, so a fresh override shows at once.
+ */
+export function useAcknowledgedCdsWarnings(visitNoteId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["cds-overrides", "visit-note", visitNoteId ?? ""],
+    enabled: Boolean(visitNoteId),
+    staleTime: 60_000,
+    queryFn: async ({ signal }): Promise<Set<string>> => {
+      const res = await fetch(
+        `/api/crm/cds-overrides?visitNoteId=${encodeURIComponent(visitNoteId!)}&limit=200`,
+        { credentials: "include", signal },
+      );
+      if (!res.ok) throw new Error(`cds overrides: ${res.status}`);
+      const data = (await res.json()) as {
+        rows: Array<{ warningKey: string | null }>;
+      };
+      return new Set(
+        data.rows.flatMap((r) => (r.warningKey ? [r.warningKey] : [])),
+      );
     },
   });
 }

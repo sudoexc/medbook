@@ -6549,6 +6549,9 @@
         "phoneCancel": "Bekor qilish",
         "phoneSaved": "Raqam yangilandi",
         "phoneSaveFailed": "Raqamni saqlab bo'lmadi",
+        "phoneRequired": "Raqam bo'sh bo'lishi mumkin emas. Tuzatishni bekor qilish uchun Esc tugmasini bosing.",
+        "phoneInvalid": "Raqamni tekshiring: 9 xonali O'zbekiston raqami yoki «+» va mamlakat kodi bilan yozilgan xorijiy raqam kerak.",
+        "phoneTaken": "Bu raqam boshqa bemorga yozilgan.",
         "queuedLabel": "NAVBATDA",
         "ticketLabel": "Talon",
         "emptyDiagnosis": "Tashxis ko'rsatilmagan"

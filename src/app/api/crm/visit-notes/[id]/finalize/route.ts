@@ -51,6 +51,14 @@ import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
  */
 class AppointmentNoLongerActive extends Error {}
 
+/**
+ * Thrown inside the transaction when another request signed the note after
+ * the FINALIZED guard above read it (a double click, the reception tab and
+ * «Мой день» at once, a network retry). Rolls back before a number is
+ * allocated; the route answers like the guard does (audit VW-19).
+ */
+class NoteAlreadySigned extends Error {}
+
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
   // .../visit-notes/[id]/finalize
@@ -192,11 +200,28 @@ export const POST = createApiHandler(
 
     const result = await prisma.$transaction(async (tx) => {
       const now = new Date();
+      // VW-19 — claim the draft first, conditionally. The guard above read
+      // the status outside this transaction, so two concurrent POSTs both
+      // passed it: the second allocated a fresh number over the first one's,
+      // burning it, and replayed the events and diagnosis sync. The UPDATE
+      // locks the row; a concurrent claim waits on it, re-reads the status
+      // and matches nothing.
+      const claimed = await tx.visitNote.updateMany({
+        where: { id, status: "DRAFT" },
+        data: { status: "FINALIZED" },
+      });
+      if (claimed.count === 0) throw new NoteAlreadySigned();
       // Ф0 — allocate the human-readable conclusion number inside the same
       // transaction so an aborted finalize never burns a number. Re-finalize
-      // after the 24h-edit reopen keeps the original number.
+      // after the 24h-edit reopen keeps the original number. Read under the
+      // claim, not from the pre-transaction snapshot, which may predate a
+      // signature that already numbered the note.
+      const numbered = await tx.visitNote.findUnique({
+        where: { id },
+        select: { documentNumber: true },
+      });
       const documentNumber =
-        note.documentNumber ??
+        numbered?.documentNumber ??
         (await allocateDocumentNumber(note.clinicId, "CONCLUSION", tx, now));
       const updatedNote = await tx.visitNote.update({
         where: { id },
@@ -377,8 +402,19 @@ export const POST = createApiHandler(
       };
     }).catch((e: unknown) => {
       if (e instanceof AppointmentNoLongerActive) return null;
+      if (e instanceof NoteAlreadySigned) return "already" as const;
       throw e;
     });
+    if (result === "already") {
+      // The other request's signature, number included: the screen merges
+      // this note into its cache and must show the number that was issued.
+      const signed = await prisma.visitNote.findUnique({ where: { id } });
+      return ok({
+        note: { ...note, ...signed },
+        appointment: note.appointment,
+        alreadyFinalized: true,
+      });
+    }
     if (!result) {
       return conflict("appointment_not_active", {
         appointmentId: note.appointment.id,

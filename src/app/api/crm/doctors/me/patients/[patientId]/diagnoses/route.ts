@@ -40,6 +40,12 @@ type DiagnosisRow = {
   additionalDiagnoses: VisitDiagnosis[];
   doctorName: string;
   doctorSpecialty: string | null;
+  /**
+   * The caller signed this visit. Only those open: the visit page is the
+   * signing doctor's own (it 404s for anyone else), so another doctor's row
+   * must not be a link (audit VW-15).
+   */
+  mine: boolean;
 };
 
 function patientIdFromUrl(request: Request): string {
@@ -109,6 +115,7 @@ export const GET = createApiListHandler(
         diagnosisCode: true,
         diagnosisName: true,
         additionalDiagnoses: true,
+        doctorId: true,
         doctor: { select: { nameRu: true, specializationRu: true } },
         appointment: { select: { date: true } },
       },
@@ -127,6 +134,7 @@ export const GET = createApiListHandler(
       additionalDiagnoses: parseAdditionalDiagnoses(r.additionalDiagnoses),
       doctorName: r.doctor?.nameRu ?? "—",
       doctorSpecialty: r.doctor?.specializationRu ?? null,
+      mine: r.doctorId === doctor.id,
     }));
 
     return ok({ rows: out, total: out.length });

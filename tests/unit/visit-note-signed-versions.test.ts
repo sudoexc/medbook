@@ -165,6 +165,8 @@ vi.mock("@/lib/prisma", () => {
         };
         return withRows();
       }),
+      // The conditional claim of the draft (VW-19): this note is a draft.
+      updateMany: vi.fn(async () => ({ count: 1 })),
     },
     visitPrescription: {
       findMany: vi.fn(async () =>

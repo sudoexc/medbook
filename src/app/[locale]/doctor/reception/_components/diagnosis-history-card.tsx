@@ -13,7 +13,9 @@ import { usePatientDiagnoses } from "../_hooks/use-patient-diagnoses";
 /**
  * «История диагнозов» — the patient's full ICD-10 diagnosis history across
  * all doctors, newest first: the main diagnosis of each visit, its others
- * under it. Each row opens that visit's conclusion.
+ * under it. A row of the doctor's own visit opens its conclusion; another
+ * doctor's row is plain text, since the visit page is the signing doctor's
+ * alone and would 404 (audit VW-15).
  */
 export function DiagnosisHistoryCard() {
   const t = useTranslations("doctor.reception");
@@ -52,12 +54,9 @@ export function DiagnosisHistoryCard() {
         </p>
       ) : (
         <ul className="divide-y divide-border">
-          {rows.map((d) => (
-            <li key={d.visitNoteId}>
-              <Link
-                href={`/${locale}/doctor/visits/${patientId}/${d.visitNoteId}`}
-                className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted"
-              >
+          {rows.map((d) => {
+            const body = (
+              <>
                 <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <StethoscopeIcon className="size-4" />
                 </span>
@@ -93,10 +92,24 @@ export function DiagnosisHistoryCard() {
                     · {d.doctorName}
                   </div>
                 </div>
-                <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-              </Link>
-            </li>
-          ))}
+              </>
+            );
+            return (
+              <li key={d.visitNoteId}>
+                {d.mine ? (
+                  <Link
+                    href={`/${locale}/doctor/visits/${patientId}/${d.visitNoteId}`}
+                    className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted"
+                  >
+                    {body}
+                    <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-3 px-4 py-2.5">{body}</div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

@@ -9,8 +9,11 @@
  *
  * Phase G8 — each warning row gets a "Я учёл" affordance that opens a
  * reason picker and POSTs a CdsOverride row. Once an override is recorded
- * (or persisted to localStorage as already-acknowledged this session) the
- * row collapses to a muted bar so the doctor can scan past it.
+ * the row collapses to a muted bar so the doctor can scan past it. The
+ * overrides already recorded on the visit note are read back from the
+ * server (audit VW-25), so the bar stays muted after a tab switch or a
+ * reload and the doctor is not asked to justify the same warning twice.
+ * Signing does not wait on them: whether it should is the doctor's call.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -44,6 +47,7 @@ import {
   type CdsWarningKind,
 } from "../_hooks/use-cds-drug-check";
 import {
+  useAcknowledgedCdsWarnings,
   useCreateCdsOverride,
   type CdsOverrideReason,
 } from "../_hooks/use-cds-overrides";
@@ -124,9 +128,14 @@ export function CdsWarningsCard({
     diagnoses,
     visitNoteId,
   });
+  // Acknowledged just now on this screen, on top of what the visit's
+  // recorded overrides say (read back, VW-25).
   const [acknowledged, setAcknowledged] = React.useState<Set<string>>(
     () => new Set(),
   );
+  const recorded = useAcknowledgedCdsWarnings(visitNoteId);
+  const isAcknowledged = (key: string) =>
+    acknowledged.has(key) || (recorded.data?.has(key) ?? false);
   const handleAcknowledged = React.useCallback((key: string) => {
     setAcknowledged((prev) => {
       if (prev.has(key)) return prev;
@@ -278,7 +287,7 @@ export function CdsWarningsCard({
               patientId={patientId}
               appointmentId={appointmentId ?? null}
               visitNoteId={visitNoteId ?? null}
-              acknowledged={acknowledged.has(key)}
+              acknowledged={isAcknowledged(key)}
               onAcknowledged={() => handleAcknowledged(key)}
             />
           );

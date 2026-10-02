@@ -6,6 +6,32 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, Loader2Icon, PencilIcon, PhoneIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { isValidCardPhone } from "@/lib/phone";
+
+/** Why a typed number cannot be saved, or null when it can (VW-26). */
+export function phoneEditProblem(value: string): "phoneRequired" | "phoneInvalid" | null {
+  const next = value.trim();
+  if (!next) return "phoneRequired";
+  return isValidCardPhone(next) ? null : "phoneInvalid";
+}
+
+/**
+ * The message key for a refused save. The raw error text («ValidationError»,
+ * «conflict») meant nothing to the doctor; a number already on another card
+ * is said as such, anything else is the generic failure.
+ */
+export function phoneSaveErrorKey(reason: string | null | undefined): "phoneTaken" | "phoneSaveFailed" {
+  return reason === "phone_taken" || reason === "phone_or_telegram_taken"
+    ? "phoneTaken"
+    : "phoneSaveFailed";
+}
+
+class PhoneSaveError extends Error {
+  constructor(readonly reason: string | null) {
+    super(reason ?? "phone_save_failed");
+  }
+}
+
 /**
  * Inline phone correction on the visit header.
  *
@@ -35,17 +61,16 @@ export function EditablePhone({
   }, [phone, editing]);
 
   const save = useMutation({
-    mutationFn: async () => {
-      const next = value.trim();
+    mutationFn: async (next: string) => {
       const res = await fetch(`/api/crm/patients/${patientId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: next || null }),
+        body: JSON.stringify({ phone: next }),
       });
       if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        const j = (await res.json().catch(() => null)) as { reason?: string } | null;
+        throw new PhoneSaveError(j?.reason ?? null);
       }
       return res.json();
     },
@@ -56,8 +81,24 @@ export function EditablePhone({
       void qc.invalidateQueries({ queryKey: ["doctor"] });
       setEditing(false);
     },
-    onError: (e: Error) => toast.error(e.message || t("phoneSaveFailed")),
+    onError: (e: Error) =>
+      toast.error(
+        t(phoneSaveErrorKey(e instanceof PhoneSaveError ? e.reason : null)),
+      ),
   });
+
+  // Checked before anything is sent (VW-26): a cleared field went out as
+  // `phone: null`, which the API refuses, and the doctor saw «ValidationError».
+  // A card keeps a number; clearing the field is not a way to remove it.
+  const submit = () => {
+    if (save.isPending) return;
+    const problem = phoneEditProblem(value);
+    if (problem) {
+      toast.error(t(problem));
+      return;
+    }
+    save.mutate(value.trim());
+  };
 
   if (!editing) {
     return (
@@ -93,7 +134,7 @@ export function EditablePhone({
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            save.mutate();
+            submit();
           }
           if (e.key === "Escape") {
             e.preventDefault();
@@ -106,7 +147,7 @@ export function EditablePhone({
         type="button"
         aria-label={t("phoneSave")}
         disabled={save.isPending}
-        onClick={() => save.mutate()}
+        onClick={submit}
         className="inline-flex size-6 items-center justify-center rounded-md text-success transition-colors hover:bg-success/10 disabled:opacity-60"
       >
         {save.isPending ? (

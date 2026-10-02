@@ -124,10 +124,15 @@ export function formatPrescriptionLine(
   let line = schedule ? `${head} — ${schedule}` : head;
 
   if (opts?.withInstruction) {
+    // Each language falls back on the other (audit VW-20): the constructor
+    // edits only the field of the doctor's interface language, so an
+    // instruction typed on the Uzbek screen lives in instructionUz alone and
+    // vanished from the Russian print. The doctor's words in the other
+    // language beat no instruction at all.
     const instruction =
       locale === "uz"
         ? row.instructionUz?.trim() || row.instructionRu?.trim()
-        : row.instructionRu?.trim();
+        : row.instructionRu?.trim() || row.instructionUz?.trim();
     if (instruction) {
       line += line.endsWith(".") ? ` ${instruction}` : `. ${instruction}`;
     }

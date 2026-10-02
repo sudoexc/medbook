@@ -9,8 +9,9 @@
  *   TG-29  every patient text greets by the given name, not the surname.
  *   TG-30  the composer's «Подтвердить запись» card is named for what it does.
  *   TG-31  the broadcast funnel shows no metric Telegram never reports.
- *   TG-32  a doctor opens only the threads of his caseload, by id too; an
- *          assignee is staff of the clinic.
+ *   TG-32  a doctor opens only the threads of his caseload, by id too (the
+ *          retry of a failed message included); an assignee is staff of the
+ *          clinic.
  *   TG-34  confirming a reminder keeps its text.
  *   TG-36  one toast per patient message.
  *   TG-39  the bot mode does not claim the bot runs the conversation.
@@ -27,6 +28,7 @@ const h = vi.hoisted(() => ({
   conv: null as null | Record<string, unknown>,
   convWheres: [] as Array<Record<string, unknown>>,
   updates: [] as Array<Record<string, unknown>>,
+  msgWrites: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/api-handler", () => {
@@ -91,7 +93,28 @@ vi.mock("@/lib/prisma", () => ({
         return { count: 1 };
       }),
     },
-    message: { findMany: vi.fn(async () => []), groupBy: vi.fn(async () => []) },
+    message: {
+      findMany: vi.fn(async () => []),
+      groupBy: vi.fn(async () => []),
+      // A colleague's message that never reached his patient.
+      findFirst: vi.fn(async () => ({
+        id: "msg_f",
+        direction: "OUT",
+        senderId: "u_colleague",
+        origin: null,
+        status: "FAILED",
+        body: "Результаты МРТ готовы",
+      })),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        h.msgWrites.push(data);
+        return { id: "msg_f", ...data };
+      }),
+      updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        h.msgWrites.push(data);
+        return { count: 1 };
+      }),
+      findUnique: vi.fn(async () => ({ id: "msg_f" })),
+    },
   },
 }));
 
@@ -107,6 +130,7 @@ beforeEach(() => {
   h.conv = null;
   h.convWheres = [];
   h.updates = [];
+  h.msgWrites = [];
 });
 
 const json = (url: string, method: string, body: unknown) =>
@@ -279,6 +303,53 @@ describe("TG-32: a doctor's threads", () => {
       expect(where).toMatchObject({ id: "conv_x", clinicId: "clinic_A", AND: [{ OR: scope }] });
     }
     expect(h.convWheres).toHaveLength(2);
+  });
+
+  it("nor resend a failed message in one, or read it back", async () => {
+    h.role = "DOCTOR";
+    const { prisma } = await import("@/lib/prisma");
+    const { POST } = await import(
+      "@/app/api/crm/conversations/[id]/messages/[messageId]/retry/route"
+    );
+    vi.mocked(prisma.message.findFirst).mockClear();
+    const res = await POST(
+      new Request("https://crm.test/api/crm/conversations/conv_x/messages/msg_f/retry", {
+        method: "POST",
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(h.convWheres[0]).toMatchObject({
+      id: "conv_x",
+      clinicId: "clinic_A",
+      AND: [{ OR: scope }],
+    });
+    // The thread is refused before its message is looked up or touched.
+    expect(prisma.message.findFirst).not.toHaveBeenCalled();
+    expect(h.msgWrites).toHaveLength(0);
+  });
+
+  it("the desk still retries in any thread of the clinic", async () => {
+    h.role = "RECEPTIONIST";
+    h.conv = {
+      id: "conv_1",
+      channel: "TG",
+      externalId: null,
+      patientId: "p1",
+      patient: { telegramId: "tg_p1" },
+      clinic: { tgBotToken: null },
+    };
+    const { POST } = await import(
+      "@/app/api/crm/conversations/[id]/messages/[messageId]/retry/route"
+    );
+    const res = await POST(
+      new Request("https://crm.test/api/crm/conversations/conv_1/messages/msg_f/retry", {
+        method: "POST",
+      }),
+    );
+    // Past the guard: with no bot the reason comes back at once.
+    expect(res.status).toBe(200);
+    expect(h.convWheres[0]).toEqual({ id: "conv_1", clinicId: "clinic_A" });
+    expect(h.msgWrites).toEqual([{ failedReason: "bot_not_connected" }]);
   });
 
   it("nor may he change one", async () => {

@@ -141,9 +141,17 @@ const ACEI_ARB: DrugClass = {
   ],
 };
 const POTASSIUM_SPARING: DrugClass = { atc: ["C03DA", "C03DB"], ids: ["spironolactone"] };
+// "potassium-magnesium-asparaginate" here and "levodopa-carbidopa" in
+// DOPAMINERGIC are the catalog extension's ATC-less copies of the curated
+// rows (scripts/_drug-duplicates.ts, audit G4-21). Until
+// scripts/fix-g4-21-duplicate-drugs.ts has run with APPLY=1 they are live
+// rows that earlier picks and the courses bridged from them point at, and
+// the id is the only way such a course reaches its class. Afterwards they
+// are inactive and their prescriptions sit on the curated rows, so keeping
+// them costs nothing.
 const POTASSIUM_SUPPLEMENTS: DrugClass = {
   atc: ["A12B"],
-  ids: ["potassium_mg_asparaginate"],
+  ids: ["potassium_mg_asparaginate", "potassium-magnesium-asparaginate"],
 };
 
 const VKA: DrugClass = { atc: ["B01AA"], ids: ["warfarin"] };
@@ -177,7 +185,7 @@ const METOCLOPRAMIDE: DrugClass = { atc: ["A03FA01"], ids: ["metoclopramide"] };
 const DOPAMINERGIC: DrugClass = {
   atc: ["N04BA", "N04BC"],
   ids: [
-    "levodopa_carbidopa", "levodopa-benserazide",
+    "levodopa_carbidopa", "levodopa-carbidopa", "levodopa-benserazide",
     "pramipexole", "ropinirole",
   ],
 };

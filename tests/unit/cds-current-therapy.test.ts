@@ -49,6 +49,7 @@ import { ICD10_ENTRIES } from "@/server/icd10/data";
 
 import { DRUGS } from "../../prisma/_drug-catalog";
 import { DRUGS_EXTRA } from "../../prisma/_drug-catalog-extra";
+import { DUPLICATE_DRUGS } from "../../scripts/_drug-duplicates";
 
 import { cdsState, check, daysAgo, NOW, resetCdsState } from "./cds-fixture";
 
@@ -392,7 +393,12 @@ describe("course clock", () => {
   });
 
   it("every id of the long-term class is a catalog row", () => {
-    const ids = new Set([...DRUGS, ...DRUGS_EXTRA].map((d) => d.id));
+    // A retired G4-21 copy is no longer seeded but stays a live row until
+    // scripts/fix-g4-21-duplicate-drugs.ts merges it.
+    const ids = new Set([
+      ...[...DRUGS, ...DRUGS_EXTRA].map((d) => d.id),
+      ...DUPLICATE_DRUGS.map((d) => d.from),
+    ]);
     for (const id of LONG_TERM_THERAPY.ids) expect(ids.has(id), id).toBe(true);
   });
 });

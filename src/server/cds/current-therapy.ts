@@ -45,6 +45,9 @@ export const PREVISIT_MEDICATIONS_FRESH_DAYS = 30;
  * Drugs taken for months or for life, whose open-ended course means
  * «длительно». WHO ATC index; the ids are catalog rows without an ATC code
  * (prisma/_drug-catalog-extra.ts), like the interaction rules' classes.
+ * "levodopa-carbidopa" is the extension's copy of levodopa_carbidopa (audit
+ * G4-21): it stays until scripts/fix-g4-21-duplicate-drugs.ts has moved the
+ * courses picked from it to the curated row.
  */
 export const LONG_TERM_THERAPY: DrugClass = {
   atc: [
@@ -65,7 +68,7 @@ export const LONG_TERM_THERAPY: DrugClass = {
   ],
   ids: [
     "oxcarbazepine", "phenytoin", "clonazepam", "ethosuximide", "zonisamide", "lacosamide",
-    "levodopa-benserazide", "amantadine", "trihexyphenidyl", "ropinirole",
+    "levodopa-carbidopa", "levodopa-benserazide", "amantadine", "trihexyphenidyl", "ropinirole",
     "rivastigmine", "galantamine",
     "fluoxetine", "paroxetine", "fluvoxamine", "mirtazapine", "trazodone", "agomelatine",
     "quetiapine", "risperidone", "olanzapine", "haloperidol", "chlorprothixene",

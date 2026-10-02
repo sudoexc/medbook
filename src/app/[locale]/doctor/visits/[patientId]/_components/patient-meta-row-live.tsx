@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  ChevronDownIcon,
-  ClipboardListIcon,
-  ShieldAlertIcon,
-} from "lucide-react";
+import { ClipboardListIcon, ShieldAlertIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -49,14 +45,8 @@ export function PatientMetaRowLive({ allergies, chronicConditions }: Props) {
         <span className="font-semibold text-foreground">{t("meta.chronic")}</span>
         <span className="text-muted-foreground">{chronicText}</span>
       </div>
-
-      <button
-        type="button"
-        className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-      >
-        {t("meta.showMore")}
-        <ChevronDownIcon className="size-3" />
-      </button>
+      {/* No «Показать ещё» (DC-20): the page passes the full lists and
+          they are shown in full, an allergy must never sit behind a click. */}
     </section>
   );
 }

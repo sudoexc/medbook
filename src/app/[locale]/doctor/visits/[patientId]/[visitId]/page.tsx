@@ -26,7 +26,8 @@ import { PrintVisitButton } from "./_components/print-visit-button";
  * Cross-doctor reads would leak another caseload, even within the same
  * clinic, so we 404 rather than 403 to avoid signalling existence.
  *
- * Print path: `/api/crm/visit-notes/[id]/print?lang=ru` returns a
+ * Print path: `/api/crm/visit-notes/[id]/print` (no `lang`, so the
+ * patient's own language, as on the visit screen) returns a
  * self-contained HTML doc with its own sticky print bar — the button on
  * this page opens that in a new tab so the doctor doesn't lose their
  * scroll position when toggling to print preview.

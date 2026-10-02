@@ -1,10 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 
+import { eventTargetsDoctor } from "../my-day/_hooks/use-doctor-today";
+
 export type DoctorSidebarStats = {
+  doctorId: string;
   todayBadge: number;
   unreadMessages: number;
   loadPercent: number;
@@ -20,6 +23,7 @@ export const doctorSidebarStatsKey = ["doctor", "me", "sidebar-stats"] as const;
  * Debouncing is handled inside `useLiveQueryInvalidation` (400ms coalesce).
  */
 export function useDoctorSidebarStats() {
+  const qc = useQueryClient();
   const query = useQuery<DoctorSidebarStats>({
     queryKey: doctorSidebarStatsKey,
     queryFn: async ({ signal }) => {
@@ -46,6 +50,15 @@ export function useDoctorSidebarStats() {
       "tg.conversation.updated",
     ],
     queryKey: doctorSidebarStatsKey,
+    // DC-24 — the sidebar sits on every doctor page, so without this every
+    // appointment event in the clinic refetched every doctor's stats (three
+    // queries each). Same per-doctor filter as «Мой день»; Telegram events
+    // carry no doctorId and still pass, as do events before the first load.
+    shouldInvalidate: (event) =>
+      eventTargetsDoctor(
+        event,
+        qc.getQueryData<DoctorSidebarStats>(doctorSidebarStatsKey)?.doctorId,
+      ),
   });
 
   return query;

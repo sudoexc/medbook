@@ -21,6 +21,13 @@ import { parsePatientIdentity } from "@/lib/patients/parse-identity";
  * because with ~100 similar surnames that is what tells two patients apart.
  *
  * Keyboard: ⌘K focuses, ↑/↓ move, Enter opens, Esc clears and closes.
+ *
+ * Searches the doctor's own caseload (audit DC-23). It used to query the
+ * whole clinic, but a result opens /doctor/patients/[id], whose summary
+ * answers 404 for a patient never booked with this doctor, so a colleague's
+ * patient opened as «Пациент не найден» (and the dropdown showed names and
+ * phones outside the caseload). /doctors/me/patients runs the same
+ * patientSearchWhere, so «Фамилия ГГГГ» and phone lookups work unchanged.
  */
 interface Hit {
   id: string;
@@ -84,7 +91,7 @@ export function DoctorSearch({ placeholder }: { placeholder: string }) {
     enabled: debounced.length >= 2,
     queryFn: async ({ signal }) => {
       const res = await fetch(
-        `/api/crm/patients?q=${encodeURIComponent(debounced)}&limit=8`,
+        `/api/crm/doctors/me/patients?q=${encodeURIComponent(debounced)}&limit=8`,
         { credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

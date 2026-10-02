@@ -7,7 +7,6 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 
 import {
   doctorQueueKey,
-  flattenQueue,
   useDoctorQueue,
   type QueueAppointment,
 } from "./use-doctor-queue";
@@ -74,6 +73,9 @@ type ReceptionContextValue = {
 
 const ReceptionContext = React.createContext<ReceptionContextValue | null>(null);
 
+// Stable empty queue so the memos below do not recompute while loading.
+const NO_QUEUE: QueueAppointment[] = [];
+
 export function ReceptionProvider({
   children,
   initialAppointmentId = null,
@@ -83,7 +85,7 @@ export function ReceptionProvider({
   initialAppointmentId?: string | null;
 }) {
   const queueQuery = useDoctorQueue();
-  const queue = flattenQueue(queueQuery.data);
+  const queue = queueQuery.data ?? NO_QUEUE;
 
   const inProgress = queue.find((a) => a.status === "IN_PROGRESS") ?? null;
 

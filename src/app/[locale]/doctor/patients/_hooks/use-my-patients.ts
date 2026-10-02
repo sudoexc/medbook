@@ -18,6 +18,7 @@ export type DoctorPatientRow = {
   photoUrl: string | null;
   birthDate: string | null;
   phone: string;
+  patientNumber: number;
   segment: "NEW" | "ACTIVE" | "DORMANT" | "VIP" | "CHURN";
   hasActiveAppointment: boolean;
   lastVisitWithMeAt: string | null;

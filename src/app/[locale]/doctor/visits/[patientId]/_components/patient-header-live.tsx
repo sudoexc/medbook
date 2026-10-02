@@ -106,7 +106,7 @@ export function PatientHeaderLive(props: Props) {
           </span>
         </div>
 
-        <div className="ml-auto grid grid-cols-2 items-center gap-x-7 gap-y-2 md:grid-cols-3 xl:grid-cols-6">
+        <div className="ml-auto grid grid-cols-2 items-center gap-x-7 gap-y-2 md:grid-cols-3 xl:grid-cols-5">
           <Field
             label={t("header.age")}
             value={
@@ -124,7 +124,8 @@ export function PatientHeaderLive(props: Props) {
               </span>
             }
           />
-          <Field label={t("header.appointmentType")} value="—" />
+          {/* DC-17 — «Тип приёма» was always «—»: the page has no single
+              appointment to describe, so the field went. */}
           <Field
             label={t("header.status")}
             value={

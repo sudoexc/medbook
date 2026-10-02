@@ -11,8 +11,11 @@ export function PrintVisitButton({
     <button
       type="button"
       onClick={() => {
+        // DC-18 — no `?lang`: the print route then follows the patient's
+        // language like every other print button. A hard `ru` handed an
+        // Uzbek-speaking patient a Russian conclusion.
         window.open(
-          `/api/crm/visit-notes/${visitNoteId}/print?lang=ru`,
+          `/api/crm/visit-notes/${visitNoteId}/print`,
           "_blank",
           "noopener,noreferrer",
         );

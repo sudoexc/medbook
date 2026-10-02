@@ -23,8 +23,7 @@ import {
   conversationInitials,
   conversationTitle,
   doctorConversationsKey,
-  flattenConversations,
-  useDoctorConversations,
+  useSelectedDoctorConversation,
   type ConversationRow,
 } from "../_hooks/use-conversations";
 import {
@@ -39,10 +38,9 @@ export function ChatPanel() {
   const t = useTranslations("doctor.messages");
   const { filters, selectedId } = useMessagesContext();
   const queryClient = useQueryClient();
-  const convQuery = useDoctorConversations(filters);
-  const conversations = flattenConversations(convQuery.data);
-  const selected =
-    conversations.find((c) => c.id === selectedId) ?? null;
+  // DC-13 — falls back to the thread fetched by id when it is not on the
+  // loaded page of the list.
+  const { selected } = useSelectedDoctorConversation(filters, selectedId);
 
   const messagesQuery = useConversationMessages(selectedId);
   const messages = flattenMessagesAsc(messagesQuery.data);
@@ -88,8 +86,9 @@ export function ChatPanel() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ markRead: true }),
     }).then(() => {
+      // The whole prefix: the list page and the thread fetched by id alike.
       queryClient.invalidateQueries({
-        queryKey: doctorConversationsKey(filters),
+        queryKey: ["doctor", "me", "conversations"],
       });
     });
     // We only mark on open / unread change, not on every filter render.
@@ -398,17 +397,16 @@ function Composer({ conversationId }: { conversationId: string }) {
   return (
     <div className="border-t border-border px-5 pb-4 pt-3">
       <div className="flex items-center gap-5 border-b border-border">
-        <button
-          type="button"
-          className="relative inline-flex items-center gap-1.5 pb-2 text-sm font-semibold text-primary"
-        >
+        {/* DC-17 — the only composer mode, so a label, not a button that
+            looks clickable and does nothing. */}
+        <span className="relative inline-flex items-center gap-1.5 pb-2 text-sm font-semibold text-primary">
           <MessageSquareIcon className="size-4" />
           {t("composer.tab")}
           <span
             aria-hidden
             className="absolute inset-x-0 -bottom-px h-0.5 bg-primary"
           />
-        </button>
+        </span>
       </div>
 
       <div className="mt-3">

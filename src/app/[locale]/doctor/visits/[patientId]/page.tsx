@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 
 import { AI_ENABLED } from "@/lib/ai-enabled";
 import { auth } from "@/lib/auth";
+import { formatPatientNumber } from "@/lib/patient-number";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
@@ -64,6 +65,7 @@ export default async function VisitsPage({
           photoUrl: true,
           gender: true,
           segment: true,
+          patientNumber: true,
         },
       });
       if (!patient) return null;
@@ -86,17 +88,19 @@ export default async function VisitsPage({
           orderBy: { date: "desc" },
           select: { date: true, time: true },
         }),
+        // Every allergy and active chronic condition (DC-20): the lists were
+        // cut at five behind a «Показать ещё» that did nothing, so a sixth
+        // allergy never reached the doctor on this screen. A patient has a
+        // handful of rows, not hundreds.
         prisma.patientAllergy.findMany({
           where: { patientId },
           select: { substance: true, severity: true },
           orderBy: { createdAt: "desc" },
-          take: 5,
         }),
         prisma.patientChronicCondition.findMany({
           where: { patientId, isActive: true },
           select: { name: true },
           orderBy: { createdAt: "desc" },
-          take: 5,
         }),
       ]);
 
@@ -147,7 +151,9 @@ export default async function VisitsPage({
                 }
               : null
           }
-          cardNumber={data.patient.id.slice(-6).toUpperCase()}
+          // DC-17 — the clinic's own P-number, the one reception and the
+          // receipts use; the old id tail matched nothing in the CRM.
+          cardNumber={formatPatientNumber(data.patient.patientNumber)}
         />
 
         <PatientMetaRowLive

@@ -15,9 +15,7 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
-  ActivityIcon,
   CalendarRangeIcon,
-  ClipboardCheckIcon,
   FileTextIcon,
   Loader2Icon,
   RefreshCwIcon,
@@ -27,6 +25,10 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DOCTOR_ANALYTICS_MAX_DAYS,
+  resolveDoctorAnalyticsRange,
+} from "@/lib/doctor-analytics-range";
 import { cn } from "@/lib/utils";
 
 import {
@@ -68,7 +70,19 @@ export function AnalyticsDashboard() {
   const [customTo, setCustomTo] = React.useState<string>(() => todayYMD());
 
   const range = presetDays ? fromPreset(presetDays) : { from: customFrom, to: customTo };
-  const query = useDoctorAnalytics({ from: range.from, to: range.to });
+  // DC-15 — a custom range past the cap is not sent: the route answers 400,
+  // and the doctor gets a plain hint instead of a raw error.
+  const customCheck =
+    presetDays === null ? resolveDoctorAnalyticsRange(range) : null;
+  const rangeTooLong =
+    customCheck !== null &&
+    !customCheck.ok &&
+    customCheck.reason === "range_too_long";
+  const query = useDoctorAnalytics({
+    from: range.from,
+    to: range.to,
+    enabled: !rangeTooLong,
+  });
 
   const data = query.data;
   const isFetching = query.isFetching;
@@ -90,7 +104,13 @@ export function AnalyticsDashboard() {
         rangeLabel={data ? `${data.range.from} → ${data.range.to}` : null}
       />
 
-      {query.isError && (
+      {rangeTooLong && (
+        <div className="rounded-md border border-amber-300 bg-amber-50/60 p-3 text-sm text-amber-800">
+          {t("dashboard.rangeTooLong", { max: DOCTOR_ANALYTICS_MAX_DAYS })}
+        </div>
+      )}
+
+      {!rangeTooLong && query.isError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           {t("dashboard.loadError", {
             message: (query.error as Error)?.message ?? t("dashboard.errorFallback"),
@@ -105,7 +125,7 @@ export function AnalyticsDashboard() {
         </div>
       )}
 
-      {data && (
+      {data && !rangeTooLong && (
         <>
           <KpiGrid kpis={data.kpis} />
           <DailyVolumeCard daily={data.daily} />
@@ -218,10 +238,7 @@ function KpiGrid({
   kpis: {
     completedAppointments: number;
     finalizedNotes: number;
-    protocolApplied: number;
-    protocolAppliedPct: number;
     cdsOverrides: number;
-    labResultsReviewed: number;
   };
 }) {
   const t = useTranslations("doctor.analytics");
@@ -239,19 +256,6 @@ function KpiGrid({
       tone: "neutral",
     },
     {
-      label: t("kpi.protocolApplied"),
-      value: kpis.protocolApplied,
-      hint: t("kpi.protocolAppliedHint", { pct: kpis.protocolAppliedPct }),
-      icon: ClipboardCheckIcon,
-      tone: "good",
-    },
-    {
-      label: t("kpi.labResultsReviewed"),
-      value: kpis.labResultsReviewed,
-      icon: ActivityIcon,
-      tone: "good",
-    },
-    {
       label: t("kpi.cdsOverrides"),
       value: kpis.cdsOverrides,
       hint:
@@ -264,7 +268,7 @@ function KpiGrid({
   ];
 
   return (
-    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       {tiles.map((t) => (
         <Tile key={t.label} {...t} />
       ))}

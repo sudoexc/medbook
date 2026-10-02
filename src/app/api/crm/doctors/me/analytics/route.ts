@@ -10,19 +10,15 @@
  * Counters in scope:
  *   completedAppointments — Appointment.status=COMPLETED for this doctor.
  *   finalizedNotes        — VisitNote.status=FINALIZED for this doctor.
- *   protocolApplied       — VisitNotes that were stamped by an Apply-Standard
- *                          protocol (heuristic: bodyMarkdown contains the
- *                          protocol-applied marker). Phase G2 stamps this in
- *                          the body itself; counting it here is cheap and
- *                          avoids a new join table.
  *   cdsOverrides          — CdsOverride.doctorId=userId.
- *   labResultsReviewed    — LabResult.reviewedAt!=null && reviewedById=userId
- *                          (only when the schema has that column; otherwise
- *                          falls back to reviewedAt!=null).
  *
- * Deliberately NOT counted: ePrescription / SickLeave / LabOrder issuance.
- * The visit-screen buttons that created those rows were removed in the
- * interface simplification, so a doctor cannot produce them anymore — the
+ * Deliberately NOT counted (audit DC-16): «Протокол применён» looked for a
+ * «Применён протокол» marker in the note body that nothing writes (applying
+ * a protocol only appends its conclusion template), and «Проверено анализов»
+ * counted LabResult rows the UI never creates. Both tiles sat at zero.
+ * Nor ePrescription / SickLeave / LabOrder issuance: the visit-screen
+ * buttons that created those rows were removed in the interface
+ * simplification, so a doctor cannot produce them anymore — the
  * KPIs would read as eternal zeros and look broken. The G7 tables and their
  * CRUD routes stay untouched; resurrect the counters from git history if
  * the buttons ever come back. This endpoint's only consumer is the doctor
@@ -34,11 +30,8 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import {
-  tashkentDayBounds,
-  tashkentDayBoundsForDateString,
-  tashkentComponents,
-} from "@/lib/booking-validation";
+import { tashkentComponents } from "@/lib/booking-validation";
+import { resolveDoctorAnalyticsRange } from "@/lib/doctor-analytics-range";
 import { ok, err } from "@/server/http";
 import { z } from "zod";
 import { parseQuery } from "@/server/http";
@@ -47,7 +40,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const QuerySchema = z.object({
   // Inclusive YYYY-MM-DD bounds. Both default to a 30-day window ending
-  // today (resolved server-side to avoid timezone drift on the client).
+  // today (resolved server-side to avoid timezone drift on the client);
+  // the window is capped at DOCTOR_ANALYTICS_MAX_DAYS (DC-15).
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
@@ -80,16 +74,11 @@ export const GET = createApiListHandler(
     }
 
     // All day boundaries are Tashkent (clinic time): `from` inclusive,
-    // `toEnd` exclusive (midnight after the requested `to` day).
-    const now = new Date();
-    const todayBounds = tashkentDayBounds(now);
-    const toEnd = q.to
-      ? tashkentDayBoundsForDateString(q.to).dayEnd
-      : todayBounds.dayEnd;
-    const from = q.from
-      ? tashkentDayBoundsForDateString(q.from).dayStart
-      : new Date(todayBounds.dayStart.getTime() - 29 * DAY_MS);
-    if (toEnd <= from) return err("BadRequest", 400, { reason: "to_before_from" });
+    // `toEnd` exclusive (midnight after the requested `to` day). The window
+    // is capped (DC-15): one bucket per day is built below.
+    const range = resolveDoctorAnalyticsRange(q);
+    if (!range.ok) return err("BadRequest", 400, { reason: range.reason });
+    const { from, toEnd, dayCount } = range;
 
     const userId = ctx.userId;
     const doctorRowId = doctor.id;
@@ -99,69 +88,51 @@ export const GET = createApiListHandler(
     // mega-join here because Prisma can't aggregate across heterogeneous
     // tables in one trip anyway. Row-level selects (dates only) feed the
     // daily buckets; counts derive from the same rows where possible.
-    const [
-      appointmentRows,
-      finalizedNotesAgg,
-      cdsOverrideAgg,
-      labResultsReviewedAgg,
-      overrideRows,
-    ] = await Promise.all([
-      prisma.appointment.findMany({
-        where: {
-          clinicId,
-          doctorId: doctorRowId,
-          status: "COMPLETED",
-          date: { gte: from, lt: toEnd },
-        },
-        select: { date: true },
-      }),
-      prisma.visitNote.findMany({
-        where: {
-          clinicId,
-          doctorId: doctorRowId,
-          status: "FINALIZED",
-          finalizedAt: { gte: from, lt: toEnd },
-        },
-        select: { id: true, bodyMarkdown: true, finalizedAt: true },
-      }),
-      prisma.cdsOverride.count({
-        where: {
-          clinicId,
-          doctorId: userId,
-          createdAt: { gte: from, lt: toEnd },
-        },
-      }),
-      prisma.labResult.count({
-        where: {
-          clinicId,
-          doctorId: userId,
-          reviewedAt: { gte: from, lt: toEnd, not: null },
-        },
-      }),
-      prisma.cdsOverride.findMany({
-        where: {
-          clinicId,
-          doctorId: userId,
-          createdAt: { gte: from, lt: toEnd },
-        },
-        select: { createdAt: true },
-      }),
-    ]);
+    const [appointmentRows, finalizedNotesAgg, cdsOverrideAgg, overrideRows] =
+      await Promise.all([
+        prisma.appointment.findMany({
+          where: {
+            clinicId,
+            doctorId: doctorRowId,
+            status: "COMPLETED",
+            date: { gte: from, lt: toEnd },
+          },
+          select: { date: true },
+        }),
+        prisma.visitNote.findMany({
+          where: {
+            clinicId,
+            doctorId: doctorRowId,
+            status: "FINALIZED",
+            finalizedAt: { gte: from, lt: toEnd },
+          },
+          // Dates only: the body is not needed since the protocol marker went
+          // (DC-16), and a year of conclusions in full was a heavy read (DC-15).
+          select: { finalizedAt: true },
+        }),
+        prisma.cdsOverride.count({
+          where: {
+            clinicId,
+            doctorId: userId,
+            createdAt: { gte: from, lt: toEnd },
+          },
+        }),
+        prisma.cdsOverride.findMany({
+          where: {
+            clinicId,
+            doctorId: userId,
+            createdAt: { gte: from, lt: toEnd },
+          },
+          select: { createdAt: true },
+        }),
+      ]);
 
     const completedAppointments = appointmentRows.length;
     const finalizedNotes = finalizedNotesAgg.length;
-    const protocolApplied = finalizedNotesAgg.filter((n) =>
-      hasProtocolMarker(n.bodyMarkdown),
-    ).length;
-    const protocolAppliedPct =
-      finalizedNotes > 0
-        ? Math.round((protocolApplied / finalizedNotes) * 100)
-        : 0;
 
     // Daily buckets keyed by Tashkent civil date — the same day definition
     // the queries above filter on, so a 01:00 visit lands in its clinic day.
     // Tashkent has no DST, so stepping in 24h increments is exact.
-    const dayCount = Math.round((toEnd.getTime() - from.getTime()) / DAY_MS);
     const buckets: DailyBucket[] = [];
     for (let i = 0; i < dayCount; i++) {
       buckets.push({
@@ -193,10 +164,7 @@ export const GET = createApiListHandler(
       kpis: {
         completedAppointments,
         finalizedNotes,
-        protocolApplied,
-        protocolAppliedPct,
         cdsOverrides: cdsOverrideAgg,
-        labResultsReviewed: labResultsReviewedAgg,
       },
       daily: buckets,
     });
@@ -212,12 +180,3 @@ function bumpBucket(
   const b = idx.get(k);
   if (b) b[key]++;
 }
-
-function hasProtocolMarker(md: string | null): boolean {
-  if (!md) return false;
-  // Phase G2 inserts a heading "Применён протокол:" when Apply-Standard
-  // runs; this is the cheapest way to count without joining a separate
-  // ProtocolApplied table.
-  return md.includes("Применён протокол") || md.includes("Применен протокол");
-}
-

@@ -276,6 +276,15 @@ function ActivePatient({
       call: true,
     });
 
+  // DC-14 — CANCELLED is terminal (appointment-transitions) and the item sits
+  // under the step-back entries, so one slip in the menu used to end a
+  // running visit for good. Ask first, the same way the live queue's
+  // «Убрать» does.
+  const cancelVisit = () => {
+    if (!window.confirm(t("current.cancelConfirm", { name: p.fullName }))) return;
+    fire("CANCELLED");
+  };
+
   const runPrimary = () => {
     if (!primary) return;
     if (primary.action.kind === "call") fireCall();
@@ -531,7 +540,7 @@ function ActivePatient({
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem
-              onSelect={() => fire("CANCELLED")}
+              onSelect={cancelVisit}
               className="gap-2 text-destructive focus:text-destructive"
             >
               <XIcon className="size-4" />

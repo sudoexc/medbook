@@ -7221,7 +7221,6 @@
       },
       "actions": {
         "export": "Eksport",
-        "configureView": "Ko‘rinishni sozlash",
         "write": "Yozish",
         "call": "Qo‘ng‘iroq qilish",
         "moreActions": "Yana amallar",
@@ -7272,7 +7271,6 @@
       },
       "aiAssistant": {
         "title": "AI-yordamchi",
-        "collapse": "Yig‘ish",
         "needAttention": "E’tibor talab qiladi",
         "loadError": "Tavsiyalarni yuklab bo‘lmadi.",
         "empty": "Hozircha hech kim e’tibor talab qilmaydi. Bemorlarning segmentlari o‘zgarganda tavsiyalar paydo bo‘ladi.",
@@ -7579,6 +7577,7 @@
         "registerArrivalOnly": "Faqat kelganini qayd etish",
         "noShow": "Kelmadi",
         "cancelVisit": "Qabulni bekor qilish",
+        "cancelConfirm": "{name} qabuli bekor qilinsinmi? Bekor qilingan qabulni qaytarib bo'lmaydi.",
         "nextBooking": "Keyingi yozuv",
         "pickHint": "Bemorni tanlang: navbatdan yoki yozuv bo'yicha",
         "patientNote": "Kartadagi eslatma"
@@ -7686,7 +7685,6 @@
         "age": "Yoshi",
         "ageValue": "{age, plural, other {# yosh}} ({birth})",
         "phone": "Telefon",
-        "appointmentType": "Qabul turi",
         "status": "Holati",
         "lastVisit": "Oxirgi tashrif",
         "cardNumber": "Karta №"
@@ -7694,8 +7692,7 @@
       "meta": {
         "notSpecified": "ko‘rsatilmagan",
         "allergies": "Allergiyalar:",
-        "chronic": "Surunkali kasalliklar:",
-        "showMore": "Ko‘proq ko‘rsatish"
+        "chronic": "Surunkali kasalliklar:"
       },
       "note": {
         "date": "Sana",
@@ -8327,12 +8324,13 @@
     "analytics": {
       "page": {
         "title": "Mening statistikam",
-        "subtitle": "Tanlangan davr uchun klinik KPI: qabullar, xulosalar, tahlillar va CDS ogohlantirishlari."
+        "subtitle": "Tanlangan davr uchun klinik KPI: qabullar, xulosalar va CDS ogohlantirishlari."
       },
       "dashboard": {
         "loadError": "Tahlilni yuklab bo‘lmadi: {message}",
         "errorFallback": "xatolik",
         "computing": "Ko‘rsatkichlar hisoblanmoqda…",
+        "rangeTooLong": "{max} kundan uzun bo‘lmagan davrni tanlang.",
         "footnote": "Ko‘rsatkichlar har 30 soniyada avtomatik yangilanadi. Inobatga olingan CDS ogohlantirishi — bu siz tizim ogohlantirishiga qaramay tayinlovni davom ettirgan holat; sifat jamoasi bunday holatlarni alohida hisobotda ko‘radi."
       },
       "toolbar": {
@@ -8343,9 +8341,6 @@
       "kpi": {
         "completedAppointments": "Yakunlangan qabullar",
         "finalizedNotes": "Yakunlangan xulosalar",
-        "protocolApplied": "Protokol qo‘llanildi",
-        "protocolAppliedHint": "xulosalarning {pct}%",
-        "labResultsReviewed": "Tahlillar ko‘rib chiqildi",
         "cdsOverrides": "Inobatga olingan CDS ogohlantirishlari",
         "cdsOverridesPresent": "sifat jamoasi tekshiradi",
         "cdsOverridesNone": "bittasi ham yo‘q — a’lo"
@@ -8493,7 +8488,7 @@
         "theme": "Mavzu",
         "addToQueue": "Navbatga",
         "searching": "Qidirilmoqda…",
-        "searchEmpty": "Hech kim topilmadi",
+        "searchEmpty": "Bemorlaringiz orasida hech kim topilmadi",
         "searchParsed": "Qidirilmoqda: {name} · {year} y.",
         "searchYearAge": "{year} y. · {age} yosh"
       }

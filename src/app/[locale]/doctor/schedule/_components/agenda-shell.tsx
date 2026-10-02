@@ -12,10 +12,12 @@ import {
   PrinterIcon,
 } from "lucide-react";
 
+import { intlLocale } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useDoctorSchedule } from "../../my-day/_hooks/use-doctor-schedule";
+import { useTashkentToday } from "../../my-day/_hooks/use-tashkent-today";
 import type {
   ScheduleEntry,
   ScheduleType,
@@ -76,8 +78,10 @@ function relativeLabelKey(view: Date, today: Date): string | null {
   return null;
 }
 
-function fullDateLabel(view: Date): string {
-  return new Intl.DateTimeFormat("ru-RU", {
+// `view` is a local midnight standing for a civil date, so no timeZone here:
+// formatting it in the browser's zone gives back that same date.
+function fullDateLabel(view: Date, locale: string): string {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     day: "numeric",
     month: "long",
     weekday: "long",
@@ -203,7 +207,11 @@ export function AgendaShell({ locale }: { locale: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const today = React.useMemo(() => startOfDay(new Date()), []);
+  // DC-18 — the clinic's today, and it moves at midnight. A memo with no
+  // deps froze it at mount: a tab opened in the evening labelled yesterday
+  // «Сегодня» the next morning and the «Сегодня» button led back to it.
+  const todayKey = useTashkentToday();
+  const today = React.useMemo(() => isoDateToLocalDate(todayKey), [todayKey]);
   const dateParam = searchParams.get("date");
 
   const initialDate = React.useMemo(() => {
@@ -263,7 +271,9 @@ export function AgendaShell({ locale }: { locale: string }) {
               {t("agenda.title")}
             </h1>
             <div className="mt-1 text-sm text-muted-foreground">
-              {rel ? `${rel} · ${fullDateLabel(viewDate)}` : fullDateLabel(viewDate)}
+              {rel
+                ? `${rel} · ${fullDateLabel(viewDate, locale)}`
+                : fullDateLabel(viewDate, locale)}
             </div>
           </div>
           <div className="flex items-center gap-2">

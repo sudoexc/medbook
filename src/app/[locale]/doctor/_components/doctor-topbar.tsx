@@ -23,32 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-const RU_WEEKDAYS = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"] as const;
-const RU_MONTHS = [
-  "января",
-  "февраля",
-  "марта",
-  "апреля",
-  "мая",
-  "июня",
-  "июля",
-  "августа",
-  "сентября",
-  "октября",
-  "ноября",
-  "декабря",
-] as const;
-
-function formatClock(d: Date) {
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
-}
-
-function formatDate(d: Date) {
-  return `${d.getDate()} ${RU_MONTHS[d.getMonth()]}, ${RU_WEEKDAYS[d.getDay()]}`;
-}
+import { formatDate, type Locale } from "@/lib/format";
 
 export interface DoctorTopbarProps {
   doctorName: string;
@@ -69,6 +44,7 @@ export function DoctorTopbar({
 }: DoctorTopbarProps) {
   const t = useTranslations("doctor.nav");
   const locale = useLocale();
+  const uiLocale: Locale = locale === "uz" ? "uz" : "ru";
   const router = useRouter();
   // Queueing a walk-in must happen wherever the doctor is standing — routing
   // him to «Мой день» was a no-op when he was already there, which is exactly
@@ -124,13 +100,15 @@ export function DoctorTopbar({
       ) : null}
 
       <div className="ml-auto flex items-center gap-2">
-        {/* Clock + date */}
+        {/* Clock + date (DC-18): in the UI language and the clinic's zone.
+            They were built from Russian month/weekday arrays and the
+            browser's own getHours(), so the Uzbek cabinet read Russian. */}
         <div className="hidden flex-col items-end leading-none lg:flex">
           <span className="text-[15px] font-bold tabular-nums text-foreground">
-            {now ? formatClock(now) : "—:—"}
+            {now ? formatDate(now, uiLocale, "time") : "—:—"}
           </span>
           <span className="mt-0.5 text-[11px] text-muted-foreground">
-            {now ? formatDate(now) : ""}
+            {now ? formatDate(now, uiLocale, "dayMonthWeekday") : ""}
           </span>
         </div>
 

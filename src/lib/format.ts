@@ -100,7 +100,8 @@ export type DateStyle =
   | "long"
   | "time"
   | "relative"
-  | "dayMonthTime";
+  | "dayMonthTime"
+  | "dayMonthWeekday";
 
 /** Clinic wall-clock. Asia/Tashkent is a fixed UTC+5 (no DST since 1992). */
 const CLINIC_TZ = "Asia/Tashkent";
@@ -114,6 +115,7 @@ const CLINIC_TZ = "Asia/Tashkent";
  *   relative     → "вчера в 14:00" / "kecha soat 14:00 da"
  *   dayMonthTime → "6 июня, 15:45" / "6-iyun, 15:45" — for "uploaded on"
  *                  labels where the year would just be noise.
+ *   dayMonthWeekday → "6 июня, сб" — the doctor topbar's date line.
  *
  * Every style pins `timeZone` (audit CD-03). Without it Intl reads the
  * runtime zone, and the production server runs UTC: the conclusion print,
@@ -174,6 +176,19 @@ export function formatDate(
       timeZone: CLINIC_TZ,
     }).format(d);
     return `${day}, ${time}`;
+  }
+
+  if (style === "dayMonthWeekday") {
+    const day = new Intl.DateTimeFormat(tag, {
+      day: "numeric",
+      month: "long",
+      timeZone: CLINIC_TZ,
+    }).format(d);
+    const weekday = new Intl.DateTimeFormat(tag, {
+      weekday: "short",
+      timeZone: CLINIC_TZ,
+    }).format(d);
+    return `${day}, ${weekday}`;
   }
 
   // relative

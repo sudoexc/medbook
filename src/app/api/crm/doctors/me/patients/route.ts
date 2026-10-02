@@ -54,6 +54,8 @@ type DoctorPatientRow = {
   photoUrl: string | null;
   birthDate: string | null;
   phone: string;
+  /** The clinic's P-number; the topbar search lists it next to the name. */
+  patientNumber: number;
   segment: "NEW" | "ACTIVE" | "DORMANT" | "VIP" | "CHURN";
   hasActiveAppointment: boolean;
   lastVisitWithMeAt: string | null;
@@ -179,6 +181,7 @@ export const GET = createApiListHandler(
         photoUrl: true,
         birthDate: true,
         phone: true,
+        patientNumber: true,
         segment: true,
         lastVisitAt: true,
       },
@@ -275,6 +278,7 @@ export const GET = createApiListHandler(
         photoUrl: p.photoUrl,
         birthDate: p.birthDate ? p.birthDate.toISOString() : null,
         phone: p.phone,
+        patientNumber: p.patientNumber,
         segment: p.segment,
         hasActiveAppointment: inProgressSet.has(p.id),
         lastVisitWithMeAt: last ? last.date.toISOString() : null,

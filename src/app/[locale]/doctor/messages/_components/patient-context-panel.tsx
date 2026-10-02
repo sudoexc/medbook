@@ -16,10 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { useMessagesContext } from "../_hooks/messages-context";
-import {
-  flattenConversations,
-  useDoctorConversations,
-} from "../_hooks/use-conversations";
+import { useSelectedDoctorConversation } from "../_hooks/use-conversations";
 
 type PatientSummary = {
   id: string;
@@ -61,9 +58,7 @@ export function PatientContextPanel() {
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
 
-  const convQuery = useDoctorConversations(filters);
-  const conversations = flattenConversations(convQuery.data);
-  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const { selected } = useSelectedDoctorConversation(filters, selectedId);
   const patientId = selected?.patient?.id ?? null;
 
   const summaryQuery = useQuery<PatientSummary>({

@@ -3,7 +3,6 @@
 import {
   CalendarClockIcon,
   CalendarOffIcon,
-  ChevronUpIcon,
   RotateCcwIcon,
   SparklesIcon,
   UserPlusIcon,
@@ -90,15 +89,7 @@ export function AiAssistantPanel() {
             {t("aiAssistant.title")}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            aria-label={t("aiAssistant.collapse")}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <ChevronUpIcon className="size-4" />
-          </button>
-        </div>
+        {/* DC-17 — the «Свернуть» chevron had no handler; dropped. */}
       </div>
 
       <div className="mt-4 flex items-center justify-between rounded-xl bg-primary/5 px-3 py-2.5">

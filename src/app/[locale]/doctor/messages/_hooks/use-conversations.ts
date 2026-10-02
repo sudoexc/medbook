@@ -1,6 +1,6 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 export type ConversationChannel = "SMS" | "TG" | "CALL" | "EMAIL" | "VISIT";
 export type ConversationStatus = "OPEN" | "SNOOZED" | "CLOSED";
@@ -98,6 +98,67 @@ export function flattenConversations(
   const out: ConversationRow[] = [];
   for (const p of data.pages) out.push(...p.rows);
   return out;
+}
+
+/**
+ * One thread by id (audit DC-13). «Написать» on a patient card resolves the
+ * thread through find-or-create and selects it, but the chat pane and the
+ * patient rail looked it up only on the first page of the list (50 threads,
+ * freshest first), so an older conversation opened as «выберите диалог».
+ * The key sits under the list prefix so the live invalidation in
+ * MessagesProvider refreshes it too.
+ */
+export function doctorConversationKey(id: string | null) {
+  return ["doctor", "me", "conversations", "one", id] as const;
+}
+
+/**
+ * The thread the inbox shows: the list row when it is loaded (freshest),
+ * else the one fetched by id. Never a different thread than `selectedId`.
+ */
+export function pickSelectedConversation(input: {
+  selectedId: string | null;
+  rows: ConversationRow[];
+  fetched: ConversationRow | null | undefined;
+}): ConversationRow | null {
+  const { selectedId, rows, fetched } = input;
+  if (!selectedId) return null;
+  const fromList = rows.find((c) => c.id === selectedId);
+  if (fromList) return fromList;
+  return fetched && fetched.id === selectedId ? fetched : null;
+}
+
+export function useSelectedDoctorConversation(
+  filters: ConversationsFilters,
+  selectedId: string | null,
+) {
+  const convQuery = useDoctorConversations(filters);
+  const conversations = flattenConversations(convQuery.data);
+  const inList = selectedId
+    ? conversations.some((c) => c.id === selectedId)
+    : false;
+  // Fetched only once the list has answered without the thread, so the
+  // common case (thread on the first page) costs no extra request.
+  const oneQuery = useQuery<ConversationRow | null>({
+    queryKey: doctorConversationKey(selectedId),
+    enabled: Boolean(selectedId) && convQuery.isSuccess && !inList,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(
+        `/api/crm/conversations/${encodeURIComponent(selectedId!)}`,
+        { credentials: "include", signal },
+      );
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`Failed to load conversation: ${res.status}`);
+      return (await res.json()) as ConversationRow;
+    },
+    staleTime: 10_000,
+  });
+  const selected = pickSelectedConversation({
+    selectedId,
+    rows: conversations,
+    fetched: oneQuery.data,
+  });
+  return { convQuery, conversations, selected };
 }
 
 // `t` is threaded in (not read via useTranslations) so these stay plain

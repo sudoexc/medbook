@@ -35,6 +35,8 @@ import { isActiveVisitStatus } from "@/lib/appointments/active-statuses";
 const DEFAULT_SLOT_MINUTES = 30;
 
 type SidebarStatsResponse = {
+  /** Doctor row id: the client drops other doctors' live events (DC-24). */
+  doctorId: string;
   todayBadge: number;
   unreadMessages: number;
   loadPercent: number;
@@ -123,6 +125,7 @@ export const GET = createApiListHandler(
         : 0;
 
     const payload: SidebarStatsResponse = {
+      doctorId: doctor.id,
       todayBadge,
       unreadMessages,
       loadPercent,

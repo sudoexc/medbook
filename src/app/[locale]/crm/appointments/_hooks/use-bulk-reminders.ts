@@ -63,8 +63,10 @@ export function useBulkReminders(): {
         toast.info(t("rail.remindersNothing"));
       }
     },
-    onError: (e) => {
-      toast.error(t("rail.remindersFailed"), { description: e.message });
+    // The localized line only: the server's code («Forbidden», «HTTP 429»)
+    // means nothing to the desk (AP-18).
+    onError: () => {
+      toast.error(t("rail.remindersFailed"));
     },
   });
 

@@ -7,7 +7,8 @@
  *  - AP-23: the «Услуга» filter was dropped by the query schema, so the list
  *    never narrowed. It now matches the main service or any service line.
  *  - AP-21: the tiles counted the loaded page. The list's first page now
- *    carries the clock-dependent tile counts over the whole filter set.
+ *    carries the clock-dependent tile counts over the whole filter set, and
+ *    a tile that is not one status filters the list on the server.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +16,7 @@ const h = vi.hoisted(() => ({
   findUniqueArgs: [] as Array<Record<string, unknown>>,
   findManyArgs: [] as Array<Record<string, unknown>>,
   countArgs: [] as Array<Record<string, unknown>>,
+  groupByArgs: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -39,10 +41,13 @@ vi.mock("@/lib/prisma", () => ({
         h.countArgs.push(args);
         return 3;
       }),
-      groupBy: vi.fn(async () => [
-        { status: "WAITING", _count: { _all: 2 } },
-        { status: "BOOKED", _count: { _all: 5 } },
-      ]),
+      groupBy: vi.fn(async (args: Record<string, unknown>) => {
+        h.groupByArgs.push(args);
+        return [
+          { status: "WAITING", _count: { _all: 2 } },
+          { status: "BOOKED", _count: { _all: 5 } },
+        ];
+      }),
     },
   },
 }));
@@ -66,6 +71,7 @@ beforeEach(() => {
   h.findUniqueArgs = [];
   h.findManyArgs = [];
   h.countArgs = [];
+  h.groupByArgs = [];
 });
 
 describe("AP-13: the drawer's GET sends only what the drawer reads", () => {
@@ -87,9 +93,12 @@ describe("AP-13: the drawer's GET sends only what the drawer reads", () => {
 });
 
 describe("AP-23 and AP-21: the list route", () => {
-  async function list(qs: string) {
+  async function get(qs: string) {
     const { GET } = await import("@/app/api/crm/appointments/route");
-    const res = await GET(new Request(`https://x/api/crm/appointments?${qs}`));
+    return GET(new Request(`https://x/api/crm/appointments?${qs}`));
+  }
+  async function list(qs: string) {
+    const res = await get(qs);
     return (await res.json()) as { tally: Record<string, number> };
   }
 
@@ -129,5 +138,37 @@ describe("AP-23 and AP-21: the list route", () => {
     const body = await list("cursor=ap_50");
     expect(body.tally.soon).toBeUndefined();
     expect(h.countArgs).toHaveLength(1);
+  });
+
+  it("a tile that is not one status filters the rows and the total, never the tally", async () => {
+    const body = await list("bucket=soon");
+    const listWhere = h.findManyArgs[0]!.where as { AND: Array<Record<string, unknown>> };
+    // «Скоро» over every page: the list's filters AND the tile's predicate.
+    expect(listWhere.AND).toHaveLength(2);
+    expect(listWhere.AND[1]!.status).toEqual({ in: ["BOOKED", "CONFIRMED"] });
+    // «Показано N из M» counts the same rows.
+    expect(h.countArgs[0]!.where).toEqual(listWhere);
+    // The other tiles keep their numbers while this one is picked.
+    expect(h.groupByArgs[0]!.where).toEqual({});
+    for (const a of h.countArgs.slice(1)) {
+      expect((a.where as { AND: unknown[] }).AND[0]).toEqual({});
+    }
+    expect(body.tally.soon).toBe(3);
+    expect(body.tally.BOOKED).toBe(5);
+  });
+
+  it("«Срочные» lists the hall and the overdue, beside a service filter", async () => {
+    await list("bucket=needs_attention&serviceId=svc_eeg");
+    const listWhere = h.findManyArgs[0]!.where as { AND: Array<Record<string, unknown>> };
+    expect(listWhere.AND[0]).toHaveProperty("AND");
+    const or = listWhere.AND[1]!.OR as Array<Record<string, unknown>>;
+    expect(or[0]).toEqual({ status: "WAITING" });
+    expect(or[1]!.status).toEqual({ in: ["BOOKED", "CONFIRMED", "SKIPPED"] });
+  });
+
+  it("an unknown bucket is refused, not ignored", async () => {
+    const res = await get("bucket=everything");
+    expect(res.status).toBe(400);
+    expect(h.findManyArgs).toHaveLength(0);
   });
 });

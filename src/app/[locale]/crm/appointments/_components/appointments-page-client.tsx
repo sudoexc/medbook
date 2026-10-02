@@ -10,15 +10,16 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import { Button } from "@/components/ui/button";
 
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
+import { canSendBulkReminders } from "@/lib/appointments/bulk-reminders";
 
 import {
-  filterRowsByBucket,
   flattenAppointments,
   useAppointmentsList,
   useAppointmentsRealtime,
 } from "../_hooks/use-appointments-list";
 import { useAppointmentsFilters } from "../_hooks/use-appointments-filters";
 import { useBulkReminders } from "../_hooks/use-bulk-reminders";
+import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
 import { AppointmentsFilters } from "./appointments-filters";
 import { AppointmentsTiles } from "./appointments-tiles";
 import { AppointmentsBulkBar } from "./appointments-bulk-bar";
@@ -96,14 +97,13 @@ export function AppointmentsPageClient() {
 
   // --- data ----------------------------------------------------------------
   const query = useAppointmentsList(apiFilters);
-  const allRows = React.useMemo(
+  // The server filters every tile (`bucket=` for those that are not one
+  // status), so the table holds what the picked tile counts across every
+  // page. Narrowing the loaded page here showed «Скоро: 3» over an empty
+  // table, with no «Загрузить ещё» to reach those rows (AP-21).
+  const rows = React.useMemo(
     () => flattenAppointments(query.data),
     [query.data],
-  );
-  // The table sees the bucket-narrowed slice; the tiles count on the server.
-  const rows = React.useMemo(
-    () => filterRowsByBucket(allRows, state.bucket ?? null),
-    [allRows, state.bucket],
   );
   const total = query.data?.pages?.[0]?.total ?? null;
 
@@ -130,6 +130,8 @@ export function AppointmentsPageClient() {
   const selectedIds = React.useMemo(() => Array.from(selected), [selected]);
 
   const { send: sendReminders, isPending: remindersBusy } = useBulkReminders();
+  // The page is open to every CRM role; the reminders route is not.
+  const canRemind = canSendBulkReminders(useCurrentRole());
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -234,7 +236,7 @@ export function AppointmentsPageClient() {
           onSlotPick={({ doctorId, date, time }) =>
             openCreateDialog({ doctorId, date, time })
           }
-          onSendReminders={sendReminders}
+          onSendReminders={canRemind ? sendReminders : undefined}
           remindersBusy={remindersBusy}
         />
       </aside>

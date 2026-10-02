@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { APPOINTMENTS_LIST_MAX_LIMIT } from "@/lib/appointments/fetch-all-pages";
+import { SERVER_BUCKETS } from "@/lib/appointments/list-tiles";
 import { queryBool } from "./query-bool";
 
 export const AppointmentStatusEnum = z.enum([
@@ -126,6 +127,9 @@ export const QueryAppointmentSchema = z.object({
   patientId: z.string().optional(),
   cabinetId: z.string().optional(),
   status: AppointmentStatusEnum.optional(),
+  // A «Записи» tile that is not one status («Скоро», «Просрочены», …),
+  // filtered here so its click lists every row its count holds (AP-21).
+  bucket: z.enum(SERVER_BUCKETS).optional(),
   channel: ChannelTypeEnum.optional(),
   // The «Услуга» filter (audit AP-23): zod dropped it, so the list never
   // narrowed while the filter indicator lit up.

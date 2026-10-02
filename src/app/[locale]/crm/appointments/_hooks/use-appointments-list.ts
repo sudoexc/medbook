@@ -3,12 +3,7 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
-import { isOverdue, isRunningLate } from "@/lib/appointments/overdue";
-import {
-  ARRIVED_STATUSES,
-  SOON_STATUSES,
-  SOON_WINDOW_MIN,
-} from "@/lib/appointments/list-tiles";
+import type { ServerBucket } from "@/lib/appointments/list-tiles";
 
 /**
  * Denormalised row returned by `GET /api/crm/appointments` — see §6.2.
@@ -144,6 +139,8 @@ export type AppointmentsListFilters = {
   patientId?: string;
   cabinetId?: string;
   status?: string;
+  /** A tile that is not one status, filtered by the server (AP-21). */
+  bucket?: ServerBucket;
   channel?: string;
   serviceId?: string;
   onlyUnpaid?: boolean;
@@ -164,6 +161,7 @@ function buildSearch(
   if (filters.patientId) params.set("patientId", filters.patientId);
   if (filters.cabinetId) params.set("cabinetId", filters.cabinetId);
   if (filters.status) params.set("status", filters.status);
+  if (filters.bucket) params.set("bucket", filters.bucket);
   if (filters.channel) params.set("channel", filters.channel);
   if (filters.serviceId) params.set("serviceId", filters.serviceId);
   if (filters.onlyUnpaid) params.set("unpaid", "true");
@@ -241,48 +239,6 @@ export function flattenAppointments(
   const out: AppointmentRow[] = [];
   for (const p of data.pages) out.push(...p.rows);
   return out;
-}
-
-/**
- * Client-side narrowing for UX-only tile buckets that don't translate to a
- * single API status. Returns the same array reference when `bucket` doesn't
- * trigger any filtering so React.useMemo callers stay cheap.
- */
-export function filterRowsByBucket(
-  rows: AppointmentRow[],
-  bucket: string | null | undefined,
-  now = new Date(),
-): AppointmentRow[] {
-  if (!bucket || bucket === "all") return rows;
-  const nowMs = now.getTime();
-  const soonMs = SOON_WINDOW_MIN * 60 * 1000;
-  switch (bucket) {
-    case "needs_attention":
-      return rows.filter(
-        (r) => r.status === "WAITING" || isOverdue(r, nowMs),
-      );
-    case "soon":
-      return rows.filter((r) => {
-        const startMs = new Date(r.date).getTime();
-        return (
-          (SOON_STATUSES as readonly string[]).includes(r.status) &&
-          startMs - nowMs >= 0 &&
-          startMs - nowMs <= soonMs
-        );
-      });
-    case "unconfirmed":
-      return rows.filter((r) => r.status === "BOOKED");
-    case "late":
-      return rows.filter((r) => isRunningLate(r, nowMs));
-    case "overdue":
-      return rows.filter((r) => isOverdue(r, nowMs));
-    case "arrived":
-      return rows.filter((r) =>
-        (ARRIVED_STATUSES as readonly string[]).includes(r.status),
-      );
-    default:
-      return rows;
-  }
 }
 
 /**

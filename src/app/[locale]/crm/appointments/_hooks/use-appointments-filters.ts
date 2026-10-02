@@ -4,7 +4,7 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useClinicToday } from "@/hooks/use-clinic-today";
-import { ARRIVED_STATUSES } from "@/lib/appointments/list-tiles";
+import { ARRIVED_STATUSES, isServerBucket } from "@/lib/appointments/list-tiles";
 import { addTashkentDays, tashkentDayWindow } from "@/lib/tashkent-time";
 
 import type { AppointmentsListFilters } from "./use-appointments-list";
@@ -18,15 +18,18 @@ import type { AppointmentsListFilters } from "./use-appointments-list";
  *    The server-facing hook only cares about `from`/`to` so we compute them
  *    here when the user picks a pill.
  *  - `bucket` → the status pill above the table (`all` | `waiting` | ...).
- *    We translate that to `status` before calling the API.
+ *    We translate that to `status`, or to the server's `bucket` filter,
+ *    before calling the API.
  */
 export type DateMode = "today" | "tomorrow" | "afterTomorrow" | "range";
 /**
  * Buckets come in two flavours:
  *   - API-aligned statuses (`waiting`, `booked`, …) → translate to a server
  *     `status` filter.
- *   - UX-only smart buckets (`needs_attention`, `soon`, `unconfirmed`, `late`,
- *     `arrived`) → leave the server filter open, narrow rows client-side.
+ *   - Smart buckets (`needs_attention`, `soon`, `overdue`, `late`,
+ *     `arrived`) → the server's `bucket` filter (`SERVER_BUCKETS`), so the
+ *     list holds every row the tile counts, not the loaded page's share.
+ *     `unconfirmed` is plain BOOKED.
  *
  * Both are reflected in the URL so the active tile sticks across reloads.
  */
@@ -46,7 +49,7 @@ export type StatusBucket =
   | "overdue"
   | "arrived";
 
-export type AppointmentsFilterState = AppointmentsListFilters & {
+export type AppointmentsFilterState = Omit<AppointmentsListFilters, "bucket"> & {
   dateMode?: DateMode;
   bucket?: StatusBucket;
 };
@@ -179,7 +182,7 @@ const BUCKET_TO_STATUS: Record<StatusBucket, string | undefined> = {
   // «Не подтверждены» is exactly BOOKED, so the server filters it and the
   // list shows every such row, not the ones on the loaded page (AP-21).
   unconfirmed: "BOOKED",
-  // UX-only buckets: no server filter, rows narrowed client-side.
+  // Not one status: sent as the server's `bucket` filter instead.
   needs_attention: undefined,
   soon: undefined,
   late: undefined,
@@ -191,9 +194,9 @@ const BUCKET_TO_STATUS: Record<StatusBucket, string | undefined> = {
  * The CSV export's `filters` for the list on screen (audit INF-02): the
  * resolved period (`dateMode` already turned into today's or tomorrow's
  * Tashkent window), the status of the tile, and every other server filter.
- * Of the time-relative tiles («скоро», «опаздывают»), which narrow the
- * loaded rows by the minute, the two that are plain statuses travel as
- * statuses; the others export the period they sit in.
+ * Of the tiles that are not one status, «Прибыли» travels as its statuses;
+ * the clock-relative ones («скоро», «просрочены») export the period they
+ * sit in.
  */
 export function appointmentExportFilters(
   state: AppointmentsFilterState,
@@ -215,6 +218,36 @@ export function appointmentExportFilters(
   else if (state.bucket === "unconfirmed") put("status", "BOOKED");
   else put("status", api.status);
   return out;
+}
+
+/**
+ * The effective filter payload that goes to the server. Normalises
+ * `dateMode` to concrete `from`/`to` and `bucket` to `status` or to the
+ * server's `bucket`.
+ */
+export function listFiltersFor(
+  state: AppointmentsFilterState,
+  today: string,
+): AppointmentsListFilters {
+  const { from, to } = resolveWindow(state, today);
+  const status =
+    state.bucket && state.bucket !== "all"
+      ? BUCKET_TO_STATUS[state.bucket]
+      : state.status;
+  return {
+    from,
+    to,
+    doctorId: state.doctorId,
+    cabinetId: state.cabinetId,
+    status,
+    bucket: isServerBucket(state.bucket) ? state.bucket : undefined,
+    channel: state.channel,
+    serviceId: state.serviceId,
+    onlyUnpaid: state.onlyUnpaid,
+    q: state.q,
+    sort: state.sort ?? "date",
+    dir: state.dir ?? "asc",
+  };
 }
 
 export function useAppointmentsFilters() {
@@ -260,30 +293,10 @@ export function useAppointmentsFilters() {
     router.replace(pathname, { scroll: false });
   }, [router, pathname]);
 
-  /**
-   * Compute the effective filter payload that goes to the server. Normalises
-   * `dateMode` to concrete `from`/`to` and `bucket` to `status`.
-   */
-  const apiFilters: AppointmentsListFilters = React.useMemo(() => {
-    const { from, to } = resolveWindow(state, clinicToday);
-    const status =
-      state.bucket && state.bucket !== "all"
-        ? BUCKET_TO_STATUS[state.bucket]
-        : state.status;
-    return {
-      from,
-      to,
-      doctorId: state.doctorId,
-      cabinetId: state.cabinetId,
-      status,
-      channel: state.channel,
-      serviceId: state.serviceId,
-      onlyUnpaid: state.onlyUnpaid,
-      q: state.q,
-      sort: state.sort ?? "date",
-      dir: state.dir ?? "asc",
-    };
-  }, [state, clinicToday]);
+  const apiFilters: AppointmentsListFilters = React.useMemo(
+    () => listFiltersFor(state, clinicToday),
+    [state, clinicToday],
+  );
 
   return {
     state,

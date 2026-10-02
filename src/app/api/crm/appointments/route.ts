@@ -22,7 +22,7 @@ import { isOnClinicDay } from "@/lib/appointment-transitions";
 import { findStandingAutoNoShows } from "@/server/appointments/auto-no-show";
 import { ensureQuotaForApi } from "@/server/billing/plan-limits";
 import { canEditPrice, priceFieldsIn } from "@/lib/appointments/price-edit";
-import { timedTileWheres } from "@/lib/appointments/list-tiles";
+import { bucketWhere, timedTileWheres } from "@/lib/appointments/list-tiles";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -80,9 +80,18 @@ export const GET = createApiListHandler(
       where.doctorId = doctor.id;
     }
 
+    const now = new Date();
+    // A tile that is not one status narrows the rows and the total, never
+    // the tally below: the other tiles keep their counts while it is picked,
+    // and the list holds every row of the picked one, not just those on the
+    // loaded page (AP-21).
+    const listWhere = q.bucket
+      ? { AND: [where, bucketWhere(q.bucket, now)] }
+      : where;
+
     const take = q.limit + 1;
     const rows = await prisma.appointment.findMany({
-      where,
+      where: listWhere,
       // `id` breaks ties: many visits share a start time (one slot, several
       // doctors), and without a total order Postgres may return the tied rows
       // in a different order on the next page, so the cursor would land in a
@@ -127,7 +136,7 @@ export const GET = createApiListHandler(
       // readers (fetchAllAppointmentPages, the calendar) under-counted.
       nextCursor = rows[rows.length - 1]?.id ?? null;
     }
-    const total = await prisma.appointment.count({ where });
+    const total = await prisma.appointment.count({ where: listWhere });
 
     // KPI-strip badge counts: respect every other filter except status,
     // so switching tabs doesn't zero out the others. Mirrors the segment-tab
@@ -154,7 +163,6 @@ export const GET = createApiListHandler(
       tally.all += c;
     }
 
-    const now = new Date();
     // The «Записи» tiles that depend on the clock (audit AP-21), over the
     // same filter set as the status counts. Only the first page carries
     // them (the tiles read page one), so the later pages of the full-range

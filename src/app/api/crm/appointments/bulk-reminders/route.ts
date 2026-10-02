@@ -24,6 +24,7 @@ import { z } from "zod";
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { BULK_REMINDER_ROLES } from "@/lib/appointments/bulk-reminders";
 import { err, ok } from "@/server/http";
 import { materializeManualReminders } from "@/server/notifications/triggers";
 import { enqueueDelivery } from "@/server/workers/notifications-send";
@@ -34,7 +35,8 @@ const BulkRemindersSchema = z.object({
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST"],
+    // The same set gates the buttons, so no other role is offered a sure 403.
+    roles: [...BULK_REMINDER_ROLES],
     bodySchema: BulkRemindersSchema,
   },
   async ({ request, body, ctx }) => {

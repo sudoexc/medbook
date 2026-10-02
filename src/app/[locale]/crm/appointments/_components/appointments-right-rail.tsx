@@ -58,8 +58,12 @@ export interface AppointmentsRightRailProps {
   rows: AppointmentRow[];
   selectedDoctorId?: string | null;
   onSlotPick: (params: { doctorId: string; date: Date; time: string }) => void;
-  /** «Напомнить всем»: one staff reminder per appointment (AP-02). */
-  onSendReminders: (appointmentIds: string[]) => void;
+  /**
+   * «Напомнить всем»: one staff reminder per appointment (AP-02). Left out
+   * for a role the reminders route refuses: the button is then disabled,
+   * not a sure 403.
+   */
+  onSendReminders?: (appointmentIds: string[]) => void;
   remindersBusy?: boolean;
 }
 
@@ -183,13 +187,15 @@ export function AppointmentsRightRail({
         onCta={() =>
           // Only visits still ahead: a reminder about a slot that has
           // already passed is noise (the server skips those too).
-          onSendReminders(
+          onSendReminders?.(
             bookedRows
               .filter((r) => new Date(r.date).getTime() > Date.now())
               .map((r) => r.id),
           )
         }
-        ctaDisabled={remindersBusy || bookedRows.length === 0}
+        ctaDisabled={
+          !onSendReminders || remindersBusy || bookedRows.length === 0
+        }
         moreLabel={t("moreActions")}
       >
         <AvatarsRow

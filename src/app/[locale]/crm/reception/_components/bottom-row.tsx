@@ -11,8 +11,11 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { canWorkActionCenter } from "@/lib/actions/roles";
+import { canSendBulkReminders } from "@/lib/appointments/bulk-reminders";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import { useBulkReminders } from "../../appointments/_hooks/use-bulk-reminders";
+import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 
 export function BottomRow({
@@ -215,6 +218,13 @@ function SmartRecommendations({
   const locale = useLocale();
   const recs = useSmartRecs(todayRows);
   const reminders = useBulkReminders();
+  // Reception is every CRM role's home, but only the desk and the admin may
+  // send the reminder (BULK_REMINDER_ROLES). The call operator keeps the old
+  // way to the Action Center, where the confirm calls are; a nurse, who has
+  // neither, gets no card instead of a sure «Forbidden».
+  const role = useCurrentRole();
+  const canSend = canSendBulkReminders(role);
+  const canOpenActionCenter = canWorkActionCenter(role);
 
   const cards: React.ReactNode[] = [];
 
@@ -235,7 +245,7 @@ function SmartRecommendations({
     );
   }
 
-  if (recs.remindIds.length > 0) {
+  if (recs.remindIds.length > 0 && canSend) {
     const count = recs.remindIds.length;
     cards.push(
       <RecCard
@@ -252,6 +262,20 @@ function SmartRecommendations({
           // says yes to the number of patients it goes to.
           if (!window.confirm(t("recRemindConfirm", { count }))) return;
           reminders.send(recs.remindIds);
+        }}
+      />,
+    );
+  } else if (recs.remindIds.length > 0 && canOpenActionCenter) {
+    cards.push(
+      <RecCard
+        key="remind"
+        variant="remind"
+        icon={BellIcon}
+        title={t("recRemindTitle")}
+        body={t("recRemindBody", { count: recs.remindIds.length })}
+        cta={t("recView")}
+        onClick={() => {
+          router.push(`/${locale}/crm/action-center`);
         }}
       />,
     );

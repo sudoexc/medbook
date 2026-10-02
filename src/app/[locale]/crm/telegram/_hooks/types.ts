@@ -12,6 +12,8 @@ export type InboxPatientMini = {
   phone: string;
   photoUrl: string | null;
   tgBlockedAt: string | null;
+  /** The language quick replies default to for him (audit G6-15). */
+  preferredLang?: "RU" | "UZ";
 };
 
 export type InboxAssignee = {

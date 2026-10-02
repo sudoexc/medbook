@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 import {
   useCallCenterRealtime,
+  useIncomingCallAlerts,
   useIncomingCalls,
 } from "../_hooks/use-incoming-calls";
 import { useActiveCall, useActiveCallId } from "../_hooks/use-active-call";
@@ -47,6 +48,8 @@ export function CallCenterPageClient() {
     () => incomingQuery.data ?? [],
     [incomingQuery.data],
   );
+  // Here, not in the queue column: the column unmounts on the missed tab.
+  useIncomingCallAlerts(incomingQuery.data);
   const missedQuery = useMissedCalls();
   const missed = React.useMemo(() => missedQuery.data ?? [], [missedQuery.data]);
   const pendingMissedCount = React.useMemo(

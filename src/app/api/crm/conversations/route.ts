@@ -109,6 +109,8 @@ export const GET = createApiListHandler(
             phone: true,
             photoUrl: true,
             tgBlockedAt: true,
+            // Quick replies open in his language (audit G6-15).
+            preferredLang: true,
           },
         },
         assignedTo: { select: { id: true, name: true } },

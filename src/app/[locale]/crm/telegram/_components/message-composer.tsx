@@ -62,7 +62,11 @@ import {
   type CannedLang,
 } from "../_hooks/use-canned";
 import { useClinicInfo } from "../_hooks/use-conversation-meta";
-import { fillPlaceholders, firstNameOf } from "../_lib/placeholders";
+import {
+  fillPlaceholders,
+  hasUnfilledPlaceholders,
+  replyRecipient,
+} from "../_lib/placeholders";
 import {
   createDraftStore,
   type ComposerDraft,
@@ -951,13 +955,21 @@ function CannedPicker({
   const role = useCurrentRole();
   const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
   const [open, setOpen] = React.useState(false);
+  // The patient's language first (audit G6-15), the operator's screen only
+  // for a chat with no card: an Uzbek patient got the Russian reply because
+  // the receptionist works in Russian.
   const [lang, setLang] = React.useState<CannedLang>(
-    locale === "uz" ? "UZ" : "RU",
+    conversation.patient?.preferredLang ?? (locale === "uz" ? "UZ" : "RU"),
   );
   const [manage, setManage] = React.useState(false);
 
   const listQ = useCannedResponses(open);
-  const clinicQ = useClinicInfo(open);
+  // Loaded with the composer, not on the first open (audit G6-15): a reply
+  // picked from a cached list before /api/crm/clinic answered went out with
+  // the clinic's name, phone and address empty. Until it answers the
+  // replies wait (one fetch per ten minutes for the whole inbox).
+  const clinicQ = useClinicInfo(true);
+  const clinicPending = clinicQ.isPending;
 
   const items = React.useMemo(
     () => (listQ.data?.rows ?? []).filter((c) => c.lang === lang),
@@ -965,11 +977,11 @@ function CannedPicker({
   );
 
   const onPick = (c: CannedResponse) => {
-    const name = conversation.patient?.fullName ?? "";
+    if (clinicPending) return;
     const clinic = clinicQ.data;
     const filled = fillPlaceholders(c.body, {
-      firstName: firstNameOf(name),
-      name,
+      // The Telegram name when the chat has no card yet (G6-15).
+      ...replyRecipient(conversation),
       clinic: clinic ? (c.lang === "UZ" ? clinic.nameUz : clinic.nameRu) : "",
       phone: clinic?.phone ?? "",
       address: clinic
@@ -977,6 +989,9 @@ function CannedPicker({
         : "",
     });
     onInsert(filled);
+    // Whatever stayed unfilled is left as «{{…}}» in the text: say so
+    // before the operator sends it.
+    if (hasUnfilledPlaceholders(filled)) toast.warning(t("unfilled"));
     setOpen(false);
   };
 
@@ -1050,7 +1065,9 @@ function CannedPicker({
                     <button
                       type="button"
                       onClick={() => onPick(c)}
-                      className="block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted"
+                      disabled={clinicPending}
+                      aria-busy={clinicPending}
+                      className="block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted disabled:cursor-wait disabled:opacity-60"
                     >
                       <div className="font-medium">{c.title}</div>
                       <div className="line-clamp-2 text-muted-foreground">

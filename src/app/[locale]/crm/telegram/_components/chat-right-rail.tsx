@@ -6,10 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIcon,
-  BadgeCheckIcon,
   CalendarPlusIcon,
-  ChevronRightIcon,
-  CircleDotIcon,
   CopyIcon,
   IdCardIcon,
   LayoutGridIcon,
@@ -18,8 +15,8 @@ import {
   PhoneIcon,
   PlusIcon,
   SendIcon,
-  SparklesIcon,
   TagIcon,
+  UnlinkIcon,
   UserIcon,
   UserPlusIcon,
   XIcon,
@@ -27,13 +24,12 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
-import { AI_ENABLED } from "@/lib/ai-enabled";
+import { readPlanLimit } from "@/lib/plan-limit";
 import {
   isPrivateChatId,
   isUnconfirmedMiniAppCard,
   threadProfileName,
 } from "@/lib/patients/telegram-card";
-import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,10 +58,15 @@ import { useUpdateConversationMeta } from "../_hooks/use-conversation-meta";
 import { flattenMessages, useTgMessages } from "../_hooks/use-tg-messages";
 import { useMarkConversationRead } from "../_hooks/use-mark-read";
 import {
-  dispatchChatFind,
-  dispatchComposerInsert,
+  dispatchOpenAppointment,
   useOpenAppointment,
 } from "../_hooks/use-tg-events";
+import {
+  avgStaffReplySeconds,
+  chatMessageCounts,
+  durationParts,
+} from "../_lib/chat-stats";
+import { createPatientErrorKey } from "../_lib/create-patient-error";
 
 export interface ChatRightRailProps {
   conversation: InboxConversation | null;
@@ -80,7 +81,6 @@ type PatientDetails = {
   balance: number | bigint | null;
   ltv: number | bigint | null;
   lastVisitAt: string | null;
-  isVerified?: boolean;
   source?: string | null;
   phoneNormalized?: string | null;
   phoneVerifiedAt?: string | null;
@@ -95,6 +95,8 @@ type PatientClinicalStats = {
   birthDate: string | null;
   noShowCount: number;
   totalAppointments: number;
+  /** COMPLETED + NO_SHOW: what noShowPct is a share of (audit G6-12). */
+  settledAppointments: number;
   noShowPct: number;
   avgCheck: number;
 };
@@ -156,8 +158,9 @@ export function ChatRightRail({ conversation }: ChatRightRailProps) {
     );
   }
 
-  // Keyed by dialog: the name and phone typed for one unlinked chat, or an
-  // open booking dialog, must not carry over to the next chat (audit G6-01).
+  // Keyed by dialog: the name and phone typed for one unlinked chat must not
+  // carry over to the next chat (audit G6-01); the booking dialog is keyed
+  // the same way by the page (ChatBookingDialog).
   if (!conversation.patientId) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
@@ -170,13 +173,42 @@ export function ChatRightRail({ conversation }: ChatRightRailProps) {
   return <LinkedPatientRail key={conversation.id} conversation={conversation} />;
 }
 
+/**
+ * The open chat's booking dialog. The page mounts it next to the chat, not
+ * inside the rail (audit G6-11): the composer's «Записать на приём» fires an
+ * event, and with the rail hidden nobody was listening, so the button did
+ * nothing. The rail's «Записать» fires the same event. The page keys it by
+ * dialog, so an open dialog never carries over to the next chat (G6-01).
+ */
+export function ChatBookingDialog({
+  conversation,
+}: {
+  conversation: InboxConversation;
+}) {
+  const t = useTranslations("tgInbox.rail");
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  useOpenAppointment(conversation.id, () => setDialogOpen(true));
+
+  if (!conversation.patientId) return null;
+  // A booking made from the chat is a Telegram booking, not a phone one,
+  // and is not auto-confirmed (audit G6-02).
+  return (
+    <NewAppointmentDialog
+      open={dialogOpen}
+      onOpenChange={setDialogOpen}
+      patientId={conversation.patientId}
+      initialChannel={bookingChannelForConversation(conversation.channel)}
+      onCreated={() => {
+        setDialogOpen(false);
+        toast.success(t("appointmentCreated"));
+      }}
+    />
+  );
+}
+
 function LinkedPatientRail({ conversation }: { conversation: InboxConversation }) {
   const t = useTranslations("tgInbox.rail");
   const locale = useLocale();
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-
-  // The composer's "Записать на приём" quick action opens this same dialog.
-  useOpenAppointment(conversation.id, () => setDialogOpen(true));
 
   const detailsQuery = useQuery<PatientDetails>({
     queryKey: ["patient-mini", conversation.patientId],
@@ -234,6 +266,11 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
     !p.telegramId &&
     conversation.channel === "TG" &&
     isPrivateChatId(conversation.externalId);
+  // A bot chat tied to the wrong card can be untied (audit G6-14). The
+  // in-app chat of the Mini App and a thread opened from the card belong to
+  // that card and have no Telegram account to move elsewhere.
+  const canUnlink =
+    conversation.channel === "TG" && isPrivateChatId(conversation.externalId);
 
   return (
     <div
@@ -246,7 +283,6 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
         phone={phone}
         externalId={conversation.externalId}
         username={conversation.contactUsername}
-        isVerified={Boolean(p?.isVerified)}
         segment={segment}
         age={age}
         isLoading={detailsQuery.isLoading}
@@ -268,7 +304,6 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
         balance={p?.balance ?? 0}
         ltv={p?.ltv ?? 0}
         isLoading={detailsQuery.isLoading}
-        patientId={patientId}
       />
 
       <ClinicalStatsCard
@@ -281,39 +316,24 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
         phone={phone}
         patientId={patientId}
         locale={locale}
-        onBook={() => setDialogOpen(true)}
+        onBook={() => dispatchOpenAppointment({ conversationId: conversation.id })}
       />
 
       <TagsCard conversation={conversation} />
 
-      <AiAssistantCard
-        messages={messages}
-        conversationId={conversation.id}
-      />
-
-      <RelatedTopicsCard
-        messages={messages}
-        conversationId={conversation.id}
-      />
+      {/* No «AI-ассистент» (audit G6-16: a hard-coded «уверенность 92%» over
+          three Russian keywords, waiting for AI_ENABLED to come alive) and
+          no «Связанные темы» (G6-13: Russian substrings, blind to Uzbek).
+          A real AI service brings its own card. */}
 
       <TelegramStatsCard
         messages={messages}
         conversation={conversation}
       />
 
-      {/* The rail's «Записать» and the composer's quick action both open
-          this dialog: a booking made from the chat is a Telegram booking,
-          not a phone one, and is not auto-confirmed (audit G6-02). */}
-      <NewAppointmentDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        patientId={patientId}
-        initialChannel={bookingChannelForConversation(conversation.channel)}
-        onCreated={() => {
-          setDialogOpen(false);
-          toast.success(t("appointmentCreated"));
-        }}
-      />
+      {canUnlink ? (
+        <UnlinkPatientCard conversation={conversation} patientName={displayName} />
+      ) : null}
     </div>
   );
 }
@@ -324,7 +344,6 @@ function PatientIdentityCard({
   phone,
   externalId,
   username,
-  isVerified,
   segment,
   age,
   isLoading,
@@ -334,7 +353,6 @@ function PatientIdentityCard({
   phone: string | null;
   externalId: string | null;
   username: string | null;
-  isVerified: boolean;
   segment: string | null;
   age: number | null;
   isLoading: boolean;
@@ -358,12 +376,9 @@ function PatientIdentityCard({
     <section className="flex flex-col items-center gap-3 pb-2">
       <AvatarWithStatus name={name} src={photoUrl} size="lg" />
       <div className="flex flex-col items-center gap-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[15px] font-bold text-foreground">{name}</span>
-          {isVerified ? (
-            <BadgeCheckIcon className="size-4 text-primary" aria-label={t("verified")} />
-          ) : null}
-        </div>
+        {/* No «верифицирован» badge (audit G6-16): no API ever sent the
+            flag, so it could not show. */}
+        <span className="text-[15px] font-bold text-foreground">{name}</span>
         <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
           {externalId ? (
             <span className="inline-flex items-center gap-1">
@@ -432,12 +447,10 @@ function LtvBalanceCard({
   balance,
   ltv,
   isLoading,
-  patientId,
 }: {
   balance: number | bigint;
   ltv: number | bigint;
   isLoading: boolean;
-  patientId: string;
 }) {
   const t = useTranslations("tgInbox.rail");
   const balanceNum = typeof balance === "bigint" ? Number(balance) : balance;
@@ -462,6 +475,8 @@ function LtvBalanceCard({
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {t("balance")}
           </div>
+          {/* No «Пополнить» (audit G6-09): nothing handled its link, and
+              the CRM records no payments to top a balance up with. */}
           <div className="mt-1 flex items-center gap-1.5">
             <span
               className={cn(
@@ -475,13 +490,6 @@ function LtvBalanceCard({
                 <MoneyText amount={balance} currency="UZS" />
               )}
             </span>
-            <Link
-              href={`/crm/patients/${patientId}?action=topup`}
-              className="inline-flex size-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-              aria-label={t("topUp")}
-            >
-              <PlusIcon className="size-3.5" />
-            </Link>
           </div>
         </div>
       </div>
@@ -623,245 +631,6 @@ function MoreActionsTile({
   );
 }
 
-function AiAssistantCard({
-  messages,
-  conversationId,
-}: {
-  messages: { body: string | null; direction: "IN" | "OUT" }[];
-  conversationId: string;
-}) {
-  const t = useTranslations("tgInbox.rail.ai");
-  // Crude topic detection from message bodies so the rec list reflects the
-  // actual conversation. Real AI service ships separately — once wired up,
-  // swap this for the API response.
-  const recs = React.useMemo(() => deriveAiRecs(messages, t), [messages, t]);
-  const onInsert = (text: string) => {
-    dispatchComposerInsert({ conversationId, text });
-    toast.success(t("inserted"));
-  };
-
-  const confidence = 92;
-  return (
-    <InDevelopment active={!AI_ENABLED}>
-    <section className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-primary/5 p-3">
-      <header className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <span className="relative inline-flex">
-            <SparklesIcon className="size-4 text-primary" aria-hidden />
-            <span
-              className="absolute inset-0 inline-flex rounded-full"
-              style={{
-                animation:
-                  "motion-pulse-ring 2.4s cubic-bezier(0, 0, 0.2, 1) infinite",
-              }}
-              aria-hidden
-            />
-          </span>
-          <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
-        </div>
-        <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--success)]">
-          {t("badge")}
-        </span>
-      </header>
-      <p className="mb-2 text-[11px] text-muted-foreground">{t("subtitle")}</p>
-      <ul className="space-y-1.5">
-        {recs.map((rec, i) => (
-          <li key={i}>
-            <button
-              type="button"
-              onClick={() => onInsert(rec)}
-              className="motion-press group flex w-full cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 text-left text-[12px] text-foreground transition-colors hover:bg-primary/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-              aria-label={t("insertAria")}
-            >
-              <span
-                className={cn(
-                  "mt-1.5 inline-block size-1.5 shrink-0 rounded-full transition-transform group-hover:scale-150",
-                  i === 0 ? "bg-muted-foreground/60" : "bg-success",
-                )}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 leading-snug">{rec}</span>
-              <PlusIcon
-                className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                aria-hidden
-              />
-              <ChevronRightIcon
-                className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:opacity-0"
-                aria-hidden
-              />
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-3 border-t border-border pt-2">
-        <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
-          <span>{t("confidenceLabel")}</span>
-          <span className="font-semibold tabular-nums text-foreground">
-            <CountUp to={confidence} />%
-          </span>
-        </div>
-        <div className="h-1 overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-primary to-[color:var(--success)] transition-[width] duration-700 ease-out"
-            style={{ width: `${confidence}%` }}
-          />
-        </div>
-      </div>
-    </section>
-    </InDevelopment>
-  );
-}
-
-function deriveAiRecs(
-  messages: { body: string | null; direction: "IN" | "OUT" }[],
-  t: (key: string) => string,
-): string[] {
-  const haystack = messages
-    .map((m) => m.body ?? "")
-    .join(" ")
-    .toLowerCase();
-  const out: string[] = [];
-  if (
-    haystack.includes("запис") ||
-    haystack.includes("прием") ||
-    haystack.includes("приём")
-  ) {
-    out.push(t("recBooking"));
-  }
-  if (haystack.includes("утр") || haystack.includes("утром")) {
-    out.push(t("recMorningSlot"));
-  }
-  if (haystack.includes("невролог")) {
-    out.push(t("recPrepReminder"));
-  }
-  // Fall back to generic recs when topics aren't detected yet.
-  while (out.length < 3) {
-    const fallback = [t("recBooking"), t("recMorningSlot"), t("recPrepReminder")];
-    const next = fallback.find((x) => !out.includes(x));
-    if (!next) break;
-    out.push(next);
-  }
-  return out.slice(0, 3);
-}
-
-function RelatedTopicsCard({
-  messages,
-  conversationId,
-}: {
-  messages: { body: string | null }[];
-  conversationId: string;
-}) {
-  const t = useTranslations("tgInbox.rail.topics");
-  const counts = React.useMemo(() => countTopics(messages), [messages]);
-  const [expanded, setExpanded] = React.useState(false);
-
-  if (counts.length === 0) return null;
-
-  const shown = expanded ? counts : counts.slice(0, 3);
-
-  return (
-    <section className="rounded-2xl border border-border bg-card p-3">
-      <header className="mb-2 flex items-center gap-1.5">
-        <CircleDotIcon
-          className="size-3.5 text-muted-foreground"
-          aria-hidden
-        />
-        <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
-      </header>
-      <ul className="space-y-0.5">
-        {shown.map((c) => {
-          const tint =
-            c.key === "booking"
-              ? "bg-primary/15 text-primary"
-              : c.key === "neurology"
-                ? "bg-info/15 text-[color:var(--info)]"
-                : "bg-warning/15 text-[color:var(--warning)]";
-          const term = TOPIC_TERMS[c.key];
-          return (
-            <li key={c.key}>
-              <button
-                type="button"
-                onClick={() => dispatchChatFind({ conversationId, term })}
-                className="motion-press group flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-[12px] transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                aria-label={t("findAria", { topic: t(`labels.${c.key}`) })}
-              >
-                <span className="flex items-center gap-2 text-foreground">
-                  <span
-                    className={cn(
-                      "inline-block size-1.5 rounded-full transition-transform group-hover:scale-150",
-                      c.key === "booking"
-                        ? "bg-primary"
-                        : c.key === "neurology"
-                          ? "bg-[color:var(--info)]"
-                          : "bg-[color:var(--warning)]",
-                    )}
-                    aria-hidden
-                  />
-                  {t(`labels.${c.key}`)}
-                </span>
-                <span
-                  className={cn(
-                    "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums transition-transform group-hover:scale-105",
-                    tint,
-                  )}
-                >
-                  {c.count}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      {counts.length > 3 ? (
-        <div className="mt-2 flex justify-center border-t border-border pt-2">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {expanded ? t("collapse") : t("showAll")}
-          </button>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-const TOPIC_TERMS: Record<"booking" | "neurology" | "pricing", string> = {
-  booking: "запис",
-  neurology: "невролог",
-  pricing: "цен",
-};
-
-function countTopics(
-  messages: { body: string | null }[],
-): { key: "booking" | "neurology" | "pricing"; count: number }[] {
-  let booking = 0;
-  let neurology = 0;
-  let pricing = 0;
-  for (const m of messages) {
-    const body = (m.body ?? "").toLowerCase();
-    if (
-      body.includes("запис") ||
-      body.includes("прием") ||
-      body.includes("приём")
-    )
-      booking += 1;
-    if (body.includes("невролог")) neurology += 1;
-    if (
-      body.includes("цен") ||
-      body.includes("стоимост") ||
-      body.includes("сум")
-    )
-      pricing += 1;
-  }
-  return [
-    { key: "booking" as const, count: booking },
-    { key: "neurology" as const, count: neurology },
-    { key: "pricing" as const, count: pricing },
-  ].filter((x) => x.count > 0);
-}
-
 function ClinicalStatsCard({
   stats,
   isLoading,
@@ -873,9 +642,10 @@ function ClinicalStatsCard({
 }) {
   const t = useTranslations("tgInbox.rail.clinic");
 
+  // A share of the visits that happened (audit G6-12); none yet, no rate.
   const risk: { label: string; tone: string } | null = !stats
     ? null
-    : stats.totalAppointments === 0
+    : stats.settledAppointments === 0
       ? { label: t("riskNone"), tone: "text-muted-foreground" }
       : stats.noShowPct === 0
         ? { label: t("riskLow"), tone: "text-[color:var(--success)]" }
@@ -903,7 +673,7 @@ function ClinicalStatsCard({
         <ClinicalTile label={t("noShowRisk")}>
           {isLoading || !risk ? (
             <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-          ) : stats && stats.totalAppointments > 0 ? (
+          ) : stats && stats.settledAppointments > 0 ? (
             <span className="flex items-baseline gap-1">
               <span className={cn("tabular-nums", risk.tone)}>
                 {stats.noShowPct}%
@@ -969,40 +739,40 @@ function TelegramStatsCard({
 }) {
   const t = useTranslations("tgInbox.rail.stats");
   const markRead = useMarkConversationRead();
-  const inbound = messages.filter((m) => m.direction === "IN").length;
-  const outbound = messages.filter((m) => m.direction === "OUT").length;
-  const total = messages.length;
+  // Over the loaded messages, and the header says so (audit G6-17): staff
+  // replies apart from the bot's, the reply time to a staff answer only.
+  const counts = React.useMemo(() => chatMessageCounts(messages), [messages]);
   const unread = conversation.unreadCount;
   const avgReplySec = React.useMemo(
-    () => computeAvgReplySeconds(messages),
+    () => avgStaffReplySeconds(messages),
     [messages],
   );
 
   const tiles: StatTile[] = [
     {
-      key: "messages",
-      label: t("messages"),
-      value: total,
-      kind: "count",
-      tone: "neutral",
-    },
-    {
-      key: "botReplies",
-      label: t("botReplies"),
-      value: outbound,
-      kind: "count",
-      tone: "primary",
-    },
-    {
       key: "fromPatient",
       label: t("fromPatient"),
-      value: inbound,
+      value: counts.fromPatient,
       kind: "count",
       tone: "info",
     },
     {
+      key: "staffReplies",
+      label: t("staffReplies"),
+      value: counts.staffReplies,
+      kind: "count",
+      tone: "primary",
+    },
+    {
+      key: "botReplies",
+      label: t("botReplies"),
+      value: counts.botReplies,
+      kind: "count",
+      tone: "neutral",
+    },
+    {
       key: "avgReply",
-      label: t("avgReply"),
+      label: t("avgStaffReply"),
       value: avgReplySec,
       kind: "duration",
       tone: "success",
@@ -1019,7 +789,7 @@ function TelegramStatsCard({
           />
           <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
         </div>
-        <span className="text-[10px] text-muted-foreground">{t("period")}</span>
+        <span className="text-[10px] text-muted-foreground">{t("loadedScope")}</span>
       </header>
       <div className="grid grid-cols-2 gap-2">
         {tiles.map((tile) => (
@@ -1054,6 +824,7 @@ type StatTile = {
 };
 
 function StatTileView({ tile }: { tile: StatTile }) {
+  const t = useTranslations("tgInbox.rail.stats");
   const empty = tile.value === null || tile.value === 0;
   const tone = {
     neutral: {
@@ -1103,7 +874,7 @@ function StatTileView({ tile }: { tile: StatTile }) {
         {empty ? (
           <span className="text-muted-foreground/60">—</span>
         ) : tile.kind === "duration" ? (
-          formatDuration(tile.value!)
+          formatDuration(tile.value!, t)
         ) : (
           <CountUp to={tile.value!} />
         )}
@@ -1112,34 +883,15 @@ function StatTileView({ tile }: { tile: StatTile }) {
   );
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = seconds / 60;
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  const hours = minutes / 60;
-  return `${hours.toFixed(1)}h`;
-}
-
-function computeAvgReplySeconds(messages: InboxMessage[]): number | null {
-  // Average time between a patient (IN) message and the next clinic (OUT)
-  // reply. Returns null when we don't have at least one IN → OUT pair yet.
-  if (messages.length < 2) return null;
-  const sorted = [...messages].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-  );
-  let lastInAt: number | null = null;
-  const gaps: number[] = [];
-  for (const m of sorted) {
-    const t = new Date(m.createdAt).getTime();
-    if (m.direction === "IN") {
-      lastInAt = t;
-    } else if (m.direction === "OUT" && lastInAt !== null) {
-      gaps.push((t - lastInAt) / 1000);
-      lastInAt = null;
-    }
-  }
-  if (gaps.length === 0) return null;
-  return gaps.reduce((a, b) => a + b, 0) / gaps.length;
+/** «45 с», «12 мин», «1,5 ч»: the unit in the operator's language (G6-17). */
+function formatDuration(
+  seconds: number,
+  t: ReturnType<typeof useTranslations<"tgInbox.rail.stats">>,
+): string {
+  const { unit, n } = durationParts(seconds);
+  if (unit === "sec") return t("durationSec", { n });
+  if (unit === "min") return t("durationMin", { n });
+  return t("durationHour", { n });
 }
 
 function TagsCard({ conversation }: { conversation: InboxConversation }) {
@@ -1360,6 +1112,91 @@ function TelegramBindCard({
 }
 
 /**
+ * Unties a bot chat from its card (audit G6-14): typed onto the wrong
+ * patient, the chat showed her visits, booked onto her card and was read by
+ * her doctor, and only the database could undo it. Untied, the rail offers
+ * the name and phone form again, so this is also how the chat moves to
+ * another card. A card's Telegram is not touched here: binding it was its
+ * own confirmed step.
+ */
+function UnlinkPatientCard({
+  conversation,
+  patientName,
+}: {
+  conversation: InboxConversation;
+  patientName: string;
+}) {
+  const t = useTranslations("tgInbox.rail.unlink");
+  const qc = useQueryClient();
+  const [confirming, setConfirming] = React.useState(false);
+
+  const unlink = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/crm/conversations/${conversation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ patientId: null }),
+      });
+      if (!res.ok) throw new Error(t("failed"));
+    },
+    onSuccess: () => {
+      setConfirming(false);
+      toast.success(t("done"));
+      invalidateConversationCaches(qc);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : t("failed"));
+    },
+  });
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="inline-flex items-center justify-center gap-1.5 self-center rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <UnlinkIcon className="size-3" aria-hidden />
+        {t("action")}
+      </button>
+    );
+  }
+
+  return (
+    <section className="space-y-2 rounded-2xl border border-border bg-card p-3">
+      <p className="text-[12px] leading-snug text-foreground">
+        {t("warning", { name: patientName })}
+      </p>
+      <div className="flex gap-1.5">
+        <Button
+          type="button"
+          size="xs"
+          variant="destructive"
+          onClick={() => unlink.mutate()}
+          disabled={unlink.isPending}
+        >
+          {unlink.isPending ? <Loader2Icon className="size-3 animate-spin" /> : null}
+          {t("confirm")}
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={() => setConfirming(false)}
+          disabled={unlink.isPending}
+        >
+          {t("cancel")}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/** A refusal already worded for the toast (audit G6-14). */
+class RailMessageError extends Error {}
+
+/**
  * Name + phone → the patient's card (found by the number, or created), and
  * the chat is tied to it. `relink`: the chat already sits on an unconfirmed
  * Mini App card and reception moves it to the clinic's card.
@@ -1372,6 +1209,7 @@ function CreatePatientForm({
   relink?: boolean;
 }) {
   const t = useTranslations("tgInbox.rail");
+  const tLimit = useTranslations("crmToasts.patient.planLimit");
   const qc = useQueryClient();
 
   const [fullName, setFullName] = React.useState("");
@@ -1383,11 +1221,8 @@ function CreatePatientForm({
 
   const create = useMutation({
     mutationFn: async (phoneOwner?: PhoneOwnerAnswer) => {
-      if (!fullName.trim()) {
-        throw new Error("NAME_REQUIRED");
-      }
-      if (!phone.trim()) {
-        throw new Error("PHONE_REQUIRED");
+      if (!fullName.trim() || !phone.trim()) {
+        throw new RailMessageError(t("createErrors.invalid"));
       }
       const res = await fetch(`/api/crm/patients`, {
         method: "POST",
@@ -1418,13 +1253,18 @@ function CreatePatientForm({
           patientId = j.patientId;
           reused = true;
         } else {
-          throw new Error(j?.error ?? "conflict");
+          throw new RailMessageError(t("createErrors.failed"));
         }
       } else {
-        const j = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        const j: unknown = await res.json().catch(() => null);
+        // The plan's patient limit, said the way the patient list says it.
+        const limit = readPlanLimit(res.status, j);
+        if (limit) {
+          throw new RailMessageError(tLimit(limit.quota, { max: limit.max }));
+        }
+        throw new RailMessageError(
+          t(`createErrors.${createPatientErrorKey(res.status, j)}`),
+        );
       }
 
       const patchRes = await fetch(
@@ -1437,7 +1277,8 @@ function CreatePatientForm({
         },
       );
       if (!patchRes.ok) {
-        throw new Error(`Link failed: ${patchRes.status}`);
+        // The card is saved; pressing again finds it by the number.
+        throw new RailMessageError(t("createErrors.linkFailed"));
       }
       // What happened to the card's Telegram (audit TG-11): the thread's
       // account is written onto the card unless that would take it from
@@ -1462,7 +1303,9 @@ function CreatePatientForm({
         setOwnerConflict(err.owner);
         return;
       }
-      toast.error(err instanceof Error ? err.message : "Create failed");
+      toast.error(
+        err instanceof RailMessageError ? err.message : t("createErrors.failed"),
+      );
     },
   });
 

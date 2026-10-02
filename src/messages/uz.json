@@ -3595,6 +3595,21 @@
       "miniAppCardTitle": "Ilovadan yaratilgan karta",
       "miniAppCardDescription": "Bu kartani klinika ilovasi yaratgan, raqam tasdiqlanmagan. Agar bemor klinikada allaqachon bo'lsa, uning F.I.Sh. va telefonini kiriting: chat uning kartasiga o'tadi.",
       "linkToClinicCard": "Klinika kartasiga biriktirish",
+      "createErrors": {
+        "invalidPhone": "Telefon raqami aniqlanmadi. Uni +998 kodi bilan to'liq kiriting.",
+        "invalid": "F.I.Sh. va telefon raqamini tekshiring.",
+        "forbidden": "Bemorni registratura, shifokor, call-markaz operatori yoki administrator yarata oladi.",
+        "failed": "Bemorni yaratib bo'lmadi. Qayta urinib ko'ring.",
+        "linkFailed": "Bemor saqlandi, lekin chat unga biriktirilmadi. Tugmani yana bir bor bosing."
+      },
+      "unlink": {
+        "action": "Chatni kartadan ajratish",
+        "warning": "Yozishma «{name}» kartasida ko'rinmay qoladi. Shundan so'ng chatni F.I.Sh. va telefon bo'yicha kerakli bemorga biriktirish mumkin.",
+        "confirm": "Ha, ajratish",
+        "cancel": "Bekor qilish",
+        "done": "Chat kartadan ajratildi",
+        "failed": "Chatni ajratib bo'lmadi"
+      },
       "telegramBind": {
         "title": "Telegram kartaga bog'lanmagan",
         "description": "Bu bemorga eslatmalar va xulosalar Telegramda bormaydi.",
@@ -3690,12 +3705,18 @@
         "ariaLabel": "Telegram statistikasi",
         "title": "Telegram statistikasi",
         "period": "30 kunda",
+        "loadedScope": "yuklangan yozishma bo'yicha",
         "dialogs": "Suhbatlar",
         "messages": "Xabarlar",
         "botReplies": "Bot javoblari",
+        "staffReplies": "Xodimlar javoblari",
         "fromPatient": "Bemordan",
         "toOperator": "Operatorga uzatildi",
         "avgReply": "O'rtacha javob vaqti",
+        "avgStaffReply": "Xodimning o'rtacha javob vaqti",
+        "durationSec": "{n} s",
+        "durationMin": "{n} daq",
+        "durationHour": "{n} soat",
         "total": "Jami",
         "unread": "O'qilmagan",
         "inbound": "Kiruvchi",
@@ -3749,6 +3770,7 @@
         "created": "Tezkor javob yaratildi",
         "deleted": "O'chirildi",
         "saveError": "Saqlab bo'lmadi",
+        "unfilled": "Ba'zi o'rinbosarlar to'ldirilmadi: yuborishdan oldin matnni tekshiring",
         "edit": "Tahrirlash",
         "delete": "O'chirish"
       },
@@ -3814,7 +3836,7 @@
       "loading": "Navbat yuklanmoqda…",
       "unknownCaller": "Noma'lum raqam",
       "newCallToast": "{name} dan qo'ng'iroq ({phone})",
-      "pollingHint": "Har 5 soniyada yangilanadi",
+      "pollingHint": "Yangi qo'ng'iroqlar avtomatik paydo bo'ladi, ro'yxat har daqiqada tekshiriladi",
       "polling": "Yangilanmoqda",
       "tabsAriaLabel": "Qo'ng'iroqlar ro'yxatlari"
     },

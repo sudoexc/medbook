@@ -1,9 +1,17 @@
 "use client";
 
+import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { shellSummaryKey } from "@/hooks/use-shell-summary";
+import { diffRingingCalls } from "@/lib/calls/new-calls";
+import {
+  installNotificationSoundUnlock,
+  playNotificationSound,
+} from "@/lib/notification-sound";
 
 import type { CallListResponse, CallRow } from "./types";
 import { deriveStatus } from "./types";
@@ -73,6 +81,40 @@ export function useCallCenterRealtime(activeCallId: string | null): void {
       filter: ["call.incoming", "call.answered", "call.ended", "call.missed"],
     },
   );
+}
+
+/**
+ * Toast (and ping) every call that starts ringing after the page opened
+ * (audit CM-27). Mount once from the call-center page client: the queue
+ * column unmounts while the «Пропущенные» tab is shown, and the tab itself
+ * flips to «Входящие» when a call rings, so a queue-owned check took the new
+ * call as its baseline and stayed silent. `rows` is undefined until the
+ * first load answers; calls ringing at that moment are not announced.
+ */
+export function useIncomingCallAlerts(rows: CallRow[] | undefined): void {
+  const t = useTranslations("callCenter.queue");
+  const seenRef = React.useRef<Set<string> | null>(null);
+
+  // Audio is armed by the first gesture anywhere on the page.
+  React.useEffect(() => {
+    installNotificationSoundUnlock();
+  }, []);
+
+  React.useEffect(() => {
+    if (!rows) return;
+    const { seen, fresh } = diffRingingCalls(
+      seenRef.current,
+      rows.map((r) => r.id),
+    );
+    seenRef.current = seen;
+    if (fresh.length === 0) return;
+    playNotificationSound();
+    for (const row of rows) {
+      if (!fresh.includes(row.id)) continue;
+      const name = row.patient?.fullName ?? t("unknownCaller");
+      toast.info(t("newCallToast", { name, phone: row.fromNumber }));
+    }
+  }, [rows, t]);
 }
 
 export { deriveStatus };

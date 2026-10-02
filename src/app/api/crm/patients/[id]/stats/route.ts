@@ -13,6 +13,9 @@
  *       name is never written.
  *   noShowCount / totalAppointments / noShowPct / avgCheck
  *     → aggregated from Appointment (avgCheck = mean priceFinal of COMPLETED).
+ *   settledAppointments
+ *     → COMPLETED + NO_SHOW, the denominator of noShowPct (audit G6-12:
+ *       visits still ahead and cancelled ones used to dilute it).
  *
  * Appointments are 1:patient, so filtering by patientId is tenant-safe even
  * before the Prisma extension's clinicId injection.
@@ -21,6 +24,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, notFound } from "@/server/http";
 import { loadPatientFinance } from "@/server/patient/finance";
+import { noShowFigures } from "@/lib/patients/no-show";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -59,15 +63,14 @@ export const GET = createApiListHandler(
     ]);
 
     let totalAppointments = 0;
+    let completedCount = 0;
     let noShowCount = 0;
     for (const r of byStatus) {
       totalAppointments += r._count._all;
+      if (r.status === "COMPLETED") completedCount = r._count._all;
       if (r.status === "NO_SHOW") noShowCount = r._count._all;
     }
-    const noShowPct =
-      totalAppointments > 0
-        ? Math.round((noShowCount / totalAppointments) * 100)
-        : 0;
+    const noShow = noShowFigures({ completed: completedCount, noShow: noShowCount });
     const avgCheck = completedAgg._avg.priceFinal
       ? Math.round(completedAgg._avg.priceFinal)
       : 0;
@@ -81,7 +84,8 @@ export const GET = createApiListHandler(
       birthDate: patient.birthDate,
       noShowCount,
       totalAppointments,
-      noShowPct,
+      settledAppointments: noShow.settled,
+      noShowPct: noShow.pct,
       avgCheck,
     });
   },

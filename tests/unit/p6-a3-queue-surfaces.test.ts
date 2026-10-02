@@ -12,6 +12,10 @@
  *
  * Q-24 — the ticket page had no state for SKIPPED, CANCELLED or NO_SHOW and
  * kept the blue «active» card with an empty status block.
+ *
+ * DC-25 (review) — my-day's schedule row calls a patient with one earlier
+ * visit «Повторный приём», while the current-patient card tagged the same
+ * patient «Первичный приём» (`visitsCount <= 1`). Both now read one rule.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,6 +25,7 @@ import {
   ticketClosedCopyKeys,
   ticketClosedReason,
 } from "@/app/q/[token]/_components/ticket-state";
+import { scheduleVisitTypeOf } from "@/lib/doctor-schedule-status";
 import ru from "@/messages/ru.json";
 import uz from "@/messages/uz.json";
 
@@ -50,6 +55,10 @@ vi.mock("@/server/platform/branch-cookie", () => ({
 }));
 vi.mock("@/server/appointments/queue-projection", () => ({
   getQueueProjection: vi.fn(async () => db.projection),
+}));
+// The current-patient card writes a chart-read audit row; not under test here.
+vi.mock("@/server/audit/patient-view", () => ({
+  notePatientView: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -175,6 +184,57 @@ describe("Q-23 — «ждёт N мин» reads the arrival, not the sort key", (
     expect(hook).toMatch(/result\.exact === false\) toast\.info\(t\("reorderPriorityKept"\)\)/);
     expect(ru.crmToasts.appointment.reorderPriorityKept).toBeTruthy();
     expect(uz.crmToasts.appointment.reorderPriorityKept).toBeTruthy();
+  });
+});
+
+describe("DC-25 — «Первичный приём» agrees with the schedule row", () => {
+  const runningVisit = (visitsCount: number): Row => ({
+    id: "apt_run",
+    date: new Date("2026-10-02T05:00:00.000Z"),
+    durationMin: 30,
+    status: "IN_PROGRESS",
+    startedAt: new Date("2026-10-02T05:01:00.000Z"),
+    calledAt: new Date("2026-10-02T05:00:30.000Z"),
+    completedAt: null,
+    comments: null,
+    ticketSeq: 3,
+    queueOrder: 3,
+    channel: "BOOKING",
+    createdAt: new Date("2026-10-01T10:00:00.000Z"),
+    patient: {
+      id: "p2",
+      fullName: "Каримова Дилноза",
+      phone: "+998901234567",
+      birthDate: null,
+      photoUrl: null,
+      // COMPLETED visits only: the running one is not among them.
+      visitsCount,
+      tags: [],
+      segment: "ACTIVE",
+      lastVisitAt: null,
+      notes: null,
+    },
+  });
+
+  const currentTags = async (visitsCount: number): Promise<string[]> => {
+    db.appointmentFindMany.mockResolvedValue([runningVisit(visitsCount)]);
+    const { GET } = await import("@/app/api/crm/doctors/me/today/route");
+    const res = await GET(new Request("https://x/api/crm/doctors/me/today"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { current: { tags: string[] } | null };
+    expect(body.current).not.toBeNull();
+    return body.current!.tags;
+  };
+
+  it("a patient back for the second time is not tagged «Первичный»", async () => {
+    // One earlier visit: the schedule row on the same screen says «Повторный».
+    expect(scheduleVisitTypeOf(1)).toBe("repeat");
+    expect(await currentTags(1)).not.toContain("first_visit");
+  });
+
+  it("a patient with no earlier visit still is", async () => {
+    expect(scheduleVisitTypeOf(0)).toBe("consultation");
+    expect(await currentTags(0)).toContain("first_visit");
   });
 });
 

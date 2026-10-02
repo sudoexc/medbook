@@ -23,6 +23,7 @@ import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { ok, err } from "@/server/http";
 import { pickCurrentVisit } from "@/lib/doctor-current-visit";
+import { scheduleVisitTypeOf } from "@/lib/doctor-schedule-status";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
 import { visitDiagnosesOf } from "@/lib/visit-diagnoses";
@@ -163,8 +164,14 @@ function derivePatientTags(p: {
   if (p.tags?.includes("vip")) out.push("vip");
   // "new" — segment from Phase 14 patient experience work.
   if (p.segment === "NEW") out.push("new");
-  // "first_visit" — never been here, or just once.
-  if (p.visitsCount <= 1) out.push("first_visit");
+  // "first_visit" — no COMPLETED visit before this one. `visitsCount` counts
+  // COMPLETED rows only and the current visit never is one, so it is the
+  // prior-visit count the schedule row on the same screen keys
+  // «Консультация / Повторный приём» off (audit DC-25). The old `<= 1` tagged
+  // a second-time patient «Первичный приём» right under a «Повторный» row.
+  if (scheduleVisitTypeOf(p.visitsCount) === "consultation") {
+    out.push("first_visit");
+  }
   // "active" — has visited in the last 90 days. Mutually-informative with
   // "new", we keep both — the UI picks how to render.
   if (p.lastVisitAt) {

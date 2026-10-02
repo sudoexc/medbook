@@ -13,6 +13,8 @@ import {
   computeCallFunnel,
   computeNoShowRanks,
   computeTgFunnel,
+  visitWaitMs,
+  type WaitTimeAppointmentInput,
 } from "@/server/analytics/funnels";
 
 const FROM = new Date(2026, 3, 1); // Apr 1 2026 local 00:00
@@ -189,22 +191,32 @@ describe("computeNoShowRanks", () => {
 });
 
 describe("computeAverageWaitTime", () => {
-  it("averages startedAt − calledAt per doctor and sorts desc", () => {
-    const ref = new Date(2026, 3, 5, 10, 0, 0);
-    const sec = (n: number) => new Date(ref.getTime() + n * 1000);
+  const ref = new Date(2026, 3, 5, 10, 0, 0);
+  const sec = (n: number) => new Date(ref.getTime() + n * 1000);
+  const walkIn = (over: Partial<WaitTimeAppointmentInput>): WaitTimeAppointmentInput => ({
+    doctorId: "A",
+    channel: "WALKIN",
+    date: ref,
+    arrivedAt: null,
+    queuedAt: null,
+    calledAt: null,
+    startedAt: null,
+    ...over,
+  });
 
+  it("averages arrival → call per doctor and sorts desc", () => {
     const r = computeAverageWaitTime({
       appointments: [
         // doc A: 60s and 120s waits → avg 90s
-        { doctorId: "A", calledAt: ref, startedAt: sec(60) },
-        { doctorId: "A", calledAt: ref, startedAt: sec(120) },
+        walkIn({ doctorId: "A", queuedAt: ref, calledAt: sec(60), startedAt: sec(60) }),
+        walkIn({ doctorId: "A", queuedAt: ref, calledAt: sec(120), startedAt: sec(120) }),
         // doc B: 30s wait → avg 30s
-        { doctorId: "B", calledAt: ref, startedAt: sec(30) },
-        // Skipped: missing timestamp
-        { doctorId: "C", calledAt: null, startedAt: sec(10) },
-        { doctorId: "C", calledAt: ref, startedAt: null },
-        // Skipped: negative delta (clock skew / data corruption)
-        { doctorId: "D", calledAt: sec(60), startedAt: ref },
+        walkIn({ doctorId: "B", queuedAt: ref, calledAt: sec(30), startedAt: sec(30) }),
+        // Skipped: no arrival, or never called / started
+        walkIn({ doctorId: "C", calledAt: sec(10), startedAt: sec(10) }),
+        walkIn({ doctorId: "C", queuedAt: ref }),
+        // Skipped: called before the arrival (clock skew / data corruption)
+        walkIn({ doctorId: "D", queuedAt: sec(60), calledAt: ref, startedAt: ref }),
       ],
     });
 
@@ -213,12 +225,47 @@ describe("computeAverageWaitTime", () => {
     expect(r[1]).toMatchObject({ doctorId: "B", avgWaitSec: 30, samples: 1 });
   });
 
-  it("returns empty array when no usable pairs", () => {
+  // Audit AN-30: «Вызвать» stamps calledAt and startedAt with one instant,
+  // so the old startedAt − calledAt was 0 for every visit.
+  it("is not zero when the call stamps calledAt and startedAt together", () => {
+    const arrived = new Date(2026, 3, 5, 10, 0, 0);
+    const called = new Date(2026, 3, 5, 10, 25, 0);
     const r = computeAverageWaitTime({
       appointments: [
-        { doctorId: "A", calledAt: null, startedAt: null },
+        walkIn({ queuedAt: arrived, calledAt: called, startedAt: called }),
       ],
     });
+    expect(r).toEqual([{ doctorId: "A", avgWaitSec: 25 * 60, samples: 1 }]);
+  });
+
+  it("prefers the Mini App arrival over the queue stamp", () => {
+    expect(
+      visitWaitMs(walkIn({ arrivedAt: ref, queuedAt: sec(300), calledAt: sec(600) })),
+    ).toBe(600_000);
+  });
+
+  it("ends the wait at startedAt when nobody pressed «Вызвать»", () => {
+    expect(visitWaitMs(walkIn({ queuedAt: ref, startedAt: sec(90) }))).toBe(90_000);
+  });
+
+  it("counts a booking's wait from its slot when the patient came early", () => {
+    const slot = sec(20 * 60);
+    const booking = (over: Partial<WaitTimeAppointmentInput>) =>
+      walkIn({ channel: "PHONE", date: slot, ...over });
+    // Came 20 min early, called 5 min after the slot: waited 5 min.
+    expect(visitWaitMs(booking({ queuedAt: ref, calledAt: sec(25 * 60) }))).toBe(
+      5 * 60_000,
+    );
+    // Came 10 min late: the wait runs from the arrival.
+    expect(
+      visitWaitMs(booking({ queuedAt: sec(30 * 60), calledAt: sec(32 * 60) })),
+    ).toBe(2 * 60_000);
+    // Called in before the slot: no wait at all, still a sample.
+    expect(visitWaitMs(booking({ queuedAt: ref, calledAt: sec(10 * 60) }))).toBe(0);
+  });
+
+  it("returns empty array when no usable rows", () => {
+    const r = computeAverageWaitTime({ appointments: [walkIn({})] });
     expect(r).toEqual([]);
   });
 });

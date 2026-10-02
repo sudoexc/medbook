@@ -4,7 +4,7 @@
  *   - tg:        TG → appointment %  (sparkline + total/converted counts)
  *   - call:      Call → appointment % (sparkline + total/converted counts)
  *   - noShow:    top-10 doctors / top-10 services by no-show rate
- *   - waitTime:  per-doctor average WAITING → IN_PROGRESS in seconds
+ *   - waitTime:  per-doctor average wait from arrival to the call, seconds
  *
  * Period:
  *   ?period=week|month|quarter
@@ -225,16 +225,27 @@ export const GET = createApiListHandler(
     });
 
     // ── 4. Average wait time per doctor ─────────────────────────────────
+    // Arrival to call (`visitWaitMs`, audit AN-30): rows that know both ends.
     const waitAppts = clinicId
       ? await prisma.appointment.findMany({
           where: {
             clinicId,
             date: { gte: from, lt: to },
-            calledAt: { not: null },
-            startedAt: { not: null },
+            AND: [
+              { OR: [{ arrivedAt: { not: null } }, { queuedAt: { not: null } }] },
+              { OR: [{ calledAt: { not: null } }, { startedAt: { not: null } }] },
+            ],
             ...(doctorId ? { doctorId } : {}),
           },
-          select: { doctorId: true, calledAt: true, startedAt: true },
+          select: {
+            doctorId: true,
+            channel: true,
+            date: true,
+            arrivedAt: true,
+            queuedAt: true,
+            calledAt: true,
+            startedAt: true,
+          },
         })
       : [];
 

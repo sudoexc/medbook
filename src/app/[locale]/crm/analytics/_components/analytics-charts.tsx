@@ -18,9 +18,11 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
+  Text,
   Tooltip,
   XAxis,
   YAxis,
+  type XAxisTickContentProps,
 } from "recharts";
 
 import { cn } from "@/lib/utils";
@@ -54,6 +56,10 @@ export interface AnalyticsTopRowsProps {
     viewAllDoctors: (count: number) => string;
     viewAllServices: (count: number) => string;
     deltaPp: (value: string) => string;
+    /** Appointment status code → its ru/uz name («Завершено»). */
+    statusLabel: (status: string) => string;
+    /** Patient source code → its ru/uz name («Сайт»). */
+    sourceLabel: (source: string) => string;
   };
 }
 
@@ -87,6 +93,30 @@ const APPT_STATUS_TONE: Record<string, string> = {
   CANCELLED: "chart5",
   SKIPPED: "chart4",
 };
+
+const STATUS_TICK_FONT_SIZE = 10;
+
+/**
+ * Category tick cut with «…» to the width of its own bar, so a full name
+ * like «Забронировано» or «Bekor qilindi» never runs into its neighbour on a
+ * narrow card. The axis used to print the first four letters of the raw
+ * code («comp», «no_s») instead (audit AN-31).
+ */
+function BandTick({ payload, visibleTicksCount, width, ...rest }: XAxisTickContentProps) {
+  const axisWidth = Number(width);
+  const band =
+    axisWidth > 0 && visibleTicksCount > 0 ? axisWidth / visibleTicksCount : 0;
+  return (
+    <Text
+      {...rest}
+      width={band > 8 ? band - 4 : undefined}
+      maxLines={1}
+      style={{ fontSize: STATUS_TICK_FONT_SIZE }}
+    >
+      {String(payload.value)}
+    </Text>
+  );
+}
 
 function shortenName(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -236,6 +266,7 @@ export function AnalyticsTopRows({
   labels,
 }: AnalyticsTopRowsProps) {
   const c = useChartColors();
+  const { statusLabel, sourceLabel } = labels;
   const sourcesPalette = React.useMemo(
     () => [c.chart1, c.chart2, c.chart3, c.chart4, c.chart5],
     [c],
@@ -323,12 +354,18 @@ export function AnalyticsTopRows({
     () =>
       data.appointmentsByStatus.map((s) => ({
         status: s.status,
+        label: statusLabel(s.status),
         count: s.count,
         fill:
           c[(APPT_STATUS_TONE[s.status] ?? "chart1") as keyof typeof c] ??
           c.chart1,
       })),
-    [data.appointmentsByStatus, c],
+    [data.appointmentsByStatus, c, statusLabel],
+  );
+
+  const sourceRows = React.useMemo(
+    () => data.sources.map((s) => ({ ...s, label: sourceLabel(s.source) })),
+    [data.sources, sourceLabel],
   );
 
   return (
@@ -394,21 +431,23 @@ export function AnalyticsTopRows({
                 margin={{ top: 6, right: 4, bottom: 0, left: 0 }}
               >
                 <XAxis
-                  dataKey="status"
+                  dataKey="label"
                   tickLine={false}
                   axisLine={false}
-                  fontSize={10}
+                  fontSize={STATUS_TICK_FONT_SIZE}
                   stroke={c.mutedForeground}
-                  tick={{ fill: c.mutedForeground }}
-                  tickFormatter={(v: string) =>
-                    String(v).slice(0, 4).toLowerCase()
-                  }
+                  interval={0}
+                  tick={BandTick}
                 />
                 <Tooltip
                   contentStyle={{ fontSize: 11 }}
                   cursor={{ fill: "transparent" }}
                 />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                <Bar
+                  dataKey="count"
+                  name={labels.apptUnit}
+                  radius={[6, 6, 0, 0]}
+                >
                   {apptBars.map((b, i) => (
                     <Cell key={i} fill={b.fill} />
                   ))}
@@ -510,15 +549,15 @@ export function AnalyticsTopRows({
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={data.sources}
+                      data={sourceRows}
                       dataKey="count"
-                      nameKey="source"
+                      nameKey="label"
                       innerRadius={32}
                       outerRadius={50}
                       paddingAngle={2}
                       animationDuration={800}
                     >
-                      {data.sources.map((_, i) => (
+                      {sourceRows.map((_, i) => (
                         <Cell
                           key={i}
                           fill={sourcesPalette[i % sourcesPalette.length]}
@@ -538,7 +577,7 @@ export function AnalyticsTopRows({
                 </div>
               </div>
               <ul className="flex min-w-0 flex-1 flex-col gap-1.5 overflow-hidden text-[11px]">
-                {data.sources.slice(0, 6).map((s, i) => {
+                {sourceRows.slice(0, 6).map((s, i) => {
                   const share =
                     sourcesTotal > 0
                       ? Math.round((s.count / sourcesTotal) * 1000) / 10
@@ -556,7 +595,7 @@ export function AnalyticsTopRows({
                         }}
                       />
                       <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                        {s.source}
+                        {s.label}
                       </span>
                       <span className="shrink-0 tabular-nums font-semibold text-foreground">
                         {s.count}

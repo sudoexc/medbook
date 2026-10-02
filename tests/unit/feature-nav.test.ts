@@ -126,8 +126,9 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
     expect(hrefs.has("doctors")).toBe(true);
     expect(hrefs.has("appointments")).toBe(true);
     expect(hrefs.has("notifications")).toBe(true);
-    expect(hrefs.has("analytics")).toBe(true);
     expect(hrefs.has("settings")).toBe(true);
+    // Analytics is role-gated, not plan-gated (audit AN-33): see below.
+    expect(nameSet(getVisibleCrmNav(DEFAULT_FLAGS, "ADMIN")).has("analytics")).toBe(true);
   });
 
   it("Pro plan reveals Telegram + Call Center", () => {
@@ -139,8 +140,8 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
     expect(hrefs.has("patients")).toBe(true);
   });
 
-  it("Enterprise plan exposes every nav item", () => {
-    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS);
+  it("Enterprise plan exposes every nav item to an admin", () => {
+    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, "ADMIN");
     const everyHref = new Set<string>();
     for (const g of CRM_NAV) for (const i of g.items) everyHref.add(i.href);
     expect(nameSet(visible)).toEqual(everyHref);
@@ -192,14 +193,12 @@ describe("analytics pro sub-nav (Phase 18 W2)", () => {
     ]);
   });
 
-  // Phase 18 W3 — the Reports entry is gated identically to the W2
-  // dashboards: ADMIN + hasAnalyticsPro. Lock that down.
-  it("hides analytics/reports from non-ADMIN even on Enterprise", () => {
-    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, null);
-    const item = findAnalyticsItem(visible);
-    expect(item).toBeTruthy();
-    const childHrefs = (item!.children ?? []).map((c) => c.href);
-    expect(childHrefs).not.toContain("analytics/reports");
+  // Audit AN-33: the analytics API answers only admins and doctors (who
+  // work in their own cabinet), so the parent item itself, with every pro
+  // child under it, is hidden from reception, nurses and call operators.
+  it("hides the whole analytics item from non-ADMIN even on Enterprise", () => {
+    expect(findAnalyticsItem(getVisibleCrmNav(ENTERPRISE_FLAGS, null))).toBeNull();
+    expect(findAnalyticsItem(getVisibleCrmNav(DEFAULT_FLAGS, null))).toBeNull();
   });
 
   it("hides analytics/reports on Basic regardless of role", () => {
@@ -208,12 +207,5 @@ describe("analytics pro sub-nav (Phase 18 W2)", () => {
     expect(item).toBeTruthy();
     const childHrefs = (item!.children ?? []).map((c) => c.href);
     expect(childHrefs).not.toContain("analytics/reports");
-  });
-
-  it("hides the pro dashboards from non-ADMIN even on Enterprise", () => {
-    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, null);
-    const item = findAnalyticsItem(visible);
-    expect(item).toBeTruthy();
-    expect(item!.children ?? []).toEqual([]);
   });
 });

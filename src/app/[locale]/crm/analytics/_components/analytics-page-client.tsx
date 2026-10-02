@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/popover";
 import { toast } from "sonner";
 
+import { buildAnalyticsSummaryCsv } from "@/lib/analytics/summary-csv";
+
 import type {
   AnalyticsResponse,
   FunnelsResponse,
@@ -104,6 +106,18 @@ export function AnalyticsPageClient() {
   const tNoShowTable = useTranslations("analyticsDashboard.noShowTable");
   const tSummary = useTranslations("analyticsDashboard.summary");
   const tAxis = useTranslations("analyticsDashboard.axis");
+  // The status and source names the report builder and the site-requests
+  // page already show; the charts printed the raw codes (audit AN-31).
+  const tStatus = useTranslations("analyticsReports.status");
+  const tSource = useTranslations("onlineRequests.source");
+  const statusLabel = React.useCallback(
+    (status: string) => (tStatus.has(status) ? tStatus(status) : status),
+    [tStatus],
+  );
+  const sourceLabel = React.useCallback(
+    (source: string) => (tSource.has(source) ? tSource(source) : source),
+    [tSource],
+  );
   const locale = useLocale();
   const [period, setPeriod] = React.useState<Period>("week");
 
@@ -151,58 +165,19 @@ export function AnalyticsPageClient() {
       toast.error(t("errorTitle"));
       return;
     }
-    const csvEscape = (v: unknown) => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const totalRevenue = data.revenueDaily.reduce(
-      (sum, d) => sum + (d.amount ?? 0),
-      0,
-    );
-    const totalAppointments = data.appointmentsByStatus.reduce(
-      (sum, s) => sum + (s.count ?? 0),
-      0,
-    );
-    const noShowAgg = data.noShowDaily.reduce(
-      (acc, d) => ({
-        total: acc.total + (d.total ?? 0),
-        noShow: acc.noShow + (d.noShow ?? 0),
-      }),
-      { total: 0, noShow: 0 },
-    );
-    const noShowPct =
-      noShowAgg.total > 0
-        ? Math.round((noShowAgg.noShow / noShowAgg.total) * 1000) / 10
-        : 0;
-
-    // Money is exported only when the clinic records payments in the CRM;
-    // otherwise the cells stay empty rather than read as a real «0».
-    const moneyTracked = data.paymentsTracked !== false;
-    const rows: string[][] = [
-      ["section", "key", "value"],
-      ["meta", "period", period],
-      ["meta", "range_start", periodRange.start],
-      ["meta", "range_end", periodRange.end],
-      ["meta", "generated_at", new Date().toISOString()],
-      ["kpi", "revenue_total", moneyTracked ? String(totalRevenue) : ""],
-      ["kpi", "appointments_total", String(totalAppointments)],
-      ["kpi", "no_show_pct", String(noShowPct)],
-    ];
-    for (const s of data.appointmentsByStatus) {
-      rows.push(["appointmentsByStatus", s.status, String(s.count)]);
-    }
-    if (moneyTracked) {
-      for (const d of data.topDoctors) {
-        rows.push(["topDoctors", d.name, String(d.revenue)]);
-      }
-    }
-    for (const s of data.topServices) {
-      rows.push(["topServices", s.name, String(s.count)]);
-    }
-    for (const s of data.sources) {
-      rows.push(["sources", s.source, String(s.count)]);
-    }
-    const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\n");
+    const csv = buildAnalyticsSummaryCsv({
+      period,
+      rangeStart: periodRange.start,
+      rangeEnd: periodRange.end,
+      generatedAt: new Date(),
+      paymentsTracked: data.paymentsTracked !== false,
+      revenueDaily: data.revenueDaily,
+      appointmentsByStatus: data.appointmentsByStatus,
+      noShowDaily: data.noShowDaily,
+      topDoctors: data.topDoctors,
+      topServices: data.topServices,
+      sources: data.sources,
+    });
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -316,6 +291,8 @@ export function AnalyticsPageClient() {
               viewAllServices: (count) =>
                 tSummary("viewAllServices", { count }),
               deltaPp: (value) => tSummary("deltaPp", { value }),
+              statusLabel,
+              sourceLabel,
             }}
           />
 

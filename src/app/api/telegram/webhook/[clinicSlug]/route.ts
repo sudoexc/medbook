@@ -29,10 +29,16 @@ import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 import {
   answerCallbackQuery,
+  editMessageReplyMarkup,
   editMessageText,
   sendMessage,
   type TgClinicMinimal,
 } from "@/server/telegram/send";
+import {
+  confirmButtonLang,
+  confirmedReminderEdit,
+} from "@/server/telegram/confirmed-reminder";
+import { patientLocale } from "@/server/notifications/patient-texts";
 import { confirmAppointment } from "@/server/appointments/confirm";
 import { telegramUserMayConfirm } from "@/server/notifications/family-relay";
 import {
@@ -117,6 +123,8 @@ type TgIncomingMessage = {
   chat: TgChat;
   from?: TgUser;
   text?: string;
+  /** Formatting of `text`, sent back as is when the bot edits it. */
+  entities?: unknown[];
   caption?: string;
   photo?: unknown;
   document?: unknown;
@@ -134,7 +142,11 @@ type TgIncomingMessage = {
 type TgCallbackQuery = {
   id: string;
   from: TgUser;
-  message?: TgIncomingMessage;
+  message?: TgIncomingMessage & {
+    reply_markup?: {
+      inline_keyboard?: Array<Array<{ text?: string; callback_data?: string }>>;
+    };
+  };
   data?: string;
 };
 type TgChatMember = { status: string; user?: TgUser };
@@ -840,7 +852,7 @@ export async function POST(
               id: true,
               clinicId: true,
               patientId: true,
-              patient: { select: { telegramId: true } },
+              patient: { select: { telegramId: true, preferredLang: true } },
             },
           }),
         );
@@ -899,12 +911,12 @@ export async function POST(
         // Translate the helper's result into a TG toast + a one-shot edit
         // that drops the keyboard so the patient can't double-tap.
         let toast: string;
-        let editTo: string | null = null;
+        let confirmed = false;
         if (result.ok) {
           toast = result.alreadyConfirmed
             ? "Уже подтверждено"
             : "Подтверждено ✅";
-          editTo = "✅ Подтверждено · спасибо!";
+          confirmed = true;
         } else if (result.reason === "cancelled") {
           toast = "Запись уже отменена";
         } else if (result.reason === "completed") {
@@ -914,18 +926,35 @@ export async function POST(
         }
         await answerCallbackQuery(clinicMin, cq.id, toast, false);
 
-        if (editTo && cq.message?.message_id && chatId) {
+        if (confirmed && cq.message?.message_id && chatId) {
+          // The reminder keeps its date, time and doctor (audit TG-34): the
+          // mark is added under the text, and an edit without a keyboard
+          // drops the button. With no text to keep, only the keyboard goes.
+          const lang = confirmButtonLang(
+            cq.message,
+            patientLocale(appt.patient?.preferredLang),
+          );
+          const edit = confirmedReminderEdit(cq.message, lang);
           try {
-            await editMessageText(
-              clinicMin,
-              chatId,
-              cq.message.message_id,
-              editTo,
-            );
+            if (edit) {
+              await editMessageText(
+                clinicMin,
+                chatId,
+                cq.message.message_id,
+                edit.text,
+                { entities: edit.entities },
+              );
+            } else {
+              await editMessageReplyMarkup(
+                clinicMin,
+                chatId,
+                cq.message.message_id,
+              );
+            }
           } catch (editErr) {
             // Editing is best-effort — the confirm itself already landed.
             console.warn(
-              `[tg:webhook clinic=${clinic.slug}] editMessageText after confirm failed: ${(editErr as Error).message}`,
+              `[tg:webhook clinic=${clinic.slug}] confirm edit failed: ${(editErr as Error).message}`,
             );
           }
         }

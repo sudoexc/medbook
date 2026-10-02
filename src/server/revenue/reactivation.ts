@@ -33,6 +33,7 @@ import type {
 import type { TenantScopedPrisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
+import { givenNameOf } from "@/lib/patients/given-name";
 import { isAllowedToReceive } from "@/server/notifications/consent-gate";
 import { render } from "@/server/notifications/template";
 import {
@@ -355,7 +356,7 @@ export async function enqueueReactivationFor(
   const body = render(lang === "uz" ? tpl.bodyUz : tpl.bodyRu, {
     patient: {
       name: patient.fullName,
-      firstName: firstName(patient.fullName),
+      firstName: givenNameOf(patient.fullName),
       phone: patient.phone,
     },
     clinic: clinic ? clinicContext(clinic, lang) : { name: "", phone: "", address: "" },
@@ -412,12 +413,6 @@ export async function enqueueReactivationFor(
   );
 
   return { scheduled: true };
-}
-
-function firstName(full: string): string {
-  const trimmed = full.trim();
-  if (!trimmed) return "";
-  return trimmed.split(/\s+/)[0] ?? trimmed;
 }
 
 /**

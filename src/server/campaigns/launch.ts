@@ -15,6 +15,7 @@
  * launches both see DRAFT and both insert a full set of sends.
  */
 import { prisma } from "@/lib/prisma";
+import { givenNameOf } from "@/lib/patients/given-name";
 import type { NotificationStatus } from "@/generated/prisma/client";
 import { render } from "@/server/notifications/template";
 
@@ -76,15 +77,6 @@ function pickClinicAddress(clinic: ClinicRow, lang: "RU" | "UZ"): string {
   return (lang === "UZ" ? clinic.addressUz : clinic.addressRu) ?? "";
 }
 
-function patientFirstName(fullName: string): string {
-  const trimmed = fullName.trim();
-  if (!trimmed) return "";
-  // Russian-style "Фамилия Имя Отчество" — first name is the second token.
-  // Fall back to the only token if there's just one.
-  const parts = trimmed.split(/\s+/);
-  return parts[1] ?? parts[0] ?? "";
-}
-
 function buildBody(args: {
   body: string;
   patient: AudiencePatient;
@@ -95,7 +87,7 @@ function buildBody(args: {
   const ctx = {
     patient: {
       name: args.patient.fullName,
-      firstName: patientFirstName(args.patient.fullName),
+      firstName: givenNameOf(args.patient.fullName),
     },
     clinic: {
       name: pickClinicName(args.clinic, lang),

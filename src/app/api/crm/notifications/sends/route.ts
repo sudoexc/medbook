@@ -4,11 +4,17 @@
  *
  * Phase 1: creates QUEUED NotificationSend rows synchronously. Actual
  * delivery happens in the BullMQ worker (Phase 3a).
+ *
+ * A manual send is ADMIN only and goes to the patient's own Telegram (audit
+ * TG-27). It was open to reception and the call operator with the chat id
+ * and the HTML text taken from the request as is: anyone at the desk could
+ * send a payment link «from the clinic» to any chat. The worker copies a
+ * sent row into the patient's dialog (G6-08), so it is seen in the inbox.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, parseQuery } from "@/server/http";
+import { err, notFound, ok, parseQuery } from "@/server/http";
 import {
   CreateSendSchema,
   QuerySendSchema,
@@ -55,17 +61,36 @@ export const GET = createApiListHandler(
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"],
+    roles: ["ADMIN"],
     bodySchema: CreateSendSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
+    if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+    // The patient is one of this clinic's live cards, and a Telegram send
+    // goes to his own chat, never to a chat id typed into the request.
+    const patient = await prisma.patient.findFirst({
+      where: { id: body.patientId, clinicId: ctx.clinicId, deletedAt: null },
+      select: { id: true, telegramId: true },
+    });
+    if (!patient) return notFound();
+    let recipient = body.recipient?.trim() ?? "";
+    if (body.channel === "TG") {
+      const own = patient.telegramId?.trim() ?? "";
+      if (!own) return err("ValidationError", 400, { reason: "no_telegram" });
+      if (recipient && recipient !== own) {
+        return err("ValidationError", 400, { reason: "recipient_mismatch" });
+      }
+      recipient = own;
+    } else if (!recipient) {
+      return err("ValidationError", 400, { reason: "no_recipient" });
+    }
     const created = await prisma.notificationSend.create({
       data: {
         templateId: body.templateId ?? null,
-        patientId: body.patientId,
+        patientId: patient.id,
         appointmentId: body.appointmentId ?? null,
         channel: body.channel,
-        recipient: body.recipient,
+        recipient,
         body: body.body,
         scheduledFor: body.scheduledFor,
         status: "QUEUED",

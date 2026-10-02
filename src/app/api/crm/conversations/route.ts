@@ -36,32 +36,25 @@ export const GET = createApiListHandler(
 
     // Doctor scope: `doctorId=me` (or explicit id) restricts to conversations
     // either assigned to that doctor's User or tied to one of their
-    // appointments. Also auto-applied when the caller is a DOCTOR so the
-    // inbox cannot leak threads outside their caseload.
+    // appointments. A DOCTOR caller always gets his own caseload: a
+    // colleague's `doctorId` from him is read as `me` (audit TG-32), or the
+    // list showed him the other doctor's patients.
+    const callerIsDoctor = ctx.kind === "TENANT" && ctx.role === "DOCTOR";
     let doctorScopeId: string | null = null;
-    if (q.doctorId === "me" && ctx.kind === "TENANT") {
-      const doc = await prisma.doctor.findFirst({
-        where: { userId: ctx.userId },
-        select: { id: true, userId: true },
-      });
-      if (doc) doctorScopeId = doc.id;
-    } else if (q.doctorId) {
-      doctorScopeId = q.doctorId;
-    } else if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
+    if ((q.doctorId === "me" || callerIsDoctor) && ctx.kind === "TENANT") {
       const doc = await prisma.doctor.findFirst({
         where: { userId: ctx.userId },
         select: { id: true },
       });
       if (doc) doctorScopeId = doc.id;
+    } else if (q.doctorId) {
+      doctorScopeId = q.doctorId;
     }
     // DC-10 — a doctor's unread is his own (`doctor-unread.ts`): the shared
-    // counter is the desk's, and his reading no longer zeroes it.
-    // Only when the scope is his own row (resolved from his user above).
+    // counter is the desk's, and his reading no longer zeroes it. His scope
+    // is always his own row (resolved from his user above).
     const ownUnread =
-      ctx.kind === "TENANT" &&
-      ctx.role === "DOCTOR" &&
-      doctorScopeId &&
-      (!q.doctorId || q.doctorId === "me")
+      ctx.kind === "TENANT" && callerIsDoctor && doctorScopeId
         ? { doctorId: doctorScopeId, userId: ctx.userId }
         : null;
     let ownUnreadMap: Map<string, number> | null = null;

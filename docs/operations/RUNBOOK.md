@@ -35,7 +35,7 @@ ssh root@167.233.142.75 'cd /opt/neurofax && docker compose ps'
 | `medbook-app-1` | локальный build, `Dockerfile` | Next.js 16 standalone (порт 3000): CRM, admin-консоль, mini app, все API, SSE `/api/events` |
 | `medbook-worker-1` | локальный build, `Dockerfile.worker` | BullMQ-воркеры: notifications send/scheduler, outbox pumper (SSE-шина), TG polling, lifecycle sweep, trial expiry, exports, medication reminders и др. (`src/server/workers/start.ts`) |
 | `medbook-postgres-1` | `postgres:16-alpine` | БД `medbook`, user `medbook`, volume `pgdata` |
-| `medbook-redis-1` | `redis:7-alpine` | BullMQ-очереди + pub/sub для SSE fan-out; maxmemory 256mb allkeys-lru; volume `redisdata` |
+| `medbook-redis-1` | `redis:7-alpine` | BullMQ-очереди + pub/sub для SSE fan-out; maxmemory 256mb noeviction (очереди BullMQ не вытесняются, audit TG-28); volume `redisdata` |
 | `medbook-minio-1` | `minio/minio` | S3-хранилище файлов (bucket `medbook` — приватный, файлы отдаются через streaming-proxy приложения, не по presigned URL; наружу через nginx не проксируется, `location /files/` удалён, audit INF-07); volume `miniodata` |
 | `medbook-nginx-1` | `nginx:alpine` | **Общий reverse-proxy всего сервера**: 80/443, TLS, все vhost'ы из `nginx/conf.d/` |
 | `medbook-certbot-1` | `certbot/certbot` | Продление Let's Encrypt каждые 12ч, volume `letsencrypt` |

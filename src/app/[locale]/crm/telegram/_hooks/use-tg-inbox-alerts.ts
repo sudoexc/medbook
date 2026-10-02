@@ -3,10 +3,11 @@
 /**
  * Live alerts for the Telegram inbox.
  *
- * On every `tg.message.new` / `tg.takeover.incoming`:
+ * On every tg.* event:
  *   1. Invalidates the conversations list (replaces the older
  *      `useTgConversationsRealtime` hook — kept colocated with toast/pulse so
  *      a single subscription drives every UI side-effect).
+ * On a `tg.message.new`, the one alert per message (audit TG-36):
  *   2. Tracks the conversation id in `pulsedIds` for ~3s so the row in
  *      `ConversationList` can briefly highlight via CSS.
  *   3. Fires a sonner toast with the contact name + preview when the
@@ -22,6 +23,7 @@ import { useTranslations } from "next-intl";
 import { useLiveEvents } from "@/hooks/use-live-events";
 
 import { failedReasonText } from "../_lib/failed-reason";
+import { isMessageAlert } from "../_lib/inbox-alert";
 import { invalidateConversationCaches } from "./use-conversations";
 import { settlePendingSend } from "./use-send-message";
 
@@ -55,13 +57,11 @@ export function useTgInboxAlerts(opts: {
       // Keep the overview counters fresh when patients link/block via the bot.
       void qc.invalidateQueries({ queryKey: ["tg-stats"] });
 
-      // Toast / pulse only fires for incoming patient activity. Status-only
-      // updates (`tg.conversation.updated`) are silent.
-      if (
-        event.type !== "tg.message.new" &&
-        event.type !== "tg.takeover.incoming"
-      )
-        return;
+      // Toast / pulse fires once per message, on `tg.message.new`. Status-only
+      // updates (`tg.conversation.updated`) and the takeover echo of the same
+      // message (`tg.takeover.incoming`, no name, no text) are silent.
+      if (!isMessageAlert(event)) return;
+      const outgoing = event.payload.direction === "OUT";
 
       const conversationId = event.payload.conversationId;
       if (!conversationId) return;
@@ -69,7 +69,7 @@ export function useTgInboxAlerts(opts: {
       // A message this tab queued has an outcome (audit TG-17). Its failure
       // is said out loud here, in the sender's tab only; the bubble keeps
       // «Не доставлено» and «Повторить».
-      if (event.type === "tg.message.new" && event.payload.direction === "OUT") {
+      if (outgoing) {
         const p = event.payload as {
           messageId?: string;
           status?: string;
@@ -117,12 +117,7 @@ export function useTgInboxAlerts(opts: {
 
       // Outgoing messages (operator replies surfaced via Redis fan-out from
       // another tab) don't need a toast — the sender already saw it.
-      if (
-        event.type === "tg.message.new" &&
-        event.payload.direction === "OUT"
-      ) {
-        return;
-      }
+      if (outgoing) return;
 
       const payload = event.payload as {
         contactName?: string | null;

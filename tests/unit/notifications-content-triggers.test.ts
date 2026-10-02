@@ -545,7 +545,7 @@ describe("referral reward (TG-23)", () => {
     fireTrigger({ kind: "referral.reward-earned", clinicId: "c1", patientId: "p1", rewardId: "r1" });
     await vi.waitFor(() => expect(db.sends.length).toBeGreaterThan(0));
     const row = tg()[0]!;
-    expect(row.body).toBe("Каримов, NeuroFax da 15% chegirma");
+    expect(row.body).toBe("Азиз, NeuroFax da 15% chegirma");
   });
 });
 

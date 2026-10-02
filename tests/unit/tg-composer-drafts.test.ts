@@ -6,10 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createDraftStore } from "@/app/[locale]/crm/telegram/_lib/composer-drafts";
 
 /**
- * Audit G6-01: the composer's text, inline buttons and attachments were
- * component state, and the chat pane reused the component for the next
- * dialog. Patient A's MRI PDF and a half-typed reply stayed in the box and
- * went to patient B on Enter. Drafts now live per conversation.
+ * Audit G6-01: the composer's text and attachments were component state,
+ * and the chat pane reused the component for the next dialog. Patient A's
+ * MRI PDF and a half-typed reply stayed in the box and went to patient B on
+ * Enter. Drafts now live per conversation.
  */
 
 type Att = { id: string; status: "uploading" | "ready"; url?: string };
@@ -21,14 +21,12 @@ describe("composer drafts are per conversation", () => {
       ...d,
       text: "Результаты МРТ во вложении",
       attachments: [{ id: "f1", status: "ready", url: "/api/crm/conversations/A/…" }],
-      buttonRows: [[{ text: "Записаться", callback_data: "book" }]],
     }));
 
     // The operator opens chat B.
     const b = drafts.get("B");
     expect(b.text).toBe("");
     expect(b.attachments).toEqual([]);
-    expect(b.buttonRows).toEqual([]);
 
     // And finds A's draft intact when she comes back.
     expect(drafts.get("A").text).toBe("Результаты МРТ во вложении");

@@ -19,10 +19,14 @@ import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 import { UPCOMING_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 import { tashkentDateOf, tashkentDayWindow } from "@/lib/tashkent-time";
+import { givenNameOf } from "@/lib/patients/given-name";
 import {
   extractPlaceholders,
   renderPlainWithReport,
 } from "@/server/notifications/template";
+
+// The chat's reading of the given name, shared with every patient text.
+export { givenNameOf };
 
 export type TemplateFillRefusal =
   /** The template names the patient or his visit; the thread has no card. */
@@ -76,16 +80,6 @@ export function visitPickFor(trigger: string): VisitPick {
     default:
       return "upcoming";
   }
-}
-
-/**
- * The given name in the clinic's «Фамилия Имя Отчество» order: the second
- * word, or the only one. Same reading as the composer's quick replies and
- * the broadcasts, so a chat never greets a patient by his surname.
- */
-export function givenNameOf(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  return parts[1] ?? parts[0] ?? "";
 }
 
 export function fillTemplate(input: {

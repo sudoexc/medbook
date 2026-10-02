@@ -13,6 +13,8 @@
  * never SENT through a clinic whose bot is disconnected.
  * Attachments must belong to this conversation (audit G6-01). A text with an
  * unfilled template field (`{{patient.firstName}}`) is refused (audit G6-04).
+ * A doctor reads and writes only the threads of his caseload, like his inbox
+ * list (audit TG-32).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +26,7 @@ import {
 } from "@/server/schemas/message";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
+import { conversationAccess } from "@/server/conversations/access";
 import { extractPlaceholders } from "@/server/notifications/template";
 import { isOwnChatAttachmentUrl } from "@/server/conversations/staff-send";
 import {
@@ -39,14 +42,16 @@ function conversationIdFromUrl(request: Request): string {
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const conversationId = conversationIdFromUrl(request);
     const parsed = parseQuery(request, QueryMessagesSchema);
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
 
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
+    const access = await conversationAccess(ctx);
+    if (!access) return notFound();
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, ...access.where },
       select: { id: true },
     });
     if (!conv) return notFound();
@@ -78,8 +83,10 @@ export const POST = createApiHandler(
   },
   async ({ request, body, ctx }) => {
     const conversationId = conversationIdFromUrl(request);
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
+    const access = await conversationAccess(ctx);
+    if (!access) return notFound();
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, ...access.where },
       select: {
         id: true,
         channel: true,

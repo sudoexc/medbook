@@ -3226,6 +3226,7 @@
     },
     "patientMessages": {
       "confirmButton": "✅ Tasdiqlayman",
+      "confirmedMark": "✅ Tasdiqlandi, rahmat!",
       "questionnaireButton": "📝 So'rovnomani to'ldirish",
       "npsButton": "⭐ Tashrifni baholash",
       "familyRelay": "👤 Oila a'zosi: {name}",
@@ -3325,10 +3326,10 @@
       "newBadge": "Hafta ichida +{count}"
     },
     "mode": {
-      "title": "Bemorga kim javob beradi",
-      "bot": "Bot javob beradi",
+      "title": "Dialog rejimi",
+      "bot": "Bot",
       "operator": "Men javob beraman",
-      "botHint": "Bot bemor bilan o'zi yozishmoqda",
+      "botHint": "Bot faqat salomlashishi mumkin, savollarga siz javob berasiz",
       "operatorHint": "Bot pauzada — siz javob berasiz"
     },
     "assignee": {
@@ -3469,8 +3470,6 @@
       "funnel": {
         "total": "Jami",
         "sent": "Yuborildi",
-        "delivered": "Yetkazildi",
-        "read": "O'qildi",
         "failed": "Xatolar",
         "blocked": "Bloklagan"
       },
@@ -3712,7 +3711,7 @@
         "book": "Qabulga yozish",
         "price": "Xizmat narxini bilish",
         "call": "Qayta qo'ng'iroq",
-        "confirm": "Yozuvni tasdiqlash",
+        "confirm": "Tasdiqlash matni",
         "askPhone": "Telefon so'rash",
         "needPatient": "Avval bemor kartasini yarating",
         "priceText": "Qaysi xizmat qiziqtirayotganini ayting — narxini aniqlab, qulay vaqtni tanlaymiz.",
@@ -3744,17 +3743,6 @@
         "saveError": "Saqlab bo'lmadi",
         "edit": "Tahrirlash",
         "delete": "O'chirish"
-      },
-      "inlineButtons": {
-        "add": "Inline-tugmalar qo'shish",
-        "label": "Tugmalar",
-        "header": "Inline-tugmalar",
-        "addRow": "Qator",
-        "clear": "Tozalash",
-        "textPlaceholder": "Matn",
-        "dataPlaceholder": "callback_data",
-        "remove": "O'chirish",
-        "addButton": "Tugma"
       },
       "upload": {
         "label": "Fayl biriktirish",

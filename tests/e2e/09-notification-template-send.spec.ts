@@ -50,8 +50,10 @@ test.describe("notifications — template lifecycle", () => {
     expect(tpl.id).toBeTruthy();
 
     // Fire a manual send. CreateSendSchema takes a single patientId plus the
-    // rendered recipient/body and a scheduledFor timestamp (the worker picks
-    // the row up from the QUEUED state).
+    // rendered body and a scheduledFor timestamp (the worker picks the row
+    // up from the QUEUED state). The Telegram recipient is the patient's own
+    // chat, taken by the server (audit TG-27); a seed card without Telegram
+    // is refused with `no_telegram`.
     const sendRes = await request.post(
       `${BASE_URL}/api/crm/notifications/sends`,
       {
@@ -59,14 +61,17 @@ test.describe("notifications — template lifecycle", () => {
           templateId: tpl.id,
           patientId,
           channel: "TG",
-          recipient: "+998901000010",
           body: "Здравствуйте! (e2e manual send)",
           scheduledFor: new Date().toISOString(),
         },
         failOnStatusCode: false,
       },
     );
-    // Accept 200/201/202 (queue enqueue).
-    expect([200, 201, 202]).toContain(sendRes.status());
+    if (sendRes.status() === 400) {
+      expect(((await sendRes.json()) as { reason?: string }).reason).toBe("no_telegram");
+    } else {
+      // Accept 200/201/202 (queue enqueue).
+      expect([200, 201, 202]).toContain(sendRes.status());
+    }
   });
 });

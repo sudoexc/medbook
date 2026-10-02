@@ -20,6 +20,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { err, notFound, ok } from "@/server/http";
 import { fillTemplateForConversation } from "@/server/conversations/template-fill";
+import { canOpenConversation } from "@/server/conversations/access";
 
 const ROLES = [
   "ADMIN",
@@ -45,11 +46,10 @@ export const GET = createApiListHandler(
   async ({ request, ctx }) => {
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     if (!clinicId) return notFound();
-    const conv = await prisma.conversation.findFirst({
-      where: { id: conversationIdFromUrl(request), clinicId },
-      select: { id: true },
-    });
-    if (!conv) return notFound();
+    // Only for a thread the caller may open (audit TG-32).
+    if (!(await canOpenConversation(ctx, conversationIdFromUrl(request)))) {
+      return notFound();
+    }
     const rows = await prisma.notificationTemplate.findMany({
       where: { clinicId, channel: "TG" },
       orderBy: { updatedAt: "desc" },
@@ -73,6 +73,11 @@ export const POST = createApiHandler(
   async ({ request, body, ctx }) => {
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     if (!clinicId) return notFound();
+    // The fill reads the thread's patient and visits: a doctor fills only
+    // for a thread of his caseload (audit TG-32).
+    if (!(await canOpenConversation(ctx, conversationIdFromUrl(request)))) {
+      return notFound();
+    }
     const result = await fillTemplateForConversation({
       clinicId,
       conversationId: conversationIdFromUrl(request),

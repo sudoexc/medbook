@@ -232,7 +232,8 @@ describe("materializeManualReminders", () => {
       appt("a1", { patient: { ...appt("a1").patient, preferredLang: "UZ" } }),
     ];
     await materializeManualReminders({ clinicId: "c1", appointmentIds: ["a1"], now: NOW });
-    expect(state.created[0]!.body).toBe("Каримова, sizni 16:00 da kutamiz.");
+    // The given name, not the surname (audit TG-29).
+    expect(state.created[0]!.body).toBe("Дилноза, sizni 16:00 da kutamiz.");
   });
 
   it("a template switched off by the clinic sends nothing and says so", async () => {

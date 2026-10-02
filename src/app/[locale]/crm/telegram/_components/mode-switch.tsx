@@ -63,6 +63,9 @@ export function ModeSwitch({
           activeClass="bg-card text-[color:var(--warning)] shadow-sm"
         />
       </div>
+      {/* The bot never runs the conversation (audit TG-39): at most it
+          greets a new contact, and only with TG_BOT_AUTOREPLY on. The hint
+          used to say it answered the patient, and questions waited. */}
       {showHint ? (
         <p className="text-[11px] leading-tight text-muted-foreground">
           {isTakeover ? t("operatorHint") : t("botHint")}

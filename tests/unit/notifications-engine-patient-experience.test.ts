@@ -166,7 +166,7 @@ describe("pre-visit questionnaire (TG-09)", () => {
 
     expect(state.templates.map((t) => t.key)).toEqual(["appointment.pre-visit-questionnaire"]);
     expect(state.sends.map((s) => s.channel).sort()).toEqual(["INAPP", "TG"]);
-    expect(state.sends[0]!.body).toContain("Каримов");
+    expect(state.sends[0]!.body).toContain("Азиз");
     expect(state.sends[0]!.body).toContain("НейроФакс");
     expect(res.notified).toBe(1);
     expect(state.stamped).toEqual([
@@ -324,7 +324,7 @@ describe("medication reminders (TG-15)", () => {
     expect(state.sends.filter((s) => s.channel === "TG")).toHaveLength(2);
     expect(state.sends.filter((s) => s.channel === "INAPP")).toHaveLength(2);
     expect(state.sends.map((s) => s.body)).toContain(
-      "Каримов, в 08:30 пора принять Карбамазепин 200 мг. Отметить приём можно в приложении клиники.",
+      "Азиз, в 08:30 пора принять Карбамазепин 200 мг. Отметить приём можно в приложении клиники.",
     );
   });
 
@@ -365,7 +365,7 @@ describe("medication reminders (TG-15)", () => {
     );
     await runMedicationReminderTick(AT);
     expect(state.sends[0]!.body).toBe(
-      "Каримов, soat 08:00 da Карбамазепин qabul qilish vaqti. Qabulni klinika ilovasida belgilashingiz mumkin.",
+      "Азиз, soat 08:00 da Карбамазепин qabul qilish vaqti. Qabulni klinika ilovasida belgilashingiz mumkin.",
     );
   });
 

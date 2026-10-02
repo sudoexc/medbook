@@ -47,6 +47,7 @@ import {
   parseSchedule,
 } from "@/lib/patient-experience/medication-schedule";
 import { runWithTenant } from "@/lib/tenant-context";
+import { givenNameOf } from "@/lib/patients/given-name";
 
 import { isAllowedToReceive } from "@/server/notifications/consent-gate";
 import { MEDICATION_REMINDER_TEMPLATE } from "@/server/notifications/default-templates";
@@ -106,12 +107,6 @@ type ActivePrescription = {
   };
 };
 
-function firstName(full: string): string {
-  const trimmed = full.trim();
-  if (!trimmed) return "";
-  return trimmed.split(/\s+/)[0] ?? trimmed;
-}
-
 function localHourMinute(date: Date, tz: string): string {
   try {
     return new Intl.DateTimeFormat("en-GB", {
@@ -154,7 +149,7 @@ export function renderMedicationReminder(
 ): string {
   const uz = ctx.lang === "UZ" && tpl.bodyUz.trim() !== "";
   return render(uz ? tpl.bodyUz : tpl.bodyRu, {
-    patient: { name: ctx.patientName, firstName: firstName(ctx.patientName) },
+    patient: { name: ctx.patientName, firstName: givenNameOf(ctx.patientName) },
     drug: { name: ctx.drugName, dosage: ctx.dosage },
     time: ctx.time,
     deeplink: "/my/medications",

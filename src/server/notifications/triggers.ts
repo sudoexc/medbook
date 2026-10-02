@@ -30,6 +30,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { formatMoney } from "@/lib/format";
+import { givenNameOf } from "@/lib/patients/given-name";
 import { loadPatientFinance } from "@/server/patient/finance";
 import { paidNetTiyin } from "@/server/services/ltv-compute";
 
@@ -173,12 +174,6 @@ type RenderCtx = {
     address: string;
   };
 };
-
-function firstName(full: string): string {
-  const trimmed = full.trim();
-  if (!trimmed) return "";
-  return trimmed.split(/\s+/)[0] ?? trimmed;
-}
 
 function formatDate(d: Date | null | undefined, tz = "Asia/Tashkent"): string {
   if (!d) return "";
@@ -387,7 +382,7 @@ function buildContext(
   return {
     patient: {
       name: appt.patient.fullName,
-      firstName: firstName(appt.patient.fullName),
+      firstName: givenNameOf(appt.patient.fullName),
       phone: appt.patient.phone,
     },
     appointment: {
@@ -2004,7 +1999,7 @@ async function runBirthdays(now: Date = new Date()): Promise<number> {
         const body = render(lang === "uz" ? tpl.bodyUz : tpl.bodyRu, {
           patient: {
             name: p.fullName,
-            firstName: firstName(p.fullName),
+            firstName: givenNameOf(p.fullName),
             phone: p.phone,
           },
           clinic: clinicContext(clinic, lang),
@@ -2434,7 +2429,7 @@ async function materializeCaseRepeats(
     const body = render(lang === "uz" ? tpl.bodyUz : tpl.bodyRu, {
       patient: {
         name: kase.patient.fullName,
-        firstName: firstName(kase.patient.fullName),
+        firstName: givenNameOf(kase.patient.fullName),
         phone: kase.patient.phone,
       },
       case: {
@@ -2571,7 +2566,7 @@ async function onReferralRewardEarned(payload: {
     const ctx: Record<string, unknown> = {
       patient: {
         name: referrer.fullName,
-        firstName: firstName(referrer.fullName),
+        firstName: givenNameOf(referrer.fullName),
       },
       friend: { name: friendName },
       percent: String(reward.rewardPercent),

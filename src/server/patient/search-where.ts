@@ -1,6 +1,7 @@
 /**
  * The WHERE for a free-text patient search: name, phone, passport,
- * Telegram username, and the doctor's «Фамилия ГГГГ» habit.
+ * Telegram username, the card number («P-00125») and the doctor's
+ * «Фамилия ГГГГ» habit.
  *
  * The doctor records patients as «Турматов О 1969» and searches the same
  * way. Since the year was lifted out of the name into `birthDate`, a
@@ -17,6 +18,7 @@
  * same everywhere.
  */
 import { normalizePhone } from "@/lib/phone";
+import { parsePatientNumber } from "@/lib/patient-number";
 
 type Where = Record<string, unknown>;
 
@@ -26,16 +28,39 @@ const TRAILING_YEAR = /(?:^|\s)((?:19|20)\d{2})\s*$/;
 /** Nobody alive was born earlier; same floor as `parsePatientIdentity`. */
 const MIN_YEAR = 1900;
 
+/**
+ * A card number the way staff read it off a card or a printout: «P-00125»,
+ * «p125», also with the Cyrillic «Р» a Russian keyboard types in its place.
+ * The prefix is required: bare digits are a phone fragment or a year, and
+ * matching them against card numbers too would bury those results.
+ */
+const CARD_NUMBER = /^[PpРр]-?\s*\d{1,9}$/;
+
+/** The card number a term names, or null (audit PT-25). */
+export function cardNumberFromTerm(term: string): number | null {
+  if (!CARD_NUMBER.test(term)) return null;
+  return parsePatientNumber(term.replace(/^[Рр]/, "P").replace(/\s+/g, ""));
+}
+
 /** Name, passport, Telegram username and (for 3+ digits) the phone. */
 function textConditions(term: string): Where[] {
   const phoneDigits = term.replace(/\D/g, "");
   const phoneNorm = normalizePhone(term);
-  // `passport` is stored encrypted; `contains` only matches legacy plaintext
-  // rows. Searching encrypted passports would need a blind-index (HMAC)
-  // column, see runbook.
   const or: Where[] = [
     { fullName: { contains: term, mode: "insensitive" } },
-    { passport: { contains: term, mode: "insensitive" } },
+    // `passport` is stored encrypted as «v1:<iv>:<tag>:<ct>», base64 that
+    // ILIKE happily matched: «Ali», «ов» or «v1» pulled in random cards
+    // and pushed the wanted one out of the doctor's 8 results (audit
+    // PT-26). Only legacy plaintext rows can match, and no envelope is
+    // without its colons while a passport number never has one. Searching
+    // encrypted passports would need a blind-index (HMAC) column, see
+    // runbook.
+    {
+      AND: [
+        { passport: { contains: term, mode: "insensitive" } },
+        { NOT: { passport: { contains: ":" } } },
+      ],
+    },
     { telegramUsername: { contains: term, mode: "insensitive" } },
   ];
   if (phoneDigits.length >= 3) {
@@ -56,6 +81,11 @@ export function patientSearchWhere(
 ): Where | null {
   const term = (raw ?? "").trim();
   if (!term) return null;
+
+  // «P-00125» names one card. Its digits are not a phone fragment, so the
+  // text conditions stay out of it.
+  const cardNumber = cardNumberFromTerm(term);
+  if (cardNumber !== null) return { patientNumber: cardNumber };
 
   const yearMatch = term.match(TRAILING_YEAR);
   const year = yearMatch ? Number(yearMatch[1]) : null;

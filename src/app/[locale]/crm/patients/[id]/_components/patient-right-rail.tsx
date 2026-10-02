@@ -30,6 +30,7 @@ import {
   usePatientFamily,
   type PatientFamilyRelationship,
 } from "../_hooks/use-patient-family";
+import { PatientStatusBadge } from "../../_components/patient-status-badge";
 import {
   DocumentPreviewDialog,
   type DocumentPreviewTarget,
@@ -40,6 +41,8 @@ export interface PatientRightRailProps {
   patient: Patient;
   appointments: PatientAppointment[];
   onOpenNewAppointmentDialog: () => void;
+  /** Switch the card to its «Коммуникации» tab. */
+  onOpenCommunications: () => void;
   className?: string;
 }
 
@@ -86,6 +89,7 @@ export function PatientRightRail({
   patient,
   appointments,
   onOpenNewAppointmentDialog,
+  onOpenCommunications,
   className,
 }: PatientRightRailProps) {
   const locale = useLocale() as Locale;
@@ -173,9 +177,10 @@ export function PatientRightRail({
         <StatusRow
           label={t("statusLabel")}
           value={
-            <span className="inline-flex items-center rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
-              {t("statusActive")}
-            </span>
+            <PatientStatusBadge
+              segment={patient.segment}
+              deletedAt={patient.deletedAt}
+            />
           }
         />
         <StatusRow
@@ -200,12 +205,16 @@ export function PatientRightRail({
       <Section
         title={t("communication")}
         action={
-          <Link
-            href={`/${locale}/crm/patients/${patient.id}?tab=communications`}
+          // A tab switch, not a link: the rail sits on the card itself, and
+          // a link to the URL the card already shows changes nothing once
+          // the tab was switched by hand (audit PT-24).
+          <button
+            type="button"
+            onClick={onOpenCommunications}
             className="text-[11px] font-medium text-primary hover:underline"
           >
             {t("more")}
-          </Link>
+          </button>
         }
       >
         <div className="grid grid-cols-2 gap-2">

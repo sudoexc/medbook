@@ -18,6 +18,7 @@ import {
   isYearOnlyBirthDate,
 } from "@/lib/patients/parse-identity";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
+import { formatPatientNumber } from "@/lib/patient-number";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
 
 import type { Patient } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
+import { PatientStatusBadge } from "../../_components/patient-status-badge";
 import { TelegramInviteDialog } from "./telegram-invite-dialog";
 
 export interface PatientHeroProps {
@@ -109,7 +111,10 @@ export function PatientHero({
   const [inviteOpen, setInviteOpen] = React.useState(false);
 
   const age = ageFrom(patient.birthDate, nowMs);
-  const shortId = patient.id.slice(0, 6).toUpperCase();
+  // The clinic's card number, «P-00125». The first six characters of the
+  // cuid used to stand in for it: a timestamp prefix, the same for two
+  // patients registered a minute apart (audit PT-25).
+  const cardNumber = formatPatientNumber(patient.patientNumber);
 
   const completed = appointments.filter((a) => a.status === "COMPLETED");
   const noShow = appointments.filter((a) => a.status === "NO_SHOW");
@@ -168,11 +173,13 @@ export function PatientHero({
         {/* Identity */}
         <div className="flex min-w-0 items-start gap-3">
           <div className="relative shrink-0">
+            {/* No presence dot: nothing knows whether a patient is
+                «online», and a green dot on every card said so anyway
+                (audit PT-24). */}
             <AvatarWithStatus
               src={patient.photoUrl ?? undefined}
               name={patient.fullName}
               size="xl"
-              status="online"
             />
             {patient.segment === "VIP" ? (
               <span className="absolute -top-1 -right-1 inline-flex h-4 items-center rounded bg-info px-1 text-[9px] font-bold uppercase text-white shadow">
@@ -199,7 +206,7 @@ export function PatientHero({
                 </>
               ) : null}
               <span>·</span>
-              <span>{t("idLabel", { id: shortId })}</span>
+              <span className="tabular-nums">{t("idLabel", { id: cardNumber })}</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
               <span className="inline-flex items-center gap-1 tabular-nums text-foreground">
@@ -221,9 +228,10 @@ export function PatientHero({
               ) : null}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
-                {t("activeBadge")}
-              </span>
+              <PatientStatusBadge
+                segment={patient.segment}
+                deletedAt={patient.deletedAt}
+              />
               {(() => {
                 const chip = lastContactChip(patient.lastContactedAt, nowMs);
                 if (!chip) return null;

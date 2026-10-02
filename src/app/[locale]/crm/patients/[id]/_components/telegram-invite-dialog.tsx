@@ -18,32 +18,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-type MintSuccess = {
-  url: string;
-  token: string;
-  expiresAt: string;
-  botUsername: string;
-  isFreshlyMinted: boolean;
-};
-
-type MintErrorBody =
-  | { error: "bot_not_configured" }
-  | {
-      error: "already_linked";
-      telegramId: string;
-      telegramUsername?: string | null;
-    }
-  | { error: string };
-
-type MintResult =
-  | { kind: "ok"; data: MintSuccess }
-  | {
-      kind: "already_linked";
-      telegramId: string;
-      telegramUsername: string | null;
-    }
-  | { kind: "bot_not_configured" }
-  | { kind: "error"; message: string };
+import { mintResultFromResponse, type MintResult } from "./telegram-invite-result";
 
 export interface TelegramInviteDialogProps {
   open: boolean;
@@ -81,31 +56,8 @@ export function TelegramInviteDialog({
           headers: { "Content-Type": "application/json" },
         },
       );
-      const body = (await res.json().catch(() => ({}))) as
-        | MintSuccess
-        | MintErrorBody;
-      if (res.status === 409 && "error" in body && body.error === "already_linked") {
-        const tg = body as Extract<MintErrorBody, { error: "already_linked" }>;
-        return {
-          kind: "already_linked",
-          telegramId: tg.telegramId,
-          telegramUsername: tg.telegramUsername ?? null,
-        };
-      }
-      if (
-        res.status === 412 &&
-        "error" in body &&
-        body.error === "bot_not_configured"
-      ) {
-        return { kind: "bot_not_configured" };
-      }
-      if (!res.ok) {
-        const message =
-          ("error" in body && typeof body.error === "string" && body.error) ||
-          `HTTP ${res.status}`;
-        return { kind: "error", message };
-      }
-      return { kind: "ok", data: body as MintSuccess };
+      const body: unknown = await res.json().catch(() => ({}));
+      return mintResultFromResponse(res.status, body);
     },
     onSuccess: (r) => {
       setResult(r);

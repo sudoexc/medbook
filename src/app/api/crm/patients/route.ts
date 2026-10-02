@@ -18,6 +18,7 @@ import {
   serializePatientForWrite,
 } from "@/server/patient/cipher-fields";
 import { toPatientListRow } from "@/server/patient/list-row";
+import { loadNextVisitAt } from "@/server/patient/next-visit";
 import { patientListOrderBy } from "@/server/patient/list-order";
 import {
   CreatePatientSchema,
@@ -120,9 +121,15 @@ export const GET = createApiListHandler(
       totalAcrossSegments += c;
     }
 
+    // «Следующий визит» from the appointments; the column on the row is
+    // never written (audit PT-25).
+    const nextVisits = await loadNextVisitAt(rows.map((r) => r.id));
+
     return ok({
       // No passport / notes in a list (audit PT-11): nothing decrypted here.
-      rows: rows.map(toPatientListRow),
+      rows: rows.map((r) =>
+        toPatientListRow({ ...r, nextVisitAt: nextVisits.get(r.id) ?? null }),
+      ),
       nextCursor,
       total,
       segmentCounts,
@@ -224,7 +231,6 @@ export const POST = createApiHandler(
           segment: body.segment ?? "NEW",
           tags: body.tags ?? [],
           notes: body.notes ?? null,
-          discountPct: body.discountPct ?? 0,
           consentMarketing: body.consentMarketing ?? false,
         });
         return tx.patient.create({

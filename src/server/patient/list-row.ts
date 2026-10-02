@@ -7,7 +7,8 @@
  * the notes decrypted, so a call operator could page through the whole
  * base's passports. None of those screens shows them: the card itself
  * (GET /api/crm/patients/[id]) is where they are read and edited. The
- * search by passport still works; it runs in the database.
+ * search by passport runs in the database and reaches only legacy
+ * plaintext passports (audit PT-26, `patientSearchWhere`).
  */
 
 /** Never in a list row: identity documents and free text about the person. */

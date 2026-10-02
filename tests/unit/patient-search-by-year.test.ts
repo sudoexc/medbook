@@ -24,7 +24,11 @@ type Row = {
   createdAt: Date;
 };
 
-const state = vi.hoisted(() => ({ rows: [] as Row[] }));
+const state = vi.hoisted(() => ({
+  rows: [] as Row[],
+  // Upcoming visits for «Следующий визит» (audit PT-25).
+  appointments: [] as Array<{ patientId: string; date: Date; status: string }>,
+}));
 
 // ── A minimal Prisma `where` evaluator ─────────────────────────────────────
 type Cond = Record<string, unknown>;
@@ -127,6 +131,14 @@ vi.mock("@/lib/prisma", () => {
           return [...bySegment].map(([segment, n]) => ({ segment, _count: { _all: n } }));
         }),
       },
+      appointment: {
+        findMany: vi.fn(async ({ where }: { where?: Cond }) =>
+          state.appointments
+            .filter((a) => matches(a as unknown as Record<string, unknown>, where))
+            .sort((a, b) => a.date.getTime() - b.date.getTime())
+            .map(({ patientId, date }) => ({ patientId, date })),
+        ),
+      },
     },
   };
 });
@@ -186,6 +198,7 @@ const PHONE_WITH_1969 = patient({
 
 beforeEach(() => {
   state.rows = [TURMATOV_1969, TURMATOV_1972, KARIMOV_1969, LEGACY_TURMATOV, PHONE_WITH_1969];
+  state.appointments = [];
 });
 
 async function search(q: string, extra = ""): Promise<{ ids: string[]; total: number }> {
@@ -256,5 +269,100 @@ describe("the same search in «Мои пациенты» and the top bar", () =>
     );
     expect(found.map((r) => r.id).sort()).toEqual(["p_legacy", "p_turmatov"]);
     expect(patientSearchWhere("   ")).toBeNull();
+  });
+});
+
+describe("the passport ciphertext never matches a search (audit PT-26)", () => {
+  async function encrypted(plain: string): Promise<string> {
+    const { encryptField } = await import("@/server/crypto/field-cipher");
+    return encryptField(plain);
+  }
+
+  it("«v1», a two-letter term and a piece of the base64 find nobody by passport", async () => {
+    const cipher = await encrypted("AA1234567");
+    state.rows = [
+      patient({ id: "p_enc", fullName: "Юсупова Дилноза", passport: cipher }),
+    ];
+    // A run of the ciphertext itself, the worst case for an ILIKE.
+    const chunk = cipher.split(":")[3]!.slice(0, 3);
+    for (const q of ["v1", "V1:", chunk, cipher]) {
+      const { ids } = await search(q);
+      expect(ids, q).toEqual([]);
+    }
+  });
+
+  it("a legacy plaintext passport is still found", async () => {
+    state.rows = [
+      patient({ id: "p_plain", fullName: "Рахимов Бобур", passport: "AB7654321" }),
+      patient({ id: "p_enc", fullName: "Юсупова Дилноза", passport: await encrypted("AB7654321") }),
+    ];
+    const { ids } = await search("ab76543");
+    expect(ids).toEqual(["p_plain"]);
+  });
+});
+
+describe("the card number «P-00125» finds its card (audit PT-25)", () => {
+  beforeEach(() => {
+    state.rows = [
+      { ...patient({ id: "p_125", fullName: "Абдуллаев Шерзод" }), patientNumber: 125 } as Row,
+      // «00125» inside a phone must not ride along with the card number.
+      {
+        ...patient({
+          id: "p_phone",
+          fullName: "Ким Ольга",
+          phone: "+998 90 100 12 55",
+          phoneNormalized: "+998901001255",
+        }),
+        patientNumber: 7,
+      } as Row,
+    ];
+  });
+
+  it("«P-00125», «p125» and the Cyrillic «Р-00125» all find patient 125 alone", async () => {
+    for (const q of ["P-00125", "p125", "Р-00125", "р 125"]) {
+      const { ids } = await search(q);
+      expect(ids, q).toEqual(["p_125"]);
+    }
+  });
+
+  it("bare digits stay a phone search", async () => {
+    const { ids } = await search("00125");
+    expect(ids).toEqual(["p_phone"]);
+  });
+
+  it("cardNumberFromTerm needs the prefix", async () => {
+    const { cardNumberFromTerm } = await import("@/server/patient/search-where");
+    expect(cardNumberFromTerm("P-00125")).toBe(125);
+    expect(cardNumberFromTerm("125")).toBeNull();
+    expect(cardNumberFromTerm("Петров")).toBeNull();
+    expect(cardNumberFromTerm("P-0")).toBeNull();
+  });
+});
+
+describe("«Следующий визит» comes from the appointments (audit PT-25)", () => {
+  async function listRows(): Promise<Array<{ id: string; nextVisitAt: string | null }>> {
+    const { GET } = await import("@/app/api/crm/patients/route");
+    const res = await GET(new Request("https://x/api/crm/patients?limit=50"));
+    const body = (await res.json()) as {
+      rows: Array<{ id: string; nextVisitAt: string | null }>;
+    };
+    return body.rows;
+  }
+
+  it("the earliest visit still ahead, ignoring cancelled and past ones", async () => {
+    const soon = new Date(Date.now() + 2 * 86_400_000);
+    const later = new Date(Date.now() + 9 * 86_400_000);
+    state.appointments = [
+      { patientId: "p_turmatov", date: later, status: "BOOKED" },
+      { patientId: "p_turmatov", date: soon, status: "CONFIRMED" },
+      { patientId: "p_karimov", date: soon, status: "CANCELLED" },
+      { patientId: "p_aliev", date: new Date(Date.now() - 5 * 86_400_000), status: "BOOKED" },
+    ];
+    const rows = await listRows();
+    const byId = new Map(rows.map((r) => [r.id, r.nextVisitAt]));
+    expect(byId.get("p_turmatov")).toBe(soon.toISOString());
+    expect(byId.get("p_karimov")).toBeNull();
+    expect(byId.get("p_aliev")).toBeNull();
+    expect(byId.get("p_legacy")).toBeNull();
   });
 });

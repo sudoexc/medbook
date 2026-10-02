@@ -27,6 +27,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { notFound } from "@/server/http";
 import { formatDate, formatPhone, formatMoney, type Locale } from "@/lib/format";
+import { formatPrintedBirthDate } from "@/lib/patients/parse-identity";
 import { inlineStorageImage } from "@/server/storage/inline-image";
 import { caseVisitOrdinals, caseVisitStats } from "@/lib/cases/case-visits";
 import { canReadCaseClinical } from "@/server/medical-case/clinical-access";
@@ -331,8 +332,9 @@ export const GET = createApiListHandler(
           ? labels.genderF
           : null;
 
+    // A year-only birth date prints as the year (audit PT-21).
     const patientBirth = mcase.patient.birthDate
-      ? formatDate(mcase.patient.birthDate, locale, "short")
+      ? formatPrintedBirthDate(mcase.patient.birthDate, locale)
       : null;
 
     const html = `<!doctype html>

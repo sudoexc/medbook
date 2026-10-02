@@ -6,6 +6,10 @@ import { ShieldCheckIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDate, formatPhone, intlLocale, type Locale } from "@/lib/format";
+import {
+  birthYearOf,
+  isYearOnlyBirthDate,
+} from "@/lib/patients/parse-identity";
 import { Textarea } from "@/components/ui/textarea";
 
 // Clinic operates in Asia/Tashkent. An appointment booked locally at e.g.
@@ -52,6 +56,7 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
   const tPanel = useTranslations("patientCard.infoPanel");
   const tCommon = useTranslations("common");
   const tHeader = useTranslations("patientCard.header");
+  const tHero = useTranslations("patientCard.hero");
   const [nowMs] = React.useState(() => Date.now());
   const [editOpen, setEditOpen] = React.useState(false);
   // Same roles as PATCH /api/crm/patients/[id]: a nurse or a call operator
@@ -128,8 +133,15 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
         <InfoRow
           label={tPanel("birthDate")}
           value={
+            // A year-only birth date (stored as 1 January) reads «1969 г.р.»,
+            // as in the hero above: 01.01.1969 would invent a day and month
+            // the doctor never gave (audit PT-21).
             patient.birthDate
-              ? `${formatDate(patient.birthDate, locale, "short")}${age !== null ? ` (${tPanel("ageSuffix", { age })})` : ""}`
+              ? `${
+                  isYearOnlyBirthDate(patient.birthDate)
+                    ? tHero("birthYear", { year: birthYearOf(patient.birthDate) })
+                    : formatDate(patient.birthDate, locale, "short")
+                }${age !== null ? ` (${tPanel("ageSuffix", { age })})` : ""}`
               : "—"
           }
         />

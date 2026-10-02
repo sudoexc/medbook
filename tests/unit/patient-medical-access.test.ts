@@ -157,6 +157,8 @@ vi.mock("@/lib/prisma", () => {
       patientClinicalNote,
       user: { findUnique: vi.fn(async () => ({ id: "u-doc", name: "Султанов Азиз" })) },
       doctor: { findUnique: vi.fn(async () => ({ id: "d1" })) },
+      // «Следующий визит» is read from the appointments (audit PT-25).
+      appointment: { findMany: vi.fn(async () => []) },
     },
   };
 });

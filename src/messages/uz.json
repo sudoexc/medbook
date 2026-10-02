@@ -404,7 +404,8 @@
       "active": "Faol",
       "dormant": "Sovimoqda",
       "vip": "VIP",
-      "churn": "Yo'qolgan"
+      "churn": "Yo'qolgan",
+      "erased": "Ma'lumotlar o'chirilgan"
     },
     "gender": {
       "male": "Erkak",
@@ -1304,7 +1305,7 @@
     },
     "hero": {
       "years": "{age} yosh",
-      "idLabel": "ID: {id}",
+      "idLabel": "Karta № {id}",
       "copyPhoneAria": "Raqamdan nusxa olish",
       "phoneCopied": "Raqam nusxalandi",
       "activeBadge": "Faol bemor",
@@ -1347,7 +1348,7 @@
       "empty": "Hozircha tavsiyalar yo'q",
       "viewAll": "Barcha tavsiyalarni ko'rsatish",
       "rebookTitle": "Takroriy tashrifga yozish",
-      "rebookDesc": "{days, plural, one {# kundan} other {# kundan}} keyin tavsiya etiladi",
+      "rebookDesc": "Oxirgi tashrif {days, plural, =0 {bugun} other {# kun oldin}}, keyingi yozilish yo'q",
       "reactivateTitle": "Reaktivatsiya: bemor 2 oydan beri kelmagan",
       "reactivateDesc": "Aksiya yoki konsultatsiya taklif qiling",
       "reminderTitle": "Tashrifdan 1 kun oldin eslatish",

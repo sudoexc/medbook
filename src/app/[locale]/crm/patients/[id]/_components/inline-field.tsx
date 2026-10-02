@@ -6,6 +6,7 @@ import { CheckIcon, PencilIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,12 @@ export interface InlineFieldProps {
   value: string | null | undefined;
   onSave: (next: string | null) => Promise<void> | void;
   placeholder?: string;
-  type?: "text" | "tel" | "date" | "select";
+  /**
+   * `multiline`: a textarea for clinical free text (complaint, diagnosis,
+   * notes). A one-line input drops the line breaks from its value, so the
+   * first edit of a multi-line complaint saved it as one line (audit PT-23).
+   */
+  type?: "text" | "tel" | "date" | "select" | "multiline";
   /** Options when `type="select"`. */
   options?: Array<{ value: string; label: string }>;
   /** Allow empty-string to save as null. */
@@ -32,10 +38,25 @@ export interface InlineFieldProps {
 }
 
 /**
+ * What a key press does in the editor. On one line Enter saves; in a
+ * textarea Enter is a new line and Ctrl/Cmd+Enter saves. Esc cancels both.
+ */
+export function inlineFieldKeyAction(
+  e: { key: string; ctrlKey?: boolean; metaKey?: boolean },
+  multiline: boolean,
+): "save" | "cancel" | null {
+  if (e.key === "Escape") return "cancel";
+  if (e.key !== "Enter") return null;
+  if (!multiline) return "save";
+  return e.ctrlKey || e.metaKey ? "save" : null;
+}
+
+/**
  * Single-field inline editor.
  *
  * Display mode: text (or custom node) + a pencil icon on hover.
- * Edit mode: input + Save/Cancel buttons. Enter saves, Esc cancels.
+ * Edit mode: input + Save/Cancel buttons. Enter saves, Esc cancels
+ * (`inlineFieldKeyAction`; Ctrl/Cmd+Enter in a multiline field).
  *
  * Save happens via the supplied `onSave` callback — page-level mutations
  * handle optimistic updates and toast on error, so this component stays
@@ -56,16 +77,26 @@ export function InlineField({
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState<string>(value ?? "");
   const [saving, setSaving] = React.useState(false);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | HTMLTextAreaElement | null>(
+    null,
+  );
+  const multiline = type === "multiline";
 
   React.useEffect(() => {
     setDraft(value ?? "");
   }, [value]);
 
   React.useEffect(() => {
-    if (editing && type !== "select") {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+    if (!editing || type === "select") return;
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    if (type === "multiline") {
+      // Caret at the end, not select-all: one stray key would otherwise
+      // replace a whole complaint the doctor only meant to amend.
+      el.setSelectionRange(el.value.length, el.value.length);
+    } else {
+      el.select();
     }
   }, [editing, type]);
 
@@ -90,6 +121,14 @@ export function InlineField({
     }
   }, [draft, value, onSave, allowEmpty]);
 
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const action = inlineFieldKeyAction(e, multiline);
+    if (action === null) return;
+    e.preventDefault();
+    if (action === "save") void commit();
+    else cancel();
+  };
+
   if (!editing) {
     return (
       <div className={cn("group flex flex-col gap-0.5", className)}>
@@ -103,12 +142,18 @@ export function InlineField({
           disabled={disabled}
           onClick={() => setEditing(true)}
           className={cn(
-            "flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors",
+            "flex w-full gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors",
+            multiline ? "items-start" : "items-center",
             "hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
             disabled && "cursor-default opacity-60 hover:bg-transparent",
           )}
         >
-          <span className="min-w-0 flex-1 truncate">
+          <span
+            className={cn(
+              "min-w-0 flex-1",
+              multiline ? "break-words" : "truncate",
+            )}
+          >
             {display || (
               <span className="text-muted-foreground">
                 {placeholder ?? "—"}
@@ -130,7 +175,7 @@ export function InlineField({
           {label}
         </Label>
       ) : null}
-      <div className="flex items-center gap-1">
+      <div className={cn("flex gap-1", multiline ? "items-start" : "items-center")}>
         {type === "select" ? (
           <Select
             value={draft || ""}
@@ -147,20 +192,22 @@ export function InlineField({
               ))}
             </SelectContent>
           </Select>
-        ) : (
-          <Input
-            ref={inputRef}
+        ) : multiline ? (
+          <Textarea
+            ref={inputRef as React.Ref<HTMLTextAreaElement>}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void commit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                cancel();
-              }
-            }}
+            onKeyDown={onKeyDown}
+            placeholder={placeholder}
+            rows={4}
+            disabled={saving}
+          />
+        ) : (
+          <Input
+            ref={inputRef as React.Ref<HTMLInputElement>}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
             type={type}
             placeholder={placeholder}
             className="h-8"

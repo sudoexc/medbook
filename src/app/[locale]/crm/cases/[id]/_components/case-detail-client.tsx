@@ -608,6 +608,7 @@ function CaseMetaCard({
           onSave={async (next) => {
             await patch.mutateAsync({ primaryComplaint: next ?? null });
           }}
+          type="multiline"
           placeholder={t("metaComplaintPlaceholder")}
         />
       </div>
@@ -631,6 +632,7 @@ function CaseMetaCard({
           onSave={async (next) => {
             await patch.mutateAsync({ diagnosisText: next ?? null });
           }}
+          type="multiline"
           placeholder={t("metaDiagnosisPlaceholder")}
         />
         <div className="mt-2">
@@ -673,6 +675,7 @@ function CaseMetaCard({
           onSave={async (next) => {
             await patch.mutateAsync({ notes: next ?? null });
           }}
+          type="multiline"
           placeholder={t("metaNotesPlaceholder")}
         />
       </div>

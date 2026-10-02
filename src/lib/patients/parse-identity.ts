@@ -18,6 +18,8 @@
  * precise date, and the age it yields is ±1 year by construction.
  */
 
+import { formatDate, type Locale } from "@/lib/format";
+
 /** Nobody alive was born before this; anything earlier is a typo. */
 const MIN_YEAR = 1900;
 
@@ -133,4 +135,21 @@ export function isYearOnlyBirthDate(value: Date | string): boolean {
 export function birthYearOf(value: Date | string): number {
   const d = typeof value === "string" ? new Date(value) : value;
   return d.getUTCFullYear();
+}
+
+/**
+ * Birth date for a document whose label already reads «Дата рождения»:
+ * the bare year when only the year is known, the full date otherwise.
+ *
+ * The conclusion print got this right; the case card PDF, the sick leave,
+ * the prescription blank and the lab order printed «01.01.1969» for the
+ * 72 of 94 patients the doctor typed with a year only (audit PT-21).
+ */
+export function formatPrintedBirthDate(
+  value: Date | string,
+  locale: Locale,
+): string {
+  return isYearOnlyBirthDate(value)
+    ? String(birthYearOf(value))
+    : formatDate(value, locale, "short");
 }

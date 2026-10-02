@@ -11,7 +11,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { displayPhone } from "@/lib/phone";
-import { formatDate } from "@/lib/format";
+import { formatPrintedBirthDate } from "@/lib/patients/parse-identity";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import QRCode from "qrcode";
 import { inlineStorageImage } from "@/server/storage/inline-image";
@@ -238,7 +238,7 @@ function renderHtml({
 
   <div class="grid">
     <div><span class="lbl">ФИО:</span> <b>${escapeHtml(patient.fullName)}</b></div>
-    <div><span class="lbl">Дата рождения:</span> ${patient.birthDate ? escapeHtml(formatDate(patient.birthDate, "ru", "short")) : "—"}</div>
+    <div><span class="lbl">Дата рождения:</span> ${patient.birthDate ? escapeHtml(formatPrintedBirthDate(patient.birthDate, "ru")) : "—"}</div>
     <div><span class="lbl">Пол:</span> ${patient.gender === "M" ? "мужской" : patient.gender === "F" ? "женский" : "—"}</div>
     <div><span class="lbl">Телефон:</span> ${escapeHtml(displayPhone(patient))}</div>
     <div><span class="lbl">МКБ-10:</span> ${sl.diagnosisCode ? escapeHtml(sl.diagnosisCode) + (sl.diagnosisName ? " · " + escapeHtml(sl.diagnosisName) : "") : "—"}</div>

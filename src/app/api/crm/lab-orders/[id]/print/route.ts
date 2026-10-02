@@ -15,7 +15,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { displayPhone } from "@/lib/phone";
-import { formatDate } from "@/lib/format";
+import { formatPrintedBirthDate } from "@/lib/patients/parse-identity";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import QRCode from "qrcode";
 
@@ -169,8 +169,9 @@ function renderHtml({
     year: "numeric",
     timeZone: "Asia/Tashkent",
   });
+  // A year-only birth date prints as the year (audit PT-21).
   const dob = order.patient.birthDate
-    ? formatDate(order.patient.birthDate, "ru", "short")
+    ? formatPrintedBirthDate(order.patient.birthDate, "ru")
     : "—";
   const age = order.patient.birthDate
     ? `${calcAge(order.patient.birthDate)} лет`

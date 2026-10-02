@@ -53,7 +53,9 @@ export const CreatePatientSchema = z.object({
   segment: PatientSegmentEnum.optional(),
   tags: z.array(z.string().max(64)).max(50).optional(),
   notes: z.string().max(5000).optional().nullable(),
-  discountPct: z.number().int().min(0).max(100).optional(),
+  // No `discountPct`: the card's discount was stored and never applied to a
+  // price (bookings take the visit's own discount), so accepting it only
+  // recorded a promise the clinic did not keep (audit PT-25).
   consentMarketing: z.boolean().optional(),
 });
 

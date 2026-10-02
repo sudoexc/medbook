@@ -49,34 +49,7 @@ import type {
   PatientsListFilters,
 } from "../_hooks/use-patients-list";
 import type { OptionalColumnId } from "./patients-kpi-tabs";
-
-const SEGMENT_STYLE: Record<
-  PatientRow["segment"],
-  { tKey: string; className: string }
-> = {
-  NEW: {
-    tKey: "segment.new",
-    className: "bg-primary/10 text-primary",
-  },
-  ACTIVE: {
-    tKey: "segment.active",
-    className:
-      "bg-success/15 text-success-foreground",
-  },
-  VIP: {
-    tKey: "segment.vip",
-    className: "bg-info/15 text-info",
-  },
-  DORMANT: {
-    tKey: "segment.dormant",
-    className:
-      "bg-warning/15 text-warning-foreground",
-  },
-  CHURN: {
-    tKey: "segment.churn",
-    className: "bg-destructive/10 text-destructive",
-  },
-};
+import { PatientStatusBadge } from "./patient-status-badge";
 
 const SOURCE_ICON: Record<NonNullable<PatientRow["source"]>, LucideIcon> = {
   WEBSITE: GlobeIcon,
@@ -374,16 +347,15 @@ export function PatientsTable({
               </div>
             );
           }
-          const d = new Date(v);
-          const hh = String(d.getHours()).padStart(2, "0");
-          const mm = String(d.getMinutes()).padStart(2, "0");
+          // Clinic wall clock, like the date above it: the browser's own
+          // zone could put the time on a different day.
           return (
             <div className="flex min-w-0 flex-col">
               <span className="text-[13px] tabular-nums text-foreground">
                 {formatDate(v, locale, "short")}
               </span>
               <span className="text-[11px] tabular-nums text-muted-foreground">
-                {hh}:{mm}
+                {formatDate(v, locale, "time")}
               </span>
             </div>
           );
@@ -403,19 +375,9 @@ export function PatientsTable({
       {
         id: "segment",
         header: () => t("columns.status"),
-        cell: ({ row }) => {
-          const cfg = SEGMENT_STYLE[row.original.segment];
-          return (
-            <span
-              className={cn(
-                "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",
-                cfg.className,
-              )}
-            >
-              {t(cfg.tKey as never)}
-            </span>
-          );
-        },
+        cell: ({ row }) => (
+          <PatientStatusBadge segment={row.original.segment} />
+        ),
       },
       {
         id: "priority",

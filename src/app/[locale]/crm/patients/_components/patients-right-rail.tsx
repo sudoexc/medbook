@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArrowRightIcon,
-  CalendarClockIcon,
   ChevronRightIcon,
   PhoneIcon,
   SendIcon,
@@ -115,12 +115,18 @@ export function PatientsRightRail({
     return count;
   }, [rows, segmentCounts]);
 
+  // Each item opens the segment list it counts, where the work is done
+  // (the «Остывают» list carries «Перезвонить»). They used to be styled as
+  // links with nothing behind them, and a third, «Предложить запись ·
+  // Подходят по триггерам», summed VIP and «Остывают» under triggers that
+  // do not exist (audit PT-24).
   const actions: Array<{
     tone: Tone;
     icon: LucideIcon;
     title: string;
     subtitle: string;
     count: number;
+    href: string;
   }> = [
     {
       tone: "primary",
@@ -128,6 +134,7 @@ export function PatientsRightRail({
       title: t("actions.callTitle"),
       subtitle: t("actions.callSubtitle"),
       count: segments.DORMANT,
+      href: `/${locale}/crm/patients/segments/dormant`,
     },
     {
       tone: "info",
@@ -135,13 +142,7 @@ export function PatientsRightRail({
       title: t("actions.telegramTitle"),
       subtitle: t("actions.telegramSubtitle"),
       count: segments.NEW,
-    },
-    {
-      tone: "success",
-      icon: CalendarClockIcon,
-      title: t("actions.bookTitle"),
-      subtitle: t("actions.bookSubtitle"),
-      count: segments.VIP + segments.DORMANT,
+      href: `/${locale}/crm/patients/segments/new`,
     },
   ];
 
@@ -159,52 +160,54 @@ export function PatientsRightRail({
             const tone = TONE_CLASS[a.tone];
             const Icon = a.icon;
             return (
-              <li
-                key={a.title}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-xl border border-border bg-card p-2.5 border-l-[3px] cursor-pointer hover:bg-muted/30",
-                  tone.border,
-                )}
-              >
-                <span
+              <li key={a.title}>
+                <Link
+                  href={a.href}
                   className={cn(
-                    "inline-flex size-8 shrink-0 items-center justify-center rounded-lg",
-                    tone.icon,
+                    "flex items-center gap-2.5 rounded-xl border border-border bg-card p-2.5 border-l-[3px] hover:bg-muted/30",
+                    tone.border,
                   )}
-                  aria-hidden
                 >
-                  <Icon className="size-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-[12px] font-semibold text-foreground">
-                      {a.title}
-                    </span>
-                    <span
-                      className={cn(
-                        "shrink-0 text-[11px] font-bold tabular-nums",
-                        tone.chip.replace(/bg-[^\s]+\s?/, "").trim(),
-                      )}
-                    >
-                      {a.count}
-                    </span>
+                  <span
+                    className={cn(
+                      "inline-flex size-8 shrink-0 items-center justify-center rounded-lg",
+                      tone.icon,
+                    )}
+                    aria-hidden
+                  >
+                    <Icon className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-[12px] font-semibold text-foreground">
+                        {a.title}
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 text-[11px] font-bold tabular-nums",
+                          tone.chip.replace(/bg-[^\s]+\s?/, "").trim(),
+                        )}
+                      >
+                        {a.count}
+                      </span>
+                    </div>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {a.subtitle}
+                    </p>
                   </div>
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {a.subtitle}
-                  </p>
-                </div>
-                <ChevronRightIcon className="size-3.5 text-muted-foreground" />
+                  <ChevronRightIcon className="size-3.5 text-muted-foreground" />
+                </Link>
               </li>
             );
           })}
         </ul>
-        <button
-          type="button"
+        <Link
+          href={`/${locale}/crm/action-center`}
           className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-xl border border-border bg-card px-3 py-2 text-[12px] font-semibold text-primary hover:bg-primary/5"
         >
           {t("viewAllActions")}
           <ArrowRightIcon className="size-3.5" />
-        </button>
+        </Link>
       </section>
 
       <section>
@@ -246,8 +249,10 @@ export function PatientsRightRail({
             );
           })}
         </ul>
+        {/* «Все сегменты» lifts the segment filter: every segment again. */}
         <button
           type="button"
+          onClick={() => onSelectSegment(undefined)}
           className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
         >
           {t("viewAllSegments")}

@@ -34,6 +34,8 @@ export type PatientAppointmentShort = {
 export type Patient = {
   id: string;
   clinicId: string;
+  /** Per-clinic card number, shown as «P-00125» (`formatPatientNumber`). */
+  patientNumber: number;
   fullName: string;
   phone: string;
   phoneNormalized: string;
@@ -72,9 +74,12 @@ export type Patient = {
   finance?: PatientFinance;
   discountPct: number;
   lastVisitAt: string | null;
+  /** Computed by the server from the appointments (audit PT-25). */
   nextVisitAt: string | null;
   lastContactedAt: string | null;
   consentMarketing: boolean;
+  /** Set once the card is anonymised by a DSAR erasure. */
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
   appointments?: PatientAppointmentShort[];
@@ -85,15 +90,18 @@ export type PatientUpdateInput = Partial<
     Patient,
     | "id"
     | "clinicId"
+    | "patientNumber"
     | "phoneNormalized"
     | "phoneVerifiedAt"
     | "ltv"
     | "visitsCount"
     | "balance"
     | "finance"
+    | "discountPct"
     | "lastVisitAt"
     | "nextVisitAt"
     | "lastContactedAt"
+    | "deletedAt"
     | "createdAt"
     | "updatedAt"
     | "appointments"

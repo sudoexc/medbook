@@ -35,17 +35,20 @@ export function PatientRecommendationsCard({
 }: PatientRecommendationsCardProps) {
   const t = useTranslations("patientCard.recs");
   const [nowMs] = React.useState(() => Date.now());
+  const [showAll, setShowAll] = React.useState(false);
   const recs = React.useMemo<Rec[]>(() => {
     const out: Rec[] = [];
     const since = daysSince(patient.lastVisitAt, nowMs);
     if (since !== null) {
+      // `nextVisitAt` is computed from the appointments now (audit PT-25),
+      // so this no longer fires for a patient already booked. The text
+      // states the fact it rests on; it used to invent a date to come back
+      // («через 14 - since/2 дней», audit PT-24).
       if (since < 30 && !patient.nextVisitAt) {
         out.push({
           id: "rebook",
           title: t("rebookTitle"),
-          description: t("rebookDesc", {
-            days: Math.max(1, 14 - Math.floor(since / 2)),
-          }),
+          description: t("rebookDesc", { days: since }),
         });
       } else if (since >= 60) {
         out.push({
@@ -56,7 +59,8 @@ export function PatientRecommendationsCard({
       }
     }
 
-    if (patient.nextVisitAt) {
+    // A Telegram reminder needs Telegram to send it through.
+    if (patient.nextVisitAt && patient.telegramId) {
       out.push({
         id: "reminder",
         title: t("reminderTitle"),
@@ -87,8 +91,12 @@ export function PatientRecommendationsCard({
       });
     }
 
-    return out.slice(0, 3);
+    return out;
   }, [patient, appointments, nowMs, t]);
+
+  // Three at a glance; «Показать все» opens the rest, and is only there
+  // when there is a rest (it used to be a button with no action).
+  const shown = showAll ? recs : recs.slice(0, 3);
 
   return (
     <section
@@ -107,7 +115,7 @@ export function PatientRecommendationsCard({
             {t("empty")}
           </li>
         ) : (
-          recs.map((r, i) => (
+          shown.map((r, i) => (
             <li
               key={r.id}
               className="flex items-start gap-2 rounded-xl border border-border bg-background p-2.5"
@@ -128,11 +136,18 @@ export function PatientRecommendationsCard({
         )}
       </ol>
 
-      <div className="mt-3">
-        <Button variant="outline" size="sm" className="w-full text-[12px]">
-          {t("viewAll")}
-        </Button>
-      </div>
+      {recs.length > shown.length ? (
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full text-[12px]"
+            onClick={() => setShowAll(true)}
+          >
+            {t("viewAll")}
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }

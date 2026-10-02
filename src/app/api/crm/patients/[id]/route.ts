@@ -28,6 +28,7 @@ import {
   patientFootprint,
 } from "@/server/patient/footprint";
 import { loadPatientFinance } from "@/server/patient/finance";
+import { loadNextVisitAt } from "@/server/patient/next-visit";
 import { clientIpForAudit } from "@/lib/client-ip";
 import {
   findVerifiedPhoneOwners,
@@ -119,7 +120,15 @@ export const GET = createApiListHandler(
     // (the card, «Оплаты», the call-center and Telegram rails) gets the one
     // computed figure instead (audit PT-08).
     const finance = await loadPatientFinance(row.clinicId, id);
-    return ok({ ...hydratePatientForRead(row), balance: finance.balance, finance });
+    // «Следующий визит» from the appointments; the column is never written
+    // (audit PT-25).
+    const nextVisits = await loadNextVisitAt([id]);
+    return ok({
+      ...hydratePatientForRead(row),
+      nextVisitAt: nextVisits.get(id) ?? null,
+      balance: finance.balance,
+      finance,
+    });
   }
 );
 
@@ -213,7 +222,12 @@ export const PATCH = createApiHandler(
       // the decrypted rows put the passport and notes in plain text here.
       meta: patientUpdateAuditMeta(beforeHydrated, afterHydrated),
     });
-    return ok(afterHydrated);
+    // The card merges this answer into what GET gave it. The stored
+    // `nextVisitAt` is never written (GET computes it, audit PT-25), so it
+    // stays out of here: its NULL would blank «Следующий визит» until the
+    // refetch.
+    const { nextVisitAt: _neverWritten, ...fresh } = afterHydrated;
+    return ok(fresh);
   }
 );
 

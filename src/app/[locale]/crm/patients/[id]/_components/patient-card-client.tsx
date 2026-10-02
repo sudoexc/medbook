@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, RefreshCwIcon } from "lucide-react";
@@ -32,6 +33,7 @@ import {
 } from "./patient-privacy-dialogs";
 import { patientAuditHref } from "@/lib/audit-links";
 import { PatientCardSkeleton } from "./patient-card-skeleton";
+import { TAB_ORDER, tabFromParam, type TabKey } from "./patient-card-tabs";
 
 // Tabs are lazy-loaded so the initial overview render stays light. Only the
 // active tab + its dependencies are bundled in the initial chunk.
@@ -56,25 +58,6 @@ const CommunicationsTab = React.lazy(() =>
   })),
 );
 
-type TabKey =
-  | "overview"
-  | "visits"
-  | "cases"
-  | "medical"
-  | "documents"
-  | "payments"
-  | "communications";
-
-const TAB_ORDER: { key: TabKey; tKey: string }[] = [
-  { key: "overview", tKey: "overview" },
-  { key: "visits", tKey: "visits" },
-  { key: "cases", tKey: "cases" },
-  { key: "medical", tKey: "medical" },
-  { key: "documents", tKey: "documents" },
-  { key: "payments", tKey: "payments" },
-  { key: "communications", tKey: "communications" },
-];
-
 export function PatientCardClient({ id }: { id: string }) {
   const t = useTranslations("patientCard");
   const tTabs = useTranslations("patientCard.tabs");
@@ -89,6 +72,14 @@ export function PatientCardClient({ id }: { id: string }) {
   const [erasureOpen, setErasureOpen] = React.useState(false);
   const [newApptOpen, setNewApptOpen] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("overview");
+
+  // `?tab=` deep links (the Telegram chat rail links «Случаи», «Оплаты»,
+  // «Документы» this way) used to land on «Обзор», because only the
+  // `#case-` hash was read (audit PT-24).
+  const tabParam = tabFromParam(useSearchParams().get("tab"));
+  React.useEffect(() => {
+    if (tabParam) setTab(tabParam);
+  }, [tabParam]);
 
   // Hash deep-link: when arriving with `#case-<id>`, switch to the Cases tab
   // so the Cases-tab effect can scroll the matching card into view. Listens
@@ -282,6 +273,7 @@ export function PatientCardClient({ id }: { id: string }) {
             patient={patient}
             appointments={appointments}
             onOpenNewAppointmentDialog={openNewAppointment}
+            onOpenCommunications={() => setTab("communications")}
           />
         </div>
       </aside>

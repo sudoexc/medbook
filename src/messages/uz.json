@@ -3605,10 +3605,14 @@
       "unlink": {
         "action": "Chatni kartadan ajratish",
         "warning": "Yozishma «{name}» kartasida ko'rinmay qoladi. Shundan so'ng chatni F.I.Sh. va telefon bo'yicha kerakli bemorga biriktirish mumkin.",
+        "warningTelegram": "Bu chatning Telegrami kartaga biriktirilgan. Agar u shu yerdan, chatdan biriktirilgan bo'lsa, chat bilan birga ajratiladi va eslatmalar hamda xulosalar unga kelmay qoladi. Agar u taklifnoma yoki klinika ilovasi orqali biriktirilgan bo'lsa, chat kartada qoladi.",
         "confirm": "Ha, ajratish",
         "cancel": "Bekor qilish",
         "done": "Chat kartadan ajratildi",
-        "failed": "Chatni ajratib bo'lmadi"
+        "doneWithTelegram": "Chat va uning Telegrami kartadan ajratildi",
+        "failed": "Chatni ajratib bo'lmadi",
+        "cardOwnsTelegram": "Chatni ajratib bo'lmaydi: uning Telegrami «{name}» kartasiga chatdan emas (taklifnoma, klinika ilovasi yoki qo'lda) biriktirilgan va bemorning keyingi xabari yana shu kartaga keladi.",
+        "roleRequired": "Tasdiqlangan Telegram bog'lanishini registratura, shifokor yoki administrator olib tashlashi mumkin."
       },
       "telegramBind": {
         "title": "Telegram kartaga bog'lanmagan",

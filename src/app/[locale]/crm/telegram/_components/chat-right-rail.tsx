@@ -67,6 +67,7 @@ import {
   durationParts,
 } from "../_lib/chat-stats";
 import { createPatientErrorKey } from "../_lib/create-patient-error";
+import { unlinkErrorKey } from "../_lib/unlink-error";
 
 export interface ChatRightRailProps {
   conversation: InboxConversation | null;
@@ -268,9 +269,13 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
     isPrivateChatId(conversation.externalId);
   // A bot chat tied to the wrong card can be untied (audit G6-14). The
   // in-app chat of the Mini App and a thread opened from the card belong to
-  // that card and have no Telegram account to move elsewhere.
+  // that card and have no Telegram account to move elsewhere. Nor does an
+  // unconfirmed Mini App card's chat: the card holds the account, so the
+  // bot would tie the chat back; the relink form above is how it moves.
   const canUnlink =
-    conversation.channel === "TG" && isPrivateChatId(conversation.externalId);
+    conversation.channel === "TG" &&
+    isPrivateChatId(conversation.externalId) &&
+    !miniAppCard;
 
   return (
     <div
@@ -332,7 +337,12 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
       />
 
       {canUnlink ? (
-        <UnlinkPatientCard conversation={conversation} patientName={displayName} />
+        <UnlinkPatientCard
+          conversation={conversation}
+          patientId={patientId}
+          patientName={displayName}
+          ownsTelegram={!!p?.telegramId && p.telegramId === conversation.externalId}
+        />
       ) : null}
     </div>
   );
@@ -1116,15 +1126,21 @@ function TelegramBindCard({
  * patient, the chat showed her visits, booked onto her card and was read by
  * her doctor, and only the database could undo it. Untied, the rail offers
  * the name and phone form again, so this is also how the chat moves to
- * another card. A card's Telegram is not touched here: binding it was its
- * own confirmed step.
+ * another card. When the card holds the chat's Telegram the bot would tie
+ * the chat back on the next message: an account the inbox wrote there
+ * leaves with the chat, and one the card got otherwise (an invite, the
+ * Mini App) keeps the chat, which the server answers in words.
  */
 function UnlinkPatientCard({
   conversation,
+  patientId,
   patientName,
+  ownsTelegram,
 }: {
   conversation: InboxConversation;
+  patientId: string;
   patientName: string;
+  ownsTelegram: boolean;
 }) {
   const t = useTranslations("tgInbox.rail.unlink");
   const qc = useQueryClient();
@@ -1138,15 +1154,24 @@ function UnlinkPatientCard({
         credentials: "include",
         body: JSON.stringify({ patientId: null }),
       });
-      if (!res.ok) throw new Error(t("failed"));
+      const j: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new RailMessageError(
+          t(unlinkErrorKey(res.status, j), { name: patientName }),
+        );
+      }
+      return (j as { telegramUnlinked?: boolean } | null)?.telegramUnlinked === true;
     },
-    onSuccess: () => {
+    onSuccess: (telegramUnlinked) => {
       setConfirming(false);
-      toast.success(t("done"));
+      toast.success(telegramUnlinked ? t("doneWithTelegram") : t("done"));
+      // The card may have just lost the chat's Telegram.
+      void qc.invalidateQueries({ queryKey: ["patient-mini", patientId] });
       invalidateConversationCaches(qc);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : t("failed"));
+      setConfirming(false);
+      toast.error(err instanceof RailMessageError ? err.message : t("failed"));
     },
   });
 
@@ -1168,6 +1193,11 @@ function UnlinkPatientCard({
       <p className="text-[12px] leading-snug text-foreground">
         {t("warning", { name: patientName })}
       </p>
+      {ownsTelegram ? (
+        <p className="text-[12px] leading-snug text-muted-foreground">
+          {t("warningTelegram")}
+        </p>
+      ) : null}
       <div className="flex gap-1.5">
         <Button
           type="button"

@@ -11,7 +11,9 @@ import { UpdateConversationSchema } from "@/server/schemas/conversation";
 import { publishEventSafe } from "@/server/realtime/publish";
 import {
   bindThreadTelegramToCard,
+  planThreadUnlink,
   threadTelegramId,
+  unbindInboxTelegram,
   type ThreadTelegramLink,
 } from "@/server/conversations/link-patient";
 import { threadProfileName } from "@/lib/patients/telegram-card";
@@ -110,6 +112,34 @@ export const PATCH = createApiHandler(
         return err("ValidationError", 400, { reason: "no_patient" });
       }
     }
+    // Untying a bot chat from its card (audit G6-14 review): when the card
+    // holds the chat's account the webhook would tie the chat straight back
+    // on the next message. An account the inbox put there leaves with the
+    // chat; one the card holds otherwise keeps the chat where it is.
+    let unbindTelegram: { patientId: string; telegramId: string } | null = null;
+    if (rest.patientId === null && before.patientId) {
+      const plan = await planThreadUnlink({
+        clinicId,
+        patientId: before.patientId,
+        telegramId: threadTelegramId(before),
+      });
+      if (plan.kind === "card-owns-telegram") {
+        return err("Conflict", 409, { reason: "card_owns_telegram" });
+      }
+      if (plan.kind === "with-telegram") {
+        // A binding staff confirmed is undone by the roles that confirm.
+        if (
+          plan.confirmed &&
+          (ctx.kind !== "TENANT" || !TELEGRAM_CONFIRM_ROLES.has(ctx.role))
+        ) {
+          return err("forbidden", 403, { reason: "telegram_link_role" });
+        }
+        unbindTelegram = {
+          patientId: before.patientId,
+          telegramId: plan.telegramId,
+        };
+      }
+    }
     // A patient being linked must be one of this clinic's live cards.
     const linkingPatientId =
       typeof rest.patientId === "string" && rest.patientId !== before.patientId
@@ -167,10 +197,19 @@ export const PATCH = createApiHandler(
     // across tenants; we already verified the row exists in this clinic.
     // A bare Telegram confirmation changes nothing on the thread itself.
     if (Object.keys(data).length > 0) {
-      await prisma.conversation.updateMany({
+      const threadWrite = prisma.conversation.updateMany({
         where: { id, clinicId },
         data: data as never,
       });
+      // The chat and the account it brought leave the card together.
+      if (unbindTelegram) {
+        await prisma.$transaction([
+          threadWrite,
+          unbindInboxTelegram({ clinicId, ...unbindTelegram }),
+        ]);
+      } else {
+        await threadWrite;
+      }
     }
     const after = (await prisma.conversation.findFirst({
       where: { id, clinicId },
@@ -185,6 +224,14 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    if (unbindTelegram) {
+      await audit(request, {
+        action: "patient.telegram.inbox_unlinked",
+        entityType: "Patient",
+        entityId: unbindTelegram.patientId,
+        meta: { telegramId: unbindTelegram.telegramId, conversationId: id },
+      });
+    }
 
     // Linking the thread identifies the patient's Telegram too (audit
     // TG-11): the card learns the account so reminders and the next
@@ -229,6 +276,6 @@ export const PATCH = createApiHandler(
         patientId: after.patientId,
       },
     });
-    return ok({ ...after, telegramLink });
+    return ok({ ...after, telegramLink, telegramUnlinked: unbindTelegram !== null });
   }
 );

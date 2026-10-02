@@ -231,7 +231,7 @@ describe("G6-14: errors in words, and untying a chat", () => {
     expect(UpdateConversationSchema.safeParse({ patientId: null }).success).toBe(true);
     const rail = read(RAIL);
     expect(rail).toContain("JSON.stringify({ patientId: null })");
-    expect(rail).toMatch(/<UnlinkPatientCard conversation=\{conversation\}/);
+    expect(rail).toMatch(/<UnlinkPatientCard\s+conversation=\{conversation\}/);
   });
 });
 

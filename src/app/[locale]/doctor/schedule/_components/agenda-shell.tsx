@@ -185,6 +185,10 @@ function statusBadge(entry: ScheduleEntry): {
     };
   }
   if (entry.status === "done") {
+    // A skipped patient shares the closed bucket but was never seen (DC-25).
+    if (entry.appointmentStatus === "SKIPPED") {
+      return { labelKey: "skipped", className: "bg-warning/15 text-warning" };
+    }
     return {
       labelKey: "done",
       className: "bg-muted text-muted-foreground",

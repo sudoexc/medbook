@@ -186,6 +186,26 @@ describe("POST /api/crm/appointments/walkin", () => {
       phoneOwner: "other",
     });
   });
+
+  it("Q-19: forwards the new patient's sex and source", async () => {
+    state.walkinResult = MISMATCH;
+    const { POST } = await import("@/app/api/crm/appointments/walkin/route");
+    await POST(
+      json("https://x/api/crm/appointments/walkin", {
+        doctorId: "doc_1",
+        newPatient: {
+          fullName: "Юсупова Малика",
+          phone: "+998901234567",
+          gender: "FEMALE",
+          source: "INSTAGRAM",
+        },
+      }),
+    );
+    expect(state.walkinCalls[0]!.patient).toMatchObject({
+      gender: "FEMALE",
+      source: "INSTAGRAM",
+    });
+  });
 });
 
 describe("POST /api/c/[slug]/queue/walkin (kiosk)", () => {

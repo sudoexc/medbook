@@ -218,6 +218,11 @@ export type AppointmentWithRefs = {
   status: string;
   /** Stage 2.D — used to gate the T-3d "gentle ping" reminder. */
   confirmedAt: Date | null;
+  /**
+   * Appointment.channel (the row is loaded with all its scalars). WALKIN
+   * marks a live-queue ticket, whose removal sends nothing (audit Q-17).
+   */
+  channel?: string | null;
   patient: {
     id: string;
     fullName: string;
@@ -1224,8 +1229,25 @@ export type MaterializeOutcome = {
     | "no_template"
     | "confirmed"
     | "already_scheduled"
-    | "no_recipient";
+    | "no_recipient"
+    | "walkin";
 };
+
+/**
+ * A live-queue ticket (WALKIN) is never told about as a booking: taking one
+ * sends nothing (`registerWalkin` fires no trigger), so there is no «запись»
+ * to call off (audit Q-17). The doctor's «Убрать из очереди» on a mis-added
+ * row or a duplicate is a CANCELLED write, and the generic cancel message
+ * told a patient still sitting in the corridor «ваша запись отменена»; with
+ * no Telegram it raised a «позвонить» task per removed duplicate instead.
+ * The paper ticket's /q page shows the removal to the patient.
+ */
+export function isSilentForWalkin(
+  trigger: TriggerKey,
+  appt: { channel?: string | null },
+): boolean {
+  return appt.channel === "WALKIN" && trigger.startsWith("appointment.cancelled");
+}
 
 /**
  * Triggers whose worker finds its template by slug and whose template no
@@ -1258,6 +1280,11 @@ async function materializeForAppointment(
 ): Promise<MaterializeOutcome> {
   const appt = await loadAppointment(apptId);
   if (!appt) return { created: 0, skipped: 0, reason: "no_appointment" };
+  // Before the template lookup and the no-channel compensator: a removed
+  // walk-in gets neither a message nor a call task (Q-17).
+  if (isSilentForWalkin(trigger, appt)) {
+    return { created: 0, skipped: 1, reason: "walkin" };
+  }
   let tpl = await findTemplateFor(appt.clinicId, trigger);
   const provisioned = PROVISIONED_TEMPLATES[trigger];
   if (!tpl && provisioned) {

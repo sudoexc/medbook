@@ -81,6 +81,8 @@ export function LiveQueueCard() {
   // cancel, not a delete: the visit keeps its history and its ticket, it
   // just leaves the live lane. Confirmation is deliberate — the row sits
   // next to «Вызвать», and a stray click must not drop a waiting patient.
+  // The patient is not messaged «запись отменена»: a walk-in's cancel is
+  // silent server side (`isSilentForWalkin`, Q-17).
   const removeFromQueue = (entry: LiveQueueEntry) => {
     if (!window.confirm(t("removeConfirm", { name: entry.patientFullName }))) {
       return;
@@ -141,11 +143,13 @@ export function LiveQueueCard() {
           </li>
         ) : (
           queue.map((entry) => {
-            const waitingMin = entry.queuedAt
+            // From the arrival, not `queuedAt`: a reception drag rewrites the
+            // sort key and made a just-arrived patient «ждёт 2 ч» (Q-23).
+            const waitingMin = entry.arrivedAt
               ? Math.max(
                   0,
                   Math.floor(
-                    (nowMs - new Date(entry.queuedAt).getTime()) / 60_000,
+                    (nowMs - new Date(entry.arrivedAt).getTime()) / 60_000,
                   ),
                 )
               : null;

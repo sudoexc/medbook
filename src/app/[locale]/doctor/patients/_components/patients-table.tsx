@@ -24,6 +24,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import {
+  daysSinceLastVisit,
+  isDoctorDormant,
+} from "@/lib/doctor-patient-segments";
 import { toast } from "sonner";
 
 import { usePatientsFilters } from "../_hooks/patients-context";
@@ -90,10 +94,10 @@ function deriveStatus(row: DoctorPatientRow): {
     return { labelKey: "table.status.onWatch", tone: "watch" };
   if (!row.lastVisitWithMeAt)
     return { labelKey: "table.status.new", tone: "active" };
-  // Visit was >90 days ago and nothing booked → давно не был.
-  const last = new Date(row.lastVisitWithMeAt).getTime();
-  const ninetyDays = 90 * 24 * 60 * 60 * 1000;
-  if (Date.now() - last > ninetyDays) {
+  // Nothing booked and past the «Давно не были» tab's own boundary (DC-26):
+  // the badge and the tab come from one rule, so a row the «Вернулись» tab
+  // lists never reads «Давно не был».
+  if (isDoctorDormant(daysSinceLastVisit(row.lastVisitWithMeAt, Date.now()))) {
     return { labelKey: "table.status.dormant", tone: "dormant" };
   }
   return { labelKey: "table.status.onWatch", tone: "watch" };

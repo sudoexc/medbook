@@ -150,8 +150,12 @@ export function DoctorQueuePanel({
 
   // Local override during a drag — dnd-kit needs the items array to reflect
   // the new position the moment drop fires; we then mutate to persist. The
-  // optimistic cache write rewrites `queueOrder` so the next render derives
+  // optimistic cache write rewrites `queuedAt` so the next render derives
   // the same order from props, at which point this state can be cleared.
+  // It lives one round-trip at most (audit Q-22): cleared when the cache
+  // agrees (below) and, whatever happens, when the reorder settles. Waiting
+  // for an exact match alone kept it for the rest of the day once anything
+  // else moved the lane (a call, a new walk-in, «Срочно», another desk).
   const [pendingOrder, setPendingOrder] = React.useState<string[] | null>(null);
   React.useEffect(() => {
     if (!pendingOrder) return;
@@ -197,7 +201,10 @@ export function DoctorQueuePanel({
     reorder.mutate(
       { doctorId, orderedIds },
       {
-        onError: () => setPendingOrder(null),
+        // Success or failure, the cache now carries the order (optimistic
+        // rewrite, rollback, then the refetch), and the server's effective
+        // order wins over the dragged one, «Срочно» rows staying on top.
+        onSettled: () => setPendingOrder(null),
       },
     );
   };

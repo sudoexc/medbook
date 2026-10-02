@@ -36,3 +36,21 @@ export function scheduleStatusOf(
   if (appointmentStatus === "CANCELLED") return "cancelled";
   return "upcoming";
 }
+
+export type DoctorScheduleVisitType = "consultation" | "repeat";
+
+/**
+ * «Консультация» / «Повторный» for one schedule row (audit DC-25), from the
+ * patient's COMPLETED visits counted strictly before the day on screen.
+ *
+ * The old key was the live `Patient.visitsCount`, which completing this very
+ * visit bumps: a second-time patient read «Консультация» until the doctor
+ * closed the visit, then «Повторный», and the day summary rewrote itself
+ * after the fact. Counting only visits before the day keeps the label fixed
+ * for the whole day, whatever happens on it.
+ */
+export function scheduleVisitTypeOf(
+  priorCompletedVisits: number,
+): DoctorScheduleVisitType {
+  return priorCompletedVisits > 0 ? "repeat" : "consultation";
+}

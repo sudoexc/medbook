@@ -82,8 +82,8 @@ type LiveQueueEntry = {
   /** 1-based FIFO position within the live lane. */
   position: number;
   etaMinutes: number;
-  /** ISO — when the patient joined the queue. Omitted for legacy rows. */
-  queuedAt?: string;
+  /** ISO — when the patient arrived: the walk-in row's `createdAt`. */
+  arrivedAt?: string;
 };
 
 /** A walk-in already served today — the collapsed tail of the queue card. */
@@ -216,9 +216,11 @@ export const GET = createApiListHandler(
           // Two-lanes: pickCurrentVisit uses the channel to keep walk-ins out
           // of the imminent-booking fallback.
           channel: true,
-          // Two-lanes: only used as the "ждёт с …" label source for the
-          // liveQueue block below — never as an ordering key here.
-          queuedAt: true,
+          // The "ждёт N мин" label source for the liveQueue block below: a
+          // walk-in row is created the moment the patient arrives. Not
+          // `queuedAt`, which is the lane's sort key and which a reception
+          // drag rewrites to base + 1 s steps (audit Q-23).
+          createdAt: true,
           patient: {
             select: {
               id: true,
@@ -355,24 +357,23 @@ export const GET = createApiListHandler(
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // liveQueue — the walk-in FIFO from the shared projection. `queuedAt`
-    // is joined back from todayAppts (the projection doesn't carry it);
-    // rows that predate queuedAt simply omit the "ждёт N мин" label.
+    // liveQueue — the walk-in FIFO from the shared projection. The arrival
+    // time is joined back from todayAppts (the projection doesn't carry it).
     // ──────────────────────────────────────────────────────────────────────
-    const queuedAtById = new Map(
-      todayAppts.map((a) => [a.id, a.queuedAt] as const),
+    const arrivedAtById = new Map(
+      todayAppts.map((a) => [a.id, a.createdAt] as const),
     );
     const liveQueue: LiveQueueEntry[] = (
       queueProjection.get(doctor.id)?.waiting ?? []
     ).map((w) => {
-      const queuedAt = queuedAtById.get(w.appointmentId);
+      const arrivedAt = arrivedAtById.get(w.appointmentId);
       return {
         appointmentId: w.appointmentId,
         patientFullName: w.patientFullName,
         ticketNumber: w.ticketNumber,
         position: w.position,
         etaMinutes: w.etaMinutes,
-        ...(queuedAt ? { queuedAt: queuedAt.toISOString() } : {}),
+        ...(arrivedAt ? { arrivedAt: arrivedAt.toISOString() } : {}),
       };
     });
 

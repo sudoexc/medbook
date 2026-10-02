@@ -36,6 +36,11 @@ import { readPlanLimit } from "@/lib/plan-limit";
 
 interface WalkinTicket {
   appointmentId: string;
+  /**
+   * The patient was already waiting for this doctor today: the server handed
+   * back that place instead of a new one, so nothing new was issued.
+   */
+  duplicate?: boolean;
   ticketNumber: string;
   queueOrder: number;
   patient: { id: string; fullName: string };
@@ -115,9 +120,18 @@ export function WalkinTicketDialog({
         const phone = newPatientForm.phone.trim();
         if (!fullName) throw new Error("PATIENT_NAME_REQUIRED");
         if (!phone) throw new Error("PATIENT_PHONE_REQUIRED");
+        // «Пол» and «Источник» are on the picker's new-patient form; they used
+        // to stop here and never reach the card (audit Q-19).
+        const { gender, source } = newPatientForm;
         body = {
           doctorId,
-          newPatient: { fullName, phone, ...(phoneOwner ? { phoneOwner } : {}) },
+          newPatient: {
+            fullName,
+            phone,
+            ...(phoneOwner ? { phoneOwner } : {}),
+            ...(gender ? { gender } : {}),
+            ...(source ? { source } : {}),
+          },
         };
       } else {
         throw new Error("PATIENT_REQUIRED");
@@ -150,7 +164,13 @@ export function WalkinTicketDialog({
       qc.invalidateQueries({ queryKey: ["reception"], ...opts });
       qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
       qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
-      toast.success(t("toastIssued", { number: issued.ticketNumber }));
+      // A second press finds the place the first one took: say so, so the
+      // desk does not print another slip believing it is a new ticket (Q-19).
+      if (issued.duplicate) {
+        toast.info(t("toastDuplicate", { number: issued.ticketNumber }));
+      } else {
+        toast.success(t("toastIssued", { number: issued.ticketNumber }));
+      }
       onIssued?.(issued);
     },
     onError: (err) => {
@@ -182,7 +202,11 @@ export function WalkinTicketDialog({
         {ticket ? (
           <>
             <DialogHeader>
-              <DialogTitle>{t("result.title")}</DialogTitle>
+              <DialogTitle>
+                {ticket.duplicate
+                  ? t("result.titleDuplicate")
+                  : t("result.title")}
+              </DialogTitle>
             </DialogHeader>
 
             <div className="rounded-2xl border border-success/30 bg-success/5 px-6 py-7 text-center">

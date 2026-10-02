@@ -18,8 +18,11 @@
  * helper only resolves the patient, allocates the slot under Serializable
  * isolation, creates the row, and emits the realtime envelopes.
  */
+import type { z } from "zod";
+
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/phone";
+import type { GenderEnum, LeadSourceEnum } from "@/server/schemas/patient";
 import {
   tashkentComponents,
   tashkentDayBounds,
@@ -79,6 +82,15 @@ export type WalkinPatientInput =
       phone: string;
       lang?: "RU" | "UZ";
       phoneOwner?: PhoneOwnerAnswer;
+      /**
+       * What the front desk's «Новый пациент» form asks besides name and
+       * phone (audit Q-19): the dialog showed «Пол» and «Источник» and then
+       * dropped them, so the card had no sex and every walk-in read as
+       * source WALKIN in the marketing split. Used only when a card is
+       * CREATED; an existing card found by the phone keeps its own values.
+       */
+      gender?: z.infer<typeof GenderEnum>;
+      source?: z.infer<typeof LeadSourceEnum>;
     };
 
 export type RegisterWalkinInput = {
@@ -234,7 +246,10 @@ async function resolvePatientByPhone(
             phoneVerifiedAt: asContact ? null : new Date(),
             preferredLang: typed.lang ?? "RU",
             ...(birthDate ? { birthDate } : {}),
-            source: "WALKIN",
+            ...(typed.gender ? { gender: typed.gender } : {}),
+            // Standing at the desk is how he came today; how he heard of the
+            // clinic is what the desk asked, when it did (Q-19).
+            source: typed.source ?? "WALKIN",
           } as never,
           select: { id: true, fullName: true },
         });

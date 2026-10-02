@@ -396,7 +396,9 @@ function ScheduleRow({
                 : isBreak
                   ? "bg-muted-foreground/30"
                   : entry.status === "done"
-                    ? "bg-success/60"
+                    ? entry.appointmentStatus === "SKIPPED"
+                      ? "bg-warning/60"
+                      : "bg-success/60"
                     : entry.status === "no_show"
                       ? "bg-warning"
                       : entry.status === "cancelled"
@@ -484,6 +486,12 @@ function RowAction({
   const t = useTranslations("doctor.myDay");
   const isBreak = entry.type === "break";
   const isReserve = entry.type === "reserve";
+  // «done» folds COMPLETED and SKIPPED into one closed bucket, but a skipped
+  // patient was never seen: «Уже был» on him was a lie (audit DC-25).
+  const doneLabel =
+    entry.appointmentStatus === "SKIPPED"
+      ? t("status.skipped")
+      : t("status.alreadyVisited");
 
   if (isBreak || isReserve || entry.patientId == null) {
     return (
@@ -514,7 +522,7 @@ function RowAction({
     if (entry.status === "done") {
       return (
         <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-          {t("status.alreadyVisited")}
+          {doneLabel}
         </span>
       );
     }
@@ -575,7 +583,7 @@ function RowAction({
     return (
       <div className="flex shrink-0 items-center gap-1">
         <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-          {t("status.alreadyVisited")}
+          {doneLabel}
         </span>
         {revertTarget ? (
           <RevertButton

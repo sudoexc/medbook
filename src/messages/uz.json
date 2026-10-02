@@ -1957,8 +1957,10 @@
       "errPatient": "Bemorni tanlang yoki ism va telefonni kiriting",
       "errDoctor": "Shifokorni tanlang",
       "toastIssued": "{number} talon berildi",
+      "toastDuplicate": "Bemor allaqachon navbatda, talon {number}",
       "result": {
         "title": "Talon berildi",
+        "titleDuplicate": "Bemor allaqachon navbatda",
         "number": "Talon raqami",
         "cabinet": "Kabinet {number}",
         "print": "Chop etish",
@@ -6429,6 +6431,7 @@
       "reorderFailed": "Navbat tartibini o'zgartirib bo'lmadi",
       "statusFailed": "Statusni o'zgartirishda xato",
       "reorderNotLive": "Yozuvlarni jonli navbat ichida siljitib bo'lmaydi — ro'yxat yangilandi",
+      "reorderPriorityKept": "Shoshilinch bemorlar navbat boshida qoladi, tartib yangilandi",
       "startConflict": "Shifokorda qabul davom etmoqda — avval uni yakunlang",
       "notToday": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin.",
       "noShowFinal": "Bemor «Kelmadi» deb belgilangan va bu belgini faqat shifokor olib tashlay oladi. Bemorni hozir qabul qilish uchun uni jonli navbatga qo'ying.",
@@ -7303,6 +7306,13 @@
           "chronic": "Surunkali",
           "lastDocument": "Oxirgi hujjat",
           "segment": "Segment"
+        },
+        "segments": {
+          "NEW": "Yangi",
+          "ACTIVE": "Faol",
+          "DORMANT": "Sovumoqda",
+          "VIP": "VIP",
+          "CHURN": "Yo'qotilgan"
         }
       },
       "detail": {
@@ -7421,6 +7431,7 @@
       "status": {
         "planned": "Rejalashtirilgan",
         "alreadyVisited": "Bo'lib o'tgan",
+        "skipped": "O'tkazib yuborilgan",
         "noShow": "Kelmadi",
         "cancelled": "Bekor qilingan",
         "inProgress": "Qabul davom etmoqda",
@@ -8303,6 +8314,7 @@
         "status": {
           "inProgress": "Qabul ketmoqda",
           "done": "Yakunlandi",
+          "skipped": "O'tkazib yuborilgan",
           "noShow": "Kelmadi",
           "cancelled": "Bekor qilindi"
         },
@@ -8634,6 +8646,13 @@
     "etaMinutes": "~{minutes} daq",
     "completed": "Qabul yakunlandi",
     "thanks": "Tashrifingiz uchun rahmat!",
+    "skipped": "Siz chaqiruvni o'tkazib yubordingiz",
+    "skippedHint": "Qabulxonaga murojaat qiling, sizni navbatga qaytarishadi.",
+    "cancelledLive": "Talon navbatdan olib tashlandi",
+    "cancelledBooking": "Yozuv bekor qilindi",
+    "cancelledHint": "Agar bu xato bo'lsa, qabulxonaga murojaat qiling.",
+    "noShow": "«Kelmadi» deb belgilangan",
+    "noShowHint": "Agar klinikada bo'lsangiz, qabulxonaga murojaat qiling.",
     "patient": "Bemor",
     "doctor": "Shifokor",
     "cabinet": "Kabinet",

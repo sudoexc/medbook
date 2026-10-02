@@ -78,8 +78,12 @@ export type LiveQueueEntry = {
   /** 1-based FIFO position within the live lane. */
   position: number;
   etaMinutes: number;
-  /** ISO — when the patient joined the queue. Omitted for legacy rows. */
-  queuedAt?: string;
+  /**
+   * ISO — when the patient arrived (the walk-in row's creation). The «ждёт N
+   * мин» label reads it; `queuedAt` is the queue's sort key, which a
+   * reception drag rewrites (audit Q-23).
+   */
+  arrivedAt?: string;
 };
 
 export type DaySummary = {

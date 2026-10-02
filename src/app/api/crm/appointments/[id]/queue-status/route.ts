@@ -278,6 +278,7 @@ export const PATCH = createApiHandler(
       doctor: {
         select: {
           nameRu: true,
+          nameUz: true,
           ticketPrefix: true,
           cabinet: { select: { number: true } },
         },
@@ -300,6 +301,7 @@ export const PATCH = createApiHandler(
       };
       doctor?: {
         nameRu: string;
+        nameUz: string;
         ticketPrefix: string | null;
         cabinet: { number: string } | null;
       };
@@ -501,6 +503,7 @@ export const PATCH = createApiHandler(
         telegramId: after.patient?.telegramId,
         cabinetNumber: after.doctor?.cabinet?.number ?? null,
         doctorName: after.doctor?.nameRu ?? null,
+        doctorNameUz: after.doctor?.nameUz ?? null,
         lang: after.patient?.preferredLang ?? null,
         logTag: "appointments/queue-status",
       });

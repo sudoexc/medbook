@@ -29,8 +29,13 @@ export type SendCallNoticeInput = {
   telegramId: string | null | undefined;
   /** Cabinet number to walk to, when the doctor has one assigned. */
   cabinetNumber?: string | null;
-  /** Doctor display name in the patient's language. */
+  /** Doctor display name (`Doctor.nameRu`). */
   doctorName?: string | null;
+  /**
+   * `Doctor.nameUz`: an Uzbek reader gets it when set, so the line under
+   * «Sizni chaqirishmoqda!» is not left in Cyrillic.
+   */
+  doctorNameUz?: string | null;
   /** `Patient.preferredLang`; defaults to RU like the rest of the bot. */
   lang?: CallNoticeLang | null;
   /** Log tag so the two call sites stay distinguishable in prod logs. */
@@ -67,6 +72,7 @@ const COPY: Record<CallNoticeLang, Copy> = {
 export function buildCallNoticeText(input: {
   cabinetNumber?: string | null;
   doctorName?: string | null;
+  doctorNameUz?: string | null;
   lang?: CallNoticeLang | null;
 }): string {
   const copy = COPY[input.lang ?? "RU"] ?? COPY.RU;
@@ -74,7 +80,9 @@ export function buildCallNoticeText(input: {
   const location = cabinet
     ? copy.cabinet(escapeHtml(cabinet))
     : copy.noCabinet;
-  const doctor = input.doctorName?.trim();
+  const doctor =
+    (input.lang === "UZ" ? input.doctorNameUz?.trim() : undefined) ||
+    input.doctorName?.trim();
   const doctorLine = doctor ? `\n${copy.doctor(escapeHtml(doctor))}` : "";
   return `${copy.title}\n\n${location}${doctorLine}`;
 }

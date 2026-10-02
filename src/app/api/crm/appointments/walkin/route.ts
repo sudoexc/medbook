@@ -9,7 +9,7 @@
  * Shares the allocation path (`registerWalkin`) with the kiosk so the board,
  * kiosk, and patient ticket never disagree.
  *
- * Body: { doctorId, patientId? , newPatient?: { fullName, phone, phoneOwner? }, durationMin? }
+ * Body: { doctorId, patientId? , newPatient?: { fullName, phone, phoneOwner?, gender?, source? }, durationMin? }
  *
  * A new patient whose number already belongs to a card with a different
  * name is not silently merged into that card (audit Q-03): the route answers
@@ -24,6 +24,7 @@ import { ok, err, conflict } from "@/server/http";
 import { audit } from "@/lib/audit";
 import { registerWalkin } from "@/server/appointments/walkin";
 import { ensureQuotaForApi } from "@/server/billing/plan-limits";
+import { GenderEnum, LeadSourceEnum } from "@/server/schemas/patient";
 
 const Body = z
   .object({
@@ -34,6 +35,10 @@ const Body = z
         fullName: z.string().trim().min(2).max(120),
         phone: z.string().trim().min(3).max(20),
         phoneOwner: z.enum(["same", "other"]).optional(),
+        // The «Новый пациент» form's «Пол» and «Источник» (audit Q-19);
+        // they reach the card only when it is created here.
+        gender: GenderEnum.optional(),
+        source: LeadSourceEnum.optional(),
       })
       .optional(),
     durationMin: z.number().int().min(5).max(480).optional(),
@@ -81,6 +86,12 @@ export const POST = createApiHandler(
             fullName: body.newPatient!.fullName,
             phone: body.newPatient!.phone,
             phoneOwner: body.newPatient!.phoneOwner,
+            ...(body.newPatient!.gender
+              ? { gender: body.newPatient!.gender }
+              : {}),
+            ...(body.newPatient!.source
+              ? { source: body.newPatient!.source }
+              : {}),
           },
       createdById: ctx.userId,
       durationMin: body.durationMin,

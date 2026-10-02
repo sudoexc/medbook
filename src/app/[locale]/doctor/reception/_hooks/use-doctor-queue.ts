@@ -29,6 +29,8 @@ export type QueueAppointment = {
    */
   channel: string;
   queuedAt: string | null;
+  /** Row creation; for a walk-in, the moment the patient arrived (Q-23). */
+  createdAt?: string | null;
   queuePriority: number;
   ticketSeq: number | null;
   queueOrder: number | null;

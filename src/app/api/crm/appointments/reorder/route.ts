@@ -76,9 +76,10 @@ export const POST = createApiHandler(
     // `queueOrder`, which stays frozen as the immutable ticket-number source.
     // Anchor the new sequence at the earliest arrival currently in the set and
     // space rows STEP_MS apart so the shared FIFO comparator (`compareQueue`)
-    // reproduces exactly this top-to-bottom order on every surface. With the
-    // schedule lane excluded above there is nothing left to "floor" — the
-    // requested order is always the effective order.
+    // reproduces exactly this top-to-bottom order on every surface. Only a
+    // «Срочно» row (queuePriority) can outrank it: `exact` says so, and the
+    // reception hook tells the desk. `queuedAt` is thereby a sort key, not
+    // the arrival: «ждёт N мин» reads the walk-in's `createdAt` (Q-23).
     const base = Math.min(...existing.map((a) => queuedMs(a)));
     const byId = new Map(existing.map((a) => [a.id, a]));
 

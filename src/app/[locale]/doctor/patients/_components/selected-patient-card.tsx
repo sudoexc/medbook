@@ -129,6 +129,12 @@ export function SelectedPatientCard() {
   const age = ageFromBirth(p.birthDate);
   const detailHref = `/${locale}/doctor/patients/${p.id}`;
   const status = statusFromSummary(p);
+  // `Patient.segment` is an enum; the card printed it raw («DORMANT», audit
+  // DC-26). A value the dictionary does not know yet stays as it came.
+  const segmentLabel = (segment: string) =>
+    t.has(`selectedCard.segments.${segment}`)
+      ? t(`selectedCard.segments.${segment}`)
+      : segment;
 
   const onWrite = async () => {
     try {
@@ -236,7 +242,10 @@ export function SelectedPatientCard() {
           />
         ) : null}
         {p.segment ? (
-          <Row label={t("selectedCard.rows.segment")} value={p.segment} />
+          <Row
+            label={t("selectedCard.rows.segment")}
+            value={segmentLabel(p.segment)}
+          />
         ) : null}
       </div>
 

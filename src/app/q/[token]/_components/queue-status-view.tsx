@@ -3,9 +3,19 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { createTranslator } from "next-intl";
-import { Clock, MapPin, User, CheckCircle, Bell, Stethoscope } from "lucide-react";
+import {
+  Clock,
+  MapPin,
+  User,
+  CheckCircle,
+  Bell,
+  Stethoscope,
+  CircleAlert,
+  CircleX,
+} from "lucide-react";
 
 import type ruMessages from "@/messages/ru.json";
+import { ticketClosedCopyKeys, ticketClosedReason } from "./ticket-state";
 
 type Lang = "ru" | "uz";
 export type QueueStatusMessages = (typeof ruMessages)["queueStatusPage"];
@@ -276,11 +286,17 @@ export function QueueStatusView({
   const isWaiting = data.status === "WAITING" && !isScheduleLane;
   const isArrivedBooking =
     isScheduleLane && ["WAITING", "BOOKED", "CONFIRMED"].includes(data.status);
+  // Skipped / cancelled / no-show: nothing to wait for, say what to do (Q-24).
+  const closed = ticketClosedReason(data.status);
+  const closedCopy = closed ? ticketClosedCopyKeys(closed, data.lane) : null;
+  const isSkipped = closed === "skipped";
+  const isMuted = isCompleted || (closed !== null && !isSkipped);
 
   return (
     <div className={`min-h-screen flex flex-col ${
       isInProgress ? "bg-gradient-to-b from-green-50 to-white" :
-      isCompleted ? "bg-gray-50" : "bg-gradient-to-b from-blue-50 to-white"
+      isSkipped ? "bg-amber-50" :
+      isMuted ? "bg-gray-50" : "bg-gradient-to-b from-blue-50 to-white"
     }`}>
       {/* Header */}
       <div className="relative pt-6 pb-3 px-4 text-center">
@@ -307,11 +323,12 @@ export function QueueStatusView({
 
           {/* Ticket number — big hero */}
           <div className={`rounded-3xl overflow-hidden shadow-xl mb-5 ${
-            isInProgress ? "shadow-green-200" : isCompleted ? "shadow-gray-200" : "shadow-blue-200"
+            isInProgress ? "shadow-green-200" : isSkipped ? "shadow-amber-200" : isMuted ? "shadow-gray-200" : "shadow-blue-200"
           }`}>
             <div className={`px-6 py-8 text-center ${
               isInProgress ? "bg-gradient-to-br from-green-500 to-emerald-600" :
-              isCompleted ? "bg-gray-400" : "bg-gradient-to-br from-[var(--brand-primary)] to-[#1a3fd6]"
+              isSkipped ? "bg-amber-500" :
+              isMuted ? "bg-gray-400" : "bg-gradient-to-br from-[var(--brand-primary)] to-[#1a3fd6]"
             }`}>
               <p className="text-white/70 text-xs font-semibold uppercase tracking-[0.2em] mb-2">{data.ticketNumber ? t("yourTicket") : t("yourBooking")}</p>
               <p className="text-white text-6xl font-bold font-mono tracking-wider">{data.ticketNumber ?? data.slotTime ?? "—"}</p>
@@ -393,6 +410,26 @@ export function QueueStatusView({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {closedCopy && (
+                <div className="flex items-center gap-3">
+                  <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${
+                    isSkipped ? "bg-amber-100" : "bg-gray-100"
+                  }`}>
+                    {isSkipped ? (
+                      <CircleAlert className="h-5 w-5 text-amber-600" />
+                    ) : (
+                      <CircleX className="h-5 w-5 text-gray-400" />
+                    )}
+                  </div>
+                  <div>
+                    <p className={`font-bold ${isSkipped ? "text-amber-700" : "text-gray-600"}`}>
+                      {t(closedCopy.title)}
+                    </p>
+                    <p className="text-xs text-gray-500">{t(closedCopy.hint)}</p>
+                  </div>
                 </div>
               )}
 

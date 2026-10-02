@@ -193,7 +193,9 @@ export function ActivePatientCard() {
             because the row needs a start and an end in the database. Showing
             it as «ЗАПЛАНИРОВАНО 15:24 – 15:54» invents a commitment nobody
             made: the live lane runs at whatever pace the day has, five in an
-            hour or one. Show when they joined the queue instead. */}
+            hour or one. Show when they joined the queue instead: the row's
+            creation, since `queuedAt` is the lane's sort key and a reception
+            drag rewrites it (audit Q-23). */}
         <MetaCell
           label={
             isWalkin
@@ -203,7 +205,7 @@ export function ActivePatientCard() {
         >
           <div className="tabular-nums">
             {isWalkin
-              ? formatTime(activeAppointment.queuedAt ?? activeAppointment.date)
+              ? formatTime(activeAppointment.createdAt ?? activeAppointment.date)
               : formatRange(activeAppointment.date, activeAppointment.endDate)}
           </div>
           {activeAppointment.cabinet?.number && (

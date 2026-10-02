@@ -212,8 +212,11 @@ export function SegmentationCard() {
                   <span
                     className={cn("size-1.5 shrink-0 rounded-full", DOT[s.key])}
                   />
+                  {/* The tab's own words (DC-26): the server's `label` is a
+                      Russian fallback, and the donut and the tabs filter the
+                      same buckets, so they must read the same. */}
                   <span className="flex-1 truncate text-foreground">
-                    {s.label}
+                    {t(`tabs.${s.key}`)}
                   </span>
                   <span className="text-muted-foreground tabular-nums">
                     {s.count} ({s.percent}%)

@@ -27,12 +27,11 @@ import {
 } from "@/lib/booking-validation";
 import {
   scheduleStatusOf,
+  scheduleVisitTypeOf,
   type DoctorScheduleStatus,
 } from "@/lib/doctor-schedule-status";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
 import { ok, err, parseQuery } from "@/server/http";
-
-const REPEAT_VISITS_THRESHOLD = 2;
 
 type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
 type ScheduleStatus = DoctorScheduleStatus;
@@ -94,10 +93,6 @@ function formatHHMM(d: Date): string {
   return tashkentComponents(d).time;
 }
 
-function appointmentTypeOf(visitsCount: number): "consultation" | "repeat" {
-  return visitsCount >= REPEAT_VISITS_THRESHOLD ? "repeat" : "consultation";
-}
-
 export const GET = createApiListHandler(
   { roles: ["DOCTOR"] },
   async ({ request, ctx }) => {
@@ -137,18 +132,41 @@ export const GET = createApiListHandler(
         patient: {
           select: {
             fullName: true,
-            visitsCount: true,
           },
         },
       },
     });
+
+    // DC-25 — the type is fixed by the patient's history BEFORE this day, not
+    // by `Patient.visitsCount`, which closing today's visit bumps (see
+    // `scheduleVisitTypeOf`). Clinic-wide like that counter; `completedAt`
+    // first, the slot for legacy rows, as `refreshPatientVisitStats` counts.
+    const patientIds = Array.from(new Set(appts.map((a) => a.patientId)));
+    const priorVisits = new Map<string, number>();
+    if (patientIds.length > 0) {
+      const prior = await prisma.appointment.groupBy({
+        by: ["patientId"],
+        where: {
+          patientId: { in: patientIds },
+          status: "COMPLETED",
+          OR: [
+            { completedAt: { lt: start } },
+            { completedAt: null, date: { lt: start } },
+          ],
+        },
+        _count: { _all: true },
+      });
+      for (const row of prior) priorVisits.set(row.patientId, row._count._all);
+    }
+    const typeOf = (patientId: string) =>
+      scheduleVisitTypeOf(priorVisits.get(patientId) ?? 0);
 
     const entries: ScheduleEntry[] = appts.map((a) => ({
       id: a.id,
       startTime: a.time ?? formatHHMM(a.date),
       patientId: a.patientId,
       patientName: a.patient?.fullName ?? null,
-      type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
+      type: typeOf(a.patientId),
       durationMin: a.durationMin,
       status: scheduleStatusOf(a.status),
       appointmentStatus: a.status as AppointmentStatus,
@@ -161,7 +179,7 @@ export const GET = createApiListHandler(
     for (const a of appts) {
       if (a.status === "CANCELLED") continue;
       if (a.status === "COMPLETED") completedCount += 1;
-      const t = appointmentTypeOf(a.patient?.visitsCount ?? 0);
+      const t = typeOf(a.patientId);
       if (t === "repeat") repeats += 1;
       else consultations += 1;
     }

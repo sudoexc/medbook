@@ -91,6 +91,20 @@ describe("buildCallNoticeText", () => {
     const text = buildCallNoticeText({ cabinetNumber: "5", doctorName: null, lang: "RU" });
     expect(text).not.toContain("Врач:");
   });
+
+  it("CN6b — an Uzbek reader gets the doctor's Uzbek name (Q-18)", () => {
+    const names = { doctorName: "Султанов Азиз", doctorNameUz: "Sultonov Aziz" };
+    expect(buildCallNoticeText({ ...names, cabinetNumber: "4", lang: "UZ" })).toContain(
+      "Shifokor: Sultonov Aziz",
+    );
+    expect(buildCallNoticeText({ ...names, cabinetNumber: "4", lang: "RU" })).toContain(
+      "Врач: Султанов Азиз",
+    );
+    // A blank Uzbek name falls back to the Russian one, never to nothing.
+    expect(
+      buildCallNoticeText({ doctorName: "Султанов Азиз", doctorNameUz: " ", lang: "UZ" }),
+    ).toContain("Shifokor: Султанов Азиз");
+  });
 });
 
 describe("sendCallNotice", () => {

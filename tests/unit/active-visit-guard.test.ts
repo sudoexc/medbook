@@ -35,6 +35,8 @@ const h = vi.hoisted(() => ({
   publishes: [] as Row[],
   fireTrigger: vi.fn(),
   refreshStats: vi.fn(async () => undefined),
+  /** Telegram pushes: [chatId, text]. */
+  tgSends: [] as Array<[unknown, string]>,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -68,7 +70,10 @@ vi.mock("@/server/appointments/emit-change", () => ({
   emitAppointmentChangeViaOutbox: vi.fn(async () => ({ eventId: "ev_1" })),
 }));
 vi.mock("@/server/telegram/send", () => ({
-  sendMessage: vi.fn(async () => undefined),
+  sendMessage: vi.fn(async (_clinic: unknown, chatId: unknown, text: string) => {
+    h.tgSends.push([chatId, text]);
+    return undefined;
+  }),
 }));
 vi.mock("@/server/notifications/triggers", () => ({
   fireTrigger: h.fireTrigger,
@@ -164,6 +169,7 @@ beforeEach(() => {
   h.publishes = [];
   h.fireTrigger.mockClear();
   h.refreshStats.mockClear();
+  h.tgSends = [];
 });
 
 describe("findOtherActiveVisit — bounded to the clinic day", () => {
@@ -295,6 +301,40 @@ describe("PATCH ?call=true — the doctor's «Вызвать»", () => {
       where: { id: "apt_2" },
       data: { status: "IN_PROGRESS", queueStatus: "IN_PROGRESS" },
     });
+  });
+
+  it("Q-18: an Uzbek patient is called in Uzbek, through the shared notice", async () => {
+    h.update.mockImplementation(async ({ data }: Row) => ({
+      id: "apt_2",
+      status: "IN_PROGRESS",
+      queueStatus: "IN_PROGRESS",
+      queueOrder: 2,
+      ticketSeq: 2,
+      calledAt: new Date(),
+      date: new Date(),
+      doctorId: "doc_1",
+      patientId: "p2",
+      cabinetId: null,
+      patient: { fullName: "Karimov Bahrom", telegramId: "tg_2", preferredLang: "UZ" },
+      doctor: { nameRu: "Султанов Азиз", nameUz: "Sultonov Aziz", cabinet: { number: "4" } },
+      clinic: { id: "c1", slug: "neurofax", tgBotToken: "secret", tgBotUsername: "bot" },
+      ...(data as Row),
+    }));
+
+    const res = await call();
+
+    expect(res.status).toBe(200);
+    expect(h.tgSends).toHaveLength(1);
+    const [chatId, text] = h.tgSends[0]!;
+    expect(chatId).toBe("tg_2");
+    expect(text).toContain("Sizni chaqirishmoqda");
+    expect(text).toContain("4-xona");
+    expect(text).toContain("Shifokor: Sultonov Aziz");
+    expect(text).not.toContain("Вас вызывают");
+    // The bot-token-bearing join stays on the server.
+    const body = (await res.json()) as Row;
+    expect(body).not.toHaveProperty("clinic");
+    expect(JSON.stringify(body)).not.toContain("secret");
   });
 });
 

@@ -547,6 +547,13 @@ export function useReorderQueue() {
         toast.error(t("reorderFailed"));
       }
     },
+    onSuccess: (result) => {
+      // A row dragged above a «Срочно» one cannot stay there: the urgency
+      // bump outranks arrival order on every surface. The server says so
+      // with exact=false, and the panel shows its effective order once the
+      // reorder settles; tell the desk why the row moved back (audit Q-23).
+      if (result.exact === false) toast.info(t("reorderPriorityKept"));
+    },
     onSettled: () => {
       invalidateAppointmentSurfaces(qc);
     },

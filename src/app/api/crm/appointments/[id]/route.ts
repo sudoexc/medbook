@@ -51,8 +51,7 @@ import {
   canRoleAdvanceTo,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
-import { escapeHtml } from "@/lib/telegram";
-import { sendMessage } from "@/server/telegram/send";
+import { sendCallNotice } from "@/server/telegram/call-notice";
 import { clientIpForAudit } from "@/lib/client-ip";
 import { storageKeyFromUrl } from "@/lib/storage-ref";
 import {
@@ -561,6 +560,7 @@ export const PATCH = createApiHandler(
               doctor: {
                 select: {
                   nameRu: true,
+                  nameUz: true,
                   ticketPrefix: true,
                   cabinet: { select: { number: true } },
                 },
@@ -623,22 +623,20 @@ export const PATCH = createApiHandler(
         },
       });
 
-      let notificationSent = false;
-      if (updatedRow.patient.telegramId) {
-        const cabinetLine = updatedRow.doctor.cabinet?.number
-          ? `Кабинет ${escapeHtml(updatedRow.doctor.cabinet.number)}`
-          : "Подойдите к врачу";
-        const text = `📢 <b>Вас вызывают!</b>\n\n${cabinetLine}\nВрач: ${escapeHtml(updatedRow.doctor.nameRu)}`;
-        await sendMessage(updatedRow.clinic, updatedRow.patient.telegramId, text, {
-          parse_mode: "HTML",
-        })
-          .then(() => {
-            notificationSent = true;
-          })
-          .catch((err) => {
-            console.error("[appointments/call] telegram", err);
-          });
-      }
+      // Q-18 — the same module as the reception call (`sendCallNotice`), so
+      // the push is in the patient's language: this branch built its own
+      // Russian text and an Uzbek patient called by the doctor read «Вас
+      // вызывают!» while one called by reception read «Sizni chaqirishmoqda!».
+      // It swallows its own errors (a committed call never 500s on Telegram).
+      const notificationSent = await sendCallNotice({
+        clinic: updatedRow.clinic,
+        telegramId: updatedRow.patient.telegramId,
+        cabinetNumber: updatedRow.doctor.cabinet?.number ?? null,
+        doctorName: updatedRow.doctor.nameRu,
+        doctorNameUz: updatedRow.doctor.nameUz,
+        lang: updatedRow.patient.preferredLang,
+        logTag: "appointments/call",
+      });
 
       await audit(request, {
         action: AUDIT_ACTION.APPOINTMENT_CALLED,
@@ -653,7 +651,11 @@ export const PATCH = createApiHandler(
         },
       });
 
-      return ok(updatedRow);
+      // The clinic join carries the bot token for the push above; it must
+      // never reach the browser (the reception call strips it the same way).
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-omit of the secret-bearing join
+      const { clinic: _clinic, ...callBody } = updatedRow;
+      return ok(callBody);
     }
 
     // AP-06 — a live-queue ticket (WALKIN) keeps its channel. The schema only

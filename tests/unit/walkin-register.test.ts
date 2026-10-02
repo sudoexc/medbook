@@ -706,6 +706,28 @@ describe("registerWalkin — find-or-create patient by phone (W4)", () => {
     expect(result.patient.id).toBe(created!.id);
   });
 
+  it("Q-19: the desk's «Пол» and «Источник» reach the new card", async () => {
+    seedDoctor();
+    const registerWalkin = await loadRegisterWalkin();
+
+    await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: {
+        fullName: "Юсупова Малика",
+        phone: "901234567",
+        gender: "FEMALE",
+        source: "INSTAGRAM",
+      },
+    });
+
+    const created = state.patients.find((p) => p.fullName === "Юсупова Малика") as
+      | (PatientRow & { gender?: string })
+      | undefined;
+    expect(created?.gender).toBe("FEMALE");
+    expect(created?.source).toBe("INSTAGRAM");
+  });
+
   it("defaults preferredLang to RU when lang omitted", async () => {
     seedDoctor();
     const registerWalkin = await loadRegisterWalkin();

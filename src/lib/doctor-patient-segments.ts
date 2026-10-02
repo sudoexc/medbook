@@ -38,8 +38,14 @@ export const DOCTOR_SEGMENT_KEYS: readonly DoctorSegmentKey[] = [
   "dormant",
 ] as const;
 
+/**
+ * Russian fallback only: the donut names its buckets through next-intl with
+ * the same keys as the table tabs (`doctor.patients.tabs.*`, audit DC-26), so
+ * «active» reads «Активные» there too, not «На приёме» (that is the row badge
+ * of a visit running right now).
+ */
 export const DOCTOR_SEGMENT_LABELS_RU: Record<DoctorSegmentKey, string> = {
-  active: "На приёме",
+  active: "Активные",
   watch: "На контроле",
   returned: "Вернулись",
   new: "Новые",
@@ -51,6 +57,15 @@ export const ACTIVE_MAX_DAYS = 30;
 export const WATCH_MAX_DAYS = 90;
 export const RETURNED_MAX_DAYS = 180;
 
+/**
+ * «Давно не был(и)»: past the returned window. The table's row badge asks
+ * this too (audit DC-26): it used its own 90-day cut, so a patient listed
+ * under «Вернулись» (91..180 days) wore the «Давно не был» badge.
+ */
+export function isDoctorDormant(daysSinceLast: number): boolean {
+  return daysSinceLast > RETURNED_MAX_DAYS;
+}
+
 export function classifyDoctorSegment(
   visitsCount: number,
   daysSinceLast: number,
@@ -58,8 +73,14 @@ export function classifyDoctorSegment(
   if (visitsCount === 1 && daysSinceLast <= NEW_MAX_DAYS) return "new";
   if (daysSinceLast <= ACTIVE_MAX_DAYS) return "active";
   if (daysSinceLast <= WATCH_MAX_DAYS) return "watch";
-  if (daysSinceLast <= RETURNED_MAX_DAYS) return "returned";
+  if (!isDoctorDormant(daysSinceLast)) return "returned";
   return "dormant";
 }
 
 export const DAY_MS = 86_400_000;
+
+/** Whole days since `last`, floored the way both segment endpoints count. */
+export function daysSinceLastVisit(last: Date | string, nowMs: number): number {
+  const at = typeof last === "string" ? new Date(last).getTime() : last.getTime();
+  return Math.floor((nowMs - at) / DAY_MS);
+}

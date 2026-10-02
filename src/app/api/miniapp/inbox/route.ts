@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
+import { notificationBodyText } from "@/server/notifications/telegram-html";
 
 const MAX_ITEMS = 50;
 
@@ -39,7 +40,9 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
 
   const items = rows.map((r) => ({
     id: r.id,
-    body: r.body,
+    // Plain text, as the banner prints it: the stored body holds the
+    // template engine's «G&#39;ulom» (audit G6-25).
+    body: notificationBodyText(r.body),
     createdAt: r.createdAt.toISOString(),
     readAt: r.readAt ? r.readAt.toISOString() : null,
     appointmentId: r.appointmentId,

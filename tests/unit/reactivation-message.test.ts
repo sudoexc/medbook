@@ -72,14 +72,14 @@ describe("reactivation message (AN-19)", () => {
     const res = await enqueueReactivationFor(db as never, "c1", candidate);
     expect(res.scheduled).toBe(true);
     const tg = created.find((r) => r.channel === "TG")!;
-    expect(tg.body).toBe("Каримов, sizni sog'indik! NeuroFax, +998712000000");
+    expect(tg.body).toBe("Азиз, sizni sog'indik! NeuroFax, +998712000000");
   });
 
   it("Russian for a Russian reader", async () => {
     const { enqueueReactivationFor } = await import("@/server/revenue/reactivation");
     const { db, created } = fakeDb({ lang: "RU" });
     await enqueueReactivationFor(db as never, "c1", candidate);
-    expect(created[0]!.body).toBe("Каримов, мы скучаем! НейроФакс, +998712000000");
+    expect(created[0]!.body).toBe("Азиз, мы скучаем! НейроФакс, +998712000000");
   });
 
   it("an EMAIL template is not addressed to the phone (INF-11)", async () => {

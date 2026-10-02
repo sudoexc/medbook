@@ -27,24 +27,26 @@ import {
 } from "@/components/ui/dialog";
 
 import { useDebounced } from "@/hooks/use-debounced";
+import {
+  BROADCAST_PLACEHOLDERS,
+  unknownBroadcastPlaceholders,
+} from "@/server/campaigns/broadcast-body";
 import { BroadcastAudience } from "./broadcast-audience";
 import { BroadcastPreview } from "./broadcast-preview";
 import {
   useBroadcastPreview,
   useSendBroadcast,
   useBroadcastProgress,
+  isBroadcastFinished,
   isResolvableSegment,
+  pendingSendCount,
   type BroadcastSegment,
 } from "../_hooks/use-broadcast";
 
 type Phase = "compose" | "confirm" | "result";
 
-const PLACEHOLDERS = [
-  "patient.firstName",
-  "patient.name",
-  "clinic.name",
-  "clinic.phone",
-] as const;
+// The tokens the launcher fills, the clinic address included (G6-21).
+const PLACEHOLDERS = BROADCAST_PLACEHOLDERS;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 function toLocalInput(d: Date): string {
@@ -88,8 +90,16 @@ export function BroadcastDialog({
     scheduleMode === "now" ||
     (scheduleAt.length > 0 && new Date(scheduleAt).getTime() > Date.now());
 
+  // A token nothing fills reaches every patient as an empty gap (G6-21);
+  // the endpoint refuses it too.
+  const unknownKeys = React.useMemo(
+    () => unknownBroadcastPlaceholders(body),
+    [body],
+  );
+
   const canSend =
     body.trim().length > 0 &&
+    unknownKeys.length === 0 &&
     resolvable &&
     eligible > 0 &&
     // The launcher refuses an audience above the per-broadcast limit.
@@ -169,9 +179,11 @@ export function BroadcastDialog({
   const sbs = progress.data?.sendsByStatus ?? {};
   const sent = (sbs.SENT ?? 0) + (sbs.DELIVERED ?? 0) + (sbs.READ ?? 0);
   const failed = sbs.FAILED ?? 0;
-  const pending = sbs.QUEUED ?? 0;
+  // QUEUED and SENDING both (audit G6-19): the last sends in flight kept
+  // «завершена» on screen with the counter short of the total.
+  const pending = pendingSendCount(sbs);
   const total = progress.data?.campaign.totalCount ?? sent + failed + pending;
-  const done = total > 0 && pending === 0;
+  const done = progress.data ? isBroadcastFinished(progress.data) : false;
   const pct = total > 0 ? Math.round(((sent + failed) / total) * 100) : 0;
 
   return (
@@ -219,6 +231,13 @@ export function BroadcastDialog({
                     {body.length}/4096
                   </span>
                 </div>
+                {unknownKeys.length > 0 ? (
+                  <p className="text-[12px] text-destructive" role="alert">
+                    {t("message.unknownPlaceholder", {
+                      key: `{{${unknownKeys[0]}}}`,
+                    })}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2">

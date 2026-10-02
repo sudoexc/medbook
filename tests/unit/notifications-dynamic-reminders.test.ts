@@ -156,10 +156,10 @@ describe("runDynamicReminders — custom offsets (audit TG-02)", () => {
     const ru = tg.find((r) => r.appointmentId === "ru")!;
     const uz = tg.find((r) => r.appointmentId === "uz")!;
     expect(ru.body).toBe(
-      "Каримова, напоминаем: в 11:00 вы записаны к Юсупов А. (Консультация невролога) в НейроФакс. Если планы изменились, позвоните +998712000000.",
+      "Дилноза, напоминаем: в 11:00 вы записаны к Юсупов А. (Консультация невролога) в НейроФакс. Если планы изменились, позвоните +998712000000.",
     );
     expect(uz.body).toBe(
-      "Каримова, eslatma: soat 11:00 da Yusupov A. (Nevrolog konsultatsiyasi), NeuroFax. Telefon: +998712000000.",
+      "Дилноза, eslatma: soat 11:00 da Yusupov A. (Nevrolog konsultatsiyasi), NeuroFax. Telefon: +998712000000.",
     );
     expect(ru.scheduledFor).toEqual(new Date(visit.getTime() - 1200 * 60_000));
     // The Mini App mirror carries the same text.

@@ -25,7 +25,7 @@ import type {
 import { useTgInboxAlerts } from "../_hooks/use-tg-inbox-alerts";
 import { ConversationList } from "./conversation-list";
 import { ChatPane } from "./chat-pane";
-import { ChatRightRail } from "./chat-right-rail";
+import { ChatBookingDialog, ChatRightRail } from "./chat-right-rail";
 import { AutoMessagesDialog } from "./auto-messages-dialog";
 import { BroadcastDialog } from "./broadcast-dialog";
 import { BroadcastHistory } from "./broadcast-history";
@@ -192,6 +192,7 @@ export function TelegramPageClient({
             filters={filters}
             setFilters={setFilters}
             isLoading={listQuery.isLoading}
+            total={listQuery.data?.pages[0]?.total}
             hasNextPage={Boolean(listQuery.hasNextPage)}
             onFetchNext={() => {
               if (listQuery.hasNextPage && !listQuery.isFetchingNextPage) {
@@ -223,6 +224,12 @@ export function TelegramPageClient({
         ) : null}
         </div>
       </div>
+
+      {/* Outside the rail (audit G6-11): the composer's «Записать на приём»
+          opens it with the rail hidden too. Keyed by dialog (G6-01). */}
+      {selected ? (
+        <ChatBookingDialog key={selected.id} conversation={selected} />
+      ) : null}
 
       {canBroadcast ? (
         <>

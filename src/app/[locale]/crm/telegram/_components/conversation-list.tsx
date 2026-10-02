@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { SearchIcon } from "lucide-react";
+import { SearchIcon, UserIcon, XIcon } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { cn } from "@/lib/utils";
@@ -17,6 +17,11 @@ import type {
   AssigneeFilter,
 } from "../_hooks/use-conversations";
 import type { InboxConversation } from "../_hooks/types";
+import {
+  partialTemperatures,
+  temperatureOf,
+  type Temperature,
+} from "../_lib/inbox-temperature";
 
 const ASSIGNEE_FILTERS: AssigneeFilter[] = ["all", "mine"];
 
@@ -29,6 +34,8 @@ export interface ConversationListProps {
   isLoading: boolean;
   hasNextPage: boolean;
   onFetchNext: () => void;
+  /** Threads matching the filters, from the server (audit G6-22). */
+  total?: number;
   /** Conversation ids that just received a realtime event — pulse the row. */
   pulsedIds?: ReadonlySet<string>;
 }
@@ -36,26 +43,8 @@ export interface ConversationListProps {
 type InboxTab = "all" | "unanswered" | "active";
 const TABS: InboxTab[] = ["all", "unanswered", "active"];
 
-type Temperature = "hot" | "warm" | "cold";
 type TempFilter = "all" | Temperature;
 const TEMP_FILTERS: TempFilter[] = ["all", "hot", "warm", "cold"];
-
-const HOT_MAX_MIN = 120; // waiting for a reply + last activity within 2h → needs reply now
-const WARM_MAX_MIN = 24 * 60; // activity within a day → still warm
-
-/**
- * Lead-urgency heuristic from «waiting for a reply» + recency (client-side
- * triage). Waiting, not unread: an open chat is read at once (G6-05) while
- * the question in it is still unanswered (G6-03).
- */
-function temperatureOf(row: InboxConversation, now: number): Temperature {
-  const last = row.lastMessageAt ? new Date(row.lastMessageAt).getTime() : 0;
-  const ageMin = last ? (now - last) / 60_000 : Number.POSITIVE_INFINITY;
-  const waiting = Boolean(row.awaitingReplySince);
-  if (waiting && ageMin <= HOT_MAX_MIN) return "hot";
-  if (waiting || ageMin <= WARM_MAX_MIN) return "warm";
-  return "cold";
-}
 
 const TEMP_DOT: Record<TempFilter, string> = {
   all: "bg-muted-foreground/50",
@@ -79,16 +68,18 @@ export function ConversationList({
   isLoading,
   hasNextPage,
   onFetchNext,
+  total,
   pulsedIds,
 }: ConversationListProps) {
   const t = useTranslations("tgInbox");
   const [search, setSearch] = React.useState(filters.q);
   const [temp, setTemp] = React.useState<TempFilter>("all");
 
-  // Debounce the q filter → URL-sync.
+  // Debounce the q filter → URL-sync. A search looks through every thread,
+  // so it lifts the one-patient scope of a card link (audit G6-20).
   React.useEffect(() => {
     const id = setTimeout(() => {
-      if (search !== filters.q) setFilters({ q: search });
+      if (search !== filters.q) setFilters({ q: search, patientId: null });
     }, 250);
     return () => clearTimeout(id);
   }, [search, filters.q, setFilters]);
@@ -96,8 +87,10 @@ export function ConversationList({
   const activeTab = tabFromFilters(filters);
 
   // Temperature is a client-side triage filter over the rows the server
-  // already returned for the active tab. Counts reflect what's loaded.
-  const { displayRows, tempCounts } = React.useMemo(() => {
+  // already returned for the active tab. Its counts are of what's loaded
+  // and say so with a «+» while more may follow (audit G6-22); «Все» is the
+  // server's count for the tab.
+  const { displayRows, tempCounts, tempPartial } = React.useMemo(() => {
     const now = Date.now();
     const counts: Record<Temperature, number> = { hot: 0, warm: 0, cold: 0 };
     const filtered: InboxConversation[] = [];
@@ -106,17 +99,35 @@ export function ConversationList({
       counts[tmp] += 1;
       if (temp === "all" || tmp === temp) filtered.push(r);
     }
-    return { displayRows: filtered, tempCounts: counts };
-  }, [rows, temp]);
+    return {
+      displayRows: filtered,
+      tempCounts: counts,
+      tempPartial: partialTemperatures({ rows, hasNextPage, now }),
+    };
+  }, [rows, temp, hasNextPage]);
 
-  const tempCountFor = (f: TempFilter): number =>
-    f === "all" ? rows.length : tempCounts[f];
-
-  const setTab = (tab: InboxTab) => {
-    if (tab === "unanswered") setFilters({ unanswered: true, mode: "all" });
-    else if (tab === "active") setFilters({ mode: "takeover", unanswered: false });
-    else setFilters({ mode: "all", unanswered: false });
+  const tempCountFor = (f: TempFilter): string => {
+    if (f === "all") return String(total ?? rows.length);
+    return tempPartial[f] ? `${tempCounts[f]}+` : String(tempCounts[f]);
   };
+
+  // A tab means «these threads of the clinic»: it lifts the one-patient
+  // scope a card link put in the URL (audit G6-20).
+  const setTab = (tab: InboxTab) => {
+    if (tab === "unanswered") {
+      setFilters({ unanswered: true, mode: "all", patientId: null });
+    } else if (tab === "active") {
+      setFilters({ mode: "takeover", unanswered: false, patientId: null });
+    } else setFilters({ mode: "all", unanswered: false, patientId: null });
+  };
+
+  // «Открыть в Telegram» from the card scopes the inbox to one patient
+  // (`?patientId=`); with no chip the other patients' threads looked gone
+  // («ТГ не работает»). Named by his card when one of the rows has it.
+  const patientScopeName = filters.patientId
+    ? (rows.find((r) => r.patientId === filters.patientId)?.patient?.fullName ??
+      null)
+    : null;
 
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -201,16 +212,37 @@ export function ConversationList({
             ))}
           </div>
         </div>
+        {filters.patientId ? (
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => setFilters({ patientId: null })}
+              title={t("list.patientScopeClear")}
+              aria-label={t("list.patientScopeClear")}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[12px] font-medium text-foreground transition-colors hover:bg-primary/15"
+            >
+              <UserIcon className="size-3.5 shrink-0 text-primary" aria-hidden />
+              <span className="truncate">
+                {patientScopeName
+                  ? t("list.patientScope", { name: patientScopeName })
+                  : t("list.patientScopeUnnamed")}
+              </span>
+              <XIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            </button>
+          </div>
+        ) : null}
         <div className="flex items-center gap-1">
           {TEMP_FILTERS.map((f) => {
             const count = tempCountFor(f);
             const selected = temp === f;
+            const partial = f !== "all" && tempPartial[f];
             return (
               <button
                 key={f}
                 type="button"
                 onClick={() => setTemp(f)}
                 aria-pressed={selected}
+                title={partial ? t("list.tempLoadedHint") : undefined}
                 className={cn(
                   "inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition-colors",
                   selected

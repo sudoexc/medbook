@@ -22,6 +22,7 @@ import { runWithTenant, type TenantContext, type Role } from "@/lib/tenant-conte
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound, forbidden } from "@/server/http";
 import { checkUpload } from "@/server/storage/safe-file";
+import { conversationAccess } from "@/server/conversations/access";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
 import {
   CHAT_ALLOWED_MIME,
@@ -62,8 +63,11 @@ export async function POST(request: Request): Promise<Response> {
 
   return runWithTenant(ctx, async () => {
     const conversationId = conversationIdFromUrl(request);
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
+    // Uploads go only into a thread the caller may open (audit TG-32).
+    const access = await conversationAccess(ctx);
+    if (!access) return notFound();
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, ...access.where },
       select: { id: true, clinicId: true },
     });
     if (!conv) return notFound();

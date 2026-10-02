@@ -130,7 +130,7 @@ Quick wins:
 
 ### Redis OOM
 
-Default `maxmemory 256mb + allkeys-lru` in `docker-compose.yml`. If BullMQ queues are spiking:
+Default `maxmemory 256mb + noeviction` in `docker-compose.yml` (BullMQ needs it, audit TG-28): at the cap writes fail with `OOM command not allowed` instead of evicting queue keys. If BullMQ queues are spiking:
 
 ```bash
 docker compose exec redis redis-cli INFO memory

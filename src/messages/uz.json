@@ -178,6 +178,14 @@
         "actionCenter": {
           "title": "Vazifalar markazi",
           "subtitle": "Klinika ustuvor vazifalari ro'yxati"
+        },
+        "onlineRequests": {
+          "title": "Saytdan arizalar",
+          "subtitle": "Saytda qoldirilgan qabulga yozilish so‘rovlari"
+        },
+        "account": {
+          "title": "Mening hisobim",
+          "subtitle": "Parol va kirish xavfsizligi"
         }
       },
       "issueTicket": "Talon berish"
@@ -1158,6 +1166,9 @@
       "langUz": "O'zbekcha",
       "langRu": "Ruscha",
       "consentMarketing": "Reklama xabarlariga rozilik",
+      "marketingBroadcasts": "Reklama xabarlari",
+      "marketingReceives": "Oladi",
+      "marketingOptedOut": "Obunadan chiqqan",
       "tags": "Teglar",
       "notes": "Izohlar",
       "notesEmpty": "Izohlar hali yo'q",
@@ -3246,6 +3257,7 @@
     },
     "patientMessages": {
       "confirmButton": "✅ Tasdiqlayman",
+      "confirmedMark": "✅ Tasdiqlandi, rahmat!",
       "questionnaireButton": "📝 So'rovnomani to'ldirish",
       "npsButton": "⭐ Tashrifni baholash",
       "familyRelay": "👤 Oila a'zosi: {name}",
@@ -3270,6 +3282,13 @@
         "sent": "Yuborildi",
         "total": "Jami",
         "startedAt": "Boshlangan"
+      },
+      "status": {
+        "DRAFT": "Qoralama",
+        "SENDING": "Yuborilmoqda",
+        "DONE": "Yakunlandi",
+        "FAILED": "Xato",
+        "CANCELLED": "Bekor qilindi"
       }
     },
     "campaignsNew": {
@@ -3345,10 +3364,10 @@
       "newBadge": "Hafta ichida +{count}"
     },
     "mode": {
-      "title": "Bemorga kim javob beradi",
-      "bot": "Bot javob beradi",
+      "title": "Dialog rejimi",
+      "bot": "Bot",
       "operator": "Men javob beraman",
-      "botHint": "Bot bemor bilan o'zi yozishmoqda",
+      "botHint": "Bot faqat salomlashishi mumkin, savollarga siz javob berasiz",
       "operatorHint": "Bot pauzada — siz javob berasiz"
     },
     "assignee": {
@@ -3423,7 +3442,8 @@
       },
       "message": {
         "label": "Xabar",
-        "placeholder": "Xabar matni. Quyidagi o'rin almashtirishlardan foydalanishingiz mumkin."
+        "placeholder": "Xabar matni. Quyidagi o'rin almashtirishlardan foydalanishingiz mumkin.",
+        "unknownPlaceholder": "{key} o'rin almashtirishi to'ldirilmaydi: bemorlar uning o'rnida bo'sh joy ko'radi. Uni olib tashlang yoki ro'yxatdan tanlang."
       },
       "schedule": {
         "label": "Yuborish vaqti",
@@ -3489,8 +3509,6 @@
       "funnel": {
         "total": "Jami",
         "sent": "Yuborildi",
-        "delivered": "Yetkazildi",
-        "read": "O'qildi",
         "failed": "Xatolar",
         "blocked": "Bloklagan"
       },
@@ -3520,6 +3538,10 @@
         "cold": "Sovuq"
       },
       "emptyTemp": "Bu segmentda suhbatlar yo'q",
+      "tempLoadedHint": "Yuklangan suhbatlar sanaldi. Qolganlarini yuklash uchun ro'yxatni aylantiring.",
+      "patientScope": "Bemor: {name}",
+      "patientScopeUnnamed": "Bitta bemorning suhbatlari",
+      "patientScopeClear": "Barcha bemorlarning suhbatlarini ko'rsatish",
       "mode": {
         "all": "Hammasi",
         "bot": "Bot",
@@ -3608,6 +3630,25 @@
       "miniAppCardTitle": "Ilovadan yaratilgan karta",
       "miniAppCardDescription": "Bu kartani klinika ilovasi yaratgan, raqam tasdiqlanmagan. Agar bemor klinikada allaqachon bo'lsa, uning F.I.Sh. va telefonini kiriting: chat uning kartasiga o'tadi.",
       "linkToClinicCard": "Klinika kartasiga biriktirish",
+      "createErrors": {
+        "invalidPhone": "Telefon raqami aniqlanmadi. Uni +998 kodi bilan to'liq kiriting.",
+        "invalid": "F.I.Sh. va telefon raqamini tekshiring.",
+        "forbidden": "Bemorni registratura, shifokor, call-markaz operatori yoki administrator yarata oladi.",
+        "failed": "Bemorni yaratib bo'lmadi. Qayta urinib ko'ring.",
+        "linkFailed": "Bemor saqlandi, lekin chat unga biriktirilmadi. Tugmani yana bir bor bosing."
+      },
+      "unlink": {
+        "action": "Chatni kartadan ajratish",
+        "warning": "Yozishma «{name}» kartasida ko'rinmay qoladi. Shundan so'ng chatni F.I.Sh. va telefon bo'yicha kerakli bemorga biriktirish mumkin.",
+        "warningTelegram": "Bu chatning Telegrami kartaga biriktirilgan. Agar u shu yerdan, chatdan biriktirilgan bo'lsa, chat bilan birga ajratiladi va eslatmalar hamda xulosalar unga kelmay qoladi. Agar u taklifnoma yoki klinika ilovasi orqali biriktirilgan bo'lsa, chat kartada qoladi.",
+        "confirm": "Ha, ajratish",
+        "cancel": "Bekor qilish",
+        "done": "Chat kartadan ajratildi",
+        "doneWithTelegram": "Chat va uning Telegrami kartadan ajratildi",
+        "failed": "Chatni ajratib bo'lmadi",
+        "cardOwnsTelegram": "Chatni ajratib bo'lmaydi: uning Telegrami «{name}» kartasiga chatdan emas (taklifnoma, klinika ilovasi yoki qo'lda) biriktirilgan va bemorning keyingi xabari yana shu kartaga keladi.",
+        "roleRequired": "Tasdiqlangan Telegram bog'lanishini registratura, shifokor yoki administrator olib tashlashi mumkin."
+      },
       "telegramBind": {
         "title": "Telegram kartaga bog'lanmagan",
         "description": "Bu bemorga eslatmalar va xulosalar Telegramda bormaydi.",
@@ -3703,12 +3744,18 @@
         "ariaLabel": "Telegram statistikasi",
         "title": "Telegram statistikasi",
         "period": "30 kunda",
+        "loadedScope": "yuklangan yozishma bo'yicha",
         "dialogs": "Suhbatlar",
         "messages": "Xabarlar",
         "botReplies": "Bot javoblari",
+        "staffReplies": "Xodimlar javoblari",
         "fromPatient": "Bemordan",
         "toOperator": "Operatorga uzatildi",
         "avgReply": "O'rtacha javob vaqti",
+        "avgStaffReply": "Xodimning o'rtacha javob vaqti",
+        "durationSec": "{n} s",
+        "durationMin": "{n} daq",
+        "durationHour": "{n} soat",
         "total": "Jami",
         "unread": "O'qilmagan",
         "inbound": "Kiruvchi",
@@ -3732,7 +3779,7 @@
         "book": "Qabulga yozish",
         "price": "Xizmat narxini bilish",
         "call": "Qayta qo'ng'iroq",
-        "confirm": "Yozuvni tasdiqlash",
+        "confirm": "Tasdiqlash matni",
         "askPhone": "Telefon so'rash",
         "needPatient": "Avval bemor kartasini yarating",
         "priceText": "Qaysi xizmat qiziqtirayotganini ayting — narxini aniqlab, qulay vaqtni tanlaymiz.",
@@ -3762,19 +3809,9 @@
         "created": "Tezkor javob yaratildi",
         "deleted": "O'chirildi",
         "saveError": "Saqlab bo'lmadi",
+        "unfilled": "Ba'zi o'rinbosarlar to'ldirilmadi: yuborishdan oldin matnni tekshiring",
         "edit": "Tahrirlash",
         "delete": "O'chirish"
-      },
-      "inlineButtons": {
-        "add": "Inline-tugmalar qo'shish",
-        "label": "Tugmalar",
-        "header": "Inline-tugmalar",
-        "addRow": "Qator",
-        "clear": "Tozalash",
-        "textPlaceholder": "Matn",
-        "dataPlaceholder": "callback_data",
-        "remove": "O'chirish",
-        "addButton": "Tugma"
       },
       "upload": {
         "label": "Fayl biriktirish",
@@ -3838,7 +3875,7 @@
       "loading": "Navbat yuklanmoqda…",
       "unknownCaller": "Noma'lum raqam",
       "newCallToast": "{name} dan qo'ng'iroq ({phone})",
-      "pollingHint": "Har 5 soniyada yangilanadi",
+      "pollingHint": "Yangi qo'ng'iroqlar avtomatik paydo bo'ladi, ro'yxat har daqiqada tekshiriladi",
       "polling": "Yangilanmoqda",
       "tabsAriaLabel": "Qo'ng'iroqlar ro'yxatlari"
     },
@@ -4975,7 +5012,23 @@
       "adminLink": "Admin platform",
       "loading": "Yuklanmoqda…",
       "empty": "Mavjud klinikalar yo'q",
-      "clear": "Override'ni tozalash"
+      "clear": "Override'ni tozalash",
+      "entry": {
+        "title": "«{clinic}» klinikasiga kirish",
+        "description": "Kirish sababi va tanlangan rejim audit jurnaliga yoziladi.",
+        "reasonLabel": "Kirish sababi",
+        "reasonPlaceholder": "Masalan: klinika shikoyatini tekshirish",
+        "reasonTooShort": "Sababni kamida {min} ta belgida yozing",
+        "modeLabel": "Rejim",
+        "viewOnly": "Faqat ko'rish",
+        "viewOnlyHint": "Klinika ma'lumotlari ko'rinadi, lekin hech narsani o'zgartirib bo'lmaydi",
+        "write": "O'zgartirish huquqi bilan",
+        "writeHint": "Klinika ma'lumotlaridagi o'zgarishlar sizning nomingizdan saqlanadi",
+        "cancel": "Bekor qilish",
+        "enter": "Kirish",
+        "entering": "Kirilmoqda…",
+        "failed": "Klinikaga kirib bo'lmadi: {detail}"
+      }
     },
     "clinics": {
       "title": "Klinikalar",
@@ -8218,6 +8271,7 @@
       },
       "tabs": {
         "all": "Barcha hujjatlar",
+        "conclusion": "Xulosalar",
         "referral": "Yo‘llanmalar",
         "prescription": "Retseptlar",
         "result": "Natijalar",
@@ -8585,7 +8639,8 @@
     "chatFile": "Shifokor xulosasi.pdf",
     "chatMsg": "Qabuldan keyingi tayinlovlar va tavsiyalar",
     "chatReminder": "Eslatma: ertaga soat 10:00 da nazorat tashrifi",
-    "botHandle": "@neurofaxbot"
+    "botHandle": "@neurofaxbot",
+    "cta": "Botni Telegramda ochish"
   },
   "directions": {
     "mapTitle": "NeuroFax klinikasi xaritada",

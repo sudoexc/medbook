@@ -56,8 +56,10 @@ export async function GET(request: Request) {
     periodFrom: dateOnlyKey(sl.periodFrom),
     periodTo: dateOnlyKey(sl.periodTo),
     issuedAt: sl.issuedAt.toISOString(),
+    // Only the fact of cancellation: the reason is the doctor's free text
+    // and may name the illness, which this public page never shows (audit
+    // MA-24).
     status: sl.status,
-    cancelReason: sl.cancelReason,
     inEffectToday: inEffect,
   };
 
@@ -93,7 +95,6 @@ function verifyHtml(p: {
   periodTo: string;
   issuedAt: string;
   status: "ISSUED" | "CANCELLED";
-  cancelReason: string | null;
   inEffectToday: boolean;
 }): string {
   const issuedDt = new Date(p.issuedAt);
@@ -140,7 +141,6 @@ function verifyHtml(p: {
   dt { color: #777; font-size: 9.5pt; margin-top: 12px; }
   dd { margin: 2px 0 0; font-size: 11pt; }
   .num { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 13pt; font-weight: 700; }
-  .reason { background: #fff5f5; border-left: 3px solid #c00; padding: 8px 10px; margin-top: 10px; font-size: 10pt; color: #800; }
   .footer { text-align: center; color: #aaa; font-size: 9pt; margin-top: 24px; }
 </style>
 </head>
@@ -149,7 +149,6 @@ function verifyHtml(p: {
     <h1>Лист нетрудоспособности</h1>
     <div class="sub">${esc(p.clinic)}${p.clinicPhone ? " · " + esc(p.clinicPhone) : ""}</div>
     <span class="status" style="background: ${statusColor}22; color: ${statusColor};">${esc(statusLabel)}</span>
-    ${p.cancelReason ? `<div class="reason"><b>Причина отмены:</b> ${esc(p.cancelReason)}</div>` : ""}
     <dl>
       <dt>Номер</dt><dd class="num">${esc(p.certNumber)}</dd>
       <dt>Пациент</dt><dd>${esc(p.patientMasked)}</dd>

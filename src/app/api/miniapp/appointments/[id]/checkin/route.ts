@@ -27,9 +27,10 @@ import {
   publishViaOutbox,
 } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
-import { checkedInOnVisitDay } from "@/lib/appointments/self-check-in";
-
-const CHECKINABLE = new Set(["BOOKED", "CONFIRMED"]);
+import {
+  canSelfCheckIn,
+  checkedInOnVisitDay,
+} from "@/lib/appointments/self-check-in";
 
 export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
   const url = new URL(request.url);
@@ -63,7 +64,7 @@ export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
   });
   if (!appt) return notFound();
   if (appt.patientId !== acting.patientId) return forbidden();
-  if (!CHECKINABLE.has(appt.status)) {
+  if (!canSelfCheckIn(appt.status)) {
     return err("not_checkinable", 409, { reason: "not_checkinable" });
   }
   // Idempotent: re-entering the Mini App resets client state, so a second

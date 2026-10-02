@@ -30,6 +30,7 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { medicationReminderOpenSince } from "@/lib/patient-experience/medication-reminders";
+import { givenNameOf } from "@/lib/patients/given-name";
 
 import { isAllowedToReceive } from "@/server/notifications/consent-gate";
 import { render } from "@/server/notifications/template";
@@ -67,12 +68,6 @@ type SnoozedRow = {
     medicationRemindersEnabled: boolean;
   };
 };
-
-function firstName(full: string): string {
-  const trimmed = full.trim();
-  if (!trimmed) return "";
-  return trimmed.split(/\s+/)[0] ?? trimmed;
-}
 
 function localHourMinute(date: Date, tz: string): string {
   try {
@@ -189,7 +184,7 @@ export async function runMedicationReminderFollowUp(
 
       const tz = row.clinic.timezone || "Asia/Tashkent";
       const body = render(tpl.bodyRu, {
-        patient: { name: row.patient.fullName, firstName: firstName(row.patient.fullName) },
+        patient: { name: row.patient.fullName, firstName: givenNameOf(row.patient.fullName) },
         drug: { name: row.prescription.drugName, dosage: row.prescription.dosage },
         time: localHourMinute(row.scheduledFor, tz),
         deeplink: "/my/medications",

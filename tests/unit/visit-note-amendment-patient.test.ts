@@ -307,8 +307,9 @@ describe("the patient's message", () => {
     state.note = note();
     state.appt = appt({ preferredLang: "RU" });
     await queueAmendmentNotice({ clinicId: "c1", visitNoteId: "vn_1" });
-    // `patient.firstName` is the first word of the card, as in every template.
-    expect(state.sends[0]!.body).toBe("Karimova, врач уточнил заключение.");
+    // `patient.firstName` is the given name, the card's second word, as in
+    // every template (audit TG-29).
+    expect(state.sends[0]!.body).toBe("Dilnoza, врач уточнил заключение.");
   });
 
   it("switched off again by the clinic: nothing goes", async () => {

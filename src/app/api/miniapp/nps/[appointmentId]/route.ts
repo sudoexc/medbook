@@ -12,7 +12,8 @@
  *   Idempotent — a second submission for the same (patient, appointment)
  *   tuple returns 409 with `reason: "already_submitted"` (the existing
  *   review row id is included so the UI can navigate to a "thank you"
- *   confirmation).
+ *   confirmation). Only a COMPLETED visit can be rated: any other status
+ *   returns 409 with `reason: "not_completed"`.
  *
  *   When `score < clinic.npsAlertThreshold` (default 7), we additionally:
  *     1. Stamp the review row with `adminAlerted = true,
@@ -80,6 +81,7 @@ async function loadAppointmentForContext(
         completedAt: Date | null;
         doctorId: string | null;
         doctor: { id: string; nameRu: string; nameUz: string };
+        patient: { fullName: string };
       };
       effectivePatientId: string;
       isOnBehalfOf: boolean;
@@ -110,6 +112,7 @@ async function loadAppointmentForContext(
       completedAt: true,
       doctorId: true,
       doctor: { select: { id: true, nameRu: true, nameUz: true } },
+      patient: { select: { fullName: true } },
     },
   });
   if (!appt) return { kind: "not_found" };
@@ -178,22 +181,13 @@ export const POST = createMiniAppHandler(
     if (loaded.kind === "not_found") return notFound();
     if (loaded.kind === "forbidden") return forbidden();
 
-    // We accept submissions for any appointment status — even non-COMPLETED
-    // ones in case the worker's clock-skew ever fires the trigger early. The
-    // duplicate guard below stops abuse.
-    const existing = await prisma.patientReview.findFirst({
-      where: {
-        clinicId: ctx.clinicId,
-        appointmentId: loaded.appt.id,
-        patientId: loaded.effectivePatientId,
-      },
-      select: { id: true },
-    });
-    if (existing) {
-      return err("already_submitted", 409, {
-        reason: "already_submitted",
-        reviewId: existing.id,
-      });
+    // Only a visit that took place can be rated (audit MA-23). The +4h push
+    // goes out for COMPLETED visits only (post-visit-nps worker), but the
+    // route took any status: a link opened ahead of time scored a doctor the
+    // patient had not seen yet, or a cancelled visit, and a low score raised
+    // a false alert for the admin.
+    if (loaded.appt.status !== "COMPLETED") {
+      return err("not_completed", 409, { reason: "not_completed" });
     }
 
     const typedBody = body as NpsBody;
@@ -211,7 +205,25 @@ export const POST = createMiniAppHandler(
     // keep the legacy call until Phase F so reports that query the old
     // shape don't regress.
     const correlationId = newCorrelationId();
-    const review = await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
+      // One review per (patient, visit). A plain read-then-insert let a
+      // double tap through: both requests saw no review and both wrote one,
+      // with two events and two alerts (audit MA-23). The transaction-scoped
+      // lock makes the second request wait and then find the first one's
+      // row; it is released at commit or rollback. 2-key form: a fixed
+      // namespace for «NPS submit» (the case attach lock is 7342), then the
+      // visit.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(7343, hashtext(${loaded.appt.id}))`;
+      const existing = await tx.patientReview.findFirst({
+        where: {
+          clinicId: ctx.clinicId,
+          appointmentId: loaded.appt.id,
+          patientId: loaded.effectivePatientId,
+        },
+        select: { id: true },
+      });
+      if (existing) return { kind: "duplicate" as const, reviewId: existing.id };
+
       const row = await tx.patientReview.create({
         data: {
           clinicId: ctx.clinicId,
@@ -259,8 +271,15 @@ export const POST = createMiniAppHandler(
         },
       };
       await publishViaOutbox(tx, envelope);
-      return row;
+      return { kind: "created" as const, row };
     });
+    if (outcome.kind === "duplicate") {
+      return err("already_submitted", 409, {
+        reason: "already_submitted",
+        reviewId: outcome.reviewId,
+      });
+    }
+    const review = outcome.row;
 
     // ── Action Center emit when low-score (defence-in-depth: even if the
     //    upsert fails we already have the review row + adminAlerted stamp,
@@ -271,7 +290,10 @@ export const POST = createMiniAppHandler(
         // Build the patient + doctor display names. The patient's `fullName`
         // may legitimately be empty for half-onboarded patients — fall back
         // to the TG first/last name from the verified initData.
+        // On behalf of a relative the alert is about the relative's visit:
+        // name her, not the owner whose Telegram sent the score.
         const patientDisplay =
+          (loaded.isOnBehalfOf ? loaded.appt.patient.fullName : "") ||
           ctx.patient.fullName ||
           [ctx.tgUser.first_name, ctx.tgUser.last_name]
             .filter(Boolean)

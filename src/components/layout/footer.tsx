@@ -28,17 +28,15 @@ export function Footer() {
               {t("description")}
             </p>
             <div className="flex gap-2">
-              {CONTACT.telegram !== "#" && (
-                <a
-                  href={CONTACT.telegram}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Telegram"
-                >
-                  <Send className="h-4 w-4" />
-                </a>
-              )}
+              <a
+                href={CONTACT.telegram}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Telegram"
+              >
+                <Send className="h-4 w-4" />
+              </a>
               {CONTACT.instagram !== "#" && (
                 <a
                   href={CONTACT.instagram}
@@ -88,13 +86,11 @@ export function Footer() {
                   {CONTACT.email}
                 </a>
               </li>
-              {CONTACT.telegram !== "#" && (
-                <li>
-                  <a href={CONTACT.telegram} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors">
-                    Telegram
-                  </a>
-                </li>
-              )}
+              <li>
+                <a href={CONTACT.telegram} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Telegram
+                </a>
+              </li>
             </ul>
           </div>
 

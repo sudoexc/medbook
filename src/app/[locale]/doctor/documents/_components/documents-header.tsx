@@ -10,8 +10,10 @@ import {
   type DocumentTab,
 } from "../_hooks/documents-context";
 
+// Conclusions are the doctor's most common document (audit CD-17).
 const TABS: Array<{ key: DocumentTab; labelKey: string }> = [
   { key: "all", labelKey: "tabs.all" },
+  { key: "CONCLUSION", labelKey: "tabs.conclusion" },
   { key: "REFERRAL", labelKey: "tabs.referral" },
   { key: "PRESCRIPTION", labelKey: "tabs.prescription" },
   { key: "RESULT", labelKey: "tabs.result" },

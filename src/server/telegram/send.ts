@@ -345,19 +345,25 @@ export async function sendDocumentUrl(
   );
 }
 
-/** Edit an existing message's text. */
+/**
+ * Edit an existing message's text. `entities` (instead of `parse_mode`)
+ * keeps the formatting of a text taken back from Telegram as it came.
+ */
 export async function editMessageText(
   clinic: TgClinicMinimal,
   chatId: string | number,
   messageId: number,
   text: string,
-  opts: SendMessageOptions = {},
+  opts: SendMessageOptions & { entities?: unknown[] } = {},
 ): Promise<TgMessageResult | boolean> {
   const payload: Record<string, unknown> = {
     chat_id: chatId,
     message_id: messageId,
     text,
     ...(opts.parse_mode ? { parse_mode: opts.parse_mode } : {}),
+    ...(opts.entities && opts.entities.length > 0
+      ? { entities: opts.entities }
+      : {}),
     ...(opts.reply_markup ? { reply_markup: opts.reply_markup } : {}),
   };
   const token = readTgBotToken(clinic.tgBotToken);
@@ -365,6 +371,30 @@ export async function editMessageText(
   return tgCallWithBackoff<TgMessageResult | boolean>(
     token,
     "editMessageText",
+    payload,
+  );
+}
+
+/**
+ * Replace a message's inline keyboard, leaving its text alone; no markup
+ * removes the keyboard.
+ */
+export async function editMessageReplyMarkup(
+  clinic: TgClinicMinimal,
+  chatId: string | number,
+  messageId: number,
+  replyMarkup?: { inline_keyboard: TgInlineKeyboard },
+): Promise<TgMessageResult | boolean> {
+  const payload: Record<string, unknown> = {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: replyMarkup ?? { inline_keyboard: [] },
+  };
+  const token = readTgBotToken(clinic.tgBotToken);
+  if (!token) return logNoop(clinic, "editMessageReplyMarkup", payload);
+  return tgCallWithBackoff<TgMessageResult | boolean>(
+    token,
+    "editMessageReplyMarkup",
     payload,
   );
 }

@@ -19,6 +19,7 @@
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
+import { WALKIN_TICKET_ROLES } from "@/lib/crm-topbar";
 import { prisma } from "@/lib/prisma";
 import { ok, err, conflict } from "@/server/http";
 import { audit } from "@/lib/audit";
@@ -48,7 +49,8 @@ const Body = z
   });
 
 export const POST = createApiHandler(
-  { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"], bodySchema: Body },
+  // Same list hides the topbar's «Выдать талон» from other roles (CM-26).
+  { roles: [...WALKIN_TICKET_ROLES], bodySchema: Body },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 

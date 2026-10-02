@@ -21,13 +21,39 @@ const STATUS_TONE: Record<string, string> = {
   SENDING: "bg-info/10 text-info",
   DONE: "bg-success/10 text-success",
   FAILED: "bg-destructive/10 text-destructive",
+  CANCELLED: "bg-muted/60 text-muted-foreground",
 };
 
-function formatBucket(row: CampaignRow): string | null {
+type Translate = ReturnType<typeof useTranslations>;
+
+/**
+ * The audience in words (audit G6-25): every broadcast showed «—», a
+ * reactivation its raw bucket.
+ */
+function segmentLabel(
+  row: CampaignRow,
+  tNew: Translate,
+  tAudience: Translate,
+): string | null {
   const seg = row.segment;
   if (!seg) return null;
-  if (seg.kind === "dormant") return seg.bucket;
-  return null;
+  switch (seg.kind) {
+    case "dormant":
+      return tNew.has(`bucketLabel.${seg.bucket}`)
+        ? tNew(`bucketLabel.${seg.bucket}`)
+        : seg.bucket;
+    case "all":
+      return tAudience("kind.all");
+    case "segment":
+      return (
+        seg.segments.map((s) => tAudience(`segment.${s}`)).join(", ") ||
+        tAudience("kind.segment")
+      );
+    case "tag":
+      return seg.tags.join(", ") || tAudience("kind.tag");
+    default:
+      return null;
+  }
 }
 
 function formatDate(iso: string | null, locale: string): string {
@@ -44,6 +70,9 @@ function formatDate(iso: string | null, locale: string): string {
 
 export function CampaignsList(_props: Props) {
   const t = useTranslations("notifications.campaigns");
+  const tNew = useTranslations("notifications.campaignsNew");
+  const tAudience = useTranslations("tgInbox.broadcast.audience");
+  const tChannel = useTranslations("notifications.types.labels");
   const locale = useLocale();
   const { data, isLoading, refetch, isFetching } = useCampaigns({ limit: 50 });
   const rows = data?.rows ?? [];
@@ -116,7 +145,7 @@ export function CampaignsList(_props: Props) {
             </thead>
             <tbody>
               {rows.map((row) => {
-                const bucket = formatBucket(row);
+                const segment = segmentLabel(row, tNew, tAudience);
                 return (
                   <tr
                     key={row.id}
@@ -132,11 +161,13 @@ export function CampaignsList(_props: Props) {
                         </div>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {bucket ?? "—"}
+                    <td className="truncate px-3 py-2 text-muted-foreground">
+                      {segment ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {row.channel}
+                      {tChannel.has(row.channel)
+                        ? tChannel(row.channel)
+                        : row.channel}
                     </td>
                     <td className="px-3 py-2">
                       <span
@@ -146,7 +177,9 @@ export function CampaignsList(_props: Props) {
                             "bg-muted/60 text-muted-foreground",
                         )}
                       >
-                        {row.status}
+                        {t.has(`status.${row.status}`)
+                          ? t(`status.${row.status}`)
+                          : row.status}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">

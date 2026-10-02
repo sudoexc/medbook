@@ -9,12 +9,18 @@
  * qualifies; the conditional FAILED→QUEUED update makes a double click queue
  * it once. A thread that still cannot send (no bot, no chat) answers with the
  * reason at once, the row stays FAILED.
+ *
+ * The thread is checked first, with the inbox's access rule (audit TG-32):
+ * every FAILED status reaches a doctor's browser over SSE with the thread and
+ * message ids, so a retry by id must not resend into a colleague's patient
+ * thread or hand back its message.
  */
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { err, notFound, ok } from "@/server/http";
 import { publishEventSafe } from "@/server/realtime/publish";
+import { conversationAccess } from "@/server/conversations/access";
 import {
   enqueueStaffMessage,
   staffSendBlocker,
@@ -37,7 +43,21 @@ export const POST = createApiHandler(
   async ({ request, ctx }) => {
     const { conversationId, messageId } = idsFromUrl(request);
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
-    if (!clinicId) return notFound();
+    const access = await conversationAccess(ctx);
+    if (!clinicId || !access) return notFound();
+
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, ...access.where },
+      select: {
+        id: true,
+        channel: true,
+        externalId: true,
+        patientId: true,
+        patient: { select: { telegramId: true } },
+        clinic: { select: { tgBotToken: true } },
+      },
+    });
+    if (!conv) return notFound();
 
     const msg = await prisma.message.findFirst({
       where: { id: messageId, conversationId, clinicId },
@@ -59,19 +79,6 @@ export const POST = createApiHandler(
     if (msg.status !== "FAILED") {
       return err("NotRetryable", 409, { reason: "not_failed", status: msg.status });
     }
-
-    const conv = await prisma.conversation.findFirst({
-      where: { id: conversationId, clinicId },
-      select: {
-        id: true,
-        channel: true,
-        externalId: true,
-        patientId: true,
-        patient: { select: { telegramId: true } },
-        clinic: { select: { tgBotToken: true } },
-      },
-    });
-    if (!conv) return notFound();
 
     const blocker = staffSendBlocker(conv);
     if (blocker) {

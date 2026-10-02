@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   SendIcon,
   PlusIcon,
-  MinusIcon,
   Loader2Icon,
   FileTextIcon,
   PaperclipIcon,
@@ -63,11 +62,14 @@ import {
   type CannedLang,
 } from "../_hooks/use-canned";
 import { useClinicInfo } from "../_hooks/use-conversation-meta";
-import { fillPlaceholders, firstNameOf } from "../_lib/placeholders";
+import {
+  fillPlaceholders,
+  hasUnfilledPlaceholders,
+  replyRecipient,
+} from "../_lib/placeholders";
 import {
   createDraftStore,
   type ComposerDraft,
-  type InlineBtn,
 } from "../_lib/composer-drafts";
 import { FileTypeIcon } from "./file-icon";
 
@@ -140,10 +142,6 @@ function useComposerDraft(conversationId: string) {
       (next: Updater<string>) => patch("text", next),
       [patch],
     ),
-    setButtonRows: React.useCallback(
-      (next: Updater<InlineBtn[][]>) => patch("buttonRows", next),
-      [patch],
-    ),
     setAttachments: React.useCallback(
       (next: Updater<LocalAttachment[]>) => patch("attachments", next),
       [patch],
@@ -166,14 +164,8 @@ function patchAttachment(
 export function MessageComposer({ conversation }: MessageComposerProps) {
   const t = useTranslations("tgInbox.composer");
   const locale = useLocale();
-  const {
-    text,
-    buttonRows,
-    attachments,
-    setText,
-    setButtonRows,
-    setAttachments,
-  } = useComposerDraft(conversation.id);
+  const { text, attachments, setText, setAttachments } =
+    useComposerDraft(conversation.id);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -329,13 +321,12 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
   const onSend = async () => {
     if (!canSend) return;
     const body = text.trim();
-    // Everything below is this conversation's own draft: the text, buttons
-    // and files typed and attached here, never another dialog's.
+    // Everything below is this conversation's own draft: the text and files
+    // typed and attached here, never another dialog's.
     const sentFor = conversation.id;
     const payload = {
       conversationId: sentFor,
       body,
-      buttons: buttonRows.length > 0 ? buttonRows : undefined,
       attachments:
         readyAttachments.length > 0 ? readyAttachments : undefined,
     };
@@ -498,10 +489,6 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
             "focus-within:border-primary/40 focus-within:shadow-md focus-within:shadow-primary/5",
           )}
         >
-          {buttonRows.length > 0 ? (
-            <InlineButtonsEditor rows={buttonRows} onChange={setButtonRows} />
-          ) : null}
-
           {attachments.length > 0 ? (
             <div className="flex flex-wrap gap-2 border-b border-border/60 bg-muted/20 p-3">
               {attachments.map((a) => {
@@ -597,17 +584,10 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
               label={t("upload.attach")}
               onClick={() => fileInputRef.current?.click()}
             />
-            <IconAction
-              icon={<PlusIcon className="size-[18px]" />}
-              iconClassName="motion-safe:group-hover:rotate-90"
-              label={t("inlineButtons.add")}
-              active={buttonRows.length > 0}
-              onClick={() =>
-                setButtonRows((prev) =>
-                  prev.length === 0 ? [[{ text: "", callback_data: "" }]] : prev,
-                )
-              }
-            />
+            {/* No inline-button editor (audit TG-26): a patient's tap on
+                such a button never reached the dialog, so the operator
+                waited for an answer that had already come, and a button
+                left without data made Telegram refuse the whole message. */}
 
             <button
               type="button"
@@ -772,6 +752,10 @@ function QuickActions({
             label={t("price")}
             onClick={() => insert(t("priceText"))}
           />
+          {/* Only inserts the text (audit TG-30): the card was called
+              «Подтвердить запись» while the visit stayed unconfirmed and
+              the call centre still rang the patient. The visit itself is
+              confirmed from its appointment card. */}
           <QuickCard
             icon={<CheckIcon className="size-4" />}
             label={t("confirm")}
@@ -971,13 +955,21 @@ function CannedPicker({
   const role = useCurrentRole();
   const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
   const [open, setOpen] = React.useState(false);
+  // The patient's language first (audit G6-15), the operator's screen only
+  // for a chat with no card: an Uzbek patient got the Russian reply because
+  // the receptionist works in Russian.
   const [lang, setLang] = React.useState<CannedLang>(
-    locale === "uz" ? "UZ" : "RU",
+    conversation.patient?.preferredLang ?? (locale === "uz" ? "UZ" : "RU"),
   );
   const [manage, setManage] = React.useState(false);
 
   const listQ = useCannedResponses(open);
-  const clinicQ = useClinicInfo(open);
+  // Loaded with the composer, not on the first open (audit G6-15): a reply
+  // picked from a cached list before /api/crm/clinic answered went out with
+  // the clinic's name, phone and address empty. Until it answers the
+  // replies wait (one fetch per ten minutes for the whole inbox).
+  const clinicQ = useClinicInfo(true);
+  const clinicPending = clinicQ.isPending;
 
   const items = React.useMemo(
     () => (listQ.data?.rows ?? []).filter((c) => c.lang === lang),
@@ -985,11 +977,11 @@ function CannedPicker({
   );
 
   const onPick = (c: CannedResponse) => {
-    const name = conversation.patient?.fullName ?? "";
+    if (clinicPending) return;
     const clinic = clinicQ.data;
     const filled = fillPlaceholders(c.body, {
-      firstName: firstNameOf(name),
-      name,
+      // The Telegram name when the chat has no card yet (G6-15).
+      ...replyRecipient(conversation),
       clinic: clinic ? (c.lang === "UZ" ? clinic.nameUz : clinic.nameRu) : "",
       phone: clinic?.phone ?? "",
       address: clinic
@@ -997,6 +989,9 @@ function CannedPicker({
         : "",
     });
     onInsert(filled);
+    // Whatever stayed unfilled is left as «{{…}}» in the text: say so
+    // before the operator sends it.
+    if (hasUnfilledPlaceholders(filled)) toast.warning(t("unfilled"));
     setOpen(false);
   };
 
@@ -1070,7 +1065,9 @@ function CannedPicker({
                     <button
                       type="button"
                       onClick={() => onPick(c)}
-                      className="block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted"
+                      disabled={clinicPending}
+                      aria-busy={clinicPending}
+                      className="block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted disabled:cursor-wait disabled:opacity-60"
                     >
                       <div className="font-medium">{c.title}</div>
                       <div className="line-clamp-2 text-muted-foreground">
@@ -1230,97 +1227,6 @@ function CannedManager({
           </ul>
         )}
       </ScrollArea>
-    </div>
-  );
-}
-
-function InlineButtonsEditor({
-  rows,
-  onChange,
-}: {
-  rows: InlineBtn[][];
-  onChange: (next: InlineBtn[][]) => void;
-}) {
-  const t = useTranslations("tgInbox.composer.inlineButtons");
-
-  const updateBtn = (ri: number, bi: number, patch: Partial<InlineBtn>) => {
-    const next = rows.map((row, rIdx) =>
-      rIdx === ri
-        ? row.map((b, bIdx) => (bIdx === bi ? { ...b, ...patch } : b))
-        : row,
-    );
-    onChange(next);
-  };
-  const addBtn = (ri: number) => {
-    const next = rows.map((row, rIdx) =>
-      rIdx === ri ? [...row, { text: "", callback_data: "" }] : row,
-    );
-    onChange(next);
-  };
-  const removeBtn = (ri: number, bi: number) => {
-    const next = rows
-      .map((row, rIdx) =>
-        rIdx === ri ? row.filter((_, bIdx) => bIdx !== bi) : row,
-      )
-      .filter((row) => row.length > 0);
-    onChange(next);
-  };
-  const addRow = () => {
-    onChange([...rows, [{ text: "", callback_data: "" }]]);
-  };
-  const clearAll = () => onChange([]);
-
-  return (
-    <div className="space-y-2 border-b border-border bg-muted/20 p-3">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold">{t("header")}</div>
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={addRow}>
-            <PlusIcon className="size-3" /> {t("addRow")}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={clearAll}>
-            {t("clear")}
-          </Button>
-        </div>
-      </div>
-      {rows.map((row, ri) => (
-        <div key={ri} className="flex flex-wrap items-start gap-1">
-          {row.map((b, bi) => (
-            <div
-              key={bi}
-              className="flex items-center gap-1 rounded-md border border-border bg-background p-1"
-            >
-              <Input
-                value={b.text}
-                onChange={(e) => updateBtn(ri, bi, { text: e.target.value })}
-                placeholder={t("textPlaceholder")}
-                className="h-7 w-[140px] text-xs"
-                aria-label={t("textPlaceholder")}
-              />
-              <Input
-                value={b.callback_data ?? ""}
-                onChange={(e) =>
-                  updateBtn(ri, bi, { callback_data: e.target.value })
-                }
-                placeholder={t("dataPlaceholder")}
-                className="h-7 w-[120px] text-xs"
-                aria-label={t("dataPlaceholder")}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeBtn(ri, bi)}
-                aria-label={t("remove")}
-              >
-                <MinusIcon className="size-3" />
-              </Button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" onClick={() => addBtn(ri)}>
-            <PlusIcon className="size-3" /> {t("addButton")}
-          </Button>
-        </div>
-      ))}
     </div>
   );
 }

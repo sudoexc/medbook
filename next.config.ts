@@ -44,6 +44,11 @@ const buildCsp = (frameAncestors: string) =>
 
 const contentSecurityPolicy = buildCsp("'self'");
 const siteContentSecurityPolicy = buildCsp(`'self' ${METRIKA_FRAMERS}`);
+// Telegram Web (web.telegram.org/k and /a) opens a Mini App in an <iframe>
+// on its own origin; the mobile and desktop clients use a WebView and were
+// never affected. With 'self' alone, a patient on Telegram in a browser got
+// an empty frame instead of the Mini App (audit LD-14). Only /c/ relaxes it.
+const miniAppContentSecurityPolicy = buildCsp("'self' https://web.telegram.org");
 
 // Routes that stream user-uploaded files set their OWN Content-Security-
 // Policy (a sandbox for anything that is not a PDF — src/server/storage/
@@ -67,7 +72,6 @@ const SITE_PATHS = [
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
@@ -114,6 +118,14 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      // Everywhere but the Mini App (/c/), whose framing is governed by its
+      // frame-ancestors below. Browsers ignore X-Frame-Options when the CSP
+      // carries frame-ancestors, so nginx's own SAMEORIGIN on the vhost does
+      // not block Telegram Web either.
+      {
+        source: "/:path((?!c/).*)",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
       {
         source: `/:path((?!${USER_FILE_ROUTES}).*)`,
         headers: [
@@ -126,6 +138,13 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: siteContentSecurityPolicy },
         ],
       })),
+      // After the catch-all so it wins, like the site paths.
+      {
+        source: "/c/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: miniAppContentSecurityPolicy },
+        ],
+      },
     ];
   },
 };

@@ -40,7 +40,10 @@ import {
  * `#N` the newest. Stable across pagination/filtering because it depends
  * only on (patientId, createdAt, id) which never change post-create.
  * Computed via a correlated count rather than a window function so we only
- * pay for the row ids actually being returned.
+ * pay for the row ids actually being returned. The `clinicId` match is
+ * redundant for correctness (a patient belongs to one clinic) but it is the
+ * leading column of the only usable index, (clinicId, patientId, createdAt):
+ * without it every returned row scanned the platform-wide table (audit CD-14).
  */
 async function attachSeq<T extends { id: string; patientId: string; createdAt: Date }>(
   rows: T[],
@@ -51,7 +54,8 @@ async function attachSeq<T extends { id: string; patientId: string; createdAt: D
     `SELECT d.id,
             (SELECT COUNT(*)
                FROM "Document" d2
-              WHERE d2."patientId" = d."patientId"
+              WHERE d2."clinicId" = d."clinicId"
+                AND d2."patientId" = d."patientId"
                 AND (d2."createdAt" < d."createdAt"
                      OR (d2."createdAt" = d."createdAt" AND d2."id" <= d."id")))::bigint AS seq
        FROM "Document" d
@@ -118,20 +122,22 @@ export const GET = createApiListHandler(
       });
     }
 
-    // DOCTOR sees only documents for their patients/appointments.
+    // DOCTOR sees only documents for their patients/appointments. A DOCTOR
+    // user with no Doctor profile yet has no patients: an empty list, as
+    // visit-notes answers. Skipping the filter used to list every document
+    // of the clinic (audit CD-15).
     if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
       const doc = await prisma.doctor.findFirst({
         where: { userId: ctx.userId },
         select: { id: true },
       });
-      if (doc) {
-        andClauses.push({
-          OR: [
-            { appointment: { doctorId: doc.id } },
-            { patient: { appointments: { some: { doctorId: doc.id } } } },
-          ],
-        });
-      }
+      if (!doc) return ok({ rows: [], nextCursor: null });
+      andClauses.push({
+        OR: [
+          { appointment: { doctorId: doc.id } },
+          { patient: { appointments: { some: { doctorId: doc.id } } } },
+        ],
+      });
     }
     if (andClauses.length > 0) where.AND = andClauses;
 

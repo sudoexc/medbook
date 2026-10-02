@@ -56,6 +56,11 @@ vi.mock("@/lib/prisma", () => {
       Object.assign(row, data);
       return row;
     }),
+    updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
+      const rows = db.patients.filter((p) => db.matches(p, where));
+      rows.forEach((r) => Object.assign(r, data));
+      return { count: rows.length };
+    }),
   };
   const conversation = {
     findFirst: vi.fn(async ({ where }: { where: Row }) => {
@@ -76,6 +81,14 @@ vi.mock("@/lib/prisma", () => {
         create: vi.fn(async ({ data }: { data: Row }) => {
           db.audits.push(data);
           return data;
+        }),
+        // Newest first: rows are kept in the order they were written.
+        findFirst: vi.fn(async ({ where }: { where: Row & { action?: { in: string[] } } }) => {
+          const { action, ...rest } = where;
+          const rows = db.audits.filter(
+            (a) => db.matches(a, rest) && (!action || action.in.includes(a.action as string)),
+          );
+          return rows.length > 0 ? { ...rows[rows.length - 1] } : null;
         }),
       },
       $transaction: async (ops: Array<Promise<unknown>>) => Promise.all(ops),
@@ -116,6 +129,8 @@ vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/server/realtime/publish", () => ({ publishEventSafe: vi.fn() }));
 
 import { PATCH } from "@/app/api/crm/conversations/[id]/route";
+import { audit } from "@/lib/audit";
+import { unlinkErrorKey } from "@/app/[locale]/crm/telegram/_lib/unlink-error";
 import { threadTelegramId } from "@/server/conversations/link-patient";
 import {
   goesByCardName,
@@ -455,6 +470,153 @@ describe("a chat the bot tied to the Mini App's stub can move to the clinic card
     expect(res.json.telegramLink).toEqual({ kind: "linked", retiredPatientId: "p_stub" });
     expect(c("conv_bot").patientId).toBe("p_new");
     expect(p("p_new").telegramId).toBe("555");
+  });
+});
+
+describe("G6-14 review: an untied chat does not come back with the next message", () => {
+  /** The webhook's step for the patient's next message in the chat. */
+  const nextMessage = () =>
+    linkThreadToSenderCard(prisma, {
+      clinicId: "clinic_A",
+      conversationId: "conv_1",
+      telegramId: "555",
+    });
+
+  it("an account the inbox wrote onto the wrong card leaves with the chat, so the webhook finds no card", async () => {
+    // The operator created her card from the chat with a mistyped number:
+    // a duplicate, empty, the profile goes by its name, so bound on its own.
+    db.patients.push(card("p_dup", { fullName: "Каримова Дилноза" }));
+    db.conversations.push(thread("conv_1", DILNOZA));
+    expect((await patch("conv_1", { patientId: "p_dup" })).json.telegramLink).toEqual({
+      kind: "linked",
+      retiredPatientId: null,
+    });
+    expect(p("p_dup").telegramId).toBe("555");
+
+    const res = await patch("conv_1", { patientId: null });
+    expect(res.status).toBe(200);
+    expect(res.json.telegramUnlinked).toBe(true);
+    expect(c("conv_1").patientId).toBeNull();
+    // Reminders and conclusions no longer go to this Telegram, and a later
+    // link to the right card is not a TELEGRAM_LINK_CONFLICT.
+    expect(p("p_dup")).toMatchObject({
+      telegramId: null,
+      telegramUsername: null,
+      telegramLinkedAt: null,
+    });
+    expect(audit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: "patient.telegram.inbox_unlinked",
+        entityId: "p_dup",
+        meta: { telegramId: "555", conversationId: "conv_1" },
+      }),
+    );
+
+    expect(await nextMessage()).toBeNull();
+    expect(c("conv_1").patientId).toBeNull();
+
+    // Linked to the right card, the account follows without a conflict.
+    db.patients.push(card("p_right", { fullName: "Каримова Дилноза" }));
+    const relinked = await patch("conv_1", { patientId: "p_right" });
+    expect(relinked.json.telegramLink).toEqual({ kind: "linked", retiredPatientId: null });
+    expect(p("p_right").telegramId).toBe("555");
+    expect(db.conflicts).toEqual([]);
+  });
+
+  it("an account the card holds by an invite or the Mini App keeps the chat: refused, nothing written", async () => {
+    db.patients.push(card("p_own", { telegramId: "555", telegramUsername: "dilnoza" }));
+    db.conversations.push(thread("conv_1", { patientId: "p_own" }));
+    db.audits.push({
+      clinicId: "clinic_A",
+      action: "patient.telegram.invite_consumed",
+      entityType: "Patient",
+      entityId: "p_own",
+      meta: { telegramId: "555" },
+    });
+    const res = await patch("conv_1", { patientId: null });
+    expect(res.status).toBe(409);
+    expect(res.json.reason).toBe("card_owns_telegram");
+    expect(c("conv_1").patientId).toBe("p_own");
+    expect(p("p_own").telegramId).toBe("555");
+    expect(prisma.conversation.updateMany).not.toHaveBeenCalled();
+    expect(unlinkErrorKey(res.status, res.json)).toBe("cardOwnsTelegram");
+
+    // The Mini App's own card: no binding event at all.
+    db.audits = [];
+    expect((await patch("conv_1", { patientId: null })).status).toBe(409);
+    expect(c("conv_1").patientId).toBe("p_own");
+  });
+
+  it("the newest binding decides: an invite consumed after the inbox link keeps the chat", async () => {
+    db.patients.push(card("p1", { fullName: "Каримова Дилноза" }));
+    db.conversations.push(thread("conv_1", DILNOZA));
+    await patch("conv_1", { patientId: "p1" });
+    db.audits.push({
+      clinicId: "clinic_A",
+      action: "patient.telegram.invite_consumed",
+      entityType: "Patient",
+      entityId: "p1",
+      meta: { telegramId: "555" },
+    });
+    expect((await patch("conv_1", { patientId: null })).status).toBe(409);
+    expect(p("p1").telegramId).toBe("555");
+  });
+
+  it("a card without the chat's account: only the thread is untied, and the webhook leaves it free", async () => {
+    db.patients.push(card("p_mother", { telegramId: "999" }));
+    db.conversations.push(thread("conv_1", { patientId: "p_mother" }));
+    const res = await patch("conv_1", { patientId: null });
+    expect(res.status).toBe(200);
+    expect(res.json.telegramUnlinked).toBe(false);
+    expect(c("conv_1").patientId).toBeNull();
+    expect(p("p_mother").telegramId).toBe("999");
+    expect(prisma.patient.updateMany).not.toHaveBeenCalled();
+    expect(await nextMessage()).toBeNull();
+  });
+
+  it("a confirmed binding is undone only by the roles that confirm", async () => {
+    db.patients.push(card("p_maria", { fullName: "Иванова Мария", ...HISTORY }));
+    db.conversations.push(thread("conv_1", { patientId: "p_maria" }));
+    await patch("conv_1", { linkTelegram: true });
+    expect(p("p_maria").telegramId).toBe("555");
+
+    db.role = "NURSE";
+    const refused = await patch("conv_1", { patientId: null });
+    expect(refused.status).toBe(403);
+    expect(refused.json.reason).toBe("telegram_link_role");
+    expect(unlinkErrorKey(refused.status, refused.json)).toBe("roleRequired");
+    expect(c("conv_1").patientId).toBe("p_maria");
+    expect(p("p_maria").telegramId).toBe("555");
+
+    db.role = "RECEPTIONIST";
+    const res = await patch("conv_1", { patientId: null });
+    expect(res.json.telegramUnlinked).toBe(true);
+    expect(p("p_maria").telegramId).toBeNull();
+    expect(c("conv_1").patientId).toBeNull();
+  });
+
+  it("other refusals stay generic", () => {
+    expect(unlinkErrorKey(404, { error: "NotFound" })).toBe("failed");
+    expect(unlinkErrorKey(500, null)).toBe("failed");
+  });
+
+  it("the rail hides «Отвязать» on an unconfirmed Mini App card and says the refusal in words", async () => {
+    const { readFileSync } = await import("node:fs");
+    const rail = readFileSync(
+      "src/app/[locale]/crm/telegram/_components/chat-right-rail.tsx",
+      "utf8",
+    );
+    expect(rail).toMatch(/isPrivateChatId\(conversation\.externalId\) &&\s*!miniAppCard/);
+    expect(rail).toMatch(/unlinkErrorKey\(res\.status, j\)/);
+    const ru = JSON.parse(readFileSync("src/messages/ru.json", "utf8"));
+    const uz = JSON.parse(readFileSync("src/messages/uz.json", "utf8"));
+    for (const key of ["warningTelegram", "doneWithTelegram", "cardOwnsTelegram", "roleRequired"]) {
+      expect(ru.tgInbox.rail.unlink[key], key).toBeTruthy();
+      expect(uz.tgInbox.rail.unlink[key], key).toBeTruthy();
+      expect(ru.tgInbox.rail.unlink[key], key).not.toMatch(/[—–]/);
+      expect(uz.tgInbox.rail.unlink[key], key).not.toMatch(/[—–]/);
+    }
   });
 });
 

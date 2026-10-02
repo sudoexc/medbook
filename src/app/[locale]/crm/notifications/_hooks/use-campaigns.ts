@@ -15,7 +15,13 @@ export type CampaignRow = {
   channel: string;
   status: string;
   templateId: string | null;
-  segment: { kind: "dormant"; bucket: DormantBucket } | null;
+  // Broadcasts from the Telegram section share the table (audit G6-25).
+  segment:
+    | { kind: "dormant"; bucket: DormantBucket }
+    | { kind: "all" }
+    | { kind: "segment"; segments: string[] }
+    | { kind: "tag"; tags: string[] }
+    | null;
   totalCount: number;
   sentCount: number;
   failedCount: number;

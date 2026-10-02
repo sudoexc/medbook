@@ -88,7 +88,9 @@ export const CreateSendSchema = z.object({
   patientId: z.string(),
   appointmentId: z.string().optional().nullable(),
   channel: NotificationChannelEnum,
-  recipient: z.string().min(1).max(200),
+  // For Telegram the server takes the patient's own chat (audit TG-27); a
+  // recipient given here must be that chat.
+  recipient: z.string().max(200).optional(),
   body: z.string().min(1).max(10000),
   scheduledFor: z.coerce.date(),
 });

@@ -198,3 +198,93 @@ export async function bindThreadTelegramToCard(input: {
 
   return { kind: "linked", retiredPatientId: other?.id ?? null };
 }
+
+/**
+ * The events that put an account onto a card. The newest one says how the
+ * card got the Telegram it holds now.
+ */
+const TELEGRAM_BIND_ACTIONS = [
+  "patient.telegram.inbox_linked",
+  "patient.telegram.invite_consumed",
+  "patient.telegram.contact_linked",
+];
+
+export type ThreadUnlink =
+  /** The card does not hold the chat's account: only the thread is untied. */
+  | { kind: "thread-only" }
+  /** The inbox wrote the account onto the card; it leaves with the chat. */
+  | { kind: "with-telegram"; telegramId: string; confirmed: boolean }
+  /**
+   * The card holds the account by an invite, a shared contact, the Mini App
+   * or staff typing it in: the chat is that card's and stays.
+   */
+  | { kind: "card-owns-telegram" };
+
+/**
+ * What untying a bot chat from its card has to do (audit G6-14 review).
+ * The webhook fills an EMPTY thread link from the card that holds the
+ * sender's account (`linkThreadToSenderCard`), so a chat untied from the
+ * card holding its account came straight back with the patient's next
+ * message, and the card kept his reminders and conclusions. A card that
+ * got the account from the inbox (the rail's link, auto or confirmed) gives
+ * it back with the chat: that is the operator undoing his own link. Any
+ * other holder proved or was given the account outside this chat, and only
+ * an explicit identity change may take it away, so the chat stays put.
+ */
+export async function planThreadUnlink(input: {
+  clinicId: string;
+  patientId: string;
+  telegramId: string | null;
+}): Promise<ThreadUnlink> {
+  const { clinicId, patientId, telegramId } = input;
+  if (!telegramId) return { kind: "thread-only" };
+  const card = await prisma.patient.findFirst({
+    where: { id: patientId, clinicId, deletedAt: null },
+    select: { telegramId: true },
+  });
+  if (card?.telegramId !== telegramId) return { kind: "thread-only" };
+  const bound = await prisma.auditLog.findFirst({
+    where: {
+      clinicId,
+      entityType: "Patient",
+      entityId: patientId,
+      action: { in: TELEGRAM_BIND_ACTIONS },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { action: true, meta: true },
+  });
+  const meta = (bound?.meta ?? null) as {
+    telegramId?: unknown;
+    confirmed?: unknown;
+  } | null;
+  if (
+    bound?.action !== "patient.telegram.inbox_linked" ||
+    meta?.telegramId !== telegramId
+  ) {
+    return { kind: "card-owns-telegram" };
+  }
+  return { kind: "with-telegram", telegramId, confirmed: meta.confirmed === true };
+}
+
+/**
+ * The write that takes the inbox-bound account off the card. Pinned to the
+ * account so a concurrent rebind to another one is never cleared. The
+ * first-link time goes too: the link is being undone as a mistake, and a
+ * later correct link must count as new in «+N за неделю». An empty Mini
+ * App card the link retired stays retired; the account's next Mini App
+ * open makes a fresh one.
+ */
+export function unbindInboxTelegram(input: {
+  clinicId: string;
+  patientId: string;
+  telegramId: string;
+}) {
+  return prisma.patient.updateMany({
+    where: {
+      id: input.patientId,
+      clinicId: input.clinicId,
+      telegramId: input.telegramId,
+    },
+    data: { telegramId: null, telegramUsername: null, telegramLinkedAt: null },
+  });
+}

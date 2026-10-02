@@ -42,7 +42,13 @@ const state = {
     | { ok: false; reason: "not_found" | "cancelled" | "completed" },
   confirmShouldThrow: false,
   answerCalls: [] as Array<{ cqId: string; text: string | undefined; showAlert: boolean | undefined }>,
-  editCalls: [] as Array<{ chatId: string; messageId: number; text: string }>,
+  editCalls: [] as Array<{
+    kind: "text" | "markup";
+    chatId: string;
+    messageId: number;
+    text?: string;
+    entities?: unknown[];
+  }>,
   // tenant-context snapshot the helper saw at call time
   tenantSnapshots: [] as unknown[],
 };
@@ -103,9 +109,27 @@ vi.mock("@/server/telegram/send", () => ({
     },
   ),
   editMessageText: vi.fn(
-    async (_clinic: unknown, chatId: string | number, messageId: number, text: string) => {
-      state.editCalls.push({ chatId: String(chatId), messageId, text });
+    async (
+      _clinic: unknown,
+      chatId: string | number,
+      messageId: number,
+      text: string,
+      opts?: { entities?: unknown[] },
+    ) => {
+      state.editCalls.push({
+        kind: "text",
+        chatId: String(chatId),
+        messageId,
+        text,
+        entities: opts?.entities,
+      });
       return { message_id: messageId, chat: { id: chatId } };
+    },
+  ),
+  editMessageReplyMarkup: vi.fn(
+    async (_clinic: unknown, chatId: string | number, messageId: number) => {
+      state.editCalls.push({ kind: "markup", chatId: String(chatId), messageId });
+      return true;
     },
   ),
   sendMessage: vi.fn(async () => ({ message_id: 999, chat: { id: 0 } })),
@@ -189,6 +213,10 @@ function callbackBody(opts: {
   cqId?: string;
   chatId?: number;
   messageId?: number;
+  /** The reminder as Telegram hands it back (audit TG-34). */
+  text?: string;
+  entities?: unknown[];
+  buttonText?: string;
 }) {
   return {
     update_id: 1,
@@ -199,11 +227,23 @@ function callbackBody(opts: {
         message_id: opts.messageId ?? 42,
         chat: { id: opts.chatId ?? 555 },
         date: Math.floor(Date.now() / 1000),
+        ...(opts.text ? { text: opts.text } : {}),
+        ...(opts.entities ? { entities: opts.entities } : {}),
+        ...(opts.buttonText
+          ? {
+              reply_markup: {
+                inline_keyboard: [[{ text: opts.buttonText, callback_data: opts.data }]],
+              },
+            }
+          : {}),
       },
       data: opts.data,
     },
   };
 }
+
+const REMINDER = "Алишер, напоминаем: завтра в 14:30 приём у невролога, кабинет 12.";
+const BOLD = [{ type: "bold", offset: 0, length: 6 }];
 
 beforeEach(() => {
   state.appt = null;
@@ -263,6 +303,9 @@ describe("TG webhook — confirm:<id> callback branch", () => {
       body: callbackBody({
         data: "confirm:appt_123",
         fromId: 999, // number, must match string "999"
+        text: REMINDER,
+        entities: BOLD,
+        buttonText: "✅ Подтверждаю",
       }),
     });
     const res = await POST(req, ctx);
@@ -276,9 +319,14 @@ describe("TG webhook — confirm:<id> callback branch", () => {
       via: "TG_BUTTON",
     });
 
-    // edit message
+    // TG-34: the reminder keeps its text, the mark goes under it with the
+    // formatting intact, and the keyboard is gone with the edit.
     expect(state.editCalls).toHaveLength(1);
-    expect(state.editCalls[0].text).toBe("✅ Подтверждено · спасибо!");
+    expect(state.editCalls[0]).toMatchObject({
+      kind: "text",
+      text: `${REMINDER}\n\n✅ Подтверждено, спасибо!`,
+      entities: BOLD,
+    });
 
     // answer callback (success toast)
     expect(state.answerCalls).toHaveLength(1);
@@ -375,10 +423,10 @@ describe("TG webhook — confirm:<id> callback branch", () => {
     expect(res.status).toBe(200);
 
     expect(state.answerCalls[0].text).toBe("Уже подтверждено");
-    // editTo is non-null on result.ok, so editMessageText IS called even in the
-    // alreadyConfirmed branch.
+    // The edit fires on result.ok in the alreadyConfirmed branch too. With
+    // no text in the update there is nothing to keep: only the keyboard goes.
     expect(state.editCalls).toHaveLength(1);
-    expect(state.editCalls[0].text).toBe("✅ Подтверждено · спасибо!");
+    expect(state.editCalls[0].kind).toBe("markup");
   });
 
   describe("TG8 — terminal-state toasts", () => {

@@ -11,6 +11,8 @@
  */
 import { z } from "zod";
 
+import { unknownBroadcastPlaceholders } from "@/server/campaigns/broadcast-body";
+
 export const DormantBucketEnum = z.enum(["90-180", "180-365", "365+"]);
 export type DormantBucket = z.infer<typeof DormantBucketEnum>;
 
@@ -81,7 +83,12 @@ export const BroadcastSchema = z.object({
   name: z.string().min(2).max(200).optional(),
   channel: CampaignChannelEnum.default("TG"),
   segment: CampaignSegmentSchema,
-  body: BroadcastBodySchema,
+  // A token the launcher does not fill reaches every recipient as an empty
+  // gap (audit G6-21): refused, as the composer already blocks it.
+  body: BroadcastBodySchema.refine(
+    (body) => unknownBroadcastPlaceholders(body).length === 0,
+    { message: "unknown_placeholder" },
+  ),
   scheduledFor: z.coerce.date().optional(),
 });
 export type Broadcast = z.infer<typeof BroadcastSchema>;

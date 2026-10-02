@@ -80,6 +80,8 @@ export type Patient = {
   consentMarketing: boolean;
   /** Set once the card is anonymised by a DSAR erasure. */
   deletedAt: string | null;
+  /** Opted out of marketing: the flag the broadcasts obey (audit G6-23). */
+  marketingOptOut?: boolean;
   createdAt: string;
   updatedAt: string;
   appointments?: PatientAppointmentShort[];

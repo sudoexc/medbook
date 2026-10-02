@@ -34,6 +34,7 @@ import {
 import { patientAuditHref } from "@/lib/audit-links";
 import { PatientCardSkeleton } from "./patient-card-skeleton";
 import { TAB_ORDER, tabFromParam, type TabKey } from "./patient-card-tabs";
+import { linkedCardTab } from "../_lib/card-tab";
 
 // Tabs are lazy-loaded so the initial overview render stays light. Only the
 // active tab + its dependencies are bundled in the initial chunk.
@@ -75,27 +76,28 @@ export function PatientCardClient({ id }: { id: string }) {
 
   // `?tab=` deep links (the Telegram chat rail links «Случаи», «Оплаты»,
   // «Документы» this way) used to land on «Обзор», because only the
-  // `#case-` hash was read (audit PT-24).
+  // `#case-` hash was read (audit PT-24, G6-09). This effect follows the
+  // param when it changes under a mounted card; it is declared before the
+  // arrival effect below so a `#case-` hash still wins on first render.
   const tabParam = tabFromParam(useSearchParams().get("tab"));
   React.useEffect(() => {
     if (tabParam) setTab(tabParam);
   }, [tabParam]);
 
-  // Hash deep-link: when arriving with `#case-<id>`, switch to the Cases tab
-  // so the Cases-tab effect can scroll the matching card into view. Listens
-  // for hashchange so navigations within the page (drawer pill back to
-  // patient card with a different case anchor) also re-trigger the switch.
+  // Deep links on arrival: `#case-<id>` switches to the Cases tab so the
+  // Cases-tab effect can scroll the matching card into view, otherwise
+  // `?tab=` opens the named tab. Listens for hashchange so navigations
+  // within the page (drawer pill back to patient card with a different case
+  // anchor) also re-trigger the switch.
   React.useEffect(() => {
-    const apply = () => {
-      const h =
-        typeof window !== "undefined" ? window.location.hash : "";
-      if (h.startsWith("#case-")) setTab("cases");
+    if (typeof window === "undefined") return;
+    const fromLink = linkedCardTab(window.location.search, window.location.hash);
+    if (fromLink) setTab(fromLink);
+    const onHash = () => {
+      if (window.location.hash.startsWith("#case-")) setTab("cases");
     };
-    apply();
-    if (typeof window !== "undefined") {
-      window.addEventListener("hashchange", apply);
-      return () => window.removeEventListener("hashchange", apply);
-    }
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   const openNewAppointment = React.useCallback(() => {
@@ -154,6 +156,9 @@ export function PatientCardClient({ id }: { id: string }) {
   const visibleTabs = TAB_ORDER.filter(
     (tb) => tb.key !== "medical" || showMedical,
   );
+  // A `?tab=medical` link opened by a role without medical access shows the
+  // overview, not an empty pane with no tab selected.
+  const activeTab: TabKey = tab === "medical" && !showMedical ? "overview" : tab;
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -193,7 +198,7 @@ export function PatientCardClient({ id }: { id: string }) {
             className="flex flex-wrap gap-1 border-b border-border"
           >
             {visibleTabs.map((tb) => {
-              const active = tab === tb.key;
+              const active = activeTab === tb.key;
               return (
                 <button
                   key={tb.key}
@@ -214,7 +219,7 @@ export function PatientCardClient({ id }: { id: string }) {
             })}
           </div>
 
-          {tab === "overview" ? (
+          {activeTab === "overview" ? (
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
               <PatientInfoPanel patient={patient} appointments={appointments} />
 
@@ -246,20 +251,20 @@ export function PatientCardClient({ id }: { id: string }) {
                 </div>
               }
             >
-              {tab === "visits" ? (
+              {activeTab === "visits" ? (
                 <VisitsTab
                   patient={patient}
                   onCreate={openNewAppointment}
                 />
-              ) : tab === "cases" ? (
+              ) : activeTab === "cases" ? (
                 <CasesTab patient={patient} />
-              ) : tab === "medical" && showMedical ? (
+              ) : activeTab === "medical" ? (
                 <MedicalTab patient={patient} role={role} />
-              ) : tab === "documents" ? (
+              ) : activeTab === "documents" ? (
                 <DocumentsTab patient={patient} />
-              ) : tab === "payments" ? (
+              ) : activeTab === "payments" ? (
                 <PaymentsTab patient={patient} />
-              ) : tab === "communications" ? (
+              ) : activeTab === "communications" ? (
                 <CommunicationsTab patient={patient} />
               ) : null}
             </React.Suspense>

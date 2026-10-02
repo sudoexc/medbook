@@ -41,7 +41,12 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    # noeviction (audit TG-28): this Redis holds the BullMQ queues and job
+    # schedulers, and under allkeys-lru a full Redis silently dropped them
+    # (reminders stopped until the worker restarted). The other keys
+    # (idempotency, LLM cache) carry a TTL; at the cap a write now fails
+    # loudly instead of losing a queue.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
     volumes:
       - redisdata:/data
     healthcheck:

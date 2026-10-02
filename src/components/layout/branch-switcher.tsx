@@ -6,7 +6,8 @@
  * Mirrors `ClinicSwitcher` UX: a dropdown with the clinic's branches plus an
  * "All branches" option at the top. The selected branch is persisted in the
  * `active_branch_id` cookie via POST /api/crm/branches/active. After the
- * server confirms, we call `router.refresh()` so the next RSC pass picks up
+ * server confirms, we reset the TanStack Query cache and call
+ * `router.refresh()` so both the client lists and the next RSC pass pick up
  * the new tenant context (`branchId` is read by `api-handler.ts` from the
  * cookie).
  *
@@ -17,6 +18,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { useLocale, useTranslations } from "next-intl"
 import { CheckIcon, ChevronDownIcon, GitBranchIcon } from "lucide-react"
 
@@ -54,6 +56,7 @@ export function BranchSwitcher({
   className,
 }: BranchSwitcherProps) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const locale = useLocale()
   const t = useTranslations("branchSwitcher")
   const [branches, setBranches] = React.useState<BranchOption[] | null>(null)
@@ -102,6 +105,12 @@ export function BranchSwitcher({
           setError(`HTTP ${res.status}`)
           return
         }
+        // Queue, appointments and calls live in TanStack Query with a
+        // staleTime; router.refresh() alone left the previous branch's rows
+        // on screen for up to a minute (audit CM-23). resetQueries drops
+        // the cached data (no stale branch while refetching) and refetches
+        // whatever is mounted.
+        void queryClient.resetQueries()
         // Re-fetch RSC data so the new branch scope takes effect.
         router.refresh()
       } catch (e) {
@@ -110,7 +119,7 @@ export function BranchSwitcher({
         setSwitching(null)
       }
     },
-    [router],
+    [router, queryClient],
   )
 
   const reload = React.useCallback(async () => {

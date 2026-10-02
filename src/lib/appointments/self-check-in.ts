@@ -20,6 +20,17 @@ import { tashkentDateOf } from "@/lib/tashkent-time";
 const AWAITING_DESK: ReadonlySet<string> = new Set(["BOOKED", "CONFIRMED"]);
 
 /**
+ * Whether «Я на месте» can be tapped for a visit in `status`: only before
+ * the desk has met the patient. Once reception marked him «Пришёл»
+ * (WAITING) or the doctor started (IN_PROGRESS) the server refuses the tap,
+ * and the home hero used to offer it anyway and answer «Ошибка» (audit
+ * MA-21). The route and the button read this one rule.
+ */
+export function canSelfCheckIn(status: string): boolean {
+  return AWAITING_DESK.has(status);
+}
+
+/**
  * Whether the visit carries a check-in made for it as it stands: tapped on
  * the visit's own clinic day (review of G3-01).
  *

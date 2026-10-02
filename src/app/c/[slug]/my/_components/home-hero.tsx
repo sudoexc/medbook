@@ -53,6 +53,7 @@ import { myHref } from "../_lib/booking-context";
 import { formatDateISO, formatTimeISO, MErrorInline } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { tashkentDateOf } from "@/lib/tashkent-time";
+import { canSelfCheckIn } from "@/lib/appointments/self-check-in";
 import { pickDueMedicationReminder } from "@/lib/patient-experience/medication-reminders";
 import { TicketSheet } from "./ticket-sheet";
 import type { Dict } from "./mini-i18n";
@@ -343,6 +344,11 @@ function AppointmentHero({
     }
   }, [appt.id]);
   const arrived = Boolean(appt.arrivedAt) || arrivedLocal;
+  // This card also shows a visit the desk already put in the queue (WAITING
+  // on the schedule lane) or the doctor started: «Я на месте» is over for
+  // it, the server refuses the tap, so neither the button nor the
+  // «вас встретят» plaque belongs under it (audit MA-21).
+  const selfCheckIn = isToday && canSelfCheckIn(appt.status);
   const onCheckIn = () => {
     tg.haptic.selection();
     checkin.mutate(
@@ -410,7 +416,7 @@ function AppointmentHero({
       </div>
     </Link>
     {/* Sibling, not nested in the Link — interactive elements don't stack. */}
-    {isToday ? (
+    {selfCheckIn ? (
       arrived ? (
         <div
           className="mt-2 flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-semibold"

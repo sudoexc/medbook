@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { LeadFormTrigger } from "./lead-form";
 import type { Locale } from "@/types";
 import type { DoctorView } from "@/lib/doctors";
+import { sitePath } from "@/lib/site-urls";
 
 // Doctors render as an initial-monogram plaque, not a photo. Remote photos
 // live on the private MinIO host, which is not in the site CSP `img-src`
@@ -38,9 +39,11 @@ export function Doctors({ doctors }: { doctors: DoctorView[] }) {
                 <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10 text-2xl font-bold text-primary">
                   {monogram(doc.name[locale])}
                 </div>
-                {/* Full name, wrapped — never truncated. */}
+                {/* Full name, wrapped — never truncated. The address in this
+                    locale: the old relative "doctors/<id>" led from /uz to
+                    the Russian page (audit LD-12). */}
                 <a
-                  href={`doctors/${doc.id}`}
+                  href={sitePath(locale, `/doctors/${doc.id}`)}
                   className="mt-5 block text-xl font-semibold leading-snug text-foreground transition-colors hover:text-primary"
                 >
                   {doc.name[locale]}

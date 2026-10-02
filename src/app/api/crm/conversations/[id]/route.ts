@@ -11,11 +11,13 @@ import { UpdateConversationSchema } from "@/server/schemas/conversation";
 import { publishEventSafe } from "@/server/realtime/publish";
 import {
   bindThreadTelegramToCard,
+  planThreadUnlink,
   threadTelegramId,
+  unbindInboxTelegram,
   type ThreadTelegramLink,
 } from "@/server/conversations/link-patient";
 import { threadProfileName } from "@/lib/patients/telegram-card";
-import { doctorConversationScope } from "@/server/conversations/doctor-scope";
+import { conversationAccess } from "@/server/conversations/access";
 import {
   doctorReadClearsSharedUnread,
   doctorUnreadByConversation,
@@ -41,25 +43,14 @@ export const GET = createApiListHandler(
     // injects clinicId, but `findUnique` semantics around composite uniques
     // are easy to bypass with a future refactor — keeping the guard here
     // makes the security boundary visible in the handler itself.
-    const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
-    if (!clinicId) return notFound();
     // The inbox opens a thread by id when it is not on the loaded page of
     // the list (audit G6-07: a link from the reception widget, the search
     // or a toast). A doctor reads by id only what his list would show him.
-    const where: Record<string, unknown> = { id, clinicId };
-    let doctorId: string | null = null;
-    if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
-      const doc = await prisma.doctor.findFirst({
-        where: { userId: ctx.userId },
-        select: { id: true },
-      });
-      if (doc) {
-        doctorId = doc.id;
-        where.AND = [{ OR: doctorConversationScope(doc.id, ctx.userId) }];
-      }
-    }
+    const access = await conversationAccess(ctx);
+    if (!access) return notFound();
+    const doctorId = access.doctorId;
     const row = await prisma.conversation.findFirst({
-      where,
+      where: { id, ...access.where },
       // Same shape as a row of the list, so the inbox renders either.
       include: {
         patient: {
@@ -69,6 +60,8 @@ export const GET = createApiListHandler(
             phone: true,
             photoUrl: true,
             tgBlockedAt: true,
+            // Quick replies open in his language (audit G6-15).
+            preferredLang: true,
           },
         },
         assignedTo: { select: { id: true, name: true } },
@@ -99,8 +92,11 @@ export const PATCH = createApiHandler(
     const id = idFromUrl(request);
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     if (!clinicId) return notFound();
+    // A doctor changes only a thread he may open (audit TG-32).
+    const access = await conversationAccess(ctx);
+    if (!access) return notFound();
     const before = await prisma.conversation.findFirst({
-      where: { id, clinicId },
+      where: { id, ...access.where },
     });
     if (!before) return notFound();
     const { markRead, markAnswered, linkTelegram, ...rest } = body;
@@ -116,6 +112,34 @@ export const PATCH = createApiHandler(
         return err("ValidationError", 400, { reason: "no_patient" });
       }
     }
+    // Untying a bot chat from its card (audit G6-14 review): when the card
+    // holds the chat's account the webhook would tie the chat straight back
+    // on the next message. An account the inbox put there leaves with the
+    // chat; one the card holds otherwise keeps the chat where it is.
+    let unbindTelegram: { patientId: string; telegramId: string } | null = null;
+    if (rest.patientId === null && before.patientId) {
+      const plan = await planThreadUnlink({
+        clinicId,
+        patientId: before.patientId,
+        telegramId: threadTelegramId(before),
+      });
+      if (plan.kind === "card-owns-telegram") {
+        return err("Conflict", 409, { reason: "card_owns_telegram" });
+      }
+      if (plan.kind === "with-telegram") {
+        // A binding staff confirmed is undone by the roles that confirm.
+        if (
+          plan.confirmed &&
+          (ctx.kind !== "TENANT" || !TELEGRAM_CONFIRM_ROLES.has(ctx.role))
+        ) {
+          return err("forbidden", 403, { reason: "telegram_link_role" });
+        }
+        unbindTelegram = {
+          patientId: before.patientId,
+          telegramId: plan.telegramId,
+        };
+      }
+    }
     // A patient being linked must be one of this clinic's live cards.
     const linkingPatientId =
       typeof rest.patientId === "string" && rest.patientId !== before.patientId
@@ -127,6 +151,20 @@ export const PATCH = createApiHandler(
         select: { id: true },
       });
       if (!card) return notFound();
+    }
+    // An assignee is an active member of this clinic's staff (audit TG-32):
+    // the id was written as given, and the GET then joined whoever it named.
+    if (
+      typeof rest.assignedToId === "string" &&
+      rest.assignedToId !== before.assignedToId
+    ) {
+      const assignee = await prisma.user.findFirst({
+        where: { id: rest.assignedToId, clinicId, active: true },
+        select: { id: true },
+      });
+      if (!assignee) {
+        return err("ValidationError", 400, { reason: "assignee_not_in_clinic" });
+      }
     }
     const data: Record<string, unknown> = { ...rest };
     // DC-10 — `unreadCount` is the desk's counter. A doctor's read goes into
@@ -159,10 +197,19 @@ export const PATCH = createApiHandler(
     // across tenants; we already verified the row exists in this clinic.
     // A bare Telegram confirmation changes nothing on the thread itself.
     if (Object.keys(data).length > 0) {
-      await prisma.conversation.updateMany({
+      const threadWrite = prisma.conversation.updateMany({
         where: { id, clinicId },
         data: data as never,
       });
+      // The chat and the account it brought leave the card together.
+      if (unbindTelegram) {
+        await prisma.$transaction([
+          threadWrite,
+          unbindInboxTelegram({ clinicId, ...unbindTelegram }),
+        ]);
+      } else {
+        await threadWrite;
+      }
     }
     const after = (await prisma.conversation.findFirst({
       where: { id, clinicId },
@@ -177,6 +224,14 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    if (unbindTelegram) {
+      await audit(request, {
+        action: "patient.telegram.inbox_unlinked",
+        entityType: "Patient",
+        entityId: unbindTelegram.patientId,
+        meta: { telegramId: unbindTelegram.telegramId, conversationId: id },
+      });
+    }
 
     // Linking the thread identifies the patient's Telegram too (audit
     // TG-11): the card learns the account so reminders and the next
@@ -221,6 +276,6 @@ export const PATCH = createApiHandler(
         patientId: after.patientId,
       },
     });
-    return ok({ ...after, telegramLink });
+    return ok({ ...after, telegramLink, telegramUnlinked: unbindTelegram !== null });
   }
 );

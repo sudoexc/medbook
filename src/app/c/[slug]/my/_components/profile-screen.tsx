@@ -29,17 +29,18 @@ export function ProfileScreen() {
 
   const [name, setName] = React.useState("");
   const [lang, setLang] = React.useState<"RU" | "UZ">("RU");
-  const [consent, setConsent] = React.useState(false);
   // Phase 17 Wave 1 — marketing opt-OUT pathway. UI surfaces the inverse
   // ("receive marketing notifications") so default-ON reads naturally; we
-  // translate back to the API's opt-out flag when saving.
+  // translate back to the API's opt-out flag when saving. It is the one
+  // switch the broadcasts obey: a second «Согласен получать уведомления»
+  // box wrote `consentMarketing`, which no send reads, so unticking it
+  // stopped nothing (audit G6-23).
   const [marketingAllowed, setMarketingAllowed] = React.useState(true);
 
   React.useEffect(() => {
     if (profile.data) {
       setName(profile.data.fullName);
       setLang(profile.data.preferredLang);
-      setConsent(profile.data.consentMarketing);
       setMarketingAllowed(!profile.data.marketingOptOut);
     }
   }, [profile.data]);
@@ -54,7 +55,6 @@ export function ProfileScreen() {
       await update.mutateAsync({
         fullName: name,
         lang,
-        consentMarketing: consent,
         marketingOptOut: !marketingAllowed,
       });
       tg.haptic.notification("success");
@@ -116,15 +116,6 @@ export function ProfileScreen() {
               ))}
             </div>
           </div>
-          <label className="flex items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="h-5 w-5 rounded"
-            />
-            <span>{t.profile.consentLabel}</span>
-          </label>
         </MCard>
       </MSection>
       {/* Phase 17 Wave 1 — Communication preferences (marketing opt-out). */}

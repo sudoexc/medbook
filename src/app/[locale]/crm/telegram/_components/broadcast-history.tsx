@@ -102,8 +102,12 @@ function BroadcastRow({
   const [confirming, setConfirming] = React.useState(false);
 
   const f = item.funnel;
+  // A broadcast goes to Telegram only, and Telegram tells a bot nothing
+  // about delivery or reading: those statuses exist for in-app rows. The
+  // funnel showed «Доставлено 0 · Прочитано 0» on every broadcast (audit
+  // TG-31), so it counts what is known: accepted by Telegram, failed,
+  // blocked. A DELIVERED/READ row, if any, was sent first.
   const sent = f.sent + f.delivered + f.read;
-  const delivered = f.delivered + f.read;
   const { Icon, spin } = STATUS_ICON[item.status];
 
   const onCancel = () => {
@@ -197,12 +201,6 @@ function BroadcastRow({
         <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
           <Stat value={f.total} label={t("funnel.total")} />
           <Stat value={sent} label={t("funnel.sent")} />
-          <Stat
-            value={delivered}
-            label={t("funnel.delivered")}
-            tone="text-[color:var(--success)]"
-          />
-          <Stat value={f.read} label={t("funnel.read")} />
           {f.failed > 0 ? (
             <Stat
               value={f.failed}

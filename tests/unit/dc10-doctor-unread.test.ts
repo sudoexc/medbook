@@ -62,6 +62,8 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async (args: { where: Record<string, unknown> }) =>
         (list.findMany.shift() ?? (() => []))(args),
       ),
+      // «Все N» of the first page (audit G6-22).
+      count: vi.fn(async () => 0),
       findFirst: vi.fn(async () => ({ ...state.conv })),
       updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.updates.push(data);

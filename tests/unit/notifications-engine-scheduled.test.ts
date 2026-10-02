@@ -163,7 +163,8 @@ function person(id: string, birthDate: Date | null, over: Row = {}): Row {
   return {
     id,
     clinicId: "c1",
-    fullName: `${id} Тестов`,
+    // «Фамилия Имя»: the greeting takes the given name (audit TG-29).
+    fullName: `Тестов ${id}`,
     phone: "+998900000000",
     telegramId: `tg_${id}`,
     preferredLang: "RU",
@@ -310,7 +311,7 @@ describe("payment.due (TG-13)", () => {
     setup({ tracked: true, debt: 15_000_000 });
     expect(await _runPaymentsDueForTests(NOW)).toBeGreaterThan(0);
     const tg = state.created.find((r) => r.channel === "TG")!;
-    expect(tg.body).toBe("Каримов, к оплате 150 000 сум. НейроФакс");
+    expect(tg.body).toBe("Азиз, к оплате 150 000 сум. НейроФакс");
   });
 
   it("says nothing in a clinic that does not record payments", async () => {
@@ -378,7 +379,7 @@ describe("case.repeat-due (TG-14)", () => {
     await _runCaseRepeatRemindersForTests(NOW);
     const tg = state.created.find((r) => r.channel === "TG")!;
     expect(tg.body).toBe(
-      "Здравствуйте, Каримов! У вас осталось 2 дн. на бесплатный повторный приём в НейроФакс. Запишитесь до 3 октября. Тел: +998712000000.",
+      "Здравствуйте, Азиз! У вас осталось 2 дн. на бесплатный повторный приём в НейроФакс. Запишитесь до 3 октября. Тел: +998712000000.",
     );
     expect(tg.body).not.toContain("г..");
   });
@@ -389,7 +390,7 @@ describe("case.repeat-due (TG-14)", () => {
     await _runCaseRepeatRemindersForTests(NOW);
     const tg = state.created.find((r) => r.channel === "TG")!;
     expect(tg.body).toBe(
-      "Assalomu alaykum, Каримов! NeuroFaxda bepul takroriy qabulga 2 kun qoldi. 3-oktabr gacha yozilib oling. Tel: +998712000000.",
+      "Assalomu alaykum, Азиз! NeuroFaxda bepul takroriy qabulga 2 kun qoldi. 3-oktabr gacha yozilib oling. Tel: +998712000000.",
     );
   });
 

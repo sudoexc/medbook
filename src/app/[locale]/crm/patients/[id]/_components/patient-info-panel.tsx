@@ -167,9 +167,16 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
           label={tPanel("preferredLang")}
           value={patient.preferredLang === "UZ" ? tPanel("langUz") : tPanel("langRu")}
         />
+        {/* The flag the broadcasts obey (audit G6-23): `consentMarketing`
+            gates no send, so «Согласие: Нет» stood next to patients who
+            got every broadcast. */}
         <InfoRow
-          label={tPanel("consentMarketing")}
-          value={patient.consentMarketing ? tCommon("yes") : tCommon("no")}
+          label={tPanel("marketingBroadcasts")}
+          value={
+            patient.marketingOptOut
+              ? tPanel("marketingOptedOut")
+              : tPanel("marketingReceives")
+          }
         />
       </SidebarCard>
       {canEdit ? (

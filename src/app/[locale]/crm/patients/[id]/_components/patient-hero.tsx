@@ -19,6 +19,7 @@ import {
 } from "@/lib/patients/parse-identity";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { formatPatientNumber } from "@/lib/patient-number";
+import { noShowFiguresOf } from "@/lib/patients/no-show";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -117,7 +118,6 @@ export function PatientHero({
   const cardNumber = formatPatientNumber(patient.patientNumber);
 
   const completed = appointments.filter((a) => a.status === "COMPLETED");
-  const noShow = appointments.filter((a) => a.status === "NO_SHOW");
   const avgCheck =
     completed.length > 0
       ? Math.round(
@@ -125,10 +125,8 @@ export function PatientHero({
             completed.length,
         )
       : 0;
-  const noShowPct =
-    appointments.length > 0
-      ? Math.round((noShow.length / appointments.length) * 100)
-      : 0;
+  // Of the visits that happened, not of every booking (audit G6-12).
+  const noShowPct = noShowFiguresOf(appointments).pct;
 
   const risk: { label: string; tone: "success" | "warning" | "danger" } =
     noShowPct === 0

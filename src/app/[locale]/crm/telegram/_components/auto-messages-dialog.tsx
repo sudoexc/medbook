@@ -178,13 +178,16 @@ export function AutoMessagesDialog() {
         </DialogHeader>
 
         <div className="max-h-[60vh] space-y-3 overflow-y-auto">
-          {query.isLoading || !draft ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2Icon className="size-5 animate-spin" aria-hidden />
-            </div>
-          ) : query.isError ? (
+          {/* The error first (audit G6-10): a failed load never fills the
+              draft, so `!draft` kept the spinner turning for good. A failed
+              background refetch with a draft on screen keeps the draft. */}
+          {query.isError && !draft ? (
             <div className="py-10 text-center text-sm text-muted-foreground">
               {t("loadError")}
+            </div>
+          ) : query.isLoading || !draft ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2Icon className="size-5 animate-spin" aria-hidden />
             </div>
           ) : (
             draft.map((m) => (

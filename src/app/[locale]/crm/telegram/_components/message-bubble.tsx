@@ -128,6 +128,12 @@ export interface MessageBubbleProps {
   onRetry?: (message: InboxMessage) => void;
   /** The retry of this message is on its way to the server. */
   retrying?: boolean;
+  /**
+   * The body as Telegram HTML from `toTelegramHtml` instead of chat markdown
+   * (audit G6-21): the broadcast preview shows what `parse_mode: HTML`
+   * makes of the text, where `**x**` stays asterisks.
+   */
+  bodyHtml?: string;
 }
 
 export function MessageBubble({
@@ -136,11 +142,12 @@ export function MessageBubble({
   groupEnd = true,
   onRetry,
   retrying = false,
+  bodyHtml,
 }: MessageBubbleProps) {
   const t = useTranslations("tgInbox");
   const isOut = message.direction === "OUT";
   const body = message.body ?? "";
-  const html = mdLite(body);
+  const html = bodyHtml ?? mdLite(body);
 
   // Render inline buttons if the message carries them (Telegram
   // inline_keyboard-shaped array of arrays).
@@ -375,8 +382,10 @@ export function MessageBubble({
         ) : null}
         {body ? (
           <div
-            className="whitespace-pre-wrap break-words"
-            // Safe: escaped + limited tags.
+            className="whitespace-pre-wrap break-words [&_a]:underline [&_code]:font-mono [&_pre]:font-mono"
+            // Safe: escaped + limited tags (`mdLite`, or `toTelegramHtml`,
+            // which emits only Telegram's attribute-free formatting tags,
+            // an http(s)/tg:// href and entities).
             dangerouslySetInnerHTML={{ __html: html }}
           />
         ) : images.length === 0 && allFiles.length === 0 ? (

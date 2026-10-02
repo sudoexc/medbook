@@ -1,8 +1,6 @@
 "use client";
 
-import * as React from "react";
 import { useTranslations } from "next-intl";
-import { toast } from "sonner";
 import { PhoneIncomingIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/atoms/empty-state";
@@ -15,8 +13,8 @@ import { CallsErrorState } from "./calls-error-state";
  * Left column — ringing queue.
  *
  * Shows every call that is still in-flight (direction=IN, endedAt=null).
- * New rows trigger a one-shot toast so the operator notices even if they're
- * looking at another column.
+ * The toast for a new call is raised by `useIncomingCallAlerts` in the page
+ * client (audit CM-27): this column unmounts on the «Пропущенные» tab.
  *
  * Selection is URL-synced via `use-active-call.ts` — the page client owns the
  * `selectedId` + `onSelect` plumbing.
@@ -41,26 +39,6 @@ export function IncomingQueue({
   showHeader?: boolean;
 }) {
   const t = useTranslations("callCenter.queue");
-
-  // Remember ids we've already shown a toast for so re-renders don't spam.
-  const seenRef = React.useRef<Set<string>>(new Set());
-  React.useEffect(() => {
-    for (const row of rows) {
-      if (!seenRef.current.has(row.id)) {
-        seenRef.current.add(row.id);
-        // Only toast for the first *batch* beyond the initial load.
-        if (seenRef.current.size > rows.length) {
-          const name = row.patient?.fullName ?? t("unknownCaller");
-          toast.info(t("newCallToast", { name, phone: row.fromNumber }));
-        }
-      }
-    }
-    // Prune ids that have left the queue so the set doesn't grow unbounded.
-    const current = new Set(rows.map((r) => r.id));
-    for (const id of seenRef.current) {
-      if (!current.has(id)) seenRef.current.delete(id);
-    }
-  }, [rows, t]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -112,8 +90,9 @@ export function IncomingQueue({
       </div>
 
       <footer className="border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
+        {/* SSE-driven via useCallCenterRealtime; the 60s poll is the
+            resilience fallback, and the hint says exactly that (CM-27). */}
         {t("pollingHint")}
-        {/* SSE-driven via useCallCenterRealtime; 60s poll is the resilience fallback. */}
       </footer>
     </div>
   );

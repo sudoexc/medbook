@@ -19,11 +19,36 @@ export const MessageAttachmentSchema = z.object({
   height: z.number().int().positive().optional(),
 });
 
+/**
+ * One inline-keyboard button as Telegram takes it (audit TG-26): its text
+ * and exactly one of callback_data (1 to 64 bytes) or url. A button without
+ * either made Telegram refuse the whole message, which then ended FAILED.
+ */
+export const InlineButtonSchema = z
+  .object({
+    text: z.string().trim().min(1).max(64),
+    callback_data: z
+      .string()
+      .min(1)
+      .refine((v) => new TextEncoder().encode(v).length <= 64, {
+        message: "callback_data is limited to 64 bytes",
+      })
+      .optional(),
+    url: z.string().url().max(2000).optional(),
+  })
+  .refine((b) => (b.callback_data === undefined) !== (b.url === undefined), {
+    message: "A button needs either callback_data or url",
+  });
+
 export const SendMessageSchema = z
   .object({
     body: z.string().max(10000).default(""),
     attachments: z.array(MessageAttachmentSchema).max(10).optional(),
-    buttons: z.unknown().optional(),
+    buttons: z
+      .array(z.array(InlineButtonSchema).min(1).max(8))
+      .min(1)
+      .max(10)
+      .optional(),
     replyToId: z.string().optional().nullable(),
   })
   .refine(

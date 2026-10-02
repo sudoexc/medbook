@@ -335,7 +335,6 @@ export const ruDict = {
     nameLabel: "ФИО",
     phoneLabel: "Телефон",
     langLabel: "Язык интерфейса",
-    consentLabel: "Согласен получать уведомления",
     saveBtn: "Сохранить",
     saved: "Сохранено",
     preferencesTitle: "Коммуникации",
@@ -428,6 +427,7 @@ export const ruDict = {
     thankYouLow:
       "Спасибо! Мы передали ваш отзыв администрации — с вами свяжутся в ближайшее время.",
     alreadySubmitted: "Вы уже оставили оценку для этого визита.",
+    notCompleted: "Оценить визит можно после приёма.",
     yourScore: "Ваша оценка: {score}/10",
     notFound: "Запись не найдена.",
     forbidden: "Нет доступа к этой записи.",

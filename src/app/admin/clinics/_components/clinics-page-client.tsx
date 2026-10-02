@@ -17,6 +17,10 @@ import {
   TimerIcon,
 } from "lucide-react";
 
+import {
+  ClinicEntryDialog,
+  type ClinicEntryTarget,
+} from "@/components/layout/clinic-entry-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -45,6 +49,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
+import { postClinicEntry, type ClinicEntry } from "@/lib/clinic-entry";
 import { cn } from "@/lib/utils";
 
 interface ClinicRow {
@@ -178,27 +183,14 @@ async function resetOwnerPassword(
   return (await r.json()) as { ownerLogin: string; ownerTempPassword: string };
 }
 
-async function impersonateClinic(clinicId: string): Promise<void> {
-  // Phase 19 W4 — switch-clinic now requires a reason (≥4 chars) and a mode
-  // pick. Collect both via simple prompts so the existing flow stays one
-  // click + one input deep; the SUPER_ADMIN can always cancel.
-  const reason = window.prompt(
-    "Reason for entering this clinic (≥4 chars). This is logged.",
-    "",
-  );
-  if (reason === null) return;
-  const trimmed = reason.trim();
-  if (trimmed.length < 4) throw new Error("Reason must be ≥4 chars");
-  const viewOnly = window.confirm(
-    "OK = VIEW_ONLY (read-only).\nCancel = WRITE (mutations allowed).",
-  );
-  const mode: "WRITE" | "VIEW_ONLY" = viewOnly ? "VIEW_ONLY" : "WRITE";
-  const r = await fetch("/api/platform/session/switch-clinic", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ clinicId, reason: trimmed, mode }),
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+async function impersonateClinic(
+  clinicId: string,
+  entry: ClinicEntry,
+): Promise<void> {
+  // Phase 19 W4 — switch-clinic requires a reason (≥4 chars) and a mode, both
+  // asked in ClinicEntryDialog with read-only preselected; Cancel sends
+  // nothing (audit CM-21). A failure is thrown back into the dialog.
+  await postClinicEntry(clinicId, entry);
   window.location.href = "/ru/crm";
 }
 
@@ -240,15 +232,13 @@ export function ClinicsPageClient() {
     login: string;
     password: string;
   } | null>(null);
+  const [entering, setEntering] = React.useState<ClinicEntryTarget | null>(
+    null,
+  );
 
   const toggleActive = useMutation({
     mutationFn: (row: ClinicRow) => patchClinic(row.id, { active: !row.active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "clinics"] }),
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
-  });
-
-  const enterClinic = useMutation({
-    mutationFn: (clinicId: string) => impersonateClinic(clinicId),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
@@ -405,12 +395,10 @@ export function ClinicsPageClient() {
                       <Button
                         variant="default"
                         size="sm"
-                        onClick={() => enterClinic.mutate(c.id)}
-                        disabled={
-                          !c.active ||
-                          (enterClinic.isPending &&
-                            enterClinic.variables === c.id)
+                        onClick={() =>
+                          setEntering({ id: c.id, name: c.nameRu })
                         }
+                        disabled={!c.active}
                       >
                         <LogInIcon />
                         Войти
@@ -566,6 +554,12 @@ export function ClinicsPageClient() {
       <CredentialsModal
         creds={credsModal}
         onClose={() => setCredsModal(null)}
+      />
+
+      <ClinicEntryDialog
+        target={entering}
+        onCancel={() => setEntering(null)}
+        onEnter={impersonateClinic}
       />
     </div>
   );

@@ -16,9 +16,9 @@
  */
 import { prisma } from "@/lib/prisma";
 import type { NotificationStatus } from "@/generated/prisma/client";
-import { render } from "@/server/notifications/template";
 
 import { resolveAudience } from "./audience";
+import { renderBroadcastBody } from "./broadcast-body";
 import type { AudiencePatient } from "./dormant-audience";
 import type { CampaignChannel, CampaignSegment } from "@/server/schemas/campaign";
 import { enqueueDelivery } from "@/server/workers/notifications-send";
@@ -66,44 +66,6 @@ export type LaunchResult = {
 
 function pickBodyTemplate(template: TemplateRow, lang: "RU" | "UZ"): string {
   return lang === "UZ" ? template.bodyUz : template.bodyRu;
-}
-
-function pickClinicName(clinic: ClinicRow, lang: "RU" | "UZ"): string {
-  return lang === "UZ" ? clinic.nameUz : clinic.nameRu;
-}
-
-function pickClinicAddress(clinic: ClinicRow, lang: "RU" | "UZ"): string {
-  return (lang === "UZ" ? clinic.addressUz : clinic.addressRu) ?? "";
-}
-
-function patientFirstName(fullName: string): string {
-  const trimmed = fullName.trim();
-  if (!trimmed) return "";
-  // Russian-style "Фамилия Имя Отчество" — first name is the second token.
-  // Fall back to the only token if there's just one.
-  const parts = trimmed.split(/\s+/);
-  return parts[1] ?? parts[0] ?? "";
-}
-
-function buildBody(args: {
-  body: string;
-  patient: AudiencePatient;
-  clinic: ClinicRow;
-  lang: "RU" | "UZ";
-}): string {
-  const lang = args.lang;
-  const ctx = {
-    patient: {
-      name: args.patient.fullName,
-      firstName: patientFirstName(args.patient.fullName),
-    },
-    clinic: {
-      name: pickClinicName(args.clinic, lang),
-      phone: args.clinic.phone ?? "",
-      address: pickClinicAddress(args.clinic, lang),
-    },
-  };
-  return render(args.body, ctx);
 }
 
 function recipientFor(channel: CampaignChannel, patient: AudiencePatient): string | null {
@@ -222,12 +184,13 @@ export async function launchCampaign(args: {
       if (!recipient) return null;
       const sourceBody =
         inlineBody ?? pickBodyTemplate(template as TemplateRow, patient.preferredLang);
-      const body = buildBody({
-        body: sourceBody,
+      // The composer's preview renders through the same function (G6-21).
+      const body = renderBroadcastBody(
+        sourceBody,
         patient,
         clinic,
-        lang: patient.preferredLang,
-      });
+        patient.preferredLang,
+      );
       return {
         clinicId: campaign.clinicId,
         campaignId: campaign.id,

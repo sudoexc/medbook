@@ -17,6 +17,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
+import { noShowFiguresOf } from "@/lib/patients/no-show";
 
 import type { Patient } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
@@ -122,11 +123,8 @@ export function PatientRightRail({
   const tgCount = comms.filter((c) => c.channel === "TG").length;
 
   const since = daysSince(patient.lastVisitAt, nowMs);
-  const noShow = appointments.filter((a) => a.status === "NO_SHOW").length;
-  const noShowPct =
-    appointments.length > 0
-      ? Math.round((noShow / appointments.length) * 100)
-      : 0;
+  // Of the visits that happened, not of every booking (audit G6-12).
+  const noShowPct = noShowFiguresOf(appointments).pct;
   const riskKey =
     noShowPct === 0 ? "riskLow" : noShowPct < 15 ? "riskMedium" : "riskHigh";
   const risk = t(riskKey as never);

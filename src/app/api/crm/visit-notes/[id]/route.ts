@@ -38,6 +38,7 @@ import {
   resolveFollowUpWrite,
 } from "@/lib/visit-follow-up";
 import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
+import { draftEditAuditedRecently } from "@/server/visit-notes/draft-audit";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { publishEphemeralEnvelope } from "@/server/realtime/publish";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
@@ -498,7 +499,18 @@ export const PATCH = createApiHandler(
     // Same rule as the envelope above (audit G1-12): the prescription
     // constructor resends its unchanged list on every interaction, and each
     // such PATCH wrote a `fields: []` row that buried real events in the log.
-    if (changedFields.length > 0) {
+    // A never-signed draft also writes one row per editing session rather
+    // than one per autosave (see draft-audit.ts); signed and reopened notes
+    // keep a row for every correction.
+    const coalesceIntoSession =
+      !isSigned &&
+      !isReopened &&
+      changedFields.length > 0 &&
+      (await draftEditAuditedRecently(prisma, {
+        visitNoteId: id,
+        actorId: actorUserId,
+      }));
+    if (changedFields.length > 0 && !coalesceIntoSession) {
       await audit(request, {
         action: "visit_note.update",
         entityType: "VisitNote",

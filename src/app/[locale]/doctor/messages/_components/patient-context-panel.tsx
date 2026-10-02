@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatCalendarDay } from "@/lib/format";
 
 import { useMessagesContext } from "../_hooks/messages-context";
 import {
@@ -162,14 +163,11 @@ export function PatientContextPanel() {
                 icon={CalendarIcon}
                 tone="text-info"
                 label={t("context.nextAppointment")}
-                value={new Date(
+                value={formatCalendarDay(
                   summary.upcomingAppointment.date,
-                ).toLocaleString("ru-RU", {
-                  day: "2-digit",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                  locale,
+                  { time: true },
+                )}
               />
             ) : (
               <Row

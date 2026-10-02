@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { intlLocale } from "@/lib/format";
 import {
   revertTargetFor,
   revertUnsignsConclusion,
@@ -95,8 +96,10 @@ function relativeLabel(
   return null;
 }
 
-function fullDateLabel(view: Date): string {
-  return new Intl.DateTimeFormat("ru-RU", {
+// A browser-local midnight (localDateFromKey), so no clinic zone; the
+// language follows the interface (audit UX-12).
+function fullDateLabel(view: Date, locale: string): string {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     day: "numeric",
     month: "long",
     weekday: "long",
@@ -153,7 +156,7 @@ export function ScheduleCard() {
   const [finishedOpen, setFinishedOpen] = React.useState(false);
 
   const rel = relativeLabel(viewDate, today, t);
-  const dateLine = fullDateLabel(viewDate);
+  const dateLine = fullDateLabel(viewDate, locale);
 
   // Index of the first "next-up" slot — primary action target. Only the
   // very first eligible row gets the prominent "Старт" CTA so the doctor

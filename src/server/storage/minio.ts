@@ -17,17 +17,19 @@
  *   - uploadObject(bucket, key, buffer, contentType) → { url, key }
  *   - getSignedUrl(bucket, key, expiresInSeconds)     → string
  *   - deleteObject(bucket, key)                        → void
+ *   - listObjects(bucket, prefix)                      → StoredObjectInfo[]
  *   - isStubMode()                                     → boolean
  *
  * The adapter is tenant-agnostic — callers are responsible for scoping keys
  * by `clinicId`. Convention: `clinics/<clinicId>/documents/<uuid>.<ext>`.
  */
-import { promises as fs } from "node:fs";
+import { promises as fs, type Dirent } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -206,6 +208,70 @@ export async function deleteObject(
     return stubDelete(b, key);
   }
   await getClient().send(new DeleteObjectCommand({ Bucket: b, Key: key }));
+}
+
+export type StoredObjectInfo = {
+  key: string;
+  lastModified: Date | null;
+  size: number | null;
+};
+
+/**
+ * Every object whose key starts with `prefix`, all pages. Used by the
+ * operator's orphan-file report (audit G1-13), never on a request path.
+ */
+export async function listObjects(
+  bucket: string | undefined,
+  prefix: string,
+): Promise<StoredObjectInfo[]> {
+  const b = resolveBucket(bucket);
+  if (isStubMode()) {
+    const root = path.join(stubRoot(), b);
+    const out: StoredObjectInfo[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch (e: unknown) {
+        if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return;
+        throw e;
+      }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+          continue;
+        }
+        const key = path.relative(root, full).split(path.sep).join("/");
+        if (!key.startsWith(prefix)) continue;
+        const stat = await fs.stat(full);
+        out.push({ key, lastModified: stat.mtime, size: stat.size });
+      }
+    };
+    await walk(root);
+    return out;
+  }
+  const out: StoredObjectInfo[] = [];
+  let token: string | undefined;
+  do {
+    const page = await getClient().send(
+      new ListObjectsV2Command({
+        Bucket: b,
+        Prefix: prefix,
+        ContinuationToken: token,
+      }),
+    );
+    for (const o of page.Contents ?? []) {
+      if (!o.Key) continue;
+      out.push({
+        key: o.Key,
+        lastModified: o.LastModified ?? null,
+        size: o.Size ?? null,
+      });
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return out;
 }
 
 /**

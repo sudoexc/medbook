@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   AlertTriangleIcon,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatCalendarDay, formatDate } from "@/lib/format";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { Button } from "@/components/ui/button";
 
@@ -45,22 +46,19 @@ function initials(fullName: string): string {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
-function formatRange(date: string, end: string): string {
-  const d = new Date(date);
-  const e = new Date(end);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const day = d.toLocaleString("ru-RU", { day: "numeric", month: "short" });
-  return `${day}, ${pad(d.getHours())}:${pad(d.getMinutes())} – ${pad(
-    e.getHours(),
-  )}:${pad(e.getMinutes())}`;
+// Through the interface locale: a hard-coded "ru-RU" printed «23 сент.»
+// to a doctor working in Uzbek (audit UX-12).
+function formatRange(date: string, end: string, locale: string): string {
+  return `${formatCalendarDay(date, locale, { time: true })} – ${formatDate(
+    end,
+    locale === "uz" ? "uz" : "ru",
+    "time",
+  )}`;
 }
 
 /** Wall-clock moment, no range — used for "joined the queue at". */
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const day = d.toLocaleString("ru-RU", { day: "numeric", month: "short" });
-  return `${day}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function formatTime(iso: string, locale: string): string {
+  return formatCalendarDay(iso, locale, { time: true });
 }
 
 function useElapsed(startedAt: string | null): string {
@@ -83,6 +81,7 @@ function useElapsed(startedAt: string | null): string {
 
 export function ActivePatientCard() {
   const t = useTranslations("doctor.reception");
+  const locale = useLocale();
   const {
     activeAppointment,
     visitNoteId,
@@ -201,8 +200,8 @@ export function ActivePatientCard() {
         >
           <div className="tabular-nums">
             {isWalkin
-              ? formatTime(activeAppointment.queuedAt ?? activeAppointment.date)
-              : formatRange(activeAppointment.date, activeAppointment.endDate)}
+              ? formatTime(activeAppointment.queuedAt ?? activeAppointment.date, locale)
+              : formatRange(activeAppointment.date, activeAppointment.endDate, locale)}
           </div>
           {activeAppointment.cabinet?.number && (
             <div className="text-xs text-muted-foreground">

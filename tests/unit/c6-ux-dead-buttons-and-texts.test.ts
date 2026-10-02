@@ -2,15 +2,16 @@
  * Audit UX-12..UX-15, G1-13 — small interface fixes, pinned at the source so
  * they do not drift back:
  *
- *   UX-12  no hard-coded Russian month arrays in the doctor cabinet; no
+ *   UX-12  no hard-coded Russian month arrays in the doctor cabinet and no
+ *          month or weekday name formatted through a pinned "ru-RU"; no
  *          English captions left in ru.json where the audit found them; the
  *          drug details dialog reads a key that exists.
  *   UX-13  buttons that did nothing are gone or do what they say.
  *   UX-14  the settings and campaign texts no longer promise SMS.
  *   UX-15  the patients rail has no mock action cards and links to pages
  *          that exist.
- *   G1-13  the doctor's upload and replace dialogs take back bytes whose
- *          document was not saved.
+ *   G1-13  the doctor's upload and replace dialogs, and the signature tab,
+ *          take back bytes whose document was not saved.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -43,6 +44,36 @@ describe("UX-12 doctor cabinet dates and captions", () => {
   it("has no hard-coded Russian month arrays", () => {
     for (const file of filesUnder("src/app/[locale]/doctor")) {
       expect(read(file), file).not.toMatch(/RU_MONTHS|RU_WEEKDAYS|"сентября"|"сент\."/);
+    }
+  });
+
+  // A month or weekday NAME through a pinned "ru-RU" is Russian whatever the
+  // interface language; numeric dates read the same in both, so those may stay.
+  const RU_PINNED = /(?:toLocale(?:Date|Time)?String|Intl\.DateTimeFormat)\(\s*"ru-RU"\s*,\s*\{([^}]*)\}/g;
+  const NAMES = /month:\s*"(?:short|long|narrow)"|weekday:/;
+  const namedThroughRu = (src: string) =>
+    [...src.matchAll(RU_PINNED)].filter((m) => NAMES.test(m[1] ?? ""));
+
+  it("the check catches the shapes the review found", () => {
+    expect(
+      namedThroughRu('d.toLocaleString("ru-RU", { day: "numeric", month: "short" })'),
+    ).toHaveLength(1);
+    expect(
+      namedThroughRu(
+        'new Intl.DateTimeFormat("ru-RU", {\n  day: "numeric",\n  month: "long",\n  weekday: "long",\n})',
+      ),
+    ).toHaveLength(1);
+    expect(
+      namedThroughRu('d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })'),
+    ).toHaveLength(0);
+  });
+
+  it("prints no month or weekday name through a pinned ru-RU", () => {
+    for (const file of filesUnder("src/app/[locale]/doctor")) {
+      expect(
+        namedThroughRu(read(file)).map((m) => m[0]),
+        file,
+      ).toEqual([]);
     }
   });
 
@@ -150,4 +181,11 @@ describe("G1-13 doctor uploads leave no orphans", () => {
       expect(src).toContain("stored = null;");
     });
   }
+
+  it("the signature tab takes back an image no signature was saved with", () => {
+    const src = read("src/app/[locale]/doctor/settings/_components/signature-tab.tsx");
+    expect(src).not.toContain('fetch("/api/crm/documents/upload"');
+    expect(src).toContain("stored = await uploadDocumentFile(file);");
+    expect(src).toContain("void discardDocumentUpload(stored.fileUrl, stored.uploadToken)");
+  });
 });

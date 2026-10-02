@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { intlLocale } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useDoctorSchedule } from "../../my-day/_hooks/use-doctor-schedule";
@@ -76,8 +77,11 @@ function relativeLabelKey(view: Date, today: Date): string | null {
   return null;
 }
 
-function fullDateLabel(view: Date): string {
-  return new Intl.DateTimeFormat("ru-RU", {
+// The view date is a browser-local midnight, so no clinic zone here; only
+// the language follows the interface (audit UX-12: "ru-RU" printed Russian
+// month and weekday names to a doctor working in Uzbek).
+function fullDateLabel(view: Date, locale: string): string {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     day: "numeric",
     month: "long",
     weekday: "long",
@@ -263,7 +267,9 @@ export function AgendaShell({ locale }: { locale: string }) {
               {t("agenda.title")}
             </h1>
             <div className="mt-1 text-sm text-muted-foreground">
-              {rel ? `${rel} · ${fullDateLabel(viewDate)}` : fullDateLabel(viewDate)}
+              {rel
+                ? `${rel} · ${fullDateLabel(viewDate, locale)}`
+                : fullDateLabel(viewDate, locale)}
             </div>
           </div>
           <div className="flex items-center gap-2">

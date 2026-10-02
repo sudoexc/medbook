@@ -31,6 +31,7 @@ import {
   MISFILED_BRANDS,
   mergeFormularyAliases,
   planBrandMerge,
+  planOverlayMerge,
   repointDrafts,
 } from "../../scripts/_drug-duplicates";
 import {
@@ -632,5 +633,69 @@ describe("G4-21: one drug, one row", () => {
     ]);
     expect(repointDrafts(items, "colecalciferol", "vitamin_d3")).toBeNull();
     expect(repointDrafts(null, "a", "b")).toBeNull();
+  });
+
+  describe("clinic overlays (review of A6)", () => {
+    const hide = { hideGlobal: true, overrides: null };
+    const photo = (url: string) => ({ hideGlobal: false, overrides: { photoUrl: url } });
+
+    it("a hidden duplicate does not hide the curated row, its overlay goes", () => {
+      const plan = planOverlayMerge(hide, null, true);
+      expect(plan.curated).toBeNull();
+      expect(plan).toMatchObject({ changed: true, droppedHide: true, liftedHide: false, keptHidden: false });
+    });
+
+    it("a hidden copy's patch moves without the hide", () => {
+      expect(
+        planOverlayMerge({ hideGlobal: true, overrides: { photoUrl: "/p/1" } }, null, true).curated,
+      ).toEqual({ hideGlobal: false, overrides: { photoUrl: "/p/1" } });
+    });
+
+    it("the curated row the clinic hid while using the copy is shown again", () => {
+      // With or without an overlay on the copy: the copy was the card on screen.
+      for (const copy of [null, photo("/p/2")]) {
+        const plan = planOverlayMerge(copy, hide, true);
+        expect(plan.liftedHide).toBe(true);
+        expect(plan.curated?.hideGlobal ?? false).toBe(false);
+        expect(plan.changed).toBe(true);
+      }
+      expect(planOverlayMerge(photo("/p/2"), hide, true).curated).toEqual(photo("/p/2"));
+    });
+
+    it("a clinic that hid both cards keeps the drug hidden", () => {
+      const plan = planOverlayMerge(hide, hide, true);
+      expect(plan.curated).toEqual(hide);
+      expect(plan).toMatchObject({ keptHidden: true, liftedHide: false, droppedHide: false });
+    });
+
+    it("both patches merge; the card on screen wins a field both set", () => {
+      const copy = {
+        hideGlobal: false,
+        overrides: { photoUrl: "/copy", nameRu: "Магне Б6", defaultDosing: { elderly: "1 таб" } },
+      };
+      const curated = {
+        hideGlobal: false,
+        overrides: { photoUrl: "/curated", defaultDosing: { adult: "2 таб" } },
+      };
+      expect(planOverlayMerge(copy, curated, true).curated).toEqual({
+        hideGlobal: false,
+        overrides: {
+          photoUrl: "/curated",
+          nameRu: "Магне Б6",
+          defaultDosing: { elderly: "1 таб", adult: "2 таб" },
+        },
+      });
+      // Only the copy was visible: its photo wins.
+      expect(
+        planOverlayMerge(copy, { ...curated, hideGlobal: true }, true).curated?.overrides?.photoUrl,
+      ).toBe("/copy");
+    });
+
+    it("a second run changes nothing", () => {
+      // The copy is retired and its overlay gone; a hide on the curated row
+      // is the clinic's own choice made after the merge.
+      expect(planOverlayMerge(null, hide, false)).toMatchObject({ changed: false, liftedHide: false });
+      expect(planOverlayMerge(null, photo("/p"), false).changed).toBe(false);
+    });
   });
 });

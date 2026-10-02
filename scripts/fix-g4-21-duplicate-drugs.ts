@@ -10,7 +10,9 @@
  *   2. visit prescriptions, the clinics' core-list entries, doctors'
  *      favourites, clinic overlays and saved protocol drafts that point at
  *      the copy point at the curated row (where a clinic or a doctor already
- *      has the curated row, the copy's entry folds into it);
+ *      has the curated row, the copy's entry folds into it). A clinic's hide
+ *      is never moved: the merged card stays hidden only where the clinic
+ *      hid both cards, and the dry run names each clinic whose hide changes;
  *   3. the copy is deactivated, never deleted: old references stay valid,
  *      and search, the CDS and the shortlist read active rows only.
  * A printed prescription keeps the name it was signed under (`displayName`),
@@ -37,9 +39,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "../src/generated/prisma/client";
 import {
   DUPLICATE_DRUGS,
+  type DrugOverlayState,
   MISFILED_BRANDS,
   mergeFormularyAliases,
   planBrandMerge,
+  planOverlayMerge,
   repointDrafts,
 } from "./_drug-duplicates";
 import { normName } from "./_registry-plan";
@@ -51,6 +55,21 @@ const prisma = new PrismaClient({
 const APPLY = process.env.APPLY === "1";
 
 type Tx = Prisma.TransactionClient;
+
+type Overlay = {
+  id: string;
+  hideGlobal: boolean;
+  overridesJson: Prisma.JsonValue;
+};
+
+function overlayState(ov: Overlay): DrugOverlayState {
+  const raw = ov.overridesJson;
+  const overrides =
+    raw && typeof raw === "object" && !Array.isArray(raw) && Object.keys(raw).length > 0
+      ? (raw as Record<string, unknown>)
+      : null;
+  return { hideGlobal: ov.hideGlobal, overrides };
+}
 
 /**
  * Merge one copy into its curated row. With `apply` false it only reads and
@@ -115,26 +134,64 @@ async function mergeCopy(tx: Tx, from: string, to: string, apply: boolean) {
     else await tx.doctorFavorite.update({ where: { id: fav.id }, data: { entityCode: to } });
   }
 
-  // Overlays (a clinic's photo or rename): moved unless the clinic already
-  // overlays the curated row, whose overlay then wins and the copy's stays
-  // on the retired row.
-  let overlays = 0;
-  let overlaysKept = 0;
+  // Overlays (a clinic's hide, photo or rename), per clinic: see
+  // planOverlayMerge. A hide is never moved onto the curated row, and a
+  // curated row the clinic hid while it used the copy is shown again, so
+  // every clinic that had a card of this drug keeps one. The copy's
+  // overlay always leaves the copy (moved, or folded and deleted).
+  const copyRow = await tx.drug.findUnique({ where: { id: from }, select: { active: true } });
+  const byClinic = new Map<string, { copy?: Overlay; curated?: Overlay }>();
   for (const ov of await tx.clinicCatalogOverlay.findMany({
-    where: { entityType: "DRUG", entityCode: from },
+    where: { entityType: "DRUG", entityCode: { in: [from, to] } },
+    select: { id: true, clinicId: true, entityCode: true, hideGlobal: true, overridesJson: true },
   })) {
-    const has = await tx.clinicCatalogOverlay.findFirst({
-      where: { clinicId: ov.clinicId, entityType: "DRUG", entityCode: to },
-      select: { id: true },
-    });
-    if (has) {
-      overlaysKept += 1;
-      continue;
+    const slot = byClinic.get(ov.clinicId) ?? {};
+    if (ov.entityCode === from) slot.copy = ov;
+    else slot.curated = ov;
+    byClinic.set(ov.clinicId, slot);
+  }
+  const overlays = { clinics: 0, overridesMoved: 0, hidesDropped: 0, hidesLifted: 0, keptHidden: 0 };
+  const notes: string[] = [];
+  for (const [clinicId, { copy, curated }] of byClinic) {
+    const plan = planOverlayMerge(
+      copy ? overlayState(copy) : null,
+      curated ? overlayState(curated) : null,
+      copyRow?.active ?? false,
+    );
+    if (!plan.changed) continue;
+    overlays.clinics += 1;
+    if (plan.movedOverrides) overlays.overridesMoved += 1;
+    if (plan.droppedHide) overlays.hidesDropped += 1;
+    if (plan.liftedHide) {
+      overlays.hidesLifted += 1;
+      notes.push(`clinic ${clinicId} hid «${to}» and used the copy: the hide is lifted`);
     }
-    if (apply) {
-      await tx.clinicCatalogOverlay.update({ where: { id: ov.id }, data: { entityCode: to } });
+    if (plan.keptHidden) {
+      overlays.keptHidden += 1;
+      notes.push(`clinic ${clinicId} hid both cards: «${to}» stays hidden`);
     }
-    overlays += 1;
+    if (!apply) continue;
+    const next = plan.curated && {
+      hideGlobal: plan.curated.hideGlobal,
+      overridesJson: plan.curated.overrides
+        ? (plan.curated.overrides as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+    };
+    if (curated) {
+      if (next) await tx.clinicCatalogOverlay.update({ where: { id: curated.id }, data: next });
+      else await tx.clinicCatalogOverlay.delete({ where: { id: curated.id } });
+      if (copy) await tx.clinicCatalogOverlay.delete({ where: { id: copy.id } });
+    } else if (copy) {
+      // The row itself moves, so its author stays on record.
+      if (next) {
+        await tx.clinicCatalogOverlay.update({
+          where: { id: copy.id },
+          data: { ...next, entityCode: to },
+        });
+      } else {
+        await tx.clinicCatalogOverlay.delete({ where: { id: copy.id } });
+      }
+    }
   }
 
   let protocols = 0;
@@ -168,7 +225,7 @@ async function mergeCopy(tx: Tx, from: string, to: string, apply: boolean) {
     formulary: entries.length,
     favorites: favorites.length,
     overlays,
-    overlaysKept,
+    notes,
     protocols,
     pairs,
     deactivated,
@@ -239,12 +296,15 @@ async function main() {
       `[g4-21] «${copy.nameRu}» (${from}) → «${home.nameRu}» (${to}): ` +
         `brands moved ${r.brandsMoved}, dropped ${r.brandsDropped}; ` +
         `prescriptions ${r.prescriptions}; core list ${r.formulary}; favourites ${r.favorites}; ` +
-        `overlays ${r.overlays} (left on the copy: ${r.overlaysKept}); protocols ${r.protocols}; ` +
+        `overlays of ${r.overlays.clinics} clinic(s): patches moved ${r.overlays.overridesMoved}, ` +
+        `copy hides dropped ${r.overlays.hidesDropped}, curated hides lifted ${r.overlays.hidesLifted}, ` +
+        `hidden on both ${r.overlays.keptHidden}; protocols ${r.protocols}; ` +
         `interaction pairs on the copy ${r.pairs}; to deactivate ${r.deactivated}`,
     );
+    for (const note of r.notes) console.log(`[g4-21]   ${note}`);
     work +=
       r.brandsMoved + r.brandsDropped + r.prescriptions + r.formulary +
-      r.favorites + r.overlays + r.protocols + r.deactivated;
+      r.favorites + r.overlays.clinics + r.protocols + r.deactivated;
   }
 
   for (const { brand, from, to } of MISFILED_BRANDS) {

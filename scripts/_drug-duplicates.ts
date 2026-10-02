@@ -78,6 +78,82 @@ export function mergeFormularyAliases(
   return out;
 }
 
+/** A clinic's overlay on a global drug, as the merge reads it. */
+export type DrugOverlayState = {
+  hideGlobal: boolean;
+  overrides: Record<string, unknown> | null;
+};
+
+export type OverlayMergePlan = {
+  /** The clinic's overlay on the curated row after the merge; null when none is needed. */
+  curated: DrugOverlayState | null;
+  /** Something to write for this clinic (a copy overlay to fold, a hide to lift). */
+  changed: boolean;
+  /** The clinic hid the curated row while the copy was on screen: the hide is lifted. */
+  liftedHide: boolean;
+  /** The clinic hid the copy as a duplicate: that hide is dropped, never moved. */
+  droppedHide: boolean;
+  /** The copy carried a patch (photo, rename) that now lands on the curated row. */
+  movedOverrides: boolean;
+  /** The clinic hid both cards: the curated row stays hidden. */
+  keptHidden: boolean;
+};
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+/** `top` over `base`; an object field (the dosing lines) merges key by key. */
+function mergePatches(
+  base: Record<string, unknown> | null,
+  top: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const out: Record<string, unknown> = { ...(base ?? {}) };
+  for (const [key, v] of Object.entries(top ?? {})) {
+    out[key] = isPlainObject(v) && isPlainObject(out[key]) ? { ...out[key], ...v } : v;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * One clinic's overlays when the copy folds into the curated row.
+ *
+ * A hide is never carried over: the settings page hides a global drug with
+ * an overlay (`hideGlobal` defaults to true), and an admin who saw two
+ * «Магне B6» cards hid the one they did not want. Moving that overlay hid
+ * the curated row for the whole clinic; keeping the curated row's hide
+ * while the copy was the visible card left the clinic with no card at all.
+ * So the merged card is hidden only when the clinic hid both, and a
+ * retired copy (`copyActive` false, a second run) counts as not on screen.
+ *
+ * The patches merge: where both set a field, the card the clinic looked at
+ * wins (the curated one, unless only the copy was visible).
+ */
+export function planOverlayMerge(
+  copy: DrugOverlayState | null,
+  curated: DrugOverlayState | null,
+  copyActive: boolean,
+): OverlayMergePlan {
+  const copySeen = copyActive && !(copy?.hideGlobal ?? false);
+  const curatedSeen = !(curated?.hideGlobal ?? false);
+  const hideGlobal = !copySeen && !curatedSeen;
+  const fromCopy = copy?.overrides ?? null;
+  const fromCurated = curated?.overrides ?? null;
+  const overrides =
+    copySeen && !curatedSeen
+      ? mergePatches(fromCurated, fromCopy)
+      : mergePatches(fromCopy, fromCurated);
+  const liftedHide = (curated?.hideGlobal ?? false) && !hideGlobal;
+  return {
+    curated: hideGlobal || overrides ? { hideGlobal, overrides } : null,
+    changed: copy !== null || liftedHide,
+    liftedHide,
+    droppedHide: (copy?.hideGlobal ?? false) && !hideGlobal,
+    movedOverrides: fromCopy !== null && Object.keys(fromCopy).length > 0,
+    keptHidden: copy !== null && hideGlobal,
+  };
+}
+
 /**
  * Structured prescription drafts (ClinicalProtocol.prescriptionItems) with
  * the copy's id replaced by the curated one. Null when nothing changes.

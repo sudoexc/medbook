@@ -32,7 +32,7 @@ const NAV: NavItem[] = [
   { href: "/admin/encryption-health", label: "Шифрование", icon: KeyIcon },
 ];
 
-export function AdminSidebar() {
+export function AdminSidebar({ inClinic }: { inClinic: boolean }) {
   const pathname = usePathname() ?? "";
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -81,15 +81,19 @@ export function AdminSidebar() {
           })}
         </ul>
       </nav>
-      <div className="border-t border-sidebar-border p-4">
-        <Link
-          href="/ru/crm"
-          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <LayoutDashboardIcon className="size-4" />
-          Вернуться в CRM
-        </Link>
-      </div>
+      {/* Only during a clinic visit: without a clinic the CRM sends a
+          SUPER_ADMIN straight back here (audit G5-09, src/proxy.ts). */}
+      {inClinic ? (
+        <div className="border-t border-sidebar-border p-4">
+          <Link
+            href="/ru/crm"
+            className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <LayoutDashboardIcon className="size-4" />
+            Вернуться в CRM
+          </Link>
+        </div>
+      ) : null}
     </aside>
   );
 }

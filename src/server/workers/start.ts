@@ -45,6 +45,7 @@ import { startPatientSegmentsWorker } from "./patient-segments";
 import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
+import { startImpersonationExpiryWorker } from "./impersonation-expiry";
 import { startReferralDocumentWorker } from "./referral-document";
 import { CLINICAL_FORMS_ISSUING } from "@/lib/clinical-forms-issuing";
 import { startStaffMessagesSendWorker } from "./staff-messages-send";
@@ -80,6 +81,10 @@ async function main() {
   // Phase 9e — flip TRIAL→PAST_DUE for clinics whose 30-day trial elapsed.
   // Same 60s cadence as the notifications scheduler: cheap query, idempotent.
   const trialExpiry = startTrialExpirySchedulerWorker(60_000);
+  // Audit G5-09 — a SUPER_ADMIN clinic visit whose 60 min lease ran out is
+  // closed as "expired" and journaled (the grant cookies expire with the
+  // lease, so no request is left to do it).
+  const impersonationExpiry = startImpersonationExpiryWorker(60_000);
 
   // Appointment lifecycle sweep — auto-flip stale CONFIRMED/BOOKED/SKIPPED
   // rows to NO_SHOW once the scheduled end has passed by an hour. Definition
@@ -229,6 +234,7 @@ async function main() {
     outboxRetention.stop();
     processHeartbeat.stop();
     trialExpiry.stop();
+    impersonationExpiry.stop();
     lifecycleSweep.stop();
     patientSegments.stop();
     callSweep.stop();

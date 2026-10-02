@@ -17,6 +17,12 @@
  * come back to TRIAL, ACTIVE is refused, and the toast reports the status and
  * date the server actually saved, not a fixed «продлён».
  *
+ * Audit G5-14: picking a plan or a status asks first, naming the features
+ * the change switches off and on (a stray pick used to take the call center
+ * and the Telegram inbox from a working clinic at once), and the card shows
+ * the flags the clinic really has, status included (`effectiveFlags`, the
+ * same rule as the server's `getFeatureFlags`).
+ *
  * On every successful mutation we call `router.refresh()` so the SSR'd
  * subscription/plan data is re-fetched. Toasts surface success/failure.
  */
@@ -41,54 +47,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
+import {
+  SWITCHABLE_FEATURES,
+  effectiveFlags,
+  flagChanges,
+  parsePlanFeatures,
+  type FeatureFlags,
+  type SwitchableFeature,
+} from "@/lib/feature-flags";
 import { ClinicTabs } from "../../_components/clinic-tabs";
 
-/**
- * Local copy of `parsePlanFeatures` from `src/lib/feature-flags.ts` — the
- * server module imports `@/lib/prisma`, which can't ship to the browser. We
- * mirror the same defensive shape so the visible feature list stays in lock-
- * step with the server's `getFeatureFlags()` resolution. Phase 9d may extract
- * a tree-shakeable `feature-flags-shared.ts` once the gating UI lands.
- */
-type FeatureFlags = {
-  hasTelegramInbox: boolean;
-  hasCallCenter: boolean;
-  hasAnalyticsPro: boolean;
-  maxBranches: number;
-  maxUsers: number;
-};
-
-const DEFAULT_FLAGS: FeatureFlags = {
-  hasTelegramInbox: false,
-  hasCallCenter: false,
-  hasAnalyticsPro: false,
-  maxBranches: 1,
-  maxUsers: 5,
-};
-
-function parsePlanFeatures(raw: unknown): FeatureFlags {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { ...DEFAULT_FLAGS };
-  }
-  const rec = raw as Record<string, unknown>;
-  const pickBool = (key: keyof FeatureFlags): boolean => {
-    const v = rec[key as string];
-    return typeof v === "boolean" ? v : (DEFAULT_FLAGS[key] as boolean);
-  };
-  const pickInt = (key: keyof FeatureFlags): number => {
-    const v = rec[key as string];
-    return typeof v === "number" && Number.isFinite(v)
-      ? v
-      : (DEFAULT_FLAGS[key] as number);
-  };
-  return {
-    hasTelegramInbox: pickBool("hasTelegramInbox"),
-    hasCallCenter: pickBool("hasCallCenter"),
-    hasAnalyticsPro: pickBool("hasAnalyticsPro"),
-    maxBranches: pickInt("maxBranches"),
-    maxUsers: pickInt("maxUsers"),
-  };
-}
+// `@/lib/feature-flags` is prisma-free, so the browser uses the server's
+// own parser and status rule instead of a local copy that knew neither the
+// status nor white-label and the subdomain.
 
 type SubscriptionStatus = "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
 
@@ -150,10 +121,12 @@ const REASON_LABEL: Record<string, string> = {
   period_end_past: "Дата окончания оплаченного периода уже прошла",
 };
 
-const FEATURE_LABEL: Record<keyof FeatureFlags, string> = {
+const FEATURE_LABEL: Record<SwitchableFeature | "maxBranches" | "maxUsers", string> = {
   hasTelegramInbox: "Telegram-инбокс",
   hasCallCenter: "Колл-центр",
   hasAnalyticsPro: "Pro-аналитика",
+  hasWhiteLabel: "Фирменные цвета (white-label)",
+  hasCustomSubdomain: "Свой поддомен",
   maxBranches: "Макс. филиалов",
   maxUsers: "Макс. пользователей",
 };
@@ -230,8 +203,30 @@ export function BillingPageClient({
   const [newTrialDays, setNewTrialDays] = React.useState(String(defaultTrialDays));
   const sub = initial.subscription;
   const flags: FeatureFlags | null = sub
-    ? parsePlanFeatures(sub.plan.features)
+    ? effectiveFlags({ status: sub.status, planFeatures: sub.plan.features })
     : null;
+
+  /**
+   * Ask before a plan or status change, naming what it switches off and on.
+   * The change applies to the clinic's staff at once.
+   */
+  const confirmTariffChange = (
+    question: string,
+    next: { status: SubscriptionStatus; planFeatures: unknown },
+  ): boolean => {
+    if (!flags) return false;
+    const { off, on } = flagChanges(flags, effectiveFlags(next));
+    const lines = [question];
+    if (off.length) {
+      lines.push(`Отключится: ${off.map((k) => FEATURE_LABEL[k]).join(", ")}.`);
+    }
+    if (on.length) {
+      lines.push(`Включится: ${on.map((k) => FEATURE_LABEL[k]).join(", ")}.`);
+    }
+    if (!off.length && !on.length) lines.push("Набор функций не изменится.");
+    lines.push("Изменение сразу коснётся сотрудников клиники.");
+    return window.confirm(lines.join("\n\n"));
+  };
 
   const callApi = React.useCallback(
     async (
@@ -277,6 +272,16 @@ export function BillingPageClient({
 
   const onChangePlan = (newPlanId: string) => {
     if (!sub || newPlanId === sub.planId) return;
+    const plan = initial.plans.find((p) => p.id === newPlanId);
+    if (
+      !plan ||
+      !confirmTariffChange(
+        `Сменить тариф «${sub.plan.nameRu}» на «${plan.nameRu}»?`,
+        { status: sub.status, planFeatures: plan.features },
+      )
+    ) {
+      return;
+    }
     void callApi(
       "plan",
       `/api/admin/clinics/${initial.clinic.id}/subscription`,
@@ -287,6 +292,14 @@ export function BillingPageClient({
 
   const onChangeStatus = (newStatus: SubscriptionStatus) => {
     if (!sub || newStatus === sub.status) return;
+    if (
+      !confirmTariffChange(
+        `Сменить статус подписки «${STATUS_LABEL[sub.status]}» на «${STATUS_LABEL[newStatus]}»?`,
+        { status: newStatus, planFeatures: sub.plan.features },
+      )
+    ) {
+      return;
+    }
     void callApi(
       "status",
       `/api/admin/clinics/${initial.clinic.id}/subscription`,
@@ -444,9 +457,12 @@ export function BillingPageClient({
             </div>
 
             <div className="mt-4 space-y-2 text-sm">
-              {(
-                ["hasTelegramInbox", "hasCallCenter", "hasAnalyticsPro"] as const
-              ).map((key) => {
+              {sub.status === "CANCELLED" && (
+                <p className="text-xs text-muted-foreground">
+                  Подписка отменена: у клиники функции и лимиты Basic.
+                </p>
+              )}
+              {SWITCHABLE_FEATURES.map((key) => {
                 const enabled = flags[key];
                 return (
                   <div

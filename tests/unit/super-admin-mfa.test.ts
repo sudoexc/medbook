@@ -299,6 +299,7 @@ describe("/admin pages", () => {
       userId: "su1",
       name: "Root",
       email: "root@x.uz",
+      clinicId: null,
     });
     h.session = { user: { id: "a1", role: "ADMIN", clinicId: "c1" } };
     await expect(adminPageAccess()).resolves.toEqual({ kind: "forbidden" });

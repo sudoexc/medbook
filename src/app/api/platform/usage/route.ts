@@ -15,9 +15,17 @@
  *                        ranges past the migration date. Kept so the
  *                        platform dashboard can still surface the legacy
  *                        SMS bill against months that pre-date removal.)
- *   - tgMessages        (Message direction=OUT kind=TEXT/... in Conversation,
- *                        without the dialog copies of reminders and
- *                        broadcasts: `origin` null)
+ *   - tgMessages        Telegram traffic the clinic sent (audit G5-13):
+ *                        outbound chat messages of TG conversations
+ *                        (without the dialog copies of reminders and
+ *                        broadcasts: `origin` null) plus the reminders and
+ *                        broadcasts themselves (NotificationSend channel TG,
+ *                        SENT / DELIVERED / READ, by `sentAt`). It used to
+ *                        count every outbound chat message, in-app replies
+ *                        included, and none of the reminders.
+ *   - inappMessages     the same for the Mini App's in-app channel (INAPP
+ *                        chat replies plus in-app notifications), its own
+ *                        column so it no longer inflates the TG one
  *   - calls             (Call createdAt)
  *   - patients          (Patient createdAt — new patients acquired)
  *
@@ -47,8 +55,23 @@ export const GET = createPlatformListHandler(async ({ request }) => {
 
   const range = { gte: from, lte: to };
 
-  // Run the five group-bys in parallel. Each is keyed by clinicId.
-  const [apptG, smsG, tgG, callG, patG] = await Promise.all([
+  // Outbound chat messages of one channel's conversations. Not the dialog
+  // copies of reminders and broadcasts (audit G6-08): each is one message,
+  // already counted once as its NotificationSend.
+  const chatOut = (channel: "TG" | "INAPP") =>
+    prisma.message.groupBy({
+      by: ["clinicId"],
+      where: {
+        createdAt: range,
+        direction: "OUT",
+        origin: null,
+        conversation: { channel },
+      },
+      _count: { _all: true },
+    });
+
+  // Run the group-bys in parallel. Each is keyed by clinicId.
+  const [apptG, smsG, tgG, inappG, notifG, callG, patG] = await Promise.all([
     prisma.appointment.groupBy({
       by: ["clinicId"],
       where: { createdAt: range },
@@ -67,14 +90,15 @@ export const GET = createPlatformListHandler(async ({ request }) => {
       },
       _count: { _all: true },
     }),
-    prisma.message.groupBy({
-      by: ["clinicId"],
+    chatOut("TG"),
+    chatOut("INAPP"),
+    // Reminders and broadcasts that went out, by when they went out.
+    prisma.notificationSend.groupBy({
+      by: ["clinicId", "channel"],
       where: {
-        createdAt: range,
-        direction: "OUT",
-        // Not the dialog copies of reminders and broadcasts (audit G6-08):
-        // each is one Telegram message, already sent and counted once.
-        origin: null,
+        channel: { in: ["TG", "INAPP"] },
+        sentAt: range,
+        status: { in: ["SENT", "DELIVERED", "READ"] },
       },
       _count: { _all: true },
     }),
@@ -98,6 +122,11 @@ export const GET = createPlatformListHandler(async ({ request }) => {
   const apptMap = toMap(apptG);
   const smsMap = toMap(smsG);
   const tgMap = toMap(tgG);
+  const inappMap = toMap(inappG);
+  const notifMap = (channel: "TG" | "INAPP") =>
+    toMap(notifG.filter((r) => r.channel === channel));
+  const tgNotifMap = notifMap("TG");
+  const inappNotifMap = notifMap("INAPP");
   const callMap = toMap(callG);
   const patMap = toMap(patG);
 
@@ -109,7 +138,8 @@ export const GET = createPlatformListHandler(async ({ request }) => {
     active: c.active,
     appointments: apptMap.get(c.id) ?? 0,
     smsSent: smsMap.get(c.id) ?? 0,
-    tgMessages: tgMap.get(c.id) ?? 0,
+    tgMessages: (tgMap.get(c.id) ?? 0) + (tgNotifMap.get(c.id) ?? 0),
+    inappMessages: (inappMap.get(c.id) ?? 0) + (inappNotifMap.get(c.id) ?? 0),
     calls: callMap.get(c.id) ?? 0,
     patients: patMap.get(c.id) ?? 0,
   }));
@@ -123,6 +153,7 @@ export const GET = createPlatformListHandler(async ({ request }) => {
       appointments: rows.reduce((a, r) => a + r.appointments, 0),
       smsSent: rows.reduce((a, r) => a + r.smsSent, 0),
       tgMessages: rows.reduce((a, r) => a + r.tgMessages, 0),
+      inappMessages: rows.reduce((a, r) => a + r.inappMessages, 0),
       calls: rows.reduce((a, r) => a + r.calls, 0),
       patients: rows.reduce((a, r) => a + r.patients, 0),
     },

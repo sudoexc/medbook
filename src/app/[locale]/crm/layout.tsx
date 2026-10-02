@@ -21,7 +21,6 @@ import { ACTIVE_BRANCH_COOKIE_NAME } from "@/server/platform/branch-cookie"
 import { liveBranchIdOrNull } from "@/server/branches/active-branch-guard"
 import { getFeatureFlagsForCurrentSession } from "@/server/platform/current-flags"
 import { getCurrentSubscription } from "@/server/platform/current-subscription"
-import { AUDIT_ACTION } from "@/lib/audit-actions"
 
 /**
  * Pure helper — given the brand color hex strings, render an inline `<style>`
@@ -104,34 +103,12 @@ export default async function CrmLayout({
     session?.user?.role === "SUPER_ADMIN" &&
     session.user.clinicId
   ) {
-    // Grant-expiry guard: when the JWT carried clinicId via the override
-    // cookie but the grant row has aged out, the auth callback drops the
-    // `impersonation` stamp. Detect that here, audit the expiry, clear the
-    // cookies, and bounce back to /admin/clinics. This is the layout-level
-    // safety net; the API wrapper's VIEW_ONLY block handles the same case
-    // for in-flight XHRs.
-    if (!session.user.impersonation) {
-      try {
-        await runWithTenant({ kind: "SUPER_ADMIN", userId: session.user.id }, async () => {
-          await prisma.auditLog.create({
-            data: {
-              clinicId: session.user.clinicId as string,
-              actorId: session.user.id,
-              actorRole: "SUPER_ADMIN",
-              actorLabel: "platform",
-              action: AUDIT_ACTION.SUPER_ADMIN_IMPERSONATE_EXPIRED,
-              entityType: "Clinic",
-              entityId: session.user.clinicId as string,
-              meta: { reason: "grant_missing_or_expired" } as never,
-            },
-          })
-        })
-      } catch (err) {
-        console.error("[crm/layout] failed to audit IMPERSONATE_EXPIRED", err)
-      }
-      redirect("/admin/clinics?expired=1")
-    }
-    impersonationMode = session.user.impersonation.mode
+    // The end of a lease is handled elsewhere (audit G5-09): the JWT drops
+    // the clinic together with the grant, `src/proxy.ts` sends a SUPER_ADMIN
+    // without a clinic back to /admin/clinics, and the worker journals the
+    // expiry. A guard that used to sit here could never fire: it needed a
+    // clinicId without a grant, which the JWT callback never leaves.
+    impersonationMode = session.user.impersonation?.mode ?? null
     impersonatedClinic = await runWithTenant(
       { kind: "SUPER_ADMIN", userId: session.user.id },
       () =>

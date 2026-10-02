@@ -506,12 +506,16 @@ export const AUDIT_ACTION = {
   //   reason + mode. `entityType: "ImpersonationGrant"`, `entityId:
   //   <grantId>`. `meta` carries `{ clinicId, mode, expiresAt, reason }`.
   //
-  //   SUPER_ADMIN_IMPERSONATE_ENDED — admin clicked Exit. `entityType:
-  //   "ImpersonationGrant"`. `meta` carries `{ clinicId, durationMs }`.
+  //   SUPER_ADMIN_IMPERSONATE_ENDED — admin clicked Exit or entered another
+  //   clinic, ending a live grant (audit G5-09: one row per ended grant, none
+  //   when nothing was live). `entityType: "ImpersonationGrant"`. `meta`
+  //   carries `{ clinicId, durationMs, via: "exit" | "switch" }`.
   //
-  //   SUPER_ADMIN_IMPERSONATE_EXPIRED — middleware-side: a request landed
-  //   under an expired cookie; we clear it. `entityType:
-  //   "ImpersonationGrant"`. `meta` carries `{ clinicId, expiredAtMs }`.
+  //   SUPER_ADMIN_IMPERSONATE_EXPIRED — the grant's 60 min lease ran out
+  //   without an exit; the worker sweep (`expireLapsedGrants`) closes it.
+  //   `entityType: "ImpersonationGrant"`, `actorLabel:
+  //   "system:impersonation-expiry"`. `meta` carries `{ clinicId,
+  //   expiredAtMs, durationMs }`.
   //
   //   SUPER_ADMIN_VIEW_AS_BLOCKED — write attempted under VIEW_ONLY. One
   //   row per blocked request (sampled by the API wrapper). `entityType:

@@ -48,9 +48,9 @@ export function EncryptionHealthClient() {
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["admin", "encryption-health"],
     queryFn: fetchHealth,
-    // Slower than the system-health tab — the SQL counts are real work and
-    // posture doesn't change minute-to-minute. 60s is plenty.
-    refetchInterval: 60_000,
+    // No polling (audit G5-15): the counts scan the patient tables and every
+    // read is audited, and posture changes only with a key rotation. The
+    // «Обновить» button refetches on demand.
   });
 
   return (

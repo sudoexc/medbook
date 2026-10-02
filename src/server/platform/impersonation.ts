@@ -15,12 +15,29 @@
  *
  * Default lease: 60 minutes. Long enough for a full support session, short
  * enough that a forgotten cookie does not become a privilege time-bomb.
+ *
+ * The end of a lease is journaled (audit G5-09). Both cookies expire with the
+ * lease, so no request ever arrives carrying an expired grant: nothing used
+ * to stamp the row, and the journal had STARTED with no end. Now the worker
+ * sweep (`expireLapsedGrants`, every minute) closes each lapsed grant with
+ * `endedReason="expired"` and writes SUPER_ADMIN_IMPERSONATE_EXPIRED with the
+ * grant's clinic, and the proxy sends a SUPER_ADMIN left in the CRM without
+ * a clinic back to /admin/clinics (`latestGrantLapsedRecently` says whether
+ * to explain why).
  */
 import { prisma } from "@/lib/prisma";
+import { runWithTenant } from "@/lib/tenant-context";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import type { ImpersonationMode } from "@/generated/prisma/client";
 
 export const IMPERSONATION_LEASE_MS = 60 * 60 * 1000; // 60 minutes
 export const GRANT_COOKIE_NAME = "admin_grant_id";
+/**
+ * For how long after a lease ran out /admin/clinics explains the return
+ * («время входа истекло»): a working day, so a tab left open over lunch
+ * still gets the reason, and yesterday's visit no longer does.
+ */
+export const EXPIRY_NOTICE_MS = 12 * 60 * 60 * 1000;
 
 export type GrantMode = "WRITE" | "VIEW_ONLY";
 
@@ -81,6 +98,7 @@ export async function getActiveGrant(grantId: string): Promise<
       superAdminId: string;
       clinicId: string;
       mode: GrantMode;
+      startedAt: Date;
       expiresAt: Date;
       reason: string;
     }
@@ -94,6 +112,7 @@ export async function getActiveGrant(grantId: string): Promise<
       superAdminId: true,
       clinicId: true,
       mode: true,
+      startedAt: true,
       expiresAt: true,
       endedAt: true,
       reason: true,
@@ -107,28 +126,124 @@ export async function getActiveGrant(grantId: string): Promise<
     superAdminId: row.superAdminId,
     clinicId: row.clinicId,
     mode: row.mode as GrantMode,
+    startedAt: row.startedAt,
     expiresAt: row.expiresAt,
     reason: row.reason,
   };
 }
 
 /**
- * Stamp the grant as ended. No-op when already ended (idempotent).
+ * Stamp the grant as ended. No-op when already ended (idempotent). Returns
+ * whether this call ended it, so the caller journals an end only once.
  *
  * `reason` is one of:
- *   - "user_exit" — admin clicked the exit banner / dropdown
- *   - "expired"   — middleware noticed `expiresAt < now`
+ *   - "user_exit" — admin clicked the exit banner / dropdown, or entered
+ *                   another clinic
+ *   - "expired"   — the lease ran out (`expireLapsedGrants` stamps these)
  *   - "revoked"   — manual / automated revocation (future)
  */
 export async function endGrant(
   grantId: string,
   reason: "user_exit" | "expired" | "revoked",
-): Promise<void> {
-  if (!grantId) return;
+): Promise<boolean> {
+  if (!grantId) return false;
   // Use updateMany so a missing row / already-ended row both produce 0 rows
   // affected without throwing — keeps the lifecycle handler simple.
-  await prisma.impersonationGrant.updateMany({
+  const res = await prisma.impersonationGrant.updateMany({
     where: { id: grantId, endedAt: null },
     data: { endedAt: new Date(), endedReason: reason },
+  });
+  return res.count > 0;
+}
+
+/**
+ * Pure: did this grant run out (rather than end by «Выйти» or a switch to
+ * another clinic) within the last `EXPIRY_NOTICE_MS`? A lapsed grant the
+ * sweep has not closed yet counts too.
+ */
+export function lapsedRecently(
+  grant: { expiresAt: Date; endedAt: Date | null; endedReason: string | null } | null,
+  now: Date,
+): boolean {
+  if (!grant) return false;
+  const lapsed = grant.endedAt
+    ? grant.endedReason === "expired"
+    : isGrantExpired(grant, now);
+  return lapsed && now.getTime() - grant.expiresAt.getTime() < EXPIRY_NOTICE_MS;
+}
+
+/** Whether the SUPER_ADMIN's most recent grant ran out recently. */
+export async function latestGrantLapsedRecently(
+  superAdminId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  // ImpersonationGrant is tenant-scoped; the lookup is by the caller's own
+  // user id, across clinics.
+  const grant = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.impersonationGrant.findFirst({
+      where: { superAdminId },
+      orderBy: { startedAt: "desc" },
+      select: { expiresAt: true, endedAt: true, endedReason: true },
+    }),
+  );
+  return lapsedRecently(grant, now);
+}
+
+/**
+ * Close every grant whose lease ran out without an exit, oldest first, and
+ * journal each one (audit G5-09). Returns how many it closed.
+ *
+ * `endedAt` is the lease end, not the moment the sweep noticed: that is when
+ * access really stopped, and what an auditor asks. Each close is conditional
+ * on `endedAt` still being null, so an exit or a concurrent sweep that got
+ * there first wins and no grant is journaled twice.
+ */
+export async function expireLapsedGrants(
+  now: Date = new Date(),
+  limit = 200,
+): Promise<number> {
+  return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const lapsed = await prisma.impersonationGrant.findMany({
+      where: { endedAt: null, expiresAt: { lte: now } },
+      orderBy: { expiresAt: "asc" },
+      take: limit,
+      select: {
+        id: true,
+        superAdminId: true,
+        clinicId: true,
+        startedAt: true,
+        expiresAt: true,
+      },
+    });
+    let closed = 0;
+    for (const g of lapsed) {
+      const res = await prisma.impersonationGrant.updateMany({
+        where: { id: g.id, endedAt: null },
+        data: { endedAt: g.expiresAt, endedReason: "expired" },
+      });
+      if (res.count === 0) continue;
+      closed += 1;
+      try {
+        await prisma.auditLog.create({
+          data: {
+            clinicId: g.clinicId,
+            actorId: g.superAdminId,
+            actorRole: "SUPER_ADMIN",
+            actorLabel: "system:impersonation-expiry",
+            action: AUDIT_ACTION.SUPER_ADMIN_IMPERSONATE_EXPIRED,
+            entityType: "ImpersonationGrant",
+            entityId: g.id,
+            meta: {
+              clinicId: g.clinicId,
+              expiredAtMs: g.expiresAt.getTime(),
+              durationMs: g.expiresAt.getTime() - g.startedAt.getTime(),
+            },
+          },
+        });
+      } catch (e) {
+        console.warn(`[impersonation] expiry audit failed grant=${g.id}`, e);
+      }
+    }
+    return closed;
   });
 }

@@ -64,7 +64,7 @@ export default async function AdminLayout({
           heartbeat a SUPER_ADMIN clicking through /admin would time out. */}
       <SessionExpiryWatch />
       <div className="flex h-screen min-h-0 w-full bg-background">
-        <AdminSidebar />
+        <AdminSidebar inClinic={Boolean(access.clinicId)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AdminTopbar
             userName={access.name}

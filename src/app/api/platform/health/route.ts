@@ -1,95 +1,44 @@
 /**
  * GET /api/platform/health — system health checks for the admin dashboard.
  *
- * Postgres: live ping via `SELECT 1`.
- * Redis / BullMQ / MinIO: stubs — `infrastructure-engineer` (Phase 6) wires
- * in real checks when those services land. For now we read env vars and
- * report "not_configured" / "unknown".
+ * Real checks, the same ones the public probe `/api/health` runs (audit
+ * G5-12, `server/observability/service-checks.ts`): Postgres `SELECT 1`,
+ * Redis PING, MinIO's readiness endpoint, and the workers (heartbeats in
+ * Redis plus the backlog of the tables they drain,
+ * `server/observability/worker-health.ts`). Redis, BullMQ and MinIO used to
+ * be «OK» whenever their env variable was set, so the panel stayed green
+ * exactly when Redis or the worker was down and reminders stopped.
  */
-import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
 import { createPlatformListHandler } from "@/server/platform/handler";
-
-type ServiceHealth = {
-  name: "postgres" | "redis" | "bullmq" | "minio";
-  status: "ok" | "down" | "not_configured";
-  latencyMs?: number | null;
-  details?: string | null;
-};
-
-async function checkPostgres(): Promise<ServiceHealth> {
-  const started = Date.now();
-  try {
-    await prisma.$queryRawUnsafe<unknown>("SELECT 1");
-    return {
-      name: "postgres",
-      status: "ok",
-      latencyMs: Date.now() - started,
-    };
-  } catch (e) {
-    return {
-      name: "postgres",
-      status: "down",
-      latencyMs: Date.now() - started,
-      details: e instanceof Error ? e.message.slice(0, 200) : "unknown",
-    };
-  }
-}
-
-function checkRedis(): ServiceHealth {
-  const url = process.env.REDIS_URL;
-  if (!url) {
-    return {
-      name: "redis",
-      status: "not_configured",
-      details:
-        "REDIS_URL not set. In-memory queue adapter is active until Phase 6.",
-    };
-  }
-  return { name: "redis", status: "ok", details: `configured: ${url.split("@").pop() ?? url}` };
-}
-
-function checkBullmq(): ServiceHealth {
-  const url = process.env.REDIS_URL;
-  if (!url) {
-    return {
-      name: "bullmq",
-      status: "not_configured",
-      details:
-        "Workers run in-process on the in-memory adapter (src/server/queue/index.ts).",
-    };
-  }
-  return { name: "bullmq", status: "ok", details: "Configured via REDIS_URL" };
-}
-
-function checkMinio(): ServiceHealth {
-  const endpoint =
-    process.env.MINIO_ENDPOINT ?? process.env.S3_ENDPOINT ?? null;
-  if (!endpoint) {
-    return {
-      name: "minio",
-      status: "not_configured",
-      details: "MINIO_ENDPOINT / S3_ENDPOINT not set. Uploads are metadata-only.",
-    };
-  }
-  return { name: "minio", status: "ok", details: `configured: ${endpoint}` };
-}
+import {
+  checkDb,
+  checkMinio,
+  checkRedis,
+} from "@/server/observability/service-checks";
+import { checkWorkerHealth } from "@/server/observability/worker-health";
+import {
+  overallOf,
+  serviceCard,
+  workersCard,
+  type ServiceHealth,
+} from "@/server/platform/health-cards";
 
 export const GET = createPlatformListHandler(async () => {
-  const [pg] = await Promise.all([checkPostgres()]);
-  const services: ServiceHealth[] = [
-    pg,
+  const [pg, redis, minio, workers] = await Promise.all([
+    checkDb(),
     checkRedis(),
-    checkBullmq(),
     checkMinio(),
+    checkWorkerHealth(),
+  ]);
+  const services: ServiceHealth[] = [
+    serviceCard("postgres", pg),
+    serviceCard("redis", redis),
+    workersCard(workers),
+    serviceCard("minio", minio),
   ];
-  const overall = services.some((s) => s.status === "down")
-    ? "degraded"
-    : services.every((s) => s.status === "ok")
-      ? "ok"
-      : "partial";
   return ok({
-    overall,
+    overall: overallOf(services),
     generatedAt: new Date().toISOString(),
     services,
     env: {

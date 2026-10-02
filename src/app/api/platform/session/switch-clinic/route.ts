@@ -15,6 +15,13 @@
  * Switching from one clinic to another (clinicId set, current grant cookie
  * present) ends the previous grant first ("user_exit") so the audit trail
  * never has two overlapping live grants for the same actor.
+ *
+ * Every end of a live grant is journaled as SUPER_ADMIN_IMPERSONATE_ENDED
+ * with that grant's clinic, the switch A→B included (audit G5-09: it used to
+ * close A silently). Nothing live to end means no ENDED row: «Выйти» after
+ * the lease ran out used to write one with clinicId null. A lapsed grant is
+ * not stamped "user_exit" here either; the expiry sweep closes it as
+ * "expired" (`expireLapsedGrants`).
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -43,6 +50,33 @@ function readGrantCookie(request: Request): string | null {
     if (trimmed.startsWith(needle)) return trimmed.slice(needle.length) || null;
   }
   return null;
+}
+
+/** End the caller's live grant, if there is one, and journal it. */
+async function endLiveGrant(
+  request: Request,
+  userId: string,
+  grantId: string | null,
+  via: "exit" | "switch",
+): Promise<void> {
+  if (!grantId) return;
+  const active = await getActiveGrant(grantId).catch(() => null);
+  if (!active || active.superAdminId !== userId) return;
+  // Conditional on the grant still being open: a double click journals once.
+  if (!(await endGrant(grantId, "user_exit"))) return;
+  await platformAudit({
+    request,
+    userId,
+    clinicId: active.clinicId,
+    action: AUDIT_ACTION.SUPER_ADMIN_IMPERSONATE_ENDED,
+    entityType: "ImpersonationGrant",
+    entityId: grantId,
+    meta: {
+      clinicId: active.clinicId,
+      durationMs: Date.now() - active.startedAt.getTime(),
+      via,
+    },
+  });
 }
 
 function cookieHeader(name: string, value: string, maxAgeSeconds: number): string {
@@ -103,10 +137,7 @@ export async function POST(request: Request): Promise<Response> {
 
         // End the previous grant before minting a new one — keeps the audit
         // history linear (a single live grant per actor at any moment).
-        const prevGrantId = readGrantCookie(request);
-        if (prevGrantId) {
-          await endGrant(prevGrantId, "user_exit");
-        }
+        await endLiveGrant(request, userId, readGrantCookie(request), "switch");
 
         const grant = await createGrant(
           userId,
@@ -164,31 +195,8 @@ export async function POST(request: Request): Promise<Response> {
         );
       }
 
-      // Exit path — clear cookies, end active grant.
-      const prevGrantId = readGrantCookie(request);
-      let endedClinicId: string | null = null;
-      let durationMs: number | null = null;
-      if (prevGrantId) {
-        const active = await getActiveGrant(prevGrantId).catch(() => null);
-        if (active) {
-          endedClinicId = active.clinicId;
-          durationMs = Date.now() - (active.expiresAt.getTime() - 60 * 60 * 1000);
-        }
-        await endGrant(prevGrantId, "user_exit");
-      }
-
-      await platformAudit({
-        request,
-        userId,
-        clinicId: endedClinicId,
-        action: AUDIT_ACTION.SUPER_ADMIN_IMPERSONATE_ENDED,
-        entityType: "ImpersonationGrant",
-        entityId: prevGrantId ?? null,
-        meta: {
-          clinicId: endedClinicId,
-          durationMs,
-        },
-      });
+      // Exit path — clear cookies, end the live grant (if any).
+      await endLiveGrant(request, userId, readGrantCookie(request), "exit");
       const headers = new Headers();
       headers.append(
         "set-cookie",

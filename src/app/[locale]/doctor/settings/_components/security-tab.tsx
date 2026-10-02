@@ -13,20 +13,16 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatCalendarDay } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useDoctorSecuritySummary } from "../_hooks/use-doctor-security-summary";
 
-function fmtDateRu(iso: string | null, neverLabel: string): string {
+// In the interface language: "ru-RU" printed Russian months to a doctor
+// working in Uzbek (audit UX-12).
+function fmtDate(iso: string | null, neverLabel: string, locale: string): string {
   if (!iso) return neverLabel;
-  const d = new Date(iso);
-  return d.toLocaleString("ru-RU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatCalendarDay(iso, locale, { year: true, time: true });
 }
 
 export function SecurityTab({ locale }: { locale: string }) {
@@ -87,7 +83,7 @@ export function SecurityTab({ locale }: { locale: string }) {
           <li className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">
             <span className="text-foreground">{t("security.lastLogin")}</span>
             <span className="text-muted-foreground">
-              {fmtDateRu(d.lastLoginAt, t("security.never"))}
+              {fmtDate(d.lastLoginAt, t("security.never"), locale)}
             </span>
           </li>
         </ul>

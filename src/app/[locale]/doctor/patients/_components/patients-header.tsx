@@ -64,7 +64,7 @@ export function PatientsHeader() {
         </nav>
 
         {/* «Экспорт» removed per doctor feedback; «Настроить вид» had no
-            action behind it (DC-17). */}
+            view settings behind it (DC-17, audit UX-13). */}
       </div>
     </>
   );

@@ -5,12 +5,17 @@
  *
  *   - openCases:       count of OPEN cases led by this doctor
  *   - resolvedLast30d: count of RESOLVED cases closed in the last 30 days
- *   - repeatRatePct:   % of appointments in the last 90d that are visit #2+
- *                      within their case (1 decimal). Numerator: appointments
- *                      that have at least one earlier sibling in the same case
- *                      (ordered by date asc, createdAt asc as in the appt
- *                      detail handler — keeps repeat counting consistent).
- *                      Denominator: ALL appointments by this doctor in 90d.
+ *   - repeatRatePct:   % of visits held in the last 90d that are visit #2+
+ *                      within their case (1 decimal). Numerator: visits
+ *                      that have at least one earlier held sibling in the
+ *                      same case (ordered by date asc, createdAt asc as in
+ *                      the appt detail handler — keeps repeat counting
+ *                      consistent). Denominator: every held visit of this
+ *                      doctor in 90d. «Held» means up to now and neither
+ *                      cancelled nor a no-show (audit DR-14): next month's
+ *                      bookings and dropped visits swung the rate with no
+ *                      real repeat behind it, and a cancelled first booking
+ *                      turned the real first visit into a «repeat».
  *   - avgDurationDays: average (closedAt - openedAt) in whole days for
  *                      RESOLVED cases this doctor leads.
  *
@@ -24,6 +29,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, notFound, forbidden } from "@/server/http";
+import { NOT_HELD_VISIT_STATUSES } from "@/lib/cases/case-visits";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -76,7 +82,8 @@ export const GET = createApiListHandler(
         prisma.appointment.findMany({
           where: {
             doctorId,
-            date: { gte: ninetyDaysAgo },
+            date: { gte: ninetyDaysAgo, lte: now },
+            status: { notIn: [...NOT_HELD_VISIT_STATUSES] },
           },
           select: {
             id: true,
@@ -128,7 +135,10 @@ export const GET = createApiListHandler(
       const caseIds = [...byCase.keys()];
       const allSiblings = caseIds.length
         ? await prisma.appointment.findMany({
-            where: { medicalCaseId: { in: caseIds } },
+            where: {
+              medicalCaseId: { in: caseIds },
+              status: { notIn: [...NOT_HELD_VISIT_STATUSES] },
+            },
             select: {
               id: true,
               medicalCaseId: true,

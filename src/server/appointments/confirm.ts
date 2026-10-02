@@ -103,6 +103,7 @@ export async function confirmAppointment(
       queueStatus: true,
       confirmedAt: true,
       doctorId: true,
+      patientId: true,
       date: true,
     },
   });
@@ -114,6 +115,38 @@ export async function confirmAppointment(
     return { ok: false, reason: "completed" };
   }
 
+  const surface = input.surface ?? surfaceFromVia(input.via);
+  const correlationId = input.correlationId ?? newCorrelationId();
+  const actorRole = actorRoleFor(input.via, !!input.actorId);
+  const actorLabel = input.actorId
+    ? `user:${input.actorId}`
+    : `confirm:${input.via}`;
+
+  // Shared by every event this confirm emits. A confirm never changes the
+  // doctor or the patient, so the before-row names them.
+  const baseEnvelope = {
+    correlationId,
+    causedByEventId: input.causedByEventId,
+    actor: {
+      role: actorRole,
+      userId: input.actorId,
+      patientId: null,
+      onBehalfOfPatientId: null,
+      label: actorLabel,
+    },
+    surface,
+    // patientId in the scope AND in both appointment payloads (audit
+    // G3-09): the Mini App stream delivers only events that name one of its
+    // patients, so a reception or bot confirm never flipped the patient's own
+    // card to «Подтверждено» until a reload.
+    tenantScope: {
+      clinicId: input.clinicId,
+      doctorId: before.doctorId ?? undefined,
+      patientId: before.patientId ?? undefined,
+      appointmentId: input.appointmentId,
+    },
+  } as const;
+
   // Idempotency: if already confirmed, just close any stale confirm-call
   // Actions (defensive — usually closed at first flip) and return early.
   if (before.confirmedAt) {
@@ -122,6 +155,7 @@ export async function confirmAppointment(
       input.clinicId,
       input.appointmentId,
       now,
+      baseEnvelope,
     );
     const fresh = await prisma.appointment.findUnique({
       where: { id: input.appointmentId },
@@ -136,15 +170,8 @@ export async function confirmAppointment(
   const shouldFlipStatus =
     before.status === "BOOKED" && before.queueStatus === "BOOKED";
 
-  const surface = input.surface ?? surfaceFromVia(input.via);
-  const correlationId = input.correlationId ?? newCorrelationId();
-  const actorRole = actorRoleFor(input.via, !!input.actorId);
-  const actorLabel = input.actorId
-    ? `user:${input.actorId}`
-    : `confirm:${input.via}`;
-
   // Single transaction: appointment update + close actions + audit row +
-  // two outbox rows. Either everything commits (delivery is the pumper's
+  // two outbox rows (and one per closed task). Either everything commits (delivery is the pumper's
   // job) or nothing does (no ghost event for a write that didn't happen).
   const { after, statusEventId } = await prisma.$transaction(async (tx) => {
     const after = await tx.appointment.update({
@@ -164,6 +191,7 @@ export async function confirmAppointment(
       input.clinicId,
       input.appointmentId,
       now,
+      baseEnvelope,
     );
 
     // Audit row stays direct + with the canonical APPOINTMENT_CONFIRMED
@@ -198,30 +226,13 @@ export async function confirmAppointment(
     // the appointments list & detail. Both flow through the outbox so SSE
     // consumers never miss the pair (the pumper delivers them in createdAt
     // order — queue.updated first because it was inserted first).
-    const baseEnvelope = {
-      correlationId,
-      causedByEventId: input.causedByEventId,
-      actor: {
-        role: actorRole,
-        userId: input.actorId,
-        patientId: null,
-        onBehalfOfPatientId: null,
-        label: actorLabel,
-      },
-      surface,
-      tenantScope: {
-        clinicId: input.clinicId,
-        doctorId: after.doctorId ?? undefined,
-        appointmentId: input.appointmentId,
-      },
-    } as const;
-
     const queueEnvelope: EventEnvelopeInput = {
       ...baseEnvelope,
       type: "queue.updated",
       payload: {
         appointmentId: input.appointmentId,
         doctorId: after.doctorId,
+        patientId: after.patientId,
         queueStatus: after.queueStatus,
         previousStatus: before.queueStatus,
       },
@@ -234,6 +245,7 @@ export async function confirmAppointment(
       payload: {
         appointmentId: input.appointmentId,
         doctorId: after.doctorId,
+        patientId: after.patientId,
         status: after.status,
         previousStatus: before.status,
       },
@@ -259,6 +271,11 @@ export async function confirmAppointment(
  *
  * We close instead of delete so the audit trail survives ("staff called at
  * 14:02, patient confirmed; task auto-closed at 14:05").
+ *
+ * Each closed row is announced as `action.updated` through the outbox, in
+ * the caller's transaction (audit G3-11): the close used to be silent, and
+ * the «К подтверждению» widget and the action center, which refresh only on
+ * action.*, kept listing a patient who had just confirmed in Telegram.
  */
 type ConfirmTx = Parameters<Parameters<typeof prisma["$transaction"]>[0]>[0];
 
@@ -267,6 +284,7 @@ async function closeOpenConfirmActions(
   clinicId: string,
   appointmentId: string,
   now: Date,
+  announce: Omit<EventEnvelopeInput, "type" | "payload">,
 ): Promise<void> {
   // Mirror the detector's dedupe-key construction so we close exactly the
   // row the detector would have upserted. Build the key from a payload stub
@@ -282,12 +300,26 @@ async function closeOpenConfirmActions(
     doctorName: "",
   });
 
+  const where = {
+    clinicId,
+    dedupeKey,
+    status: { in: ["OPEN", "SNOOZED"] as ("OPEN" | "SNOOZED")[] },
+  };
+  const closing = await tx.action.findMany({
+    where,
+    select: { id: true, type: true, severity: true },
+  });
+
   await tx.action.updateMany({
-    where: {
-      clinicId,
-      dedupeKey,
-      status: { in: ["OPEN", "SNOOZED"] },
-    },
+    where,
     data: { status: "DONE", doneAt: now },
   });
+
+  for (const row of closing) {
+    await publishViaOutbox(tx, {
+      ...announce,
+      type: "action.updated",
+      payload: { id: row.id, type: row.type, severity: row.severity },
+    });
+  }
 }

@@ -119,7 +119,7 @@ export function PatientsRightRail({
   // (the «Остывают» list carries «Перезвонить»). They used to be styled as
   // links with nothing behind them, and a third, «Предложить запись ·
   // Подходят по триггерам», summed VIP and «Остывают» under triggers that
-  // do not exist (audit PT-24).
+  // do not exist (audit PT-24, UX-15).
   const actions: Array<{
     tone: Tone;
     icon: LucideIcon;

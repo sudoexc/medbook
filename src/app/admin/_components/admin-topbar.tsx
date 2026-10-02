@@ -2,8 +2,11 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
+import { LogOutIcon } from "lucide-react";
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { Button } from "@/components/ui/button";
 
 const TITLES: Record<string, { title: string; subtitle: string }> = {
   clinics: { title: "Клиники", subtitle: "CRUD платформы" },
@@ -11,6 +14,11 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   usage: { title: "Использование", subtitle: "Агрегаты за период" },
   audit: { title: "Аудит", subtitle: "Журнал действий всех клиник" },
   health: { title: "Здоровье", subtitle: "Состояние сервисов" },
+  // Without it the fallback below titled this page «Клиники» (audit G5-08).
+  "encryption-health": {
+    title: "Шифрование",
+    subtitle: "Ключи и зашифрованные поля",
+  },
 };
 
 interface AdminTopbarProps {
@@ -47,6 +55,17 @@ export function AdminTopbar({ userName, userEmail }: AdminTopbarProps) {
           status="online"
           size="sm"
         />
+        {/* The most privileged account had no way out of /admin (audit
+            G5-08): the operator had to go to the CRM to find «Выйти». */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void signOut({ callbackUrl: "/login" })}
+          className="text-destructive hover:text-destructive"
+        >
+          <LogOutIcon className="size-4" />
+          Выйти
+        </Button>
       </div>
     </header>
   );

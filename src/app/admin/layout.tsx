@@ -41,7 +41,7 @@ export default async function AdminLayout({
 }) {
   const access = await adminPageAccess();
   if (access.kind === "anonymous") {
-    redirect("/ru/login");
+    redirect("/login");
   }
   if (access.kind === "owes_mfa") {
     redirect(SUPER_ADMIN_ENROL_PATH);
@@ -78,7 +78,7 @@ export default async function AdminLayout({
           heartbeat a SUPER_ADMIN clicking through /admin would time out. */}
       <SessionExpiryWatch />
       <div className="flex h-screen min-h-0 w-full bg-background">
-        <AdminSidebar />
+        <AdminSidebar inClinic={Boolean(access.clinicId)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AdminTopbar
             userName={access.name}

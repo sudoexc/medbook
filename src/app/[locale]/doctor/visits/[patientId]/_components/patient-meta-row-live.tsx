@@ -45,8 +45,9 @@ export function PatientMetaRowLive({ allergies, chronicConditions }: Props) {
         <span className="font-semibold text-foreground">{t("meta.chronic")}</span>
         <span className="text-muted-foreground">{chronicText}</span>
       </div>
-      {/* No «Показать ещё» (DC-20): the page passes the full lists and
-          they are shown in full, an allergy must never sit behind a click. */}
+      {/* No «Показать ещё» (DC-20, audit UX-13): the page passes the full
+          lists and they are shown in full, an allergy must never sit behind
+          a click. */}
     </section>
   );
 }

@@ -79,7 +79,9 @@ function relativeLabelKey(view: Date, today: Date): string | null {
 }
 
 // `view` is a local midnight standing for a civil date, so no timeZone here:
-// formatting it in the browser's zone gives back that same date.
+// formatting it in the browser's zone gives back that same date. Only the
+// language follows the interface (audit UX-12: "ru-RU" printed Russian
+// month and weekday names to a doctor working in Uzbek).
 function fullDateLabel(view: Date, locale: string): string {
   return new Intl.DateTimeFormat(intlLocale(locale), {
     day: "numeric",

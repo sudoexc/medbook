@@ -131,6 +131,11 @@ export const CRM_NAV: NavGroup[] = [
         href: "analytics",
         labelKey: "analytics",
         icon: BarChart3Icon,
+        // The analytics API answers only admins and doctors, and doctors
+        // work in their own cabinet: reception, nurses and call operators
+        // got the item and then «Не удалось загрузить аналитику» (audit
+        // AN-33).
+        requiredRole: "ADMIN",
         children: [
           // Phase 18 W2 — ADMIN-only pro dashboards. Plan-gated by
           // `hasAnalyticsPro` so the Basic-tier menu stays unchanged.
@@ -503,8 +508,14 @@ export function CrmSidebar({
           collapsed ? "px-2" : "px-4",
         )}
       >
+        {/* Same audience as the analytics item (AN-33): everyone else lands
+            on today's appointments, which every CRM role can open. */}
         <Link
-          href={`/${locale}/crm/analytics`}
+          href={
+            role === "ADMIN"
+              ? `/${locale}/crm/analytics`
+              : `/${locale}/crm/appointments?dateMode=today`
+          }
           title={collapsed ? `${todayCount} ${tShell("footer.todayCount")}` : undefined}
           className={cn(
             "motion-press flex items-center rounded-xl p-2 transition-colors hover:bg-sidebar-accent",

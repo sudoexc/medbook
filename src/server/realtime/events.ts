@@ -298,11 +298,14 @@ export type PaymentEventPayload = z.infer<typeof PaymentPayload>;
 
 // `"SMS"` retained on the read path so legacy outbox envelopes (envelopes
 // emitted before `docs/TZ-sms-removal.md` Wave 3) still parse when
-// replayed. New publishes only ever stamp TG / EMAIL / CALL / VISIT.
+// replayed. New publishes stamp TG / EMAIL / CALL / VISIT / INAPP: every
+// `CommunicationChannel` value must be listed, or `parseLiveEvent` drops the
+// whole event (audit G3-14: an in-app send's notification.sent never reached
+// the CRM notifications screen).
 export const NotificationPayload = z
   .object({
     sendId: z.string(),
-    channel: z.enum(["SMS", "TG", "EMAIL", "CALL", "VISIT"]).optional(),
+    channel: z.enum(["SMS", "TG", "EMAIL", "CALL", "VISIT", "INAPP"]).optional(),
     patientId: z.string().nullable().optional(),
     templateKey: z.string().optional(),
     failedReason: z.string().optional(),

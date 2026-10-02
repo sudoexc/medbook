@@ -16,8 +16,13 @@
  *                          The rotation page uses this to confirm "0 rows
  *                          remain under v1" before dropping the old key.
  *
- * Every successful response also writes an `ENCRYPTION_HEALTH_CHECKED` audit
- * row — peeking at posture is a privileged operation in its own right.
+ * A successful response also writes an `ENCRYPTION_HEALTH_CHECKED` audit
+ * row — peeking at posture is a privileged operation in its own right — but
+ * at most one per SUPER_ADMIN per `AUDIT_THROTTLE_MS` (audit G5-15). The page
+ * refetched every minute and each refetch wrote a row: an open tab buried the
+ * real platform events in /admin/audit under ~60 identical rows an hour. The
+ * page no longer polls either (the «Обновить» button stays), and each column
+ * is tallied in one scan instead of three.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -31,6 +36,9 @@ import {
   getKnownKeyVersions,
 } from "@/server/crypto/field-cipher";
 import { clientIpForAudit } from "@/lib/client-ip";
+
+/** One ENCRYPTION_HEALTH_CHECKED row per SUPER_ADMIN in this window. */
+const AUDIT_THROTTLE_MS = 15 * 60 * 1000;
 
 interface ColumnCounts {
   total: number;
@@ -54,10 +62,9 @@ interface HealthResponse {
  * Tally rows for one column. We do this in raw SQL because the alternative
  * (`findMany` over millions of rows just to count prefixes) doesn't scale.
  *
- * Each `total` query is a single `COUNT(*)`; `byVersion` uses `LEFT(col, 3)`
- * to peel the `v<n>:` prefix and groups on it. Postgres can index-only-scan
- * this if needed, but even a seq-scan over a few hundred-thousand rows is
- * sub-second and this endpoint is rarely hit.
+ * One scan per column (audit G5-15; it used to be three: COUNT(*), COUNT of
+ * NULLs and the prefix GROUP BY): every row lands in one bucket, `__null__`,
+ * `__plain__` or its `v<n>` prefix, and the total is their sum.
  */
 async function countColumn(
   table: "Patient" | "MedicalCase" | "Prescription",
@@ -69,30 +76,28 @@ async function countColumn(
   const tableQ = `"${table}"`;
   const colQ = `"${column}"`;
 
-  const [{ total }] = (await prisma.$queryRawUnsafe(
-    `SELECT COUNT(*)::int AS total FROM ${tableQ}`,
-  )) as { total: number }[];
-
-  const [{ nulls }] = (await prisma.$queryRawUnsafe(
-    `SELECT COUNT(*)::int AS nulls FROM ${tableQ} WHERE ${colQ} IS NULL`,
-  )) as { nulls: number }[];
-
   // SUBSTRING with a regex grabs the `v<n>:` prefix when present, NULL when
-  // the value is plaintext or NULL. We coalesce to '__plain__' so plaintext
-  // rows show up in a single bucket.
+  // the value is plaintext. We coalesce to '__plain__' so plaintext rows show
+  // up in a single bucket.
   const prefixRows = (await prisma.$queryRawUnsafe(
     `SELECT
-       COALESCE(SUBSTRING(${colQ} FROM '^v[0-9]+(?=:)'), '__plain__') AS prefix,
+       CASE WHEN ${colQ} IS NULL THEN '__null__'
+            ELSE COALESCE(SUBSTRING(${colQ} FROM '^v[0-9]+(?=:)'), '__plain__')
+       END AS prefix,
        COUNT(*)::int AS n
      FROM ${tableQ}
-     WHERE ${colQ} IS NOT NULL
-     GROUP BY prefix`,
+     GROUP BY 1`,
   )) as { prefix: string; n: number }[];
 
   const byVersion: Record<string, number> = {};
+  let total = 0;
+  let nulls = 0;
   let plaintext = 0;
   for (const r of prefixRows) {
-    if (r.prefix === "__plain__") {
+    total += r.n;
+    if (r.prefix === "__null__") {
+      nulls = r.n;
+    } else if (r.prefix === "__plain__") {
       plaintext = r.n;
     } else {
       byVersion[r.prefix] = r.n;
@@ -172,7 +177,19 @@ export async function GET(request: Request): Promise<Response> {
       // Audit-of-the-audit. Failures are logged but don't break the response —
       // an audit-write hiccup shouldn't lock the admin out of seeing posture.
       try {
-        await prisma.auditLog.create({
+        // A look within the throttle window is already on record. A failing
+        // probe is always recorded: that is news, not a repeat.
+        const recent = probe.ok
+          ? await prisma.auditLog.findFirst({
+              where: {
+                actorId: gate.userId,
+                action: AUDIT_ACTION.ENCRYPTION_HEALTH_CHECKED,
+                createdAt: { gte: new Date(Date.now() - AUDIT_THROTTLE_MS) },
+              },
+              select: { id: true },
+            })
+          : null;
+        if (!recent) await prisma.auditLog.create({
           data: {
             clinicId: null,
             actorId: gate.userId,

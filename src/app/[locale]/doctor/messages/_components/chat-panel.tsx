@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   PaperclipIcon,
@@ -15,6 +15,7 @@ import {
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { cn } from "@/lib/utils";
+import { intlLocale } from "@/lib/format";
 
 import { failedReasonText } from "@/app/[locale]/crm/telegram/_lib/failed-reason";
 
@@ -323,6 +324,7 @@ function MessageBubble({ m }: { m: MessageRow }) {
 
 function DaySeparator({ date }: { date: Date }) {
   const t = useTranslations("doctor.messages");
+  const locale = useLocale();
   const today = new Date();
   let label: string;
   const sameYearMonthDay = (a: Date, b: Date) =>
@@ -336,7 +338,9 @@ function DaySeparator({ date }: { date: Date }) {
     y.setDate(today.getDate() - 1);
     if (sameYearMonthDay(date, y)) label = t("relative.yesterday");
     else
-      label = date.toLocaleDateString("ru-RU", {
+      // The day buckets above are browser-local, so is the label; only the
+      // language follows the interface (audit UX-12).
+      label = date.toLocaleDateString(intlLocale(locale), {
         day: "2-digit",
         month: "long",
         year: "numeric",

@@ -24,6 +24,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
+import {
+  discardDocumentUpload,
+  uploadDocumentFile,
+  type UploadedDocumentFile,
+} from "@/lib/document-upload-client";
 
 import type { DocumentType } from "../documents/_hooks/use-doctor-documents";
 import {
@@ -273,49 +278,43 @@ export function ReplaceDocumentFileDialog({
   const handleSubmit = async () => {
     if (!file || submitting) return;
     setSubmitting(true);
+    // The new bytes while no document points at them yet. If the PATCH
+    // fails they are taken back (audit G1-13): left in the bucket they
+    // would be a patient's scan nothing lists or deletes. The document's
+    // current file is never touched here; the server swaps it on success.
+    let stored: UploadedDocumentFile | null = null;
     try {
-      // 1) Upload the new bytes first (same flow as the upload dialog). If the
-      //    PATCH below fails, the fresh blob is orphaned — acceptable, same
-      //    trade-off the create flow makes; the row never points at nothing.
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("patientId", doc.patientId);
-      const uploadRes = await fetch("/api/crm/documents/upload", {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      if (!uploadRes.ok) {
+      // 1) Upload the new bytes first (same flow as the upload dialog), so
+      //    the row never points at nothing.
+      try {
+        stored = await uploadDocumentFile(file, doc.patientId);
+      } catch {
         toast.error(t("edit.uploadError"));
         return;
       }
-      const uploaded = (await uploadRes.json()) as {
-        fileUrl: string;
-        uploadToken?: string | null;
-        mimeType: string | null;
-        sizeBytes: number;
-      };
 
       // 2) Point the document row at the new file; the server deletes the
       //    old blob after a successful update.
       const res = await patchDocument(doc.id, {
-        fileUrl: uploaded.fileUrl,
+        fileUrl: stored.fileUrl,
         // Receipt for the new bytes: the server refuses a stored file
         // without it (audit CD-08).
-        uploadToken: uploaded.uploadToken ?? null,
-        mimeType: uploaded.mimeType,
-        sizeBytes: uploaded.sizeBytes,
+        uploadToken: stored.uploadToken,
+        mimeType: stored.mimeType,
+        sizeBytes: stored.sizeBytes,
       });
       if (!res.ok) {
         toast.error(await patchErrorMessage(res, t));
         return;
       }
+      stored = null;
       toast.success(t("edit.replaced"));
       onSaved();
       onClose();
     } catch {
       toast.error(t("edit.errorGeneric"));
     } finally {
+      if (stored) void discardDocumentUpload(stored.fileUrl, stored.uploadToken);
       setSubmitting(false);
     }
   };

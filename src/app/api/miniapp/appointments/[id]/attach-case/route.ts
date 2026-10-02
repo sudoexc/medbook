@@ -39,6 +39,7 @@ import {
   lockPatientCases,
   MINIAPP_ATTACH_PAYMENT_FILTER,
   miniAppAttachRefusal,
+  publishCaseRepricing,
   type CaseAttachAuditActor,
   type MiniAppAttachRefusal,
 } from "@/server/cases/attach";
@@ -152,6 +153,7 @@ export const POST = createMiniAppHandler(
           previousCaseId: null,
         });
         await auditFreeRepeats(tx, who, c.id, results, "miniapp_attach");
+        await publishCaseRepricing(tx, who, results.map((r) => r.appointmentId));
         return { kind: "created", caseId: c.id, title: c.title };
       }
 
@@ -172,6 +174,8 @@ export const POST = createMiniAppHandler(
         previousCaseId: null,
       });
       await auditFreeRepeats(tx, who, target.id, results, "miniapp_attach");
+      // Staff screens show the new price at once too (G3-13).
+      await publishCaseRepricing(tx, who, results.map((r) => r.appointmentId));
       return { kind: "attached", caseId: target.id, title: target.title };
     });
 

@@ -20,6 +20,11 @@ import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateUserSchema } from "@/server/schemas/user";
 import { planDoctorBinding, redactStaffUser } from "@/server/users/staff-user";
 import { runClinicWide } from "@/server/branches/branch-rules";
+import {
+  LOGIN_LOOKUP_LIMIT,
+  anyCaseEmail,
+  sameEmailIgnoringCase,
+} from "@/server/auth/login-email";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -55,11 +60,17 @@ export const PATCH = createApiHandler(
 
     // Email is globally unique on User — a change that collides with another
     // account must surface a clean 409, not a raw Prisma unique-constraint 500.
+    // Any case counts (audit ST-15): the sign-in ignores case.
     if (body.email && body.email !== before.email) {
-      const clash = await prisma.user.findUnique({
-        where: { email: body.email },
-      });
-      if (clash && clash.id !== id) {
+      const clash = sameEmailIgnoringCase(
+        body.email,
+        await prisma.user.findMany({
+          where: { email: anyCaseEmail(body.email) },
+          select: { id: true, email: true },
+          take: LOGIN_LOOKUP_LIMIT,
+        }),
+      ).find((u) => u.id !== id);
+      if (clash) {
         return err("conflict", 409, { reason: "email_taken" });
       }
     }

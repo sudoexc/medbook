@@ -21,9 +21,16 @@ const StaffTelegramIdSchema = z
   .trim()
   .regex(/^\d{1,20}$/, "invalid_telegram_id");
 
+/**
+ * Staff login address, stored in lower case (audit ST-15): the sign-in
+ * matches any case, and two accounts that differ only in case would make
+ * that match ambiguous.
+ */
+const StaffEmailSchema = z.string().trim().toLowerCase().email();
+
 export const CreateUserSchema = z
   .object({
-    email: z.string().email(),
+    email: StaffEmailSchema,
     name: z.string().min(1).max(200),
     role: RoleEnum,
     password: z.string().min(8).max(200).optional(),
@@ -43,7 +50,7 @@ export const CreateUserSchema = z
 
 export const UpdateUserSchema = z
   .object({
-    email: z.string().email().optional(),
+    email: StaffEmailSchema.optional(),
     name: z.string().min(1).max(200).optional(),
     role: RoleEnum.optional(),
     password: z.string().min(8).max(200).optional(),

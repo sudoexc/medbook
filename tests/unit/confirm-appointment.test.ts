@@ -47,6 +47,7 @@ type AppointmentRow = {
   confirmedBy: string | null;
   confirmedVia: string | null;
   doctorId: string;
+  patientId: string;
   date: Date;
 };
 
@@ -80,13 +81,18 @@ type UpdateManyArgs = {
 type PublishCall = {
   clinicId: string;
   event: { type: string; payload: Record<string, unknown> };
+  tenantScope?: Record<string, unknown>;
 };
+
+type OpenAction = { id: string; type: string; severity: string };
 
 const state = {
   rows: new Map<string, AppointmentRow>(),
   audits: [] as AuditRow[],
   publishes: [] as PublishCall[],
   updateManyCalls: [] as UpdateManyArgs[],
+  // Live UNCONFIRMED_24H rows `action.findMany` answers (G3-11).
+  openActions: [] as OpenAction[],
   // Track how many times findUnique fires so we can assert the idempotent
   // path re-reads the row after the defensive close.
   findUniqueCount: 0,
@@ -102,6 +108,7 @@ function defaultRow(overrides: Partial<AppointmentRow> = {}): AppointmentRow {
     confirmedBy: null,
     confirmedVia: null,
     doctorId: "doc_1",
+    patientId: "pat_1",
     date: new Date("2026-06-01T10:00:00.000Z"),
     ...overrides,
   };
@@ -146,6 +153,7 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     action: {
+      findMany: vi.fn(async () => state.openActions.map((a) => ({ ...a }))),
       updateMany: vi.fn(async (args: UpdateManyArgs) => {
         state.updateManyCalls.push(args);
         return { count: 0 };
@@ -168,12 +176,17 @@ vi.mock("@/lib/prisma", () => ({
         }: {
           data: {
             clinicId: string;
-            envelope: { type: string; payload: Record<string, unknown> };
+            envelope: {
+              type: string;
+              payload: Record<string, unknown>;
+              tenantScope: Record<string, unknown>;
+            };
           };
         }) => {
           state.publishes.push({
             clinicId: data.clinicId,
             event: { type: data.envelope.type, payload: data.envelope.payload },
+            tenantScope: data.envelope.tenantScope,
           });
           return { id: "outbox_stub" };
         },
@@ -200,6 +213,7 @@ beforeEach(() => {
   state.audits = [];
   state.publishes = [];
   state.updateManyCalls = [];
+  state.openActions = [];
   state.findUniqueCount = 0;
   state.updateCount = 0;
 });
@@ -636,17 +650,81 @@ describe("confirmAppointment — realtime payload shape (S11)", () => {
     expect(queueEv!.event.payload).toEqual({
       appointmentId: "apt_1",
       doctorId: "doc_9",
+      patientId: "pat_1",
       queueStatus: "CONFIRMED",
       previousStatus: "BOOKED",
     });
+    // G3-09: the Mini App stream routes by patient, scope and payload alike.
+    expect(queueEv!.tenantScope).toMatchObject({ patientId: "pat_1", doctorId: "doc_9" });
+    expect(statusEv!.tenantScope).toMatchObject({ patientId: "pat_1" });
 
     expect(statusEv!.clinicId).toBe("c1");
     expect(statusEv!.event.type).toBe("appointment.statusChanged");
     expect(statusEv!.event.payload).toEqual({
       appointmentId: "apt_1",
       doctorId: "doc_9",
+      patientId: "pat_1",
       status: "CONFIRMED",
       previousStatus: "BOOKED",
     });
+  });
+});
+
+describe("confirmAppointment — closed confirm tasks are announced (G3-11)", () => {
+  const open: OpenAction = { id: "act_7", type: "UNCONFIRMED_24H", severity: "high" };
+
+  it("publishes action.updated for each task the confirm closes, in the same transaction", async () => {
+    state.rows.set("apt_1", defaultRow());
+    state.openActions = [open];
+    const confirmAppointment = await loadConfirm();
+    await confirmAppointment({
+      appointmentId: "apt_1",
+      clinicId: "c1",
+      actorId: null,
+      via: "TG_BUTTON",
+    });
+
+    expect(state.updateManyCalls).toHaveLength(1);
+    expect(state.publishes.map((p) => p.event.type)).toEqual([
+      "action.updated",
+      "queue.updated",
+      "appointment.statusChanged",
+    ]);
+    expect(state.publishes[0]!.event.payload).toEqual({
+      id: "act_7",
+      type: "UNCONFIRMED_24H",
+      severity: "high",
+    });
+    expect(state.publishes[0]!.tenantScope).toMatchObject({ clinicId: "c1" });
+  });
+
+  it("announces a task the idempotent branch closes too, and nothing when none was open", async () => {
+    state.rows.set(
+      "apt_1",
+      defaultRow({
+        status: "CONFIRMED",
+        queueStatus: "CONFIRMED",
+        confirmedAt: new Date("2026-05-31T09:00:00.000Z"),
+      }),
+    );
+    state.openActions = [open];
+    const confirmAppointment = await loadConfirm();
+    await confirmAppointment({
+      appointmentId: "apt_1",
+      clinicId: "c1",
+      actorId: "user_42",
+      via: "MANUAL_CRM",
+    });
+    expect(state.publishes.map((p) => p.event.type)).toEqual(["action.updated"]);
+
+    state.publishes = [];
+    state.openActions = [];
+    await confirmAppointment({
+      appointmentId: "apt_1",
+      clinicId: "c1",
+      actorId: "user_42",
+      via: "MANUAL_CRM",
+    });
+    expect(state.publishes).toHaveLength(0);
   });
 });

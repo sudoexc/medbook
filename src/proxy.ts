@@ -16,7 +16,11 @@
  *   3. Mandatory TOTP enrolment: ADMIN/SUPER_ADMIN, plus every staff role
  *      when the clinic has require2faForAll, must enrol before using any
  *      staff page.
- *   4. Defer locale handling to next-intl.
+ *   4. A SUPER_ADMIN on a CRM page without a clinic (the 60 minute lease of
+ *      a clinic visit ran out) goes back to /admin/clinics, with
+ *      `?expired=1` when that is why (audit G5-09). Here and not in the CRM
+ *      layout: a layout does not re-render on client-side navigation.
+ *   5. Defer locale handling to next-intl.
  *
  * Steps 2 and 3 send a doctor to /doctor/me/… and everyone else to /crm/me/…
  * The CRM layout bounces doctors into their cabinet, so before DC-02 a doctor
@@ -42,7 +46,9 @@ import {
   forcedAccountRedirect,
   isExemptFromForcedRedirect,
   parseStaffPath,
+  sendsSuperAdminToPlatform,
 } from "@/server/auth/staff-redirects";
+import { latestGrantLapsedRecently } from "@/server/platform/impersonation";
 import type { Role } from "@/lib/tenant-context";
 
 const intlMiddleware = createIntlMiddleware(routing);
@@ -147,6 +153,27 @@ export default async function proxy(request: NextRequest) {
       return NextResponse.redirect(
         buildStaffRedirect(request, staff.locale, forced.target),
       );
+    }
+
+    // 4. A SUPER_ADMIN without a clinic has nothing to do in the CRM.
+    if (
+      sendsSuperAdminToPlatform({
+        surface: staff.surface,
+        subpath: staff.subpath,
+        role: session.user.role,
+        clinicId: session.user.clinicId,
+      })
+    ) {
+      let expired = false;
+      try {
+        expired = await latestGrantLapsedRecently(session.user.id);
+      } catch {
+        // DB blip — still leave the CRM, just without the explanation.
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = "/admin/clinics";
+      url.search = expired ? "?expired=1" : "";
+      return NextResponse.redirect(url);
     }
   }
   return intlMiddleware(request);

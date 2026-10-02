@@ -7,6 +7,7 @@
  *   - doctor with sufficient schedule → suppressed
  *   - doctor fully on time-off → suppressed
  *   - dedupe — repeated runs yield identical payloads
+ *   - shifts and leave are matched on Tashkent days and wall clock (AC-20)
  */
 import { describe, it, expect } from "vitest";
 
@@ -131,5 +132,75 @@ describe("detectLowDoctorSchedule", () => {
     );
     expect(a).toEqual(b);
     expect(dedupeKeyFor(a[0]!)).toBe(dedupeKeyFor(b[0]!));
+  });
+
+  describe("Tashkent days and wall clock (audit AC-20)", () => {
+    // A high threshold so the payload always comes back with the count.
+    const countAll = { ...DEFAULT_CONFIG, lowScheduleSlotsThreshold: 1000 };
+    const doctors = [{ id: "d1", nameRu: "Иванов", isActive: true }];
+    function weekdays(
+      days: number[],
+      startTime: string,
+      endTime: string,
+      extra: Partial<Schedule> = {},
+    ): Schedule[] {
+      return days.map((weekday) => ({
+        doctorId: "d1",
+        weekday,
+        startTime,
+        endTime,
+        validFrom: null,
+        validTo: null,
+        isActive: true,
+        ...extra,
+      }));
+    }
+    async function slotsFor(schedules: Schedule[], timeOffs: TimeOff[] = []) {
+      const out = await detectLowDoctorSchedule(
+        makePrisma({ doctors, schedules, timeOffs }),
+        "c1",
+        now,
+        countAll,
+      );
+      return out[0]?.slotsNext7Days;
+    }
+
+    it("counts the window Wed 6 .. Tue 12 May on Tashkent weekdays", async () => {
+      // Mon..Fri 09:00-13:00: Wed, Thu, Fri, Mon, Tue = 5 days * 4h.
+      expect(await slotsFor(weekdays([1, 2, 3, 4, 5], "09:00", "13:00"))).toBe(20);
+    });
+
+    it("leave on Wed..Fri cuts exactly those days' shifts", async () => {
+      const leave: TimeOff = {
+        doctorId: "d1",
+        startAt: new Date("2026-05-06T00:00:00+05:00"),
+        endAt: new Date("2026-05-09T00:00:00+05:00"),
+      };
+      expect(
+        await slotsFor(weekdays([1, 2, 3, 4, 5], "09:00", "13:00"), [leave]),
+      ).toBe(8);
+    });
+
+    it("a morning off on Thursday removes the morning shift, not a UTC one", async () => {
+      // 09:00-13:00 Tashkent = 04:00-08:00Z. With shifts anchored at UTC
+      // hours (09:00Z-13:00Z) this leave missed the shift entirely.
+      const morningOff: TimeOff = {
+        doctorId: "d1",
+        startAt: new Date("2026-05-07T09:00:00+05:00"),
+        endAt: new Date("2026-05-07T13:00:00+05:00"),
+      };
+      expect(
+        await slotsFor(weekdays([1, 2, 3, 4, 5], "09:00", "13:00"), [morningOff]),
+      ).toBe(16);
+    });
+
+    it("a schedule valid from next Tuesday counts that Tuesday", async () => {
+      // Tuesday only, starting 12 May: the last day of the window. Reading
+      // the weekday from 19:00Z walked Tue 5 .. Mon 11 and found nothing.
+      const rows = weekdays([2], "09:00", "13:00", {
+        validFrom: new Date("2026-05-12T00:00:00+05:00"),
+      });
+      expect(await slotsFor(rows)).toBe(4);
+    });
   });
 });

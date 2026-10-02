@@ -75,6 +75,15 @@ async function tick(): Promise<void> {
       totalSkipped += res.skipped;
       totalExpired += res.expired;
       totalErrors += res.errors.length;
+      // Name every failure (audit AC-25). The engine isolates a throwing
+      // detector and carries on, so the summary line below said only
+      // «errors=1» while that task type silently stopped appearing, for
+      // weeks after a migration broke its query.
+      for (const err of res.errors) {
+        console.error(
+          `[action-engine] clinic=${clinicId} detector=${err.type} failed: ${err.error}`,
+        );
+      }
     } catch (e) {
       totalErrors += 1;
       console.error(`[action-engine] clinic=${clinicId} failed`, e);

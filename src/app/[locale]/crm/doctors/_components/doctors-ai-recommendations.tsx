@@ -81,7 +81,8 @@ function shortName(name: string): string {
 
 /**
  * Derives a small set of actionable suggestions from today's state:
- * redirects, idle windows, overload flags, and evening demand.
+ * redirects, idle windows and overload flags. The copy carries no times or
+ * patient counts the panel does not compute (audit DR-17).
  */
 export function DoctorsAiRecommendations({
   doctors,
@@ -219,8 +220,6 @@ export function DoctorsAiRecommendations({
         return `/${loc}/crm/calendar?from=ai-rec&intent=fill-slots`;
       case "specialist":
         return `/${loc}/crm/doctors?from=ai-rec&intent=specialist`;
-      case "evening":
-        return `/${loc}/crm/calendar?from=ai-rec&intent=evening`;
       default:
         return `/${loc}/crm/calendar?from=ai-rec`;
     }

@@ -84,3 +84,28 @@ export function forcedAccountRedirect(args: {
   }
   return null;
 }
+
+/** The account pages (password, 2FA) every staff role keeps under "me/". */
+export const ACCOUNT_SUBPATH = "me";
+
+/**
+ * Pure: a SUPER_ADMIN on a CRM page without a clinic belongs on
+ * /admin/clinics (audit G5-09). That is where a clinic visit leaves them
+ * once its 60 minute lease runs out: the JWT drops the clinic, every CRM API
+ * answers 400 ClinicNotSelected, and the operator used to keep clicking
+ * through an empty CRM. The account pages under /crm/me stay reachable: they
+ * are the SUPER_ADMIN's own password and 2FA screens.
+ */
+export function sendsSuperAdminToPlatform(args: {
+  surface: "crm" | "doctor";
+  subpath: string;
+  role: string | undefined;
+  clinicId: string | null | undefined;
+}): boolean {
+  return (
+    args.surface === "crm" &&
+    args.role === "SUPER_ADMIN" &&
+    !args.clinicId &&
+    !isExemptFromForcedRedirect(args.subpath, [ACCOUNT_SUBPATH])
+  );
+}

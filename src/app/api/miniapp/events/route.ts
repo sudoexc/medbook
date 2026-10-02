@@ -8,9 +8,12 @@
  * the clinic bus is filtered through `{ clinicId, patientIds }` before
  * reaching the client.
  *
- * Allowed patient set is built once per connect:
+ * Allowed patient set is built on connect and kept current (audit INF-14):
  *   • the TG-authenticated owner (`ctx.patientId`)
  *   • every relative the owner linked via `PatientFamily`
+ * It is re-read when a family link event for the owner arrives and every
+ * FAMILY_REFRESH_MS as a safety net (links removed without an event, e.g. by
+ * data deletion), so an unlinked relative's events stop without a reconnect.
  *
  * An envelope is delivered when:
  *   1. `tenantScope.clinicId` matches the connect's clinic, AND
@@ -45,8 +48,9 @@
  *   silent.
  *
  * Cleanup:
- *   On `request.signal.abort()` we unsubscribe + clear the heartbeat. No
- *   leaks even on a thundering-herd disconnect.
+ *   On `request.signal.abort()` (or reader cancel) we unsubscribe + clear the
+ *   timers. The listener is attached before the replay await, so a client
+ *   that leaves mid-replay is released too.
  */
 import type { NextRequest } from "next/server";
 
@@ -76,6 +80,7 @@ export const revalidate = 0;
 
 const REPLAY_LIMIT = 200;
 const HEARTBEAT_MS = 20_000;
+const FAMILY_REFRESH_MS = 5 * 60_000;
 const encoder = new TextEncoder();
 
 type AllowedScope = {
@@ -194,6 +199,29 @@ export function shouldDeliverV1ToMiniApp(
   return typeof pid === "string" && allowed.patientIds.has(pid);
 }
 
+/**
+ * Does this live event change who the connected owner may see? Only the
+ * owner's own link/unlink events do: a family link is one-directional
+ * (owner → relative), so nobody else's allow-set depends on it. Pure,
+ * unit-tested by `tests/unit/inf14-sse-lifecycle.test.ts`.
+ */
+export function isOwnFamilyChange(
+  payload: unknown,
+  clinicId: string,
+  ownerPatientId: string,
+): boolean {
+  if (!isEventEnvelope(payload)) return false;
+  if (
+    payload.type !== "patient.familyLinked" &&
+    payload.type !== "patient.familyUnlinked"
+  ) {
+    return false;
+  }
+  if (payload.tenantScope.clinicId !== clinicId) return false;
+  const p = payload.payload as { ownerPatientId?: unknown } | null;
+  return Boolean(p && p.ownerPatientId === ownerPatientId);
+}
+
 export async function GET(request: NextRequest): Promise<Response> {
   // Re-use the miniapp auth helper. The streaming Response runs *outside*
   // any tenant scope — we only need the resolved clinicId + patientId, and
@@ -240,9 +268,79 @@ export async function GET(request: NextRequest): Promise<Response> {
   const metrics = getMetrics();
   metrics.sseConnectionsActive.inc({ clinic_id: clinicId });
 
+  // Shared with `cancel()`, which runs outside `start`'s closure.
+  let cleanup: () => void = () => {};
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // `closed` = stop writing (also set when an enqueue throws); `disposed`
+      // = timers, subscription and the connection gauge are released. Kept
+      // apart so a failed enqueue can no longer make cleanup a no-op.
       let closed = false;
+      let disposed = false;
+      let unsubscribe: (() => void) | null = null;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
+      let familyRefresh: ReturnType<typeof setInterval> | null = null;
+
+      cleanup = () => {
+        if (disposed) return;
+        disposed = true;
+        closed = true;
+        if (heartbeat) clearInterval(heartbeat);
+        if (familyRefresh) clearInterval(familyRefresh);
+        metrics.sseConnectionsActive.dec({ clinic_id: clinicId });
+        try {
+          unsubscribe?.();
+        } catch {
+          /* ignore */
+        }
+        try {
+          controller.close();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      // Registered BEFORE the replay await (audit INF-14): a client that
+      // left mid-replay used to fire `abort` before anyone listened, so the
+      // subscription, the heartbeat and the gauge stayed up forever.
+      request.signal.addEventListener("abort", cleanup, { once: true });
+      if (request.signal.aborted) {
+        cleanup();
+        return;
+      }
+
+      // Re-read the allow-set. Serialised: a request that lands while one is
+      // in flight queues exactly one more run, so a link change committed
+      // after the in-flight query started is still picked up. A failed read
+      // keeps the previous set rather than dropping the stream.
+      let refreshing = false;
+      let refreshAgain = false;
+      const refreshAllowed = async (): Promise<void> => {
+        if (refreshing) {
+          refreshAgain = true;
+          return;
+        }
+        refreshing = true;
+        try {
+          do {
+            refreshAgain = false;
+            if (disposed) return;
+            try {
+              const ids = await runWithTenant({ kind: "SYSTEM" }, () =>
+                getFamilyAllowedPatientIds(clinicId, patientId),
+              );
+              allowed.patientIds = new Set(ids);
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              console.warn("[miniapp/sse] family refresh failed", msg);
+            }
+          } while (refreshAgain);
+        } finally {
+          refreshing = false;
+        }
+      };
+
       const safeEnqueue = (chunk: string) => {
         if (closed) return;
         try {
@@ -256,6 +354,12 @@ export async function GET(request: NextRequest): Promise<Response> {
 
       const emit = (payload: unknown, kind: "live" | "replay") => {
         if (closed) return;
+        // The replay ran against a set read after those rows were written,
+        // so only live link changes need a refresh. The event itself is
+        // still delivered below (the owner is always in the set).
+        if (kind === "live" && isOwnFamilyChange(payload, clinicId, patientId)) {
+          void refreshAllowed();
+        }
         if (isEventEnvelope(payload)) {
           // v2 outbox envelope — patient-scoped + replayable (carries eventId).
           if (!shouldDeliverToMiniApp(payload, allowed)) return;
@@ -337,36 +441,23 @@ export async function GET(request: NextRequest): Promise<Response> {
         }
       }
 
-      const unsubscribe = bus.subscribe(channel, (payload) =>
-        emit(payload, "live"),
-      );
+      // The client left while the replay was awaiting the database.
+      if (disposed) return;
 
-      const heartbeat = setInterval(() => {
+      unsubscribe = bus.subscribe(channel, (payload) => emit(payload, "live"));
+
+      heartbeat = setInterval(() => {
         safeEnqueue(`: ping\n\n`);
       }, HEARTBEAT_MS);
 
-      const cleanup = () => {
-        if (closed) return;
-        closed = true;
-        clearInterval(heartbeat);
-        metrics.sseConnectionsActive.dec({ clinic_id: clinicId });
-        try {
-          unsubscribe();
-        } catch {
-          /* ignore */
-        }
-        try {
-          controller.close();
-        } catch {
-          /* ignore */
-        }
-      };
-
-      request.signal.addEventListener("abort", cleanup, { once: true });
+      familyRefresh = setInterval(() => {
+        void refreshAllowed();
+      }, FAMILY_REFRESH_MS);
     },
     cancel() {
-      // Mirror the CRM SSE: `start`'s abort listener handles the heavy
-      // cleanup. The guard against double-close lives inside `cleanup`.
+      // Mirror the CRM SSE: release everything here too rather than trusting
+      // `abort` to follow; cleanup is idempotent.
+      cleanup();
     },
   });
 

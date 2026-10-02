@@ -12,9 +12,12 @@ import {
 
 import { Button } from "@/components/ui/button";
 
+// Mirrors `ServiceHealth` in src/server/platform/health-cards.ts: real
+// checks now (audit G5-12), so a card can be DOWN or DEGRADED, and the
+// workers have their own card instead of an env-only «BullMQ».
 interface ServiceHealth {
-  name: "postgres" | "redis" | "bullmq" | "minio";
-  status: "ok" | "down" | "not_configured";
+  name: "postgres" | "redis" | "workers" | "minio";
+  status: "ok" | "degraded" | "down" | "not_configured";
   latencyMs?: number | null;
   details?: string | null;
 }
@@ -35,7 +38,7 @@ async function fetchHealth(): Promise<HealthResp> {
 const LABELS: Record<ServiceHealth["name"], string> = {
   postgres: "PostgreSQL",
   redis: "Redis",
-  bullmq: "BullMQ",
+  workers: "Воркеры (BullMQ)",
   minio: "MinIO (S3)",
 };
 
@@ -119,6 +122,8 @@ function iconFor(status: ServiceHealth["status"]) {
       return { icon: <CheckCircle2Icon className="size-5" />, tone: "text-primary" };
     case "down":
       return { icon: <XCircleIcon className="size-5" />, tone: "text-destructive" };
+    case "degraded":
+      return { icon: <CircleAlertIcon className="size-5" />, tone: "text-warning" };
     case "not_configured":
       return {
         icon: <CircleHelpIcon className="size-5" />,

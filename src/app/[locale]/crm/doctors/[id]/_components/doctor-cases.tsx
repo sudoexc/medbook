@@ -35,6 +35,9 @@ export function DoctorCases({ doctorId, className }: DoctorCasesProps) {
   const resolved = q.data?.resolvedLast30d ?? 0;
   const repeat = q.data?.repeatRatePct ?? 0;
   const dur = q.data?.avgDurationDays ?? 0;
+  // A refused or failed load reads as a failure, not as «0 случаев» (audit
+  // DR-15, same as the finances card).
+  const blank = q.isLoading || q.isError;
 
   return (
     <section
@@ -48,30 +51,36 @@ export function DoctorCases({ doctorId, className }: DoctorCasesProps) {
         <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
       </div>
 
+      {q.isError ? (
+        <p role="alert" className="mb-3 text-xs text-destructive">
+          {t("loadError")}
+        </p>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiTile
           label={t("open")}
           tone="primary"
           icon={<ClipboardListIcon className="size-4" />}
-          value={q.isLoading ? "—" : open}
+          value={blank ? "—" : open}
         />
         <KpiTile
           label={t("resolved30")}
           tone="success"
           icon={<CheckCircle2Icon className="size-4" />}
-          value={q.isLoading ? "—" : resolved}
+          value={blank ? "—" : resolved}
         />
         <KpiTile
           label={t("repeatRate")}
           tone="info"
           icon={<RotateCwIcon className="size-4" />}
-          value={q.isLoading ? "—" : t("pct", { value: repeat })}
+          value={blank ? "—" : t("pct", { value: repeat })}
         />
         <KpiTile
           label={t("avgDuration")}
           tone="neutral"
           icon={<Clock3Icon className="size-4" />}
-          value={q.isLoading ? "—" : t("days", { value: dur })}
+          value={blank ? "—" : t("days", { value: dur })}
         />
       </div>
     </section>

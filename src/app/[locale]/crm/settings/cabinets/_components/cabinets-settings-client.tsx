@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
-import { settingsFetch } from "../../_hooks/use-settings-api";
+import { SettingsApiError, settingsFetch } from "../../_hooks/use-settings-api";
 
 type CabinetRow = {
   id: string;
@@ -41,9 +41,32 @@ type CabinetRow = {
   } | null;
 };
 
+/**
+ * Server refusals that have their own wording (audit ST-18). The reason is
+ * what to match on: the message is a code such as "CabinetOccupied", which
+ * the old /cabinet_occupied/ test never matched, so the raw code was shown.
+ */
+const CABINET_ERROR_KEYS: Record<string, string> = {
+  cabinet_occupied: "cabinets.occupiedError",
+  number_taken: "cabinets.errors.numberTaken",
+  branch_not_found: "cabinets.errors.branchInvalid",
+  branch_inactive: "cabinets.errors.branchInvalid",
+  branch_required: "cabinets.errors.branchInvalid",
+};
+
+function useCabinetErrorToast() {
+  const t = useTranslations("settings");
+  return (e: Error) => {
+    const reason = e instanceof SettingsApiError ? e.reason : undefined;
+    const key = reason ? CABINET_ERROR_KEYS[reason] : undefined;
+    toast.error(key ? t(key) : e.message);
+  };
+}
+
 export function CabinetsSettingsClient() {
   const t = useTranslations("settings");
   const qc = useQueryClient();
+  const showError = useCabinetErrorToast();
 
   const [pageLimit, setPageLimit] = React.useState(200);
   const listQuery = useQuery({
@@ -64,7 +87,7 @@ export function CabinetsSettingsClient() {
       }),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["settings", "cabinets"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onError: showError,
   });
 
   const deleteMutation = useMutation({
@@ -74,15 +97,8 @@ export function CabinetsSettingsClient() {
       toast.success(t("cabinets.deactivated"));
       qc.invalidateQueries({ queryKey: ["settings", "cabinets"] });
     },
-    onError: (e: Error) => {
-      // Server returns 409 cabinet_occupied when a doctor is still bound;
-      // surface that as a clear toast instead of a raw HTTP code.
-      if (/cabinet_occupied/i.test(e.message)) {
-        toast.error(t("cabinets.occupiedError"));
-      } else {
-        toast.error(e.message);
-      }
-    },
+    // Server returns 409 cabinet_occupied when a doctor is still bound.
+    onError: showError,
   });
 
   const rows = listQuery.data?.rows ?? [];
@@ -129,7 +145,9 @@ export function CabinetsSettingsClient() {
               <CabinetCard
                 key={c.id}
                 row={c}
-                onPatch={(data) => patchMutation.mutate({ id: c.id, data })}
+                onPatch={(data, revert) =>
+                  patchMutation.mutate({ id: c.id, data }, { onError: revert })
+                }
                 onDelete={() => deleteMutation.mutate(c.id)}
               />
             ))}
@@ -169,7 +187,8 @@ function CabinetCard({
   onDelete,
 }: {
   row: CabinetRow;
-  onPatch: (data: Partial<CabinetRow>) => void;
+  /** `revert` runs when the server refuses the change. */
+  onPatch: (data: Partial<CabinetRow>, revert: () => void) => void;
   onDelete: () => void;
 }) {
   const t = useTranslations("settings");
@@ -182,6 +201,18 @@ function CabinetCard({
     setLocal(row);
     setFloorDraft(row.floor != null ? String(row.floor) : "");
   }, [row]);
+
+  // The card shows an edit before the server has it. When the server says
+  // no, put back what it holds (audit ST-18): the switch kept saying
+  // «Скрыт» about an active cabinet. A refetch alone does not do it, since
+  // an unchanged row keeps its identity and the effect above never re-runs.
+  const save = (data: Partial<CabinetRow>) => {
+    const held = row;
+    onPatch(data, () => {
+      setLocal(held);
+      setFloorDraft(held.floor != null ? String(held.floor) : "");
+    });
+  };
 
   const occupantName = row.occupant
     ? locale === "uz"
@@ -198,13 +229,13 @@ function CabinetCard({
     }
     if (next !== row.floor) {
       setLocal({ ...local, floor: next });
-      onPatch({ floor: next });
+      save({ floor: next });
     }
   };
 
   const commitEquipment = (next: string[]) => {
     setLocal({ ...local, equipment: next });
-    onPatch({ equipment: next });
+    save({ equipment: next });
   };
 
   return (
@@ -258,7 +289,7 @@ function CabinetCard({
               checked={local.isActive}
               onCheckedChange={(v: boolean) => {
                 setLocal({ ...local, isActive: v });
-                onPatch({ isActive: v });
+                save({ isActive: v });
               }}
               id={`active-${local.id}`}
             />
@@ -277,7 +308,7 @@ function CabinetCard({
           onChange={(e) => setLocal({ ...local, nameRu: e.target.value })}
           onBlur={() =>
             local.nameRu !== row.nameRu &&
-            onPatch({ nameRu: local.nameRu || null })
+            save({ nameRu: local.nameRu || null })
           }
         />
       </div>
@@ -288,7 +319,7 @@ function CabinetCard({
           onChange={(e) => setLocal({ ...local, nameUz: e.target.value })}
           onBlur={() =>
             local.nameUz !== row.nameUz &&
-            onPatch({ nameUz: local.nameUz || null })
+            save({ nameUz: local.nameUz || null })
           }
         />
       </div>
@@ -389,6 +420,7 @@ function CreateCabinetDialog({
   onCreated: () => void;
 }) {
   const t = useTranslations("settings");
+  const showError = useCabinetErrorToast();
   const [form, setForm] = React.useState<{
     number: string;
     floor: string;
@@ -442,7 +474,7 @@ function CreateCabinetDialog({
       });
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: showError,
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -79,6 +79,26 @@ export class MissingTenantContextError extends Error {
   }
 }
 
+/**
+ * Thrown when a TENANT context runs a model operation the extension does not
+ * know how to scope (for example a future Prisma operation, or `findRaw`).
+ * Passing such a call through unmodified used to be fail-open: a new
+ * filter-mutate operation such as `updateManyAndReturn` would have touched
+ * every clinic's rows. Unknown now means refused, so a new operation has to
+ * be added to the sets in `tenant-allowlist.ts` deliberately.
+ */
+export class UnsupportedTenantOperationError extends Error {
+  constructor(model: string, operation: string) {
+    super(
+      `Tenant isolation violation: "${model}.${operation}" is not a known ` +
+        `read, filter-mutate or create operation, so clinicId cannot be ` +
+        `injected. Add it to the right set in src/lib/tenant-allowlist.ts, or ` +
+        `run it under runUnscoped(reason, fn) if it is legitimately cross-tenant.`
+    );
+    this.name = "UnsupportedTenantOperationError";
+  }
+}
+
 function buildBaseClient(): PrismaClient {
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL ?? "",
@@ -282,8 +302,11 @@ export const prisma = prismaBase.$extends({
           return query(mutableArgs as typeof args);
         }
 
-        // Any other operation ($runCommandRaw, $queryRaw, etc.) — pass through.
-        return query(mutableArgs as typeof args);
+        // Any other model operation on a tenant-scoped model under TENANT
+        // context: FAIL CLOSED. Client-level raw queries ($queryRaw, …) never
+        // reach this hook (they carry no model), so only unscopable model ops
+        // such as findRaw/aggregateRaw or a future Prisma addition land here.
+        throw new UnsupportedTenantOperationError(model ?? "unknown", operation);
       },
     },
   },

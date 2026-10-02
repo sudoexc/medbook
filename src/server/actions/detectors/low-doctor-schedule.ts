@@ -6,12 +6,22 @@
  * concrete date(s) within the window, subtract any `DoctorTimeOff` overlap,
  * and divide hours into 1-hour slot units.
  *
+ * Each day is a Tashkent calendar day and its working time comes from
+ * `workingIntervalsOn`, the same rule EMPTY_SLOT_TOMORROW uses (audit
+ * AC-20). The window starts at the clinic's midnight, 19:00Z of the previous
+ * UTC day, so `getUTCDay()` read the previous weekday and `setUTCHours` put
+ * a 09:00 shift at 09:00Z of that previous date: leave and the
+ * `validFrom` / `validTo` bounds were matched against shifts a day and five
+ * hours off, and a Wed..Fri holiday cut the wrong hours.
+ *
  * Action fires when the count falls below `lowScheduleSlotsThreshold` AND
  * the doctor isn't on an open-ended time-off covering the whole window.
  *
  * Severity: `medium`. Assignee defaults to ADMIN (per `defaultAssigneeRole`).
  */
 import type { LowDoctorSchedulePayload } from "@/lib/actions/types";
+import { tashkentComponents } from "@/lib/booking-validation";
+import { workingIntervalsOn } from "@/lib/doctor-working-windows";
 
 import type { DetectorConfig } from "../config";
 import type { PrismaLike } from "./_shared";
@@ -36,12 +46,6 @@ type TimeOffRow = {
   startAt: Date;
   endAt: Date;
 };
-
-function parseHHmm(value: string): { h: number; m: number } | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(value);
-  if (!m) return null;
-  return { h: Number(m[1]), m: Number(m[2]) };
-}
 
 export async function detectLowDoctorSchedule(
   prisma: PrismaLike,
@@ -122,36 +126,12 @@ export async function detectLowDoctorSchedule(
     }
 
     let slots = 0;
-    // Walk the 7-day window day by day; each day has weekday 0..6.
+    // Walk the 7-day window one Tashkent day at a time. The clinic has no
+    // DST, so each 24h step from its midnight lands on the next midnight.
     for (let i = 0; i < 7; i++) {
-      const dayStart = addDays(windowStart, i);
-      const dayEnd = addDays(dayStart, 1);
-      const weekday = dayStart.getUTCDay();
-      const rowsForDay = sched.filter((r) => {
-        if (r.weekday !== weekday) return false;
-        if (r.validFrom && r.validFrom.getTime() > dayEnd.getTime()) return false;
-        if (r.validTo && r.validTo.getTime() < dayStart.getTime()) return false;
-        return true;
-      });
-      for (const r of rowsForDay) {
-        const s = parseHHmm(r.startTime);
-        const e = parseHHmm(r.endTime);
-        if (!s || !e) continue;
-        const start = new Date(dayStart);
-        start.setUTCHours(s.h, s.m, 0, 0);
-        const end = new Date(dayStart);
-        end.setUTCHours(e.h, e.m, 0, 0);
-        let hours = (end.getTime() - start.getTime()) / (60 * 60 * 1000);
-        if (hours <= 0) continue;
-
-        // Subtract any time-off overlap.
-        for (const t of offs) {
-          const overlapStart = Math.max(t.startAt.getTime(), start.getTime());
-          const overlapEnd = Math.min(t.endAt.getTime(), end.getTime());
-          if (overlapEnd > overlapStart) {
-            hours -= (overlapEnd - overlapStart) / (60 * 60 * 1000);
-          }
-        }
+      const dateStr = tashkentComponents(addDays(windowStart, i)).date;
+      for (const w of workingIntervalsOn(sched, dateStr, offs)) {
+        const hours = (w.end.getTime() - w.start.getTime()) / (60 * 60 * 1000);
         if (hours > 0) slots += Math.floor(hours);
       }
     }

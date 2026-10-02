@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/command";
 import { AiAskPanel } from "@/components/layout/ai-ask-panel";
 import { AI_ENABLED } from "@/lib/ai-enabled";
+import { GLOBAL_SEARCH_MIN_CHARS } from "@/lib/global-search";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -265,7 +266,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   React.useEffect(() => {
     if (!open) return;
     const q = query.trim();
-    if (q.length < 1) {
+    if (q.length < GLOBAL_SEARCH_MIN_CHARS) {
       setResults({
         patients: [],
         doctors: [],
@@ -427,7 +428,7 @@ function ClassicCommandSearch({
         onValueChange={setQuery}
       />
       <CommandList>
-        {query.trim().length === 0 ? (
+        {query.trim().length < GLOBAL_SEARCH_MIN_CHARS ? (
           <div className="py-6 text-center text-xs text-muted-foreground">
             {t("typeToSearch")}
           </div>

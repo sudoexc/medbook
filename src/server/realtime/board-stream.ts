@@ -49,15 +49,17 @@ const BOARD_EVENT_SET = new Set<string>(BOARD_EVENT_TYPES);
 /**
  * Scalar payload keys each event type may carry onto the public stream.
  *
- * Appointment and queue-change pokes carry the doctor only: the TVs and the
- * patient's `/q` page refetch their own snapshot and ignore other doctors'
- * signals. `queue.called` additionally carries what the «now calling» banner
+ * Appointment and queue-change pokes carry the doctor only (and the previous
+ * one after a transfer): the TVs and the patient's `/q` page refetch their
+ * own snapshot and ignore other doctors' signals. `queue.called` additionally carries what the «now calling» banner
  * shows: ticket, cabinet and `patientName`, which its emitters reduce to
  * initials via `initials()` (the same PHI-safe reduction the board route
  * serves), plus the opaque `rowKey` (see `boardRowKey`).
  */
 const SAFE_PAYLOAD_KEYS: Record<BoardEventType, readonly string[]> = {
-  "queue.updated": ["doctorId"],
+  // `previousDoctorId` (a staff id, like `doctorId`): a visit moved to a
+  // colleague must leave the previous doctor's door board too (G3-12).
+  "queue.updated": ["doctorId", "previousDoctorId"],
   "queue.called": [
     "doctorId",
     "queueOrder",
@@ -70,9 +72,9 @@ const SAFE_PAYLOAD_KEYS: Record<BoardEventType, readonly string[]> = {
     "lang",
   ],
   "appointment.created": ["doctorId"],
-  "appointment.statusChanged": ["doctorId"],
+  "appointment.statusChanged": ["doctorId", "previousDoctorId"],
   "appointment.cancelled": ["doctorId"],
-  "appointment.moved": ["doctorId"],
+  "appointment.moved": ["doctorId", "previousDoctorId"],
 };
 
 export type BoardEvent = {

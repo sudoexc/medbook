@@ -13,6 +13,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { AttachAppointmentSchema } from "@/server/schemas/medical-case";
 import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
+import { publishCaseRepricing, staffCaseActor } from "@/server/cases/attach";
 
 function caseIdFromUrl(request: Request): string {
   // /api/crm/cases/[id]/detach-appointment → [id] is segment[-2].
@@ -25,7 +26,7 @@ export const POST = createApiHandler(
     roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
     bodySchema: AttachAppointmentSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const caseId = caseIdFromUrl(request);
 
     const mcase = await prisma.medicalCase.findUnique({
@@ -70,6 +71,8 @@ export const POST = createApiHandler(
       for (const id of ids) {
         results.push(await recomputeAppointmentPrice(tx, id));
       }
+      // Announce the detached visit and the re-priced siblings (G3-13).
+      await publishCaseRepricing(tx, staffCaseActor(ctx, mcase.clinicId), ids);
       return results;
     });
 

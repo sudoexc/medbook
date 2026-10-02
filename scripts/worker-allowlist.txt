@@ -32,6 +32,7 @@ fix-ct03-registry-brand-homes.ts
 fix-ct15-register-categories.ts
 fix-dr11-appointment-cabinets.ts
 fix-g1-03-miniapp-audit-clinic.ts
+fix-g1-13-orphan-document-files.ts
 fix-g301-stale-check-ins.ts
 fix-g4-06-reference-dosing-instructions.ts
 fix-g4-12-phenazepam-atc.ts

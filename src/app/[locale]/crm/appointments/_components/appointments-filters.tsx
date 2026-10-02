@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { BookmarkIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
+import { SearchIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -313,6 +313,8 @@ export function AppointmentsFilters({
         <span>{t("filters.onlyUnpaid")}</span>
       </label>
 
+      {/* «Фильтры» and «Сохранить» did nothing on click: every filter
+          already sits in this row and lives in the URL (audit UX-13). */}
       <div className="ml-auto flex items-center gap-1">
         {hasAnyFilter ? (
           <Button variant="ghost" size="sm" onClick={onClear}>
@@ -320,14 +322,6 @@ export function AppointmentsFilters({
             {t("filters.clear")}
           </Button>
         ) : null}
-        <Button variant="outline" size="sm" type="button">
-          <SlidersHorizontalIcon className="size-4" />
-          {t("filters.more")}
-        </Button>
-        <Button variant="ghost" size="sm" type="button">
-          <BookmarkIcon className="size-4" />
-          {t("filters.save")}
-        </Button>
       </div>
     </div>
   );

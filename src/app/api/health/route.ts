@@ -12,7 +12,7 @@
  *   uptime: number,      // seconds since this Node process started
  *   checks: {
  *     db:      { status: "ok" | "down" | "timeout", latencyMs? },
- *     redis:   { status: "ok" | "not_configured" | "down" | "timeout", … },
+ *     redis:   { status: "ok" | "not_configured" | "degraded" | "down" | "timeout", … },
  *     minio:   { status: "ok" | "not_configured" | "down" | "timeout", … },
  *     workers: { status: "ok" | "degraded" | "down" | "not_configured" | "timeout",
  *                processAgeSec, staleLoops, outbox, notifications }
@@ -28,94 +28,19 @@
  * `degraded` (HTTP 200: the site itself still serves), which the watchdog
  * (`ops/watchdog.sh`) alerts on. The check used to return `ok` hard-coded.
  *
+ * Redis also reports `degraded` when this process tried to subscribe to the
+ * realtime channel and has not managed to (audit INF-17): Redis answers
+ * PING, yet no worker event reaches this process's SSE clients.
+ *
  * The probe is public, so it never returns error text (a DB error message
- * names hosts and users); details go to the server log.
+ * names hosts and users); details go to the server log. The checks live in
+ * `server/observability/service-checks.ts`, shared with the platform panel's
+ * «Здоровье» (audit G5-12).
  */
 import { NextResponse } from "next/server";
 
-import { prisma } from "@/lib/prisma";
-import { runWithTenant } from "@/lib/tenant-context";
-import { getOpsRedis } from "@/server/observability/worker-heartbeat";
 import { checkWorkerHealth } from "@/server/observability/worker-health";
-
-const CHECK_TIMEOUT_MS = 5_000;
-
-type Check = {
-  status: "ok" | "down" | "not_configured" | "timeout" | "degraded";
-  latencyMs?: number;
-  details?: string;
-};
-
-async function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T | "__timeout__"> {
-  return Promise.race<T | "__timeout__">([
-    fn(),
-    new Promise<"__timeout__">((resolve) => setTimeout(() => resolve("__timeout__"), ms)),
-  ]);
-}
-
-async function checkDb(): Promise<Check> {
-  const started = Date.now();
-  try {
-    // Run outside any tenant scope — bypasses the `$extends` filter.
-    const res = await withTimeout(
-      () => runWithTenant({ kind: "SYSTEM" }, () => prisma.$queryRawUnsafe<unknown>("SELECT 1")),
-      CHECK_TIMEOUT_MS,
-    );
-    if (res === "__timeout__") return { status: "timeout" };
-    return { status: "ok", latencyMs: Date.now() - started };
-  } catch (e) {
-    logCheckError("db", e);
-    return { status: "down", latencyMs: Date.now() - started };
-  }
-}
-
-function logCheckError(check: string, e: unknown): void {
-  console.warn(`[health] ${check}: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}`);
-}
-
-async function checkRedis(): Promise<Check> {
-  if (!process.env.REDIS_URL) {
-    return { status: "not_configured", details: "REDIS_URL unset — in-memory fallback active" };
-  }
-  const started = Date.now();
-  try {
-    // One shared connection (audit INF-01): this public probe used to open a
-    // new TCP connection to Redis on every request.
-    const res = await withTimeout(async () => {
-      const client = await getOpsRedis();
-      return client ? client.ping() : "NO_CLIENT";
-    }, CHECK_TIMEOUT_MS);
-    if (res === "__timeout__") return { status: "timeout" };
-    return { status: res === "PONG" ? "ok" : "down", latencyMs: Date.now() - started };
-  } catch (e) {
-    logCheckError("redis", e);
-    return { status: "down", latencyMs: Date.now() - started };
-  }
-}
-
-async function checkMinio(): Promise<Check> {
-  if (!process.env.MINIO_ENDPOINT) {
-    return {
-      status: "not_configured",
-      details: "MINIO_ENDPOINT unset — local /tmp fallback",
-    };
-  }
-  const started = Date.now();
-  try {
-    // Best-effort HEAD on the health path. We deliberately avoid actually
-    // writing a probe object on every hit.
-    const res = await withTimeout(async () => {
-      const endpoint = process.env.MINIO_ENDPOINT!.replace(/\/$/, "");
-      const r = await fetch(`${endpoint}/minio/health/ready`, { method: "GET" });
-      return r.ok;
-    }, CHECK_TIMEOUT_MS);
-    if (res === "__timeout__") return { status: "timeout" };
-    return { status: res ? "ok" : "down", latencyMs: Date.now() - started };
-  } catch (e) {
-    logCheckError("minio", e);
-    return { status: "down", latencyMs: Date.now() - started };
-  }
-}
+import { checkDb, checkMinio, checkRedis } from "@/server/observability/service-checks";
 
 function pkgVersion(): string {
   return process.env.APP_VERSION || process.env.NEXT_PUBLIC_APP_VERSION || "dev";

@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+
 import { auth } from "@/lib/auth";
 
 import { AnalyticsPageClient } from "./_components/analytics-page-client";
@@ -16,11 +18,14 @@ import { AnalyticsHubCards } from "./_components/analytics-hub-cards";
  *
  * RBAC: ADMIN/SUPER_ADMIN see everything; DOCTOR sees only their own slice
  * (the API enforces that by filtering to `doctor.userId === session.user.id`).
+ * Every other role gets a 404 like the pro dashboards (audit AN-33): the API
+ * refuses them, so the page could only ever show its load error.
  */
 export default async function AnalyticsPage() {
   const session = await auth();
   const role = session?.user?.role;
   const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+  if (!isAdmin && role !== "DOCTOR") notFound();
   return (
     <>
       {isAdmin ? <AnalyticsHubCards /> : null}

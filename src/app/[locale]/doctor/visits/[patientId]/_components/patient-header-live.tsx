@@ -1,25 +1,11 @@
 "use client";
 
 import { PhoneIcon } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-
-const RU_MONTHS_SHORT = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
+import { formatCalendarDay, formatDate } from "@/lib/format";
 
 function ageFromBirthIso(iso: string): number {
   const b = new Date(iso);
@@ -37,12 +23,10 @@ function ddmmyyyy(iso: string): string {
   return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
-function ruShort(iso: string, time: string | null): string {
-  const d = new Date(iso);
-  const day = d.getDate();
-  const m = RU_MONTHS_SHORT[d.getMonth()] ?? "";
-  const t = time ?? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return `${day} ${m}, ${t}`;
+// The month in the interface's language (audit UX-12).
+function shortDayTime(iso: string, time: string | null, locale: string): string {
+  const day = formatCalendarDay(iso, locale);
+  return `${day}, ${time ?? formatDate(iso, locale === "uz" ? "uz" : "ru", "time")}`;
 }
 
 function initials(fullName: string): string {
@@ -66,6 +50,7 @@ type Props = {
 
 export function PatientHeaderLive(props: Props) {
   const t = useTranslations("doctor.visits");
+  const locale = useLocale();
   const age = props.birthDateIso ? ageFromBirthIso(props.birthDateIso) : null;
   const birth = props.birthDateIso ? ddmmyyyy(props.birthDateIso) : null;
   const status = props.hasActiveAppointment
@@ -144,7 +129,7 @@ export function PatientHeaderLive(props: Props) {
             label={t("header.lastVisit")}
             value={
               props.lastVisit
-                ? ruShort(props.lastVisit.dateIso, props.lastVisit.time)
+                ? shortDayTime(props.lastVisit.dateIso, props.lastVisit.time, locale)
                 : "—"
             }
           />

@@ -4,7 +4,8 @@
  *   - the edit form sends `listedOnSite` only when the switch moved;
  *   - an admin's PATCH stores it and drops the cached price sheet (a line
  *     naming the doctor leaves the landing at once);
- *   - a doctor editing his own profile cannot put himself on or off the site.
+ *   - a doctor cannot put himself on or off the site: the route is the
+ *     admin's (audit DR-16), so his PATCH is refused outright.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,15 +29,20 @@ vi.mock("@/lib/api-handler", () => {
   return {
     createApiHandler:
       (
-        opts: { bodySchema?: { parse: (v: unknown) => unknown } },
+        opts: { roles?: string[]; bodySchema?: { parse: (v: unknown) => unknown } },
         handler: (a: { request: Request; body: unknown; ctx: unknown }) => Promise<Response>,
       ) =>
-      async (request: Request) =>
-        handler({
+      async (request: Request) => {
+        // Same role gate as the real createApiHandler.
+        if (opts.roles && !opts.roles.includes(h.role)) {
+          return Response.json({ error: "Forbidden" }, { status: 403 });
+        }
+        return handler({
           request,
           body: opts.bodySchema ? opts.bodySchema.parse(await request.json()) : undefined,
           ctx: ctx(),
-        }),
+        });
+      },
     createApiListHandler:
       (_o: unknown, handler: (a: { request: Request; ctx: unknown }) => Promise<Response>) =>
       async (request: Request) =>
@@ -100,8 +106,9 @@ describe("PATCH /api/crm/doctors/[id] listedOnSite", () => {
     h.role = "DOCTOR";
     h.userId = "u_doc";
     const res = await patch({ listedOnSite: false, color: "#3B82F6" });
-    expect(res.status).toBe(200);
-    expect(h.updates).toEqual([{ color: "#3B82F6" }]);
+    expect(res.status).toBe(403);
+    expect(h.updates).toEqual([]);
+    expect(h.invalidated).toBe(0);
   });
 });
 

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
+import { eventDoctorIds } from "@/lib/appointments/event-doctors";
 import type { AppEvent } from "@/server/realtime/events";
 
 export type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
@@ -152,11 +153,11 @@ export function eventTargetsDoctor(
   doctorId: string | null | undefined,
 ): boolean {
   if (!doctorId) return true;
-  const payloadDoctorId = (event.payload as { doctorId?: unknown }).doctorId;
-  if (typeof payloadDoctorId !== "string" || payloadDoctorId.length === 0) {
-    return true;
-  }
-  return payloadDoctorId === doctorId;
+  // The previous doctor of a transferred visit is targeted too (G3-12):
+  // the patient must leave his queue and agenda at once.
+  const ids = eventDoctorIds(event.payload);
+  if (ids.length === 0) return true;
+  return ids.includes(doctorId);
 }
 
 /**

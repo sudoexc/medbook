@@ -39,12 +39,13 @@ import type { TenantScopedPrisma } from "@/lib/prisma";
 import type { ActionOutcome } from "@/server/schemas/action";
 
 import { clinicDateKey, clinicMorningOf } from "./clinic-day";
+import { NO_ANSWER_MAX_ATTEMPTS } from "./config";
 import { surfaceMoment, upsertAction } from "./repository";
 
 /** How long a «не дозвонился» row hides before it resurfaces, and the attempt
- *  cap after which it escalates to a louder severity. */
+ *  cap after which it escalates to a louder severity (defined in config.ts). */
 export const NO_ANSWER_SNOOZE_MIN = 120;
-export const NO_ANSWER_MAX_ATTEMPTS = 3;
+export { NO_ANSWER_MAX_ATTEMPTS };
 
 export type OutcomeInput = {
   outcome: ActionOutcome;

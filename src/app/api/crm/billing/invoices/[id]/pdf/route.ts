@@ -49,6 +49,7 @@ export async function GET(request: Request): Promise<Response> {
         dueAt: true,
         paidAt: true,
         paymentRef: true,
+        targetPlanId: true,
       },
     });
     if (!invoice) return notFound();
@@ -63,13 +64,19 @@ export async function GET(request: Request): Promise<Response> {
     });
     if (!sub) return err("NoSubscription", 409);
 
-    const planForPdf = sub.pendingPlanId
+    // The plan this invoice was issued for (audit AN-29): the one captured on
+    // the invoice at creation, which is also what paying it grants
+    // (markInvoicePaid). The subscription's pendingPlanId is only the latest
+    // queued upgrade, so an older invoice's PDF used to name whatever was
+    // requested after it. No target (an invoice from before the column):
+    // paying it leaves the plan as it is, so the current one.
+    const targetPlan = invoice.targetPlanId
       ? await prisma.plan.findUnique({
-          where: { id: sub.pendingPlanId },
+          where: { id: invoice.targetPlanId },
           select: { slug: true, nameRu: true, nameUz: true },
         })
       : null;
-    const plan = planForPdf ?? {
+    const plan = targetPlan ?? {
       slug: sub.plan.slug,
       nameRu: sub.plan.nameRu,
       nameUz: sub.plan.nameUz,

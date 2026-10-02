@@ -402,16 +402,14 @@ ssh root@167.233.142.75 'ls -lh /var/backups/medbook/*/ | tail -20; tail -5 /var
 
 ### 4.1.2 Проверить, что дамп реально восстанавливается
 
-Раз в пару месяцев — разворачиваем во временную базу, сверяем и удаляем:
+Раз в пару месяцев — разворачиваем во временную базу, сверяем и удаляем.
+Скрипт грузит дамп одной транзакцией с остановкой на первой ошибке, сверяет
+число строк Patient, Appointment, VisitNote и Document с дампом и при любом
+расхождении завершается с ненулевым кодом (без строки «dry run OK»):
 
 ```bash
 ssh root@167.233.142.75
-cd /opt/neurofax
-DUMP=$(ls -t /var/backups/medbook/*/pg-*.sql.gz | head -1)
-docker compose exec -T postgres psql -U medbook -d postgres -c "CREATE DATABASE restore_test;"
-gunzip -c "$DUMP" | docker compose exec -T postgres psql -U medbook -d restore_test -q
-docker compose exec -T postgres psql -U medbook -d restore_test -tAc 'select count(*) from "Patient"'
-docker compose exec -T postgres psql -U medbook -d postgres -c "DROP DATABASE restore_test;"
+cd /opt/neurofax && DRY_RUN=1 ./ops/restore.sh
 ```
 
 ### 4.2 Ручной дамп Postgres (перед рискованными операциями)
@@ -434,8 +432,12 @@ cd /opt/neurofax && ./ops/restore.sh pg-medbook-<timestamp>.sql.gz
 
 ```bash
 gunzip -c medbook-2026-08-20.sql.gz | \
-  docker compose exec -T postgres psql -U medbook -d medbook
+  docker compose exec -T postgres psql -v ON_ERROR_STOP=1 --single-transaction \
+  -U medbook -d medbook -f -
 ```
+
+Без `-v ON_ERROR_STOP=1` psql продолжает после ошибки и выходит с кодом 0,
+то есть «успешно» заливает половину базы.
 
 ⚠️ проверить на практике оба пути — с миграции на Hetzner restore не
 прогонялся.
@@ -636,6 +638,25 @@ ssh root@167.233.142.75 'ls -l /var/backups/medbook/$(date -u +%F)/; grep -E "re
 По умолчанию DRY RUN: `docker compose exec -e APPLY=1 worker npx tsx
 prisma/seed-protocols.ts`. `prisma/seed-handouts.ts` выключает только
 глобальные памятки, памятки клиники не трогает.
+
+`prisma/seed-drugs.ts` только добавляет: бренды и формы, которые уже есть у
+препарата (из госреестра, из `enrich-drug-forms.ts`), сохраняет.
+
+Пары взаимодействий для проверки назначений (таблица `DrugInteraction`, общая
+для всех клиник) миграции не заполняют. На новом сервере таблица пуста, и
+проверка видит только классовые правила из кода. Поэтому после
+`prisma/seed-drugs.ts` и при каждой правке `prisma/_drug-interactions-data.ts`:
+
+```bash
+ssh root@167.233.142.75 'cd /opt/neurofax && docker compose exec -T worker npx tsx prisma/seed-drug-interactions.ts'
+ssh root@167.233.142.75 'cd /opt/neurofax && docker compose exec -T postgres \
+  psql -U medbook -d medbook -tc "SELECT count(*) FROM \"DrugInteraction\";"'
+```
+
+Сид заменяет весь набор одной транзакцией: проверка назначений во время
+прогона видит старый набор, а не пустую таблицу. Счётчик после прогона больше
+нуля. Если сид пишет `ERROR: skipped` и завершается с кодом 1, в каталоге нет
+препарата из пары: сначала `prisma/seed-drugs.ts`.
 
 Предохранитель: последний рубеж, а не разрешение. Если команда из старой
 заметки, истории терминала или памяти предлагает «освежить демо» на проде,

@@ -76,6 +76,7 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     type: "OVERDUE_FOLLOW_UP",
     appointmentId: "apt_3",
     patientId: "p_4",
+    patientName: "Иванов И.И.",
     daysSinceVisit: 12,
   },
   DOCTOR_OVERLOAD: {

@@ -40,6 +40,7 @@ import {
   CONCLUSION_BACKFILL_WINDOW_MS,
   hasDeliverableHandout,
 } from "@/server/visit-notes/conclusion-delivery";
+import { SweepBackoff, logSweepFailure } from "@/server/workers/sweep-backoff";
 
 // Re-exported: the unit tests and older imports reach it through here.
 export { hasDeliverableHandout };
@@ -54,6 +55,22 @@ const TICK_INTERVAL_MS = 30 * 1000;
  */
 const BACKFILL_WINDOW_MS = CONCLUSION_BACKFILL_WINDOW_MS;
 const BATCH = 25;
+
+// Failed notes wait out a growing delay outside the sweep query, so broken
+// rows cannot fill the batch and starve every new note (audit INF-16).
+const handoutBackoff = new SweepBackoff();
+const bridgeBackoff = new SweepBackoff();
+
+/** Test seam: forget every remembered failure. */
+export function __resetSweepBackoffForTests(): void {
+  handoutBackoff.clear();
+  bridgeBackoff.clear();
+}
+
+/** An edit or amendment changes these, and earns the note a fresh start. */
+function noteVersion(note: { updatedAt?: Date; handoutStaleAt?: Date | null }): string {
+  return `${note.updatedAt?.getTime() ?? ""}:${note.handoutStaleAt?.getTime() ?? ""}`;
+}
 
 type SweepAmendment = {
   reason: string;
@@ -318,11 +335,13 @@ export async function runVisitNoteHandoutTick(
   const since = new Date(now.getTime() - BACKFILL_WINDOW_MS);
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const waiting = handoutBackoff.waiting(now.getTime());
     const notes = (await prisma.visitNote.findMany({
       where: {
         status: "FINALIZED",
         patientHandoutMarkdown: { not: null },
         patient: { deletedAt: null },
+        ...(waiting.length > 0 ? { id: { notIn: waiting } } : {}),
         // Two roads into the sweep, each with its own convergence anchor:
         //  - first render: no CONCLUSION document yet. Bounded by the
         //    backfill window so the feature's first deploy doesn't render the
@@ -407,13 +426,20 @@ export async function runVisitNoteHandoutTick(
             );
           }
         }
+        // A blank first render still matches the query (whitespace passes
+        // the not-null filter) and would hold a batch slot on every tick
+        // for the whole backfill window. Set it aside; an edit that adds
+        // text comes back in at the latest after the longest delay.
+        handoutBackoff.park(note.id, noteVersion(note), now.getTime());
         continue;
       }
       try {
         await generateConclusion(note, now);
         generated += 1;
+        handoutBackoff.succeed(note.id);
       } catch (err) {
-        console.error(`[visit-note-handout] note ${note.id} failed`, err);
+        const attempts = handoutBackoff.fail(note.id, noteVersion(note), now.getTime());
+        logSweepFailure("visit-note-handout", `note ${note.id}`, attempts, err);
       }
     }
 
@@ -688,6 +714,7 @@ export async function runMedicationBridgeTick(
   const since = new Date(now.getTime() - BACKFILL_WINDOW_MS);
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const waiting = bridgeBackoff.waiting(now.getTime());
     const notes = (await prisma.visitNote.findMany({
       where: {
         status: "FINALIZED",
@@ -697,6 +724,7 @@ export async function runMedicationBridgeTick(
         finalizedAt: { gte: since },
         medicationsBridgedAt: null,
         patient: { deletedAt: null },
+        ...(waiting.length > 0 ? { id: { notIn: waiting } } : {}),
       },
       select: {
         id: true,
@@ -734,8 +762,10 @@ export async function runMedicationBridgeTick(
       try {
         await bridgeNote(note, now);
         bridged += 1;
+        bridgeBackoff.succeed(note.id);
       } catch (err) {
-        console.error(`[medication-bridge] note ${note.id} failed`, err);
+        const attempts = bridgeBackoff.fail(note.id, noteVersion(note), now.getTime());
+        logSweepFailure("medication-bridge", `note ${note.id}`, attempts, err);
       }
     }
 

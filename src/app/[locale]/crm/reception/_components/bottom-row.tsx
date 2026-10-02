@@ -226,6 +226,10 @@ function SmartRecommendations({
   const canSend = canSendBulkReminders(role);
   const canOpenActionCenter = canWorkActionCenter(role);
 
+  // Each button does what it says (audit UX-13): «Смотреть» opens the screen
+  // where reception acts on the card, and «Отправить» really sends the
+  // reminder after a confirm (AP-14). The «Применить» card that only echoed
+  // itself in a toast is gone.
   const cards: React.ReactNode[] = [];
 
   if (recs.optimize) {

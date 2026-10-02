@@ -23,7 +23,14 @@ export type AdminPageAccess =
   | { kind: "anonymous" }
   | { kind: "forbidden" }
   | { kind: "owes_mfa" }
-  | { kind: "ok"; userId: string; name: string | null; email: string | null };
+  | {
+      kind: "ok";
+      userId: string;
+      name: string | null;
+      email: string | null;
+      /** The clinic of a live visit (impersonation grant), else null. */
+      clinicId: string | null;
+    };
 
 export async function adminPageAccess(): Promise<AdminPageAccess> {
   const session = await auth();
@@ -37,5 +44,6 @@ export async function adminPageAccess(): Promise<AdminPageAccess> {
     userId: session.user.id,
     name: session.user.name ?? null,
     email: session.user.email ?? null,
+    clinicId: session.user.clinicId ?? null,
   };
 }

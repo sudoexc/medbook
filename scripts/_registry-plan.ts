@@ -253,6 +253,44 @@ export function curatedBrandsToAdd(
   return out;
 }
 
+/** One dosage form as a Drug row stores it in `forms`. */
+export type DrugFormEntry = { form: string; strengths: string[] };
+
+/** Strengths differ only by spacing in the register («200мг» vs «200 мг»). */
+function normStrength(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, "").replace(/,/g, ".");
+}
+
+/**
+ * Union of two form lists: every form of either, in first-seen order, each
+ * with the union of its strengths (the first spelling of a strength wins).
+ * Shared by scripts/enrich-drug-forms.ts, which merges the register's forms
+ * into the curated rows, and prisma/seed-drugs.ts (audit G2-18): the seed
+ * used to write the source list over `forms` on every run, so a reseed took
+ * back the injectable АЦЦ the enrichment had added and the prescription
+ * constructor stopped offering it. Nothing is ever dropped here.
+ */
+export function mergeDrugForms(
+  current: readonly DrugFormEntry[],
+  incoming: readonly DrugFormEntry[],
+): DrugFormEntry[] {
+  const byForm = new Map<string, string[]>();
+  for (const src of [current, incoming]) {
+    for (const f of src) {
+      if (!f?.form) continue;
+      let list = byForm.get(f.form);
+      if (!list) {
+        list = [];
+        byForm.set(f.form, list);
+      }
+      for (const s of f.strengths ?? []) {
+        if (!list.some((v) => normStrength(v) === normStrength(s))) list.push(s);
+      }
+    }
+  }
+  return [...byForm].map(([form, strengths]) => ({ form, strengths }));
+}
+
 /**
  * The substances a name lists, order-free: «Леводопа + карбидопа» and
  * «карбидопа + леводопа» give one key. Brackets stay: in the register they

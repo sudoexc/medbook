@@ -39,6 +39,12 @@ export type DetectorConfig = {
   caseRepeatLeadDays: number;
   /** OVERDUE_FOLLOW_UP fires when the visit completed at least this many days ago. */
   followUpStaleDays: number;
+  /**
+   * OVERDUE_FOLLOW_UP stops nudging about a visit this many days old: a
+   * month of silence after a visit is no longer a call to chase, and the
+   * window keeps the detector from reading the whole visit history.
+   */
+  followUpMaxAgeDays: number;
   /** Queue length above which a doctor is considered overloaded. */
   doctorOverloadQueueLength: number;
   /** Idle minutes after which a free cabinet is flagged. */
@@ -72,6 +78,7 @@ export const DEFAULT_CONFIG: DetectorConfig = {
   noShowLookaheadHours: 4,
   caseRepeatLeadDays: 7,
   followUpStaleDays: 7,
+  followUpMaxAgeDays: 30,
   doctorOverloadQueueLength: 8,
   idleRoomMinutes: 20,
   paymentOverdueMinDays: 1,
@@ -117,6 +124,15 @@ export const PATIENT_NO_CHANNEL_TTL_HOURS = 48;
  * enough that a worker restart or a deploy does not count as one.
  */
 export const CLOSED_SIGNAL_LAPSE_HOURS = 12;
+
+/**
+ * «Не дозвонился» this many times escalates the visit's risk row to a louder
+ * severity (TZ-risk-outcomes §1, `outcomeStamp`). Kept here, not in
+ * outcome.ts, because the repository reads it too (`upsertAction` keeps the
+ * escalation over the detector's reading, audit AC-28) and outcome.ts
+ * already imports the repository.
+ */
+export const NO_ANSWER_MAX_ATTEMPTS = 3;
 
 /**
  * How long a legacy «Перенести» may stay unsaved before it counts as

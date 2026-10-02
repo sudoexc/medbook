@@ -150,9 +150,49 @@ export async function GET(request: NextRequest): Promise<Response> {
     request.nextUrl.searchParams.get("since") ??
     null;
 
+  // Shared with `cancel()`, which runs outside `start`'s closure.
+  let cleanup: () => void = () => {};
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // `closed` = stop writing (also set when an enqueue throws); `disposed`
+      // = timers and the bus subscription are released. They differ on
+      // purpose: a failed enqueue used to set `closed` first, and cleanup's
+      // `if (closed) return` then skipped releasing everything for good.
       let closed = false;
+      let disposed = false;
+      let unsubscribe: (() => void) | null = null;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
+      let sessionCheck: ReturnType<typeof setInterval> | null = null;
+
+      cleanup = () => {
+        if (disposed) return;
+        disposed = true;
+        closed = true;
+        if (heartbeat) clearInterval(heartbeat);
+        if (sessionCheck) clearInterval(sessionCheck);
+        try {
+          unsubscribe?.();
+        } catch {
+          /* ignore */
+        }
+        try {
+          controller.close();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      // Client closed the tab / navigated away. Registered BEFORE the replay
+      // await (audit INF-14): a client that left mid-replay used to fire
+      // `abort` before anyone listened, leaving the subscription and both
+      // intervals behind forever.
+      request.signal.addEventListener("abort", cleanup, { once: true });
+      if (request.signal.aborted) {
+        cleanup();
+        return;
+      }
+
       const safeEnqueue = (chunk: string) => {
         if (closed) return;
         try {
@@ -230,47 +270,32 @@ export async function GET(request: NextRequest): Promise<Response> {
         }
       }
 
-      // Forward live per-clinic events (after replay so ordering is preserved).
-      const unsubscribe = bus.subscribe(channel, (payload) => emit(payload));
+      // The client left while the replay was awaiting the database.
+      if (disposed) return;
 
-      const heartbeat = setInterval(() => {
+      // Forward live per-clinic events (after replay so ordering is preserved).
+      unsubscribe = bus.subscribe(channel, (payload) => emit(payload));
+
+      heartbeat = setInterval(() => {
         safeEnqueue(`: ping\n\n`);
       }, HEARTBEAT_MS);
 
       // Close the stream as soon as the session stops being valid. Errors
       // fail open inside evaluateStaffSession, so a DB blip never drops a
       // healthy stream.
-      const sessionCheck = setInterval(() => {
+      sessionCheck = setInterval(() => {
         evaluateStaffSession({ claims, binding, countAsActivity: false })
           .then((verdict) => {
             if (!verdict.ok) cleanup();
           })
           .catch(() => {});
       }, SESSION_RECHECK_MS);
-
-      const cleanup = () => {
-        if (closed) return;
-        closed = true;
-        clearInterval(heartbeat);
-        clearInterval(sessionCheck);
-        try {
-          unsubscribe();
-        } catch {
-          /* ignore */
-        }
-        try {
-          controller.close();
-        } catch {
-          /* ignore */
-        }
-      };
-
-      // Client closed the tab / navigated away.
-      request.signal.addEventListener("abort", cleanup, { once: true });
     },
     cancel() {
-      // The consumer cancelled the reader explicitly. No extra work —
-      // `start`'s abort listener fires too. Guard against double-close.
+      // The consumer cancelled the reader explicitly. Release everything
+      // here too rather than trusting `abort` to follow; cleanup is
+      // idempotent.
+      cleanup();
     },
   });
 

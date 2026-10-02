@@ -13,8 +13,8 @@ interface UsageRow {
   nameUz: string;
   active: boolean;
   appointments: number;
-  smsSent: number;
   tgMessages: number;
+  inappMessages: number;
   calls: number;
   patients: number;
 }
@@ -26,8 +26,8 @@ interface UsageResp {
   rows: UsageRow[];
   totals: {
     appointments: number;
-    smsSent: number;
     tgMessages: number;
+    inappMessages: number;
     calls: number;
     patients: number;
   };
@@ -94,9 +94,12 @@ export function UsagePageClient() {
       {data && (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            {/* SMS was removed from the product (always 0, audit G5-13);
+                TG counts chat replies plus reminders and broadcasts, in-app
+                traffic has its own figure. */}
             <Kpi label="Записи" value={data.totals.appointments} />
-            <Kpi label="SMS" value={data.totals.smsSent} />
-            <Kpi label="TG сообщения" value={data.totals.tgMessages} />
+            <Kpi label="Telegram" value={data.totals.tgMessages} />
+            <Kpi label="Мини-апп (in-app)" value={data.totals.inappMessages} />
             <Kpi label="Звонки" value={data.totals.calls} />
             <Kpi label="Новые пациенты" value={data.totals.patients} />
           </div>
@@ -107,8 +110,8 @@ export function UsagePageClient() {
                 <tr className="border-b border-border bg-muted/40 text-left">
                   <th className="p-3 font-medium">Клиника</th>
                   <th className="p-3 font-medium text-right">Записи</th>
-                  <th className="p-3 font-medium text-right">SMS</th>
                   <th className="p-3 font-medium text-right">TG</th>
+                  <th className="p-3 font-medium text-right">In-app</th>
                   <th className="p-3 font-medium text-right">Звонки</th>
                   <th className="p-3 font-medium text-right">Пациенты</th>
                 </tr>
@@ -131,9 +134,11 @@ export function UsagePageClient() {
                     <td className="p-3 text-right tabular-nums">
                       {r.appointments}
                     </td>
-                    <td className="p-3 text-right tabular-nums">{r.smsSent}</td>
                     <td className="p-3 text-right tabular-nums">
                       {r.tgMessages}
+                    </td>
+                    <td className="p-3 text-right tabular-nums">
+                      {r.inappMessages}
                     </td>
                     <td className="p-3 text-right tabular-nums">{r.calls}</td>
                     <td className="p-3 text-right tabular-nums">{r.patients}</td>

@@ -38,6 +38,7 @@ import {
   resolveFollowUpWrite,
 } from "@/lib/visit-follow-up";
 import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
+import { draftEditAuditedRecently } from "@/server/visit-notes/draft-audit";
 import { withClinicDrugPhotos } from "@/server/catalog/drug-photos";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { publishEphemeralEnvelope } from "@/server/realtime/publish";
@@ -538,18 +539,34 @@ export const PATCH = createApiHandler(
     }
     if (draftSaved) publishEphemeralEnvelope(draftSaved);
 
-    await audit(request, {
-      action: "visit_note.update",
-      entityType: "VisitNote",
-      entityId: id,
-      // The values themselves live in VisitNoteRevision: `revisions` names
-      // the before/after rows of a signed-note correction.
-      meta: {
-        fields: changedFields,
-        correlationId,
-        ...(revisions ? { revisions } : {}),
-      },
-    });
+    // Same rule as the envelope above (audit G1-12): the prescription
+    // constructor resends its unchanged list on every interaction, and each
+    // such PATCH wrote a `fields: []` row that buried real events in the log.
+    // A never-signed draft also writes one row per editing session rather
+    // than one per autosave (see draft-audit.ts); signed and reopened notes
+    // keep a row for every correction.
+    const coalesceIntoSession =
+      !isSigned &&
+      !isReopened &&
+      changedFields.length > 0 &&
+      (await draftEditAuditedRecently(prisma, {
+        visitNoteId: id,
+        actorId: actorUserId,
+      }));
+    if (changedFields.length > 0 && !coalesceIntoSession) {
+      await audit(request, {
+        action: "visit_note.update",
+        entityType: "VisitNote",
+        entityId: id,
+        // The values themselves live in VisitNoteRevision: `revisions` names
+        // the before/after rows of a signed-note correction.
+        meta: {
+          fields: changedFields,
+          correlationId,
+          ...(revisions ? { revisions } : {}),
+        },
+      });
+    }
 
     // The reception's control-visit task follows a corrected plan. The
     // bridge writes it once after the signature and runs again only when

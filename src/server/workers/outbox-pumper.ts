@@ -33,6 +33,14 @@
  * for Phase A we log a warning if the per-tick batch is fully saturated.
  * `/api/health` reports the age of the oldest undelivered row (audit INF-01).
  *
+ * Redis down (audit INF-17): the pumper runs in the worker, where no SSE
+ * client listens, so Redis is the only road to the screens. A failed PUBLISH
+ * used to be swallowed and the row marked DELIVERED. Now the row is left
+ * FAILED for the next tick, its attempts untouched (an outage is not the
+ * event's fault and must not dead-letter it), and the rest of the batch
+ * waits too, so events still go out in order once Redis is back. Health
+ * shows the backlog as an outbox row pending for over a minute.
+ *
  * Retention (audit INF-04): delivered rows only serve the SSE replay of a
  * reconnecting client, which looks back minutes, and they carry patient data
  * in the envelope. An hourly sweep deletes DELIVERED rows after 7 days and
@@ -55,6 +63,7 @@ import {
   type EventEnvelope,
 } from "@/server/realtime/envelope";
 import { broadcastEnvelope } from "@/server/realtime/publish";
+import { RedisPublishError } from "@/server/realtime/redis-adapter";
 
 const BATCH_SIZE = 100;
 const MAX_ATTEMPTS = 5;
@@ -74,6 +83,9 @@ export const DELIVERED_RETENTION_MS = 7 * DAY_MS;
 export const DEAD_RETENTION_MS = 30 * DAY_MS;
 /** Rows per DELETE, so a first sweep over a large backlog never holds long locks. */
 const PRUNE_BATCH = 5_000;
+/** At most one "Redis down" line per this window: the pumper ticks at 200 ms. */
+const REDIS_WARN_EVERY_MS = 30_000;
+let lastRedisWarnAt = 0;
 
 type OutboxRow = {
   id: string;
@@ -196,6 +208,23 @@ export async function pumpOnce(): Promise<{
           delivered++;
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
+          if (e instanceof RedisPublishError) {
+            // Transport failure, not a bad event: keep `attempts`, keep it
+            // undelivered, and stop the batch here (see the header).
+            await tx.eventOutbox.update({
+              where: { id: row.id },
+              data: { status: "FAILED", lastError: msg.slice(0, 1000) },
+            });
+            failed++;
+            const now = Date.now();
+            if (now - lastRedisWarnAt >= REDIS_WARN_EVERY_MS) {
+              lastRedisWarnAt = now;
+              console.warn(
+                `[outbox-pumper] Redis publish failed, holding the batch for the next tick: ${msg}`,
+              );
+            }
+            break;
+          }
           const nextAttempts = row.attempts + 1;
           const isDead = nextAttempts >= MAX_ATTEMPTS;
           await tx.eventOutbox.update({

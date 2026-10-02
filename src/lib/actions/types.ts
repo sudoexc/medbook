@@ -232,6 +232,8 @@ export type OverdueFollowUpPayload = {
   type: "OVERDUE_FOLLOW_UP";
   appointmentId: string;
   patientId: string;
+  /** The card has to say who to call (audit AC-21). */
+  patientName: string;
   daysSinceVisit: number;
 };
 

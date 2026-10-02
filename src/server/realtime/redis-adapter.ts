@@ -53,6 +53,25 @@ function isWireFrame(v: unknown): v is WireFrame {
 }
 
 let started = false;
+/** The last psubscribe attempt failed and none has succeeded since. */
+let subscribeFailing = false;
+let subscribeRetry: ReturnType<typeof setTimeout> | null = null;
+const SUBSCRIBE_RETRY_MIN_MS = 1_000;
+const SUBSCRIBE_RETRY_MAX_MS = 30_000;
+let subscribeRetryMs = SUBSCRIBE_RETRY_MIN_MS;
+
+/**
+ * Thrown by `publishEnvelopeToRedis` when Redis refused the PUBLISH. The
+ * outbox pumper runs in the worker, where no SSE client listens: Redis is
+ * the only way its events reach the screens, so a failed publish is a failed
+ * delivery and the row must be retried, not marked DELIVERED (audit INF-17).
+ */
+export class RedisPublishError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RedisPublishError";
+  }
+}
 
 export function isRedisEnabled(): boolean {
   return Boolean(process.env.REDIS_URL);
@@ -93,11 +112,10 @@ export function ensureRedisSubscriber(): void {
   if (started) return;
   const sub = getSubscriber();
   if (!sub) return;
+  // `started` guards the pmessage handler (attached once); the subscription
+  // itself is retried below until Redis acknowledges it.
   started = true;
-
-  sub.psubscribe("events:*").catch((err) => {
-    console.warn("[realtime:redis:sub] psubscribe failed", err?.message ?? err);
-  });
+  subscribeWithRetry(sub);
 
   sub.on("pmessage", (_pattern, channel: string, message: string) => {
     // channel shape: events:<clinicId>
@@ -125,6 +143,46 @@ export function ensureRedisSubscriber(): void {
 }
 
 /**
+ * psubscribe with a doubling retry (1 s up to 30 s). A first psubscribe that
+ * failed (Redis down while the app started) used to be logged and forgotten:
+ * ioredis only re-subscribes channels it once had, so worker events never
+ * reached any screen until the app was restarted (audit INF-17). Once
+ * acknowledged, ioredis' autoResubscribe covers later reconnects.
+ */
+function subscribeWithRetry(sub: RedisClient): void {
+  sub
+    .psubscribe("events:*")
+    .then(() => {
+      subscribeFailing = false;
+      subscribeRetryMs = SUBSCRIBE_RETRY_MIN_MS;
+    })
+    .catch((err) => {
+      subscribeFailing = true;
+      const delay = subscribeRetryMs;
+      subscribeRetryMs = Math.min(subscribeRetryMs * 2, SUBSCRIBE_RETRY_MAX_MS);
+      console.warn(
+        `[realtime:redis:sub] psubscribe failed, retrying in ${delay / 1000}s`,
+        err?.message ?? err,
+      );
+      subscribeRetry = setTimeout(() => {
+        subscribeRetry = null;
+        if (started && subscriber === sub) subscribeWithRetry(sub);
+      }, delay);
+      subscribeRetry.unref?.();
+    });
+}
+
+/**
+ * False only when this process tried to subscribe to the realtime channel
+ * and has not managed to yet: live events from the worker are not reaching
+ * its SSE clients. True when the subscriber was never needed (no SSE client
+ * connected yet, or no Redis), so a fresh process does not look broken.
+ */
+export function isRedisSubscriptionHealthy(): boolean {
+  return !subscribeFailing;
+}
+
+/**
  * PUBLISH one event to Redis. No-op when `REDIS_URL` is not set.
  * Returns `false` when Redis is disabled, `true` otherwise (the Redis
  * promise errors are swallowed to avoid taking down request handlers).
@@ -148,6 +206,10 @@ export async function publishToRedis(event: AppEvent): Promise<boolean> {
  * Cross-surface sync Phase A.7 — fan out a v2 envelope to Redis. The
  * subscriber on the other side parses and re-emits on the same channel as
  * a v1 publish, so the SSE handler sees both shapes interchangeably.
+ *
+ * Returns `false` when Redis is disabled, `true` once published. A failed
+ * PUBLISH throws `RedisPublishError` (it used to be swallowed with `true`,
+ * and the pumper marked the row DELIVERED although no screen got it).
  */
 export async function publishEnvelopeToRedis(
   envelope: EventEnvelope,
@@ -164,7 +226,7 @@ export async function publishEnvelopeToRedis(
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.warn("[realtime:redis:pub] envelope publish failed", msg);
+    throw new RedisPublishError(`envelope publish failed: ${msg}`);
   }
   return true;
 }
@@ -172,6 +234,10 @@ export async function publishEnvelopeToRedis(
 /** Testing hook — close connections so vitest doesn't hang. */
 export async function __resetRedisForTests(): Promise<void> {
   started = false;
+  subscribeFailing = false;
+  subscribeRetryMs = SUBSCRIBE_RETRY_MIN_MS;
+  if (subscribeRetry) clearTimeout(subscribeRetry);
+  subscribeRetry = null;
   await Promise.all([
     publisher ? publisher.quit().catch(() => {}) : Promise.resolve(),
     subscriber ? subscriber.quit().catch(() => {}) : Promise.resolve(),

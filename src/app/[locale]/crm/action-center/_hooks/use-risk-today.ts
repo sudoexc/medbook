@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+import type { EventType } from "@/server/realtime/events";
 // The route module owns the wire types (TZ-risk-outcomes §6). Type-only
 // import — nothing server-side leaks into the client bundle.
 import type {
@@ -32,6 +33,18 @@ export type RiskOutcome =
 
 export const RISK_TODAY_KEY = ["action-center", "risk-today"] as const;
 
+/** Events that can add, change or settle a risk-today row. */
+export const RISK_TODAY_LIVE_EVENTS: ReadonlyArray<EventType> = [
+  "action.created",
+  "action.updated",
+  "appointment.created",
+  "appointment.updated",
+  "appointment.statusChanged",
+  "appointment.cancelled",
+  "appointment.moved",
+  "queue.updated",
+];
+
 /**
  * `from` marker of the appointments link a row's «Перенести» opens (audit
  * AC-10). The drawer opened with it sends `riskOutcome`, so the saved move
@@ -55,14 +68,11 @@ export function useRiskToday() {
   });
 
   // Invalidate on Action and Appointment changes so the triage stays warm
-  // without the receptionist having to refresh.
+  // without the receptionist having to refresh. A confirm, a cancel and a
+  // move arrive as their own event types, not appointment.updated (audit
+  // G3-11): without them a row the patient just settled hung for a minute.
   useLiveQueryInvalidation({
-    events: [
-      "action.created",
-      "action.updated",
-      "appointment.created",
-      "appointment.updated",
-    ],
+    events: RISK_TODAY_LIVE_EVENTS,
     queryKey: RISK_TODAY_KEY,
   });
 

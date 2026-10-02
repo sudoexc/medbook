@@ -37,10 +37,15 @@ function scheduleToSlots(entries: DoctorScheduleEntry[]): ScheduleSlotInput[] {
 
 export interface ScheduleEditorProps {
   doctor: DoctorDetail;
+  /**
+   * False for roles the schedule API refuses (audit DR-15): the hours show
+   * read-only instead of offering edits that end in a 403.
+   */
+  canEdit: boolean;
   className?: string;
 }
 
-export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
+export function ScheduleEditor({ doctor, canEdit, className }: ScheduleEditorProps) {
   const t = useTranslations("crmDoctors.schedule");
   const tDays = useTranslations("crmDoctors.weekdays");
   const save = useReplaceDoctorSchedule(doctor.id);
@@ -152,30 +157,32 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
             {t("subtitle")}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {dirty ? (
-            <span className="text-xs text-warning-foreground">
-              {t("dirtyHint")}
-            </span>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSlots(baseline)}
-            disabled={!dirty || save.isPending}
-          >
-            <RotateCcwIcon className="size-4" />
-            {t("reset")}
-          </Button>
-          <Button
-            size="sm"
-            onClick={onSave}
-            disabled={!dirty || conflicts.length > 0 || save.isPending}
-          >
-            <SaveIcon className="size-4" />
-            {save.isPending ? t("saving") : t("save")}
-          </Button>
-        </div>
+        {canEdit ? (
+          <div className="flex items-center gap-2">
+            {dirty ? (
+              <span className="text-xs text-warning-foreground">
+                {t("dirtyHint")}
+              </span>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSlots(baseline)}
+              disabled={!dirty || save.isPending}
+            >
+              <RotateCcwIcon className="size-4" />
+              {t("reset")}
+            </Button>
+            <Button
+              size="sm"
+              onClick={onSave}
+              disabled={!dirty || conflicts.length > 0 || save.isPending}
+            >
+              <SaveIcon className="size-4" />
+              {save.isPending ? t("saving") : t("save")}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {slots.length === 0 ? (
@@ -219,6 +226,7 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
                           onChange={(e) =>
                             updateSlot(idx, { startTime: e.target.value })
                           }
+                          readOnly={!canEdit}
                           className="h-8 w-[110px]"
                           aria-label={t("startTime")}
                         />
@@ -229,17 +237,20 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
                           onChange={(e) =>
                             updateSlot(idx, { endTime: e.target.value })
                           }
+                          readOnly={!canEdit}
                           className="h-8 w-[110px]"
                           aria-label={t("endTime")}
                         />
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t("removeSlot")}
-                          onClick={() => removeSlot(idx)}
-                        >
-                          <Trash2Icon className="size-4" />
-                        </Button>
+                        {canEdit ? (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t("removeSlot")}
+                            onClick={() => removeSlot(idx)}
+                          >
+                            <Trash2Icon className="size-4" />
+                          </Button>
+                        ) : null}
                         {conflict ? (
                           <span className="text-xs text-destructive">
                             {conflict === "overlap"
@@ -252,14 +263,16 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
                   })
                 )}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => addSlotForDay(wd)}
-              >
-                <PlusIcon className="size-4" />
-                {t("addSlot")}
-              </Button>
+              {canEdit ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addSlotForDay(wd)}
+                >
+                  <PlusIcon className="size-4" />
+                  {t("addSlot")}
+                </Button>
+              ) : null}
             </div>
           );
         })}

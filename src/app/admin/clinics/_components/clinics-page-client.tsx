@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -169,16 +170,44 @@ async function patchClinic(
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
 }
 
+interface ClinicAdmin {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
+/** Refusals of the owner password reset, in words. */
+const RESET_OWNER_REASON: Record<string, string> = {
+  no_active_owner: "В клинике нет активного администратора: посмотрите в «Пользователях»",
+  owner_not_admin: "Эта учётка больше не активный администратор клиники, список обновлён",
+};
+
+async function fetchClinicAdmins(clinicId: string): Promise<ClinicAdmin[]> {
+  const r = await fetch(
+    `/api/platform/clinics/${clinicId}/reset-owner-password`,
+    { cache: "no-store" },
+  );
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const data = (await r.json()) as { admins: ClinicAdmin[] };
+  return data.admins;
+}
+
 async function resetOwnerPassword(
   clinicId: string,
+  userId: string,
 ): Promise<{ ownerLogin: string; ownerTempPassword: string }> {
   const r = await fetch(
     `/api/platform/clinics/${clinicId}/reset-owner-password`,
-    { method: "POST" },
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId }),
+    },
   );
   if (!r.ok) {
     const body = (await r.json().catch(() => null)) as { reason?: string } | null;
-    throw new Error(body?.reason ?? `HTTP ${r.status}`);
+    const reason = body?.reason ?? `HTTP ${r.status}`;
+    throw new Error(RESET_OWNER_REASON[reason] ?? reason);
   }
   return (await r.json()) as { ownerLogin: string; ownerTempPassword: string };
 }
@@ -220,7 +249,7 @@ async function lifecycleAction(
   return body?.subscription ?? {};
 }
 
-export function ClinicsPageClient() {
+export function ClinicsPageClient({ expired = false }: { expired?: boolean }) {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "clinics"],
@@ -235,6 +264,8 @@ export function ClinicsPageClient() {
   const [entering, setEntering] = React.useState<ClinicEntryTarget | null>(
     null,
   );
+  // The clinic whose owner password is about to be reset (audit G5-07).
+  const [resetFor, setResetFor] = React.useState<ClinicRow | null>(null);
 
   const toggleActive = useMutation({
     mutationFn: (row: ClinicRow) => patchClinic(row.id, { active: !row.active }),
@@ -243,14 +274,22 @@ export function ClinicsPageClient() {
   });
 
   const resetPwd = useMutation({
-    mutationFn: (clinicId: string) => resetOwnerPassword(clinicId),
-    onSuccess: (res) =>
+    mutationFn: (input: { clinicId: string; userId: string }) =>
+      resetOwnerPassword(input.clinicId, input.userId),
+    onSuccess: (res) => {
+      setResetFor(null);
       setCredsModal({
         title: "Пароль сброшен",
         login: res.ownerLogin,
         password: res.ownerTempPassword,
-      }),
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
+      });
+    },
+    onError: (e, input) => {
+      toast.error(e instanceof Error ? e.message : "Error");
+      void qc.invalidateQueries({
+        queryKey: ["admin", "clinic-admins", input.clinicId],
+      });
+    },
   });
 
   // Phase 19 W4 — bulk lifecycle ops (suspend / restore / extend trial).
@@ -297,6 +336,18 @@ export function ClinicsPageClient() {
         </Button>
       </div>
 
+      {expired && (
+        // The 60 minute lease of a clinic visit ran out (audit G5-09): the
+        // CRM sent the operator back here instead of leaving them in a CRM
+        // without a clinic.
+        <div
+          role="status"
+          className="rounded-lg border border-warning/40 bg-warning/15 p-4 text-sm text-foreground"
+        >
+          Время входа в клинику (60 минут) истекло, доступ к её данным закрыт.
+          Чтобы продолжить работу, войдите в клинику снова.
+        </div>
+      )}
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
           Загрузка…
@@ -374,14 +425,16 @@ export function ClinicsPageClient() {
                   <td className="p-3">
                     <Switch
                       checked={c.active}
-                      title="Выключенная клиника: сотрудники не могут войти"
+                      title="Выключенная клиника: сотрудники не могут войти, у пациентов не работают мини-апп, киоск, ТВ-табло и запись с сайта"
                       onCheckedChange={() => {
                         // Switching off locks the clinic's staff out (audit
-                        // SEC-10), so it is confirmed; switching on is not.
+                        // SEC-10) and stops every patient-facing channel
+                        // (audit G5-10), so it is confirmed with the full
+                        // list; switching on is not.
                         if (
                           c.active &&
                           !window.confirm(
-                            `Выключить клинику «${c.nameRu}»? Сотрудники клиники не смогут войти, пока её не включат снова.`,
+                            `Выключить клинику «${c.nameRu}»?\n\nПока её не включат снова:\n• сотрудники клиники не смогут войти;\n• у пациентов перестанет работать мини-апп;\n• киоск в холле не даст отметиться;\n• ТВ-табло очереди и экраны у кабинетов погаснут;\n• запись с сайта перестанет приниматься.`,
                           )
                         ) {
                           return;
@@ -406,17 +459,10 @@ export function ClinicsPageClient() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Сбросить пароль владельца клиники «${c.nameRu}»? Текущий пароль перестанет работать.`,
-                            )
-                          ) {
-                            resetPwd.mutate(c.id);
-                          }
-                        }}
+                        onClick={() => setResetFor(c)}
                         disabled={
-                          resetPwd.isPending && resetPwd.variables === c.id
+                          resetPwd.isPending &&
+                          resetPwd.variables?.clinicId === c.id
                         }
                       >
                         <KeyRoundIcon />
@@ -551,6 +597,15 @@ export function ClinicsPageClient() {
         }}
       />
 
+      <ResetOwnerDialog
+        clinic={resetFor}
+        pending={resetPwd.isPending}
+        onClose={() => setResetFor(null)}
+        onConfirm={(userId) => {
+          if (resetFor) resetPwd.mutate({ clinicId: resetFor.id, userId });
+        }}
+      />
+
       <CredentialsModal
         creds={credsModal}
         onClose={() => setCredsModal(null)}
@@ -562,6 +617,116 @@ export function ClinicsPageClient() {
         onEnter={impersonateClinic}
       />
     </div>
+  );
+}
+
+/**
+ * Whose password «Пароль владельца» resets, said before it happens (audit
+ * G5-07). The schema has no owner flag, so the clinic's active ADMIN
+ * accounts are listed by name and email, the oldest (the usual owner)
+ * picked by default.
+ */
+function ResetOwnerDialog({
+  clinic,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  clinic: ClinicRow | null;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: (userId: string) => void;
+}) {
+  const admins = useQuery({
+    queryKey: ["admin", "clinic-admins", clinic?.id],
+    queryFn: () => fetchClinicAdmins(clinic!.id),
+    enabled: !!clinic,
+  });
+  // The pick belongs to one clinic: another clinic starts from its default.
+  const [pick, setPick] = React.useState<{ clinicId: string; userId: string } | null>(
+    null,
+  );
+  const pickedId = pick && pick.clinicId === clinic?.id ? pick.userId : null;
+  // The oldest account until another is picked; a pick that fell off a
+  // refreshed list falls back to it too.
+  const chosen =
+    admins.data?.find((a) => a.id === pickedId) ?? admins.data?.[0] ?? null;
+  const close = () => {
+    setPick(null);
+    onClose();
+  };
+
+  return (
+    <Dialog open={!!clinic} onOpenChange={(v) => !v && close()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Сбросить пароль администратора</DialogTitle>
+          <DialogDescription>
+            Клиника «{clinic?.nameRu}». Текущий пароль выбранной учётки
+            перестанет работать, её сеансы завершатся. Новый временный пароль
+            покажем один раз.
+          </DialogDescription>
+        </DialogHeader>
+        {admins.isLoading ? (
+          <p className="text-sm text-muted-foreground">Загрузка…</p>
+        ) : admins.error ? (
+          <p className="text-sm text-destructive">
+            {admins.error instanceof Error ? admins.error.message : "Error"}
+          </p>
+        ) : !admins.data?.length ? (
+          <p className="text-sm text-muted-foreground">
+            В клинике нет активного администратора. Назначьте его в разделе
+            «Пользователи».
+          </p>
+        ) : (
+          <RadioGroup
+            value={chosen?.id ?? ""}
+            onValueChange={(userId) =>
+              clinic && setPick({ clinicId: clinic.id, userId })
+            }
+            className="gap-1"
+          >
+            {admins.data.map((a, i) => (
+              <label
+                key={a.id}
+                className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2 hover:bg-muted/40"
+              >
+                <RadioGroupItem value={a.id} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-foreground">
+                    {a.name || a.email}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {a.email}
+                  </span>
+                </span>
+                {i === 0 ? (
+                  <Badge variant="secondary" className="shrink-0 text-[10px]">
+                    создан первым
+                  </Badge>
+                ) : null}
+              </label>
+            ))}
+          </RadioGroup>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={close}>
+            Отмена
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={!chosen || pending}
+            onClick={() => chosen && onConfirm(chosen.id)}
+          >
+            {pending
+              ? "Сброс…"
+              : chosen
+                ? `Сбросить пароль ${chosen.email}`
+                : "Сбросить пароль"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -862,11 +1027,11 @@ function CredentialsModal({
   return (
     <Dialog
       open
-      // Force-close only via the explicit button so the operator does not
-      // dismiss this by tapping outside before saving the password.
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
+      // Closes only via «Я сохранил, закрыть» (audit G5-07). Esc and a click
+      // beside the window used to close it too, and the one-time password
+      // was gone: getting it back meant resetting the password again.
+      disablePointerDismissal
+      onOpenChange={() => {}}
     >
       <DialogContent className="sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>

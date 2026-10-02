@@ -149,3 +149,55 @@ export function computeVisibleNav<TItem extends FeatureGatedItem>(
   }
   return out;
 }
+
+/**
+ * The one rule for a subscription's effective flags, shared by the server
+ * resolver (`getFeatureFlags`) and the platform billing page (audit G5-14:
+ * its card read `plan.features` whatever the status, and showed «Колл-центр
+ * ✓» for a cancelled clinic whose call center was already gone).
+ *
+ *   TRIAL / ACTIVE / PAST_DUE → the plan's flags (PAST_DUE is a grace period)
+ *   CANCELLED, no subscription → DEFAULT_FLAGS (Basic-equivalent)
+ */
+export function effectiveFlags(
+  sub: { status: string; planFeatures: unknown } | null,
+): FeatureFlags {
+  if (!sub) return { ...DEFAULT_FLAGS };
+  switch (sub.status) {
+    case "TRIAL":
+    case "ACTIVE":
+    case "PAST_DUE":
+      return parsePlanFeatures(sub.planFeatures);
+    default:
+      return { ...DEFAULT_FLAGS };
+  }
+}
+
+/** The on/off features a tariff change can switch, in the order shown. */
+export const SWITCHABLE_FEATURES = [
+  "hasCallCenter",
+  "hasTelegramInbox",
+  "hasAnalyticsPro",
+  "hasWhiteLabel",
+  "hasCustomSubdomain",
+] as const;
+
+export type SwitchableFeature = (typeof SWITCHABLE_FEATURES)[number];
+
+/**
+ * Pure: which on/off features a change from `before` to `after` turns off
+ * and which it turns on, for the confirmation before a plan or status change
+ * (audit G5-14).
+ */
+export function flagChanges(
+  before: FeatureFlags,
+  after: FeatureFlags,
+): { off: SwitchableFeature[]; on: SwitchableFeature[] } {
+  const off: SwitchableFeature[] = [];
+  const on: SwitchableFeature[] = [];
+  for (const key of SWITCHABLE_FEATURES) {
+    if (before[key] && !after[key]) off.push(key);
+    if (!before[key] && after[key]) on.push(key);
+  }
+  return { off, on };
+}

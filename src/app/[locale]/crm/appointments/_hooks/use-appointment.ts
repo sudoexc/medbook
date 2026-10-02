@@ -5,11 +5,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 import {
   conflictReasonText,
   type ConflictTranslator,
 } from "@/lib/appointments/conflict-message";
 import { queuedMs } from "@/lib/queue-ordering";
+import type { AppEvent, EventType } from "@/server/realtime/events";
 import type {
   AppointmentCabinetShort,
   AppointmentDoctorShort,
@@ -101,7 +103,40 @@ function invalidateAppointmentSurfaces(
   qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
 }
 
+/**
+ * Events that can change what an open appointment card shows: status, time,
+ * doctor, price («Итого» after a case attach), the signed visit.
+ */
+export const APPOINTMENT_DETAIL_LIVE_EVENTS: ReadonlyArray<EventType> = [
+  "appointment.updated",
+  "appointment.statusChanged",
+  "appointment.cancelled",
+  "appointment.moved",
+  "queue.updated",
+  "visit-note.finalized",
+];
+
+/** Does this live event name the appointment `id`? */
+export function eventNamesAppointment(
+  event: AppEvent,
+  id: string | null | undefined,
+): boolean {
+  if (!id) return false;
+  const payload = event.payload as { appointmentId?: unknown } | null;
+  return payload?.appointmentId === id;
+}
+
 export function useAppointment(id: string | null | undefined) {
+  // Audit G3-10: the open card (reception, calendar, «Записи») was refetched
+  // only by its own mutations, and focus refetch is off app-wide, so a cancel
+  // from the Mini App or a status change by the doctor left it showing the
+  // old status and price until it was closed and reopened.
+  useLiveQueryInvalidation({
+    events: APPOINTMENT_DETAIL_LIVE_EVENTS,
+    queryKey: appointmentKey(id ?? "__none"),
+    shouldInvalidate: (event) => eventNamesAppointment(event, id),
+    enabled: Boolean(id),
+  });
   return useQuery<AppointmentDetail, Error>({
     queryKey: appointmentKey(id ?? "__none"),
     enabled: Boolean(id),

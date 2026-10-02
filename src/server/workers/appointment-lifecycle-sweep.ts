@@ -127,6 +127,11 @@ export type SweepCandidate = {
   medicalCaseId?: string | null;
   /** Mini App check-in: the patient said he was here (G3-01). */
   arrivedAt?: Date | null;
+  /**
+   * Carried into the no-show events (G3-09): the Mini App stream delivers a
+   * v1 event only when its payload names one of the patient's ids.
+   */
+  patientId?: string;
 };
 
 /**
@@ -399,11 +404,15 @@ async function flipToNoShow(row: SweepCandidate, now: Date): Promise<boolean> {
       },
     });
 
+    // patientId rides both payloads (G3-09): without it the Mini App
+    // stream dropped them and the patient's card kept «Ожидается» until a
+    // reload.
     publishEventSafe(row.clinicId, {
       type: "appointment.statusChanged",
       payload: {
         appointmentId: row.id,
         doctorId: row.doctorId,
+        patientId: row.patientId,
         status: "NO_SHOW",
         previousStatus: row.status,
       },
@@ -414,6 +423,7 @@ async function flipToNoShow(row: SweepCandidate, now: Date): Promise<boolean> {
       payload: {
         appointmentId: row.id,
         doctorId: row.doctorId,
+        patientId: row.patientId,
         queueStatus: "NO_SHOW",
         previousStatus: row.status,
       },
@@ -519,6 +529,7 @@ async function tick(): Promise<void> {
         id: true,
         clinicId: true,
         doctorId: true,
+        patientId: true,
         status: true,
         queueStatus: true,
         date: true,

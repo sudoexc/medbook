@@ -135,8 +135,16 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   // arrive slightly before the PDF lands; the refetch is cheap and the document
   // appears on the next poll/refresh regardless.
   "referral.created": [["miniapp", "documents"]],
-  // A rendered PDF / upload landed in the patient's Document table.
-  "document.created": [["miniapp", "documents"]],
+  // A rendered PDF / upload landed in the patient's Document table. G3-07:
+  // the conclusion PDF is rendered by the worker AFTER finalize, and its link
+  // (`conclusionUrl`) is what lights the home «Заключение готово» card, the
+  // past-appointment PDF button and the visit screen's PDF link, so those
+  // screens refresh too or they stayed dark until a reload.
+  "document.created": [
+    ["miniapp", "documents"],
+    ["miniapp", "appointments"],
+    ["miniapp", "visit-summary"],
+  ],
   // CD-09: the clinic renamed or deleted a document; without these the
   // patient kept a dead link until a reload.
   "document.updated": [["miniapp", "documents"]],

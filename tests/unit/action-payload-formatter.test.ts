@@ -61,6 +61,7 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     type: "OVERDUE_FOLLOW_UP",
     appointmentId: "apt_3",
     patientId: "p_4",
+    patientName: "Иванов И.И.",
     daysSinceVisit: 12,
   },
   DOCTOR_OVERLOAD: {
@@ -347,6 +348,43 @@ describe("appointment time on the clinic clock (real messages)", () => {
       expect(body).toContain("Алиев А.А.");
       expect(`${title} ${body}`).not.toMatch(/[—–]/);
     }
+  });
+});
+
+/**
+ * Audit AC-21: the overdue follow-up card names the patient and declines
+ * the day count («21 день», «3 дня», «12 дней»), not «3 дней».
+ */
+describe("OVERDUE_FOLLOW_UP copy (real messages)", () => {
+  async function render(lang: "ru" | "uz", daysSinceVisit: number) {
+    const { default: IntlMessageFormat } = await import("intl-messageformat");
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const messages = JSON.parse(
+      readFileSync(path.join(process.cwd(), `src/messages/${lang}.json`), "utf8"),
+    ) as { actionCenter: { types: { OVERDUE_FOLLOW_UP: { title: string } } } };
+    const t: Translator = (_key, values) =>
+      new IntlMessageFormat(messages.actionCenter.types.OVERDUE_FOLLOW_UP.title, lang).format(
+        values,
+      ) as string;
+    return formatActionTitle(
+      t,
+      { ...SAMPLE_PAYLOADS.OVERDUE_FOLLOW_UP, daysSinceVisit },
+      lang,
+    );
+  }
+
+  it("names the patient and declines the days in Russian", async () => {
+    expect(await render("ru", 21)).toBe("Иванов И.И.: follow-up не выполнен 21 день");
+    expect(await render("ru", 3)).toBe("Иванов И.И.: follow-up не выполнен 3 дня");
+    expect(await render("ru", 12)).toBe("Иванов И.И.: follow-up не выполнен 12 дней");
+  });
+
+  it("names the patient in Uzbek, without dashes", async () => {
+    const title = await render("uz", 10);
+    expect(title).toContain("Иванов И.И.");
+    expect(title).toContain("10");
+    expect(title).not.toMatch(/[—–]/);
   });
 });
 

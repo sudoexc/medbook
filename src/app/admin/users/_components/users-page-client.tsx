@@ -104,6 +104,20 @@ async function fetchClinics(): Promise<ClinicOption[]> {
   return data.clinics;
 }
 
+/** Refusals of the account edit, in words (audit G5-06). */
+const PATCH_REASON: Record<string, string> = {
+  last_admin:
+    "Это последний активный администратор клиники. Сначала назначьте администратором кого-то ещё",
+  doctor_card_bound:
+    "Врач привязан к карточке врача в своей клинике. Сначала смените роль (карточка освободится), затем в новой клинике привяжите карточку через её CRM",
+  doctor_id_required:
+    "Врачу нужна карточка врача, а здесь её не выбрать. Включите учётку или верните роль врача в CRM клиники (Настройки → Пользователи), выбрав там карточку",
+  cannot_deactivate_self: "Нельзя деактивировать свою учётку",
+  cannot_demote_self: "Нельзя понизить свою учётку",
+  non_super_admin_requires_clinic: "Сотрудник клиники должен быть привязан к клинике",
+  clinic_not_found: "Клиника не найдена",
+};
+
 async function patchUser(
   id: string,
   patch: {
@@ -120,7 +134,8 @@ async function patchUser(
   });
   if (!r.ok) {
     const b = (await r.json().catch(() => null)) as { reason?: string } | null;
-    throw new Error(b?.reason ?? `HTTP ${r.status}`);
+    const reason = b?.reason ?? `HTTP ${r.status}`;
+    throw new Error(PATCH_REASON[reason] ?? reason);
   }
 }
 
@@ -306,7 +321,14 @@ export function UsersPageClient() {
                         onClick={() => {
                           if (
                             confirm(
-                              u.active ? "Деактивировать?" : "Активировать?",
+                              !u.active
+                                ? "Активировать?"
+                                : u.role === "DOCTOR"
+                                  ? // The card is released (G5-06) and the
+                                    // platform cannot bind it back: say so
+                                    // before a misclick costs the doctor's day.
+                                    "Деактивировать? Карточка врача освободится, привязать её снова можно будет только в CRM клиники."
+                                  : "Деактивировать?",
                             )
                           ) {
                             deactivate.mutate(u);

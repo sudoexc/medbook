@@ -7,30 +7,11 @@ import { ArrowRightIcon, CalendarOffIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/atoms/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCalendarDay } from "@/lib/format";
 import {
   flattenVisits,
   useDoctorPatientVisits,
 } from "../../patients/_hooks/use-doctor-patient-visits";
-
-const RU_MONTHS_SHORT = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
-
-function longDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getDate()} ${RU_MONTHS_SHORT[d.getMonth()] ?? ""} ${d.getFullYear()}`;
-}
 
 function hhmm(iso: string): string {
   const d = new Date(iso);
@@ -117,7 +98,8 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
 
       <div className="space-y-2 text-xs">
         <div className="text-sm font-semibold text-foreground tabular-nums">
-          {longDate(last.date)}, {hhmm(last.date)} — {hhmm(last.endDate)}
+          {formatCalendarDay(last.date, locale, { year: true })},{" "}
+          {hhmm(last.date)} — {hhmm(last.endDate)}
         </div>
         <Row label={t("lastVisit.doctorLabel")} value={last.doctorName} />
         <Row

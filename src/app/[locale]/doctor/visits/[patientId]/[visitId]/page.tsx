@@ -40,7 +40,7 @@ export default async function VisitDetailPage({
   const { locale, patientId, visitId } = await params;
   const session = await auth();
   if (!session?.user || session.user.role !== "DOCTOR" || !session.user.clinicId) {
-    redirect(`/${locale}/login`);
+    redirect("/login");
   }
 
   const data = await runWithTenant(

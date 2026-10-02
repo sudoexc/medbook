@@ -22,6 +22,8 @@
  * (b) parsing a server-side access log. Skipped intentionally; revisit when
  * we add an analytics events table.
  */
+import { isLiveLane } from "@/lib/queue-ordering";
+
 import { addDays, eachDay, ymdKey } from "./range";
 
 export type ConversionWindow = { from: Date; to: Date };
@@ -311,9 +313,17 @@ export function computeNoShowRanks(args: {
 
 export interface WaitTimeAppointmentInput {
   doctorId: string;
-  /** When the receptionist clicked "Call patient" — start of waiting → in-progress timer. */
+  /** Appointment.channel: WALKIN is the live queue, anything else a booking. */
+  channel: string;
+  /** The booking's slot start (a walk-in's is technical, never used). */
+  date: Date;
+  /** Mini App «Я на месте»: the patient said they are here. */
+  arrivedAt: Date | null;
+  /** The visit joined the live waiting queue (walk-in registration, check-in). */
+  queuedAt: Date | null;
+  /** The doctor called the patient in. */
   calledAt: Date | null;
-  /** When the doctor began the visit. */
+  /** The visit began; the end of the wait when nobody pressed «Вызвать». */
   startedAt: Date | null;
 }
 
@@ -321,25 +331,44 @@ export interface WaitTimeRow {
   doctorId: string;
   /** Average wait, in seconds. */
   avgWaitSec: number;
-  /** Number of `(calledAt, startedAt)` pairs that contributed. */
+  /** Number of visits that contributed. */
   samples: number;
 }
 
 /**
- * Per-doctor average of `(startedAt - calledAt)` in seconds.
+ * How long one patient waited to be called in, in ms; null when the row
+ * can't tell (audit AN-30).
  *
- * Skips appointments where either timestamp is null or the delta is
- * negative (data corruption guard). Sorts result descending by avg wait —
- * worst doctors first so the dashboard surfaces problems.
+ * The wait runs from arrival (`arrivedAt`, else `queuedAt`) to the call
+ * (`calledAt`, else `startedAt`). It used to be `startedAt − calledAt`, but
+ * the doctor's «Вызвать» stamps both with the same instant, so every doctor
+ * showed 0 seconds. A booking that arrives early waits for its slot, not for
+ * the doctor: its wait starts at max(arrival, slot) and is 0 when it is
+ * called in before the slot. A call stamped before the arrival is broken
+ * data and is skipped.
+ */
+export function visitWaitMs(a: WaitTimeAppointmentInput): number | null {
+  const arrival = a.arrivedAt ?? a.queuedAt;
+  const called = a.calledAt ?? a.startedAt;
+  if (!arrival || !called) return null;
+  if (called.getTime() < arrival.getTime()) return null;
+  const start = isLiveLane(a)
+    ? arrival.getTime()
+    : Math.max(arrival.getTime(), a.date.getTime());
+  return Math.max(0, called.getTime() - start);
+}
+
+/**
+ * Per-doctor average of `visitWaitMs` in seconds. Sorts result descending by
+ * avg wait: worst doctors first so the dashboard surfaces problems.
  */
 export function computeAverageWaitTime(args: {
   appointments: WaitTimeAppointmentInput[];
 }): WaitTimeRow[] {
   const totals = new Map<string, { sumSec: number; samples: number }>();
   for (const a of args.appointments) {
-    if (!a.calledAt || !a.startedAt) continue;
-    const deltaMs = a.startedAt.getTime() - a.calledAt.getTime();
-    if (deltaMs < 0) continue;
+    const deltaMs = visitWaitMs(a);
+    if (deltaMs === null) continue;
     const rec = totals.get(a.doctorId) ?? { sumSec: 0, samples: 0 };
     rec.sumSec += Math.round(deltaMs / 1000);
     rec.samples += 1;

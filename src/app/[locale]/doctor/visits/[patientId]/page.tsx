@@ -38,7 +38,7 @@ export default async function VisitsPage({
   // The doctor layout already guards `/doctor/*` for role + clinicId, but
   // duplicating the checks here lets us derive the typed values cleanly.
   if (!session?.user || session.user.role !== "DOCTOR" || !session.user.clinicId) {
-    redirect(`/${locale}/login`);
+    redirect("/login");
   }
 
   const data = await runWithTenant(

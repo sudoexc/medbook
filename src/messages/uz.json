@@ -5,7 +5,7 @@
       "callTitle": "Qo‘ng‘iroq → yozuv",
       "noShowTitle": "No-show: top-10",
       "noShowByDoctorTitle": "Shifokorlar bo‘yicha kelmaganlar",
-      "waitTimeTitle": "O‘rtacha kutish",
+      "waitTimeTitle": "Chaqiruvgacha kutish",
       "rate": "Konversiya",
       "converted": "Konvertatsiya qilindi",
       "of": "/",
@@ -509,7 +509,7 @@
       "active": "Faol bemorlar",
       "dormantGt30": "Faol bo'lmagan > 30 kun",
       "dormant": "Sovigan",
-      "noShowRisk": "No-show xavfi",
+      "noShowRisk": "Kelmaslik xavfi",
       "avgCheck": "O'rtacha chek",
       "noData": "ma'lumot yo'q",
       "paymentsNotTracked": "To'lovlar CRMda yuritilmaydi",
@@ -2098,7 +2098,7 @@
       "smartTitle": "Aqlli tavsiyalar",
       "recRedistributeTitle": "Navbatni qayta taqsimlang",
       "recRedistributeBody": "{cabinet}-kabinetda yuk yuqori. {count} ta bemorni boshqa kabinetga yo'naltirishni tavsiya qilamiz.",
-      "recApply": "Qo'llash",
+      "recApply": "Jadvalni ochish",
       "recOptimizeTitle": "Jadvalni optimallashtiring",
       "recOptimizeBody": "{hour}:00 dan keyin yuk {pct}% ga pasayishi kutilmoqda. Qo'shimcha qabullar kiritish mumkin.",
       "recView": "Ko'rish",
@@ -2240,7 +2240,7 @@
       "openFull": "Barcha chatlar",
       "unread": "{count} yangi",
       "empty": "O'qilmagan xabarlar yo'q",
-      "emptyHint": "Telegram va SMS'dan yangi xabarlar shu yerda paydo bo'ladi.",
+      "emptyHint": "Telegramdan yangi xabarlar shu yerda paydo bo'ladi.",
       "voiceNote": "ovozli xabar",
       "photo": "rasm",
       "document": "hujjat",
@@ -2682,20 +2682,17 @@
     },
     "ai": {
       "title": "AI tavsiyalar",
-      "updated": "2 daqiqa oldin yangilandi",
+      "updated": "Bugungi yuklama bo'yicha",
       "emptyList": "Hozircha tavsiyalar yo'q",
-      "redirectTitle": "3 bemorni 11:20 da {name} ga yo'naltiring",
+      "redirectTitle": "Bemorlarni {name} ga yo'naltiring",
       "redirectDescription": "Uning bo'sh slot'i bor · {from} dan",
       "redirectAction": "Bajarish",
       "fillTitle": "{name} da bo'sh vaqt bor",
-      "fillDescription": "12:00 dan 14:00 gacha · Bu slotlarni to'ldirishga harakat qiling",
+      "fillDescription": "Bo'sh slotlarni to'ldirishga harakat qiling",
       "fillAction": "To'ldirish",
-      "specialistTitle": "{name} 14:00 dan keyin haddan tashqari yuklangan",
+      "specialistTitle": "{name}: bugun yuklama yuqori",
       "specialistDescription": "Yana bir mutaxassis qo'shishni tavsiya qilamiz",
-      "specialistAction": "Batafsil",
-      "eveningTitle": "{name} uchun kechki slotlarni qo'shing",
-      "eveningDescription": "18:00 dan keyin talab bor",
-      "eveningAction": "Sozlash"
+      "specialistAction": "Batafsil"
     },
     "rail": {
       "title": "Xulosa",
@@ -2858,7 +2855,8 @@
       "repeatRate": "% takroriy tashriflar",
       "avgDuration": "O‘rtacha holat davomiyligi",
       "pct": "{value}%",
-      "days": "{value} kun"
+      "days": "{value} kun",
+      "loadError": "Holatlarni yuklab bo'lmadi."
     },
     "heatGrid": {
       "title": "Soatlar bo'yicha yuklama",
@@ -3306,7 +3304,7 @@
       },
       "step2": {
         "title": "2. Kanal",
-        "subtitle": "Telegram — Telegram ulagan bemorlarga bepul; SMS — pullik, telefon raqami bor barchaga yetadi."
+        "subtitle": "Faqat Telegram: xabarni Telegram ulangan bemorlar oladi."
       },
       "channelLabel": {
         "TG": "Telegram",
@@ -4093,6 +4091,8 @@
         "workdayStart": "Ish kuni boshlanishi",
         "workdayEnd": "Ish kuni tugashi",
         "slotMin": "Slot uzunligi (daq.)",
+        "patientHours": "Bemorlar uchun ish vaqti",
+        "patientHoursHint": "Mini ilovada bemorlarga ko'rsatiladi. Qabulga ta'sir qilmaydi: bo'sh vaqt har bir shifokor jadvali bo'yicha hisoblanadi.",
         "brandColor": "Brend rangi",
         "tgBotUsername": "TG bot (username)",
         "tgBotToken": "TG Bot Token",
@@ -4181,6 +4181,7 @@
       "cannotDeactivateSelf": "O'z akkauntingizni nofaol qilib bo'lmaydi.",
       "emailTakenError": "Bu email boshqa akkauntda band.",
       "emailTakenInactiveError": "Bu emailli xodim nofaol qilingan. Uni ro'yxatda oching, «Tahrirlash» ni bosing va qayta yoqing.",
+      "lastAdminError": "Bu klinikaning oxirgi faol administratori. Avval boshqa xodimni administrator qiling.",
       "resetTotp": "2FA ni tiklash",
       "resetTotpTitle": "Xodimning 2FA sini tiklaysizmi?",
       "resetTotpDescription": "{name} endi ilovadagi kod yoki tiklash kodlari bilan kira olmaydi, uning barcha seanslari yakunlanadi. Keyingi kirishda parol yetarli bo'ladi, agar uning roli uchun 2FA majburiy bo'lsa, tizim darhol uni qayta ulashni so'raydi. Tasdiqlash uchun o'z parolingizni kiriting.",
@@ -4304,6 +4305,10 @@
       "equipmentAdd": "Jihoz qo'shish",
       "equipmentPlaceholder": "UZI, EKG, …",
       "equipmentEmpty": "Jihozlar ko'rsatilmagan",
+      "errors": {
+        "numberTaken": "Bunday raqamli kabinet allaqachon bor",
+        "branchInvalid": "Filial topilmadi yoki o'chirilgan. Faol filialni tanlang."
+      },
       "cols": {
         "nameRu": "Nomi (RU)",
         "nameUz": "Nomi (UZ)",
@@ -4329,11 +4334,11 @@
     },
     "roles": {
       "title": "Ruxsatlar matritsasi / Permission Matrix",
-      "subtitle": "Manba: kod. Ushbu jadval joriy amalga oshirishni aks ettiradi.",
+      "subtitle": "Ma'lumot uchun: CRMda kim nima qila oladi. Huquqlar kodda belgilanadi, bu yerda ularni o'zgartirib bo'lmaydi.",
       "readOnlyForAdmin": "Faqat o'qish · tahrir — Phase 17+",
       "resourceCol": "Resurs",
       "legendTitle": "Belgilar",
-      "legendBody": "R — o'qish, W — yaratish, U — tahrirlash, D — o'chirish. Skoup: all — klinikaning barcha yozuvlari, own — faqat o'ziniki, today — faqat bugungi.",
+      "legendBody": "R: o'qish, W: yaratish, U: tahrirlash, D: o'chirish. Qamrov: «hammasi» (klinikaning barcha yozuvlari), «o'ziniki» (faqat o'ziniki), «bugungi» (faqat bugungi).",
       "legendChipsTitle": "Legenda:",
       "sourceNote": "Manba: `src/lib/api-handler.ts` va /api/crm/* dagi guard'lar. Ruxsatni o'zgartirish kod-review talab qiladi.",
       "actions": {
@@ -4343,12 +4348,14 @@
         "d": "D"
       },
       "scope": {
-        "all": "all",
-        "own": "own",
-        "today": "today"
+        "all": "hammasi",
+        "own": "o'ziniki",
+        "today": "bugungi"
       },
       "resources": {
         "Patient": "Bemorlar",
+        "ClinicalRecord": "Tashxislar, surunkali kasalliklar, klinik izoh",
+        "PatientAllergy": "Allergiyalar",
         "Appointment": "Yozilishlar",
         "Doctor": "Shifokorlar",
         "Cabinet": "Kabinetlar",
@@ -4366,7 +4373,7 @@
       "title": "Sozlamalar",
       "subtitle": "Klinika, foydalanuvchilar va integratsiyalarni boshqarish.",
       "clinicManagement": "Klinika boshqaruvi",
-      "clinicManagementHint": "Kabinetlar, xizmatlar, hujjatlar va SMS — avval asosiy menyuda edi, endi shu yerga yig'ildi.",
+      "clinicManagementHint": "Kabinetlar, xizmatlar va hujjatlar avval asosiy menyuda edi, endi shu yerga yig'ildi.",
       "coreSettings": "Asosiy sozlamalar",
       "coreSettingsHint": "Klinika profili, foydalanuvchilar va integratsiyalar."
     },
@@ -4417,7 +4424,7 @@
       },
       "notifications": {
         "title": "Bildirishnoma shablonlari",
-        "description": "Triggerlar va SMS / Telegram / In-App matnlari."
+        "description": "Telegram va In-App uchun triggerlar va matnlar."
       },
       "audit": {
         "title": "Audit jurnali",
@@ -4795,7 +4802,7 @@
         "dayCount": "{days, plural, other {# kun}}",
         "channelsTitle": "Kanallar",
         "channelsHint": "Ikkalasi tanlansa — birinchi mavjudi orqali yuboramiz.",
-        "channelsDefault": "Sukut: bemorda telegramId bo'lsa TG, aks holda SMS.",
+        "channelsDefault": "Sukut bo'yicha: faqat Telegram. Telegrami yo'q bemorlarga xabar yuborilmaydi, qabul eslatmalari bo'yicha Vazifalar markazida qo'ng'iroq qilish vazifasi paydo bo'ladi.",
         "channelsDefaultShort": "Sukut",
         "channelsSelected": "Tartib: {list}",
         "summaryTitle": "Joriy konfiguratsiya",
@@ -5863,7 +5870,7 @@
       },
       "OVERDUE_FOLLOW_UP": {
         "label": "Muddati o'tgan follow-up",
-        "title": "Follow-up {daysSinceVisit} kundan beri bajarilmagan",
+        "title": "{patientName}: follow-up {daysSinceVisit} kundan beri bajarilmagan",
         "body": "Vazifani shifokorga uzating yoki kerak bo'lmasa yoping."
       },
       "DOCTOR_OVERLOAD": {

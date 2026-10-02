@@ -13,6 +13,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
+import {
+  discardDocumentUpload,
+  uploadDocumentFile,
+  type UploadedDocumentFile,
+} from "@/lib/document-upload-client";
 
 import {
   useDoctorProfile,
@@ -22,27 +27,6 @@ import {
 
 const MAX_BYTES = 1_024 * 1_024; // 1 MB
 const ACCEPTED = "image/png,image/jpeg";
-
-async function uploadSignature(file: File): Promise<{ fileUrl: string }> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch("/api/crm/documents/upload", {
-    method: "POST",
-    credentials: "include",
-    body: fd,
-  });
-  if (!res.ok) {
-    let detail = `upload: ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body?.error) detail = body.error;
-    } catch {
-      // ignore
-    }
-    throw new Error(detail);
-  }
-  return (await res.json()) as { fileUrl: string };
-}
 
 export function SignatureTab() {
   const t = useTranslations("doctor.settings");
@@ -66,11 +50,15 @@ export function SignatureTab() {
       return;
     }
     setUploading(true);
+    let stored: UploadedDocumentFile | null = null;
     try {
-      const uploaded = await uploadSignature(file);
-      await setSignature.mutateAsync(uploaded.fileUrl);
+      stored = await uploadDocumentFile(file);
+      await setSignature.mutateAsync(stored.fileUrl);
       toast.success(t("signature.saved"));
     } catch (e) {
+      // The image is stored but no signature points at it: take it back,
+      // or it stays in the bucket with nothing to find it by (audit G1-13).
+      if (stored) void discardDocumentUpload(stored.fileUrl, stored.uploadToken);
       toast.error(t("signature.uploadError"));
       console.error(e);
     } finally {

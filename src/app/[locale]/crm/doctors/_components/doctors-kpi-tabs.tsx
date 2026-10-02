@@ -17,6 +17,7 @@ export interface DoctorsKpiTabsProps {
   counts: Record<DoctorsTabKey, number>;
   active: DoctorsTabKey;
   onChange: (next: DoctorsTabKey) => void;
+  /** The «Настроить вид» button shows only when there is a view to configure. */
   onConfigureView?: () => void;
   className?: string;
 }
@@ -103,14 +104,18 @@ export function DoctorsKpiTabs({
           );
         })}
       </div>
-      <button
-        type="button"
-        onClick={onConfigureView}
-        className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-      >
-        <SettingsIcon className="size-3.5" />
-        {t("configureView")}
-      </button>
+      {/* No handler, no button: it used to render for every caller and did
+          nothing on click (audit DR-17). */}
+      {onConfigureView ? (
+        <button
+          type="button"
+          onClick={onConfigureView}
+          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <SettingsIcon className="size-3.5" />
+          {t("configureView")}
+        </button>
+      ) : null}
     </div>
   );
 }

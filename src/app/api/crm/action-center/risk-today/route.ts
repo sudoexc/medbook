@@ -251,7 +251,8 @@ export const GET = createApiListHandler(
       if (!apptId) continue;
       // Anything resolved today with a recorded outcome (DONE via confirm/
       // cancel/reschedule, or SNOOZED via callback/return/no-answer) is part of
-      // the «Обработано сегодня» trail — one row per appointment, latest wins.
+      // the «Обработано сегодня» trail — one row per appointment, latest wins,
+      // and only for today's visits (`handledOnToday` below).
       const resolvedToday =
         a.outcome != null &&
         ((a.doneAt && a.doneAt >= dayStart) ||
@@ -405,22 +406,46 @@ export const GET = createApiListHandler(
 
     // Resolve names for the «Обработано сегодня» trail. Handled appointments
     // may already be CANCELLED (refused) and thus absent from `appts`, so we
-    // fetch patient names by id; resolver names come from one User batch.
+    // fetch patient names (and visit days) by id; resolver names come from
+    // one User batch.
     const apptNameById = new Map(
       appts.map((a) => [a.id, a.patient.fullName]),
     );
+    // Every row of `appts` is on today's clinic day.
+    const apptDateById = new Map(appts.map((a) => [a.id, a.date]));
     const missingApptIds = handledRaw
       .map((h) => h.appointmentId)
       .filter((aid) => !apptNameById.has(aid));
     if (missingApptIds.length > 0) {
       const extra = await prisma.appointment.findMany({
         where: { id: { in: missingApptIds } },
-        select: { id: true, patient: { select: { fullName: true } } },
+        select: { id: true, date: true, patient: { select: { fullName: true } } },
       });
-      for (const e of extra) apptNameById.set(e.id, e.patient.fullName);
+      for (const e of extra) {
+        apptNameById.set(e.id, e.patient.fullName);
+        apptDateById.set(e.id, e.date);
+      }
     }
+    // The trail is today's list worked through: outcomes on visits of
+    // today's clinic day only (audit AC-22). A SNOOZED row has no outcome
+    // timestamp, and the engine rewrites it every 15 minutes, so its
+    // `updatedAt` is always today: «Не дозвонился» on a visit since moved to
+    // another day came back in «Обработано сегодня» every day, under the
+    // name of whoever called, and inflated «Обработано N из M». The upsert
+    // must keep touching the row (`closedRowReopens` reads that touch as
+    // the signal still being there), so the visit's day decides here. A
+    // «Перенести» is the exception: the move took the visit off today, and
+    // it can only be recorded on a row of today's list (the DONE stamp
+    // `resolvedToday` saw is from today).
+    const handledOnToday = handledRaw.filter((h) => {
+      if (h.outcome === "RESCHEDULED") return true;
+      const at = apptDateById.get(h.appointmentId);
+      return at !== undefined && at >= dayStart && at < dayEnd;
+    });
     const resolverIds = [
-      ...new Set(handledRaw.map((h) => h.resolvedById).filter((v): v is string => !!v)),
+      ...new Set(
+        handledOnToday.map((h) => h.resolvedById).filter((v): v is string => !!v),
+      ),
     ];
     const resolverNameById = new Map<string, string>();
     if (resolverIds.length > 0) {
@@ -432,7 +457,7 @@ export const GET = createApiListHandler(
     }
     // Latest outcome per appointment (a row may have been re-touched).
     const handledByAppt = new Map<string, HandledRow>();
-    for (const h of handledRaw) {
+    for (const h of handledOnToday) {
       const existing = handledByAppt.get(h.appointmentId);
       if (existing && new Date(existing.handledAt) >= h.handledAt) continue;
       handledByAppt.set(h.appointmentId, {

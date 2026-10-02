@@ -28,11 +28,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { runUnscoped } from "@/lib/tenant-context";
-import {
-  DEFAULT_FLAGS,
-  parsePlanFeatures,
-  type FeatureFlags,
-} from "@/lib/feature-flags";
+import { effectiveFlags, type FeatureFlags } from "@/lib/feature-flags";
 
 export async function getFeatureFlags(
   clinicId: string
@@ -46,15 +42,8 @@ export async function getFeatureFlags(
       }),
   );
 
-  if (!sub) return { ...DEFAULT_FLAGS };
-
-  switch (sub.status) {
-    case "TRIAL":
-    case "ACTIVE":
-    case "PAST_DUE":
-      return parsePlanFeatures(sub.plan.features);
-    case "CANCELLED":
-    default:
-      return { ...DEFAULT_FLAGS };
-  }
+  // The status rule is shared with the platform billing page (audit G5-14).
+  return effectiveFlags(
+    sub ? { status: sub.status, planFeatures: sub.plan.features } : null,
+  );
 }

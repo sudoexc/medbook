@@ -19,14 +19,9 @@ import { ScheduleHeatmapClient } from "./_components/schedule-heatmap-client";
  *
  * ADMIN-only.
  */
-export default async function ScheduleHeatmapPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
-  const { locale } = await params;
+export default async function ScheduleHeatmapPage() {
   const session = await auth();
-  if (!session?.user) redirect(`/${locale}/login`);
+  if (!session?.user) redirect("/login");
   if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
     notFound();
   }

@@ -9,6 +9,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
 import { readTgBotToken } from "@/server/crypto/secret-fields";
+import { telegramApiBase } from "@/server/telegram/api-base";
 
 type TgWebhookInfo = {
   url?: string;
@@ -54,7 +55,7 @@ export const GET = createApiListHandler(
       });
     }
     try {
-      const apiBase = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
+      const apiBase = telegramApiBase();
       const url = `${apiBase}/bot${botToken}/getWebhookInfo`;
       const resp = await fetch(url, { method: "GET" });
       const json = (await resp.json().catch(() => null)) as

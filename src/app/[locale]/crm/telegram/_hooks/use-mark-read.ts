@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { shellSummaryKey } from "@/hooks/use-shell-summary";
+
 import {
   invalidateConversationCaches,
   patchConversationCaches,
@@ -38,7 +40,10 @@ export function useMarkConversationRead() {
       inFlight.current.delete(conversationId);
       invalidateConversationCaches(qc);
       void qc.invalidateQueries({ queryKey: ["reception", "conversations"] });
-      void qc.invalidateQueries({ queryKey: ["shell-summary"] });
+      // The sidebar badge reads `shellSummaryKey` (["crm", "shell-summary"]);
+      // a bare ["shell-summary"] matched nothing, so the badge kept its old
+      // count until the next refetch (audit AN-32).
+      void qc.invalidateQueries({ queryKey: shellSummaryKey });
     },
   });
 }

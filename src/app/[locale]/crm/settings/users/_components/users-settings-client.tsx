@@ -75,6 +75,31 @@ const ROLES: Role[] = [
   "CALL_OPERATOR",
 ];
 
+/**
+ * Users API refusals that have their own wording (audit ST-18). The message
+ * is a bare code such as "conflict", so the reason is what to match on; one
+ * map serves every dialog, since a reason means the same wherever it comes
+ * from (the edit dialog showed "conflict" for email_taken and last_admin,
+ * the delete dialog for last_admin and cannot_deactivate_self).
+ */
+const USER_ERROR_KEYS: Record<string, string> = {
+  email_taken: "users.emailTakenError",
+  email_taken_inactive: "users.emailTakenInactiveError",
+  doctor_taken: "users.doctorTakenError",
+  doctor_id_required: "users.doctorRequiredError",
+  cannot_deactivate_self: "users.cannotDeactivateSelf",
+  last_admin: "users.lastAdminError",
+};
+
+function useUserErrorToast() {
+  const t = useTranslations("settings");
+  return (e: Error) => {
+    const reason = e instanceof SettingsApiError ? e.reason : undefined;
+    const key = reason ? USER_ERROR_KEYS[reason] : undefined;
+    toast.error(key ? t(key) : e.message);
+  };
+}
+
 export function UsersSettingsClient() {
   const t = useTranslations("settings");
   const qc = useQueryClient();
@@ -418,6 +443,7 @@ function CreateUserDialog({
   onCreated: () => void;
 }) {
   const t = useTranslations("settings");
+  const showError = useUserErrorToast();
   const [form, setForm] = React.useState<{
     email: string;
     name: string;
@@ -499,16 +525,7 @@ function CreateUserDialog({
       reset();
       onOpenChange(false);
     },
-    onError: (e: Error) => {
-      const reason = e instanceof SettingsApiError ? e.reason : undefined;
-      if (reason === "email_taken_inactive") {
-        toast.error(t("users.emailTakenInactiveError"));
-      } else if (reason === "email_taken") {
-        toast.error(t("users.emailTakenError"));
-      } else if (reason === "doctor_taken") {
-        toast.error(t("users.doctorTakenError"));
-      } else toast.error(e.message);
-    },
+    onError: showError,
   });
 
   return (
@@ -739,6 +756,7 @@ function EditUserDialog({
   onSaved: () => void;
 }) {
   const t = useTranslations("settings");
+  const showError = useUserErrorToast();
   const [form, setForm] = React.useState<{
     name: string;
     email: string;
@@ -797,15 +815,7 @@ function EditUserDialog({
       toast.success(t("common.saved"));
       onSaved();
     },
-    onError: (e: Error) => {
-      const reason = e instanceof SettingsApiError ? e.reason : undefined;
-      if (reason === "doctor_taken") toast.error(t("users.doctorTakenError"));
-      else if (reason === "doctor_id_required") {
-        toast.error(t("users.doctorRequiredError"));
-      } else if (reason === "cannot_deactivate_self") {
-        toast.error(t("users.cannotDeactivateSelf"));
-      } else toast.error(e.message);
-    },
+    onError: showError,
   });
 
   // Deactivation is destructive: an inactive user can no longer log in, and
@@ -1001,6 +1011,7 @@ function DeleteUserDialog({
   onDeleted: () => void;
 }) {
   const t = useTranslations("settings");
+  const showError = useUserErrorToast();
   const mut = useMutation({
     mutationFn: () =>
       settingsFetch<{ id: string }>(`/api/crm/users/${row.id}`, {
@@ -1010,7 +1021,7 @@ function DeleteUserDialog({
       toast.success(t("users.deactivated"));
       onDeleted();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: showError,
   });
   return (
     <AlertDialog open onOpenChange={(v: boolean) => !v && onClose()}>
@@ -1042,6 +1053,7 @@ function ResetPasswordDialog({
   onClose: () => void;
 }) {
   const t = useTranslations("settings");
+  const showError = useUserErrorToast();
   const [password, setPassword] = React.useState("");
   const [generated, setGenerated] = React.useState<string | null>(null);
   const mut = useMutation({
@@ -1062,7 +1074,7 @@ function ResetPasswordDialog({
         onClose();
       }
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: showError,
   });
 
   // A typed-but-too-short password used to be silently swapped for a random

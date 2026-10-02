@@ -58,7 +58,10 @@ export const CreateDoctorSchema = z.object({
   nameUz: doctorDisplayText({ min: 1, max: 200 }),
   specializationRu: doctorDisplayText({ min: 1, max: 200 }),
   specializationUz: doctorDisplayText({ min: 1, max: 200 }),
-  userId: z.string().optional().nullable(),
+  // No `userId` (audit DR-13): taken as is, it tied the doctor to any login,
+  // another clinic's admin included, and «Удалить навсегда» then switched
+  // that login off. The link is made by /api/crm/users, which checks the
+  // user's clinic and role; an old client sending it is stripped by zod.
   photoUrl: z.string().url().optional().nullable(),
   bioRu: z.string().max(5000).optional().nullable(),
   bioUz: z.string().max(5000).optional().nullable(),
@@ -117,10 +120,16 @@ export const QueryDoctorSchema = z.object({
 // `cabinetId` is no longer accepted on schedule entries — the cabinet is
 // derived from `doctor.cabinetId` and is the same for every shift. Older
 // clients that still send the field are ignored (we strip it server-side).
+// Wall-clock time 00:00 to 23:59 (audit DR-18): `\d{2}:\d{2}` stored «99:99»
+// as a working window that no engine can place on a day.
+const ScheduleTimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "invalid_time");
+
 export const ScheduleEntrySchema = z.object({
   weekday: z.number().int().min(0).max(6),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  startTime: ScheduleTimeSchema,
+  endTime: ScheduleTimeSchema,
   validFrom: z.coerce.date().optional().nullable(),
   validTo: z.coerce.date().optional().nullable(),
   isActive: z.boolean().optional().default(true),

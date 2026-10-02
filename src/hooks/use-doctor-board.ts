@@ -73,6 +73,7 @@ import {
   BOARD_REFETCH_DEBOUNCE_MS,
   BOARD_REFETCH_EVENTS,
 } from "@/hooks/use-queue-board";
+import { eventDoctorIds } from "@/lib/appointments/event-doctors";
 import { openBoardEventSource } from "@/lib/board-event-source";
 import {
   parseQueueCalledPayload,
@@ -89,6 +90,20 @@ export const DOCTOR_TV_SSE_REOPEN_MS = 5_000;
 /** The doctor TV's event stream URL, carrying its own token as `screen`. */
 export function doctorTvEventsUrl(slug: string, token: string): string {
   return `/api/c/${encodeURIComponent(slug)}/queue/events?screen=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Is a stream event about this door's doctor? Events naming no doctor can't
+ * be ruled out; otherwise the doctor must be `doctorId` or, for a visit
+ * moved to a colleague, `previousDoctorId` (audit G3-12).
+ */
+export function boardEventConcerns(
+  payload: unknown,
+  doctorId: string | null,
+): boolean {
+  const ids = eventDoctorIds(payload);
+  if (ids.length === 0) return true;
+  return doctorId !== null && ids.includes(doctorId);
 }
 
 export function useDoctorBoard(token: string) {
@@ -160,8 +175,10 @@ export function useDoctorBoard(token: string) {
       if (!type || !BOARD_REFETCH_EVENTS.has(type)) return;
       const p = parsed.payload ?? {};
       const evDoctorId = typeof p.doctorId === "string" ? p.doctorId : null;
-      // Foreign doctor's signal: not ours, skip entirely.
-      if (evDoctorId && evDoctorId !== doctorIdRef.current) return;
+      // Foreign doctor's signal: not ours, skip entirely. A visit moved
+      // away from this doctor names him as `previousDoctorId` and is ours
+      // (G3-12): the patient must leave this door's queue now.
+      if (!boardEventConcerns(p, doctorIdRef.current)) return;
       if (type === "queue.called" && evDoctorId === doctorIdRef.current) {
         const c = parseQueueCalledPayload(p);
         callSeq.current += 1;

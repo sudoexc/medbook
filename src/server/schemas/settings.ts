@@ -7,6 +7,17 @@ import { z } from "zod";
 const CurrencyEnum = z.enum(["UZS", "USD"]);
 
 /**
+ * An optional email that the form may send blank. The settings form puts an
+ * emptied field on the wire as "", which `z.string().email()` refuses, so a
+ * clinic email once set could never be removed (audit ST-18). Blank means
+ * "no email" and is stored as null.
+ */
+const ClearableEmail = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+  z.string().trim().email().nullable(),
+);
+
+/**
  * Clinic self-edit (tenant admin). Slug and id are immutable here.
  */
 export const UpdateClinicSettingsSchema = z.object({
@@ -15,7 +26,7 @@ export const UpdateClinicSettingsSchema = z.object({
   addressRu: z.string().max(500).optional().nullable(),
   addressUz: z.string().max(500).optional().nullable(),
   phone: z.string().max(40).optional().nullable(),
-  email: z.string().email().optional().nullable(),
+  email: ClearableEmail.optional(),
   logoUrl: z.string().url().optional().nullable(),
   brandColor: z
     .string()

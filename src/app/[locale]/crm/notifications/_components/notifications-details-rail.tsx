@@ -22,6 +22,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { PhoneText } from "@/components/atoms/phone-text";
+import { notificationBodyText } from "@/server/notifications/telegram-html";
 
 import type { QueueRow, StatsResponse } from "../_hooks/use-queue";
 import {
@@ -60,6 +61,7 @@ export function NotificationsDetailsRail({
   stats: StatsResponse | undefined;
 }) {
   const t = useTranslations("notifications.details");
+  const tChannel = useTranslations("notifications.types.labels");
   const locale = useLocale();
   const retry = useRetrySend();
   const cancel = useCancelSend();
@@ -159,7 +161,7 @@ export function NotificationsDetailsRail({
         <header className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Icon className="size-4 text-primary" aria-hidden />
-            <span className="text-sm font-semibold">{row.channel}</span>
+            <span className="text-sm font-semibold">{tChannel(row.channel)}</span>
           </div>
           <Badge variant={STATUS_VARIANT[row.status]}>
             {t(`status.${row.status}`)}
@@ -173,8 +175,10 @@ export function NotificationsDetailsRail({
             </span>
           </div>
         ) : null}
-        <div className="rounded-md bg-muted/40 p-3 text-[12px] leading-snug text-foreground">
-          {row.body}
+        {/* What the patient read (audit G6-25), not the stored HTML with
+            «G&#39;ulom» and «&quot;». */}
+        <div className="whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[12px] leading-snug text-foreground">
+          {notificationBodyText(row.body)}
         </div>
         {row.failedReason ? (
           <p className="mt-2 rounded-md bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive">

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Loader2Icon,
   UsersIcon,
@@ -12,10 +12,13 @@ import {
 
 import { cn } from "@/lib/utils";
 
+import { renderBroadcastBody } from "@/server/campaigns/broadcast-body";
+import { toTelegramHtml } from "@/server/notifications/telegram-html";
+
 import { MessageBubble } from "./message-bubble";
 import type { InboxMessage } from "../_hooks/types";
 import type { AudiencePreview } from "../_hooks/use-broadcast";
-import { fillPlaceholders, firstNameOf } from "../_lib/placeholders";
+import { useClinicInfo } from "../_hooks/use-conversation-meta";
 
 function StatCard({
   icon,
@@ -61,21 +64,39 @@ export function BroadcastPreview({
   resolvable: boolean;
 }) {
   const t = useTranslations("tgInbox.broadcast");
+  const locale = useLocale();
+  const clinicQ = useClinicInfo(true);
 
-  const sampleName = preview?.sample[0]?.fullName ?? t("preview.sampleName");
-  const filled = fillPlaceholders(body, {
-    firstName: firstNameOf(sampleName) || t("preview.sampleName"),
-    name: sampleName,
-    clinic: t("preview.clinicName"),
-    phone: t("preview.clinicPhone"),
-    address: t("preview.clinicAddress"),
-  });
+  // What the first recipient gets (audit G6-21): the launcher's own render
+  // with the clinic's real name, phone and address in his language, then
+  // the sender's HTML pass. A blank clinic field shows blank, as it will
+  // arrive.
+  const sample = preview?.sample[0];
+  const lang = sample?.preferredLang ?? (locale === "uz" ? "UZ" : "RU");
+  const clinic = clinicQ.data ?? {
+    nameRu: "",
+    nameUz: "",
+    phone: null,
+    addressRu: null,
+    addressUz: null,
+  };
+  const hasText = body.trim().length > 0;
+  const html = hasText
+    ? toTelegramHtml(
+        renderBroadcastBody(
+          body,
+          { fullName: sample?.fullName ?? t("preview.sampleName") },
+          clinic,
+          lang,
+        ),
+      )
+    : undefined;
 
   const previewMessage: InboxMessage = {
     id: "broadcast-preview",
     conversationId: "broadcast-preview",
     direction: "OUT",
-    body: filled.trim().length > 0 ? filled : t("preview.empty"),
+    body: hasText ? body : t("preview.empty"),
     attachments: null,
     buttons: null,
     senderId: "broadcast-op",
@@ -141,7 +162,7 @@ export function BroadcastPreview({
 
       {/* Live message bubble — rendered on the chat background tint */}
       <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border/60 bg-background p-3">
-        <MessageBubble message={previewMessage} />
+        <MessageBubble message={previewMessage} bodyHtml={html} />
       </div>
     </div>
   );

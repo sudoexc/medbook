@@ -192,6 +192,7 @@ export function TelegramPageClient({
             filters={filters}
             setFilters={setFilters}
             isLoading={listQuery.isLoading}
+            total={listQuery.data?.pages[0]?.total}
             hasNextPage={Boolean(listQuery.hasNextPage)}
             onFetchNext={() => {
               if (listQuery.hasNextPage && !listQuery.isFetchingNextPage) {

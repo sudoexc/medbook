@@ -75,6 +75,8 @@ export type InboxMessage = {
 export type ConversationListResponse = {
   rows: InboxConversation[];
   nextCursor: string | null;
+  /** Threads matching the filters, on the first page only (audit G6-22). */
+  total?: number;
 };
 
 export type MessagesResponse = {

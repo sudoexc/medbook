@@ -64,6 +64,8 @@ vi.mock("@/lib/prisma", () => ({
         state.findManyWhere = where;
         return [];
       }),
+      // «Все N» of the first page (audit G6-22).
+      count: vi.fn(async () => 0),
       findFirst: vi.fn(async (args: { where: Record<string, unknown> }) => {
         state.findFirstWhere = args.where;
         state.findFirstArgs = args;

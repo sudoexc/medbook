@@ -335,7 +335,6 @@ export const ruDict = {
     nameLabel: "ФИО",
     phoneLabel: "Телефон",
     langLabel: "Язык интерфейса",
-    consentLabel: "Согласен получать уведомления",
     saveBtn: "Сохранить",
     saved: "Сохранено",
     preferencesTitle: "Коммуникации",

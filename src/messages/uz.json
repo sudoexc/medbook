@@ -1153,6 +1153,9 @@
       "langUz": "O'zbekcha",
       "langRu": "Ruscha",
       "consentMarketing": "Reklama xabarlariga rozilik",
+      "marketingBroadcasts": "Reklama xabarlari",
+      "marketingReceives": "Oladi",
+      "marketingOptedOut": "Obunadan chiqqan",
       "tags": "Teglar",
       "notes": "Izohlar",
       "notesEmpty": "Izohlar hali yo'q",
@@ -3259,6 +3262,13 @@
         "sent": "Yuborildi",
         "total": "Jami",
         "startedAt": "Boshlangan"
+      },
+      "status": {
+        "DRAFT": "Qoralama",
+        "SENDING": "Yuborilmoqda",
+        "DONE": "Yakunlandi",
+        "FAILED": "Xato",
+        "CANCELLED": "Bekor qilindi"
       }
     },
     "campaignsNew": {
@@ -3412,7 +3422,8 @@
       },
       "message": {
         "label": "Xabar",
-        "placeholder": "Xabar matni. Quyidagi o'rin almashtirishlardan foydalanishingiz mumkin."
+        "placeholder": "Xabar matni. Quyidagi o'rin almashtirishlardan foydalanishingiz mumkin.",
+        "unknownPlaceholder": "{key} o'rin almashtirishi to'ldirilmaydi: bemorlar uning o'rnida bo'sh joy ko'radi. Uni olib tashlang yoki ro'yxatdan tanlang."
       },
       "schedule": {
         "label": "Yuborish vaqti",
@@ -3507,6 +3518,10 @@
         "cold": "Sovuq"
       },
       "emptyTemp": "Bu segmentda suhbatlar yo'q",
+      "tempLoadedHint": "Yuklangan suhbatlar sanaldi. Qolganlarini yuklash uchun ro'yxatni aylantiring.",
+      "patientScope": "Bemor: {name}",
+      "patientScopeUnnamed": "Bitta bemorning suhbatlari",
+      "patientScopeClear": "Barcha bemorlarning suhbatlarini ko'rsatish",
       "mode": {
         "all": "Hammasi",
         "bot": "Bot",

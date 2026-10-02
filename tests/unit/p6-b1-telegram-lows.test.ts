@@ -88,6 +88,8 @@ vi.mock("@/lib/prisma", () => ({
         h.convWheres.push(where);
         return [];
       }),
+      // «Все N» of the first page (audit G6-22).
+      count: vi.fn(async () => 0),
       updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         h.updates.push(data);
         return { count: 1 };
@@ -249,7 +251,9 @@ describe("TG-29: the given name", () => {
       "src/server/workers/medication-reminder.ts",
       "src/server/workers/medication-reminder-followup.ts",
       "src/server/revenue/reactivation.ts",
-      "src/server/campaigns/launch.ts",
+      // The launcher's names come from here since G6-21 (shared with the
+      // composer's preview).
+      "src/server/campaigns/broadcast-body.ts",
     ]) {
       const code = read(file);
       expect(code, file).toMatch(/givenNameOf\(/);

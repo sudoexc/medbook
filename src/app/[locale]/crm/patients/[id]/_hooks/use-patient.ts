@@ -75,6 +75,8 @@ export type Patient = {
   nextVisitAt: string | null;
   lastContactedAt: string | null;
   consentMarketing: boolean;
+  /** Opted out of marketing: the flag the broadcasts obey (audit G6-23). */
+  marketingOptOut?: boolean;
   createdAt: string;
   updatedAt: string;
   appointments?: PatientAppointmentShort[];

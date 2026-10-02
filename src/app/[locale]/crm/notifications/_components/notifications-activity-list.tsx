@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { EmptyState } from "@/components/atoms/empty-state";
+import { notificationBodyText } from "@/server/notifications/telegram-html";
 
 import type { QueueRow } from "../_hooks/use-queue";
 import type { QueueStatus, TemplateChannel } from "../_hooks/types";
@@ -52,6 +53,7 @@ export function NotificationsActivityList({
   onSelect: (id: string) => void;
 }) {
   const t = useTranslations("notifications.activity");
+  const tChannel = useTranslations("notifications.types.labels");
   const locale = useLocale();
 
   if (isLoading) {
@@ -117,7 +119,7 @@ export function NotificationsActivityList({
                 </div>
                 <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Icon className="size-3" aria-hidden />
-                  <span>{row.channel}</span>
+                  <span>{tChannel(row.channel)}</span>
                   <span aria-hidden>·</span>
                   <span className="tabular-nums">{fmt.format(new Date(when))}</span>
                   {row.template ? (
@@ -131,8 +133,10 @@ export function NotificationsActivityList({
                     </>
                   ) : null}
                 </div>
+                {/* As the patient reads it (audit G6-25): the stored body
+                    holds «G&#39;ulom» from the template engine. */}
                 <div className="mt-1 line-clamp-1 text-[12px] text-muted-foreground">
-                  {row.body}
+                  {notificationBodyText(row.body)}
                 </div>
               </div>
             </button>

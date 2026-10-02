@@ -156,3 +156,46 @@ export function toTelegramHtml(input: string): string {
   }
   return out;
 }
+
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+
+/**
+ * Telegram HTML (what the notification worker sends) to the plain text the
+ * chat bubble shows: line breaks kept, tags dropped, entities decoded.
+ */
+export function telegramHtmlToText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code: string) => {
+      if (code[0] === "#") {
+        const n =
+          code[1] === "x" || code[1] === "X"
+            ? parseInt(code.slice(2), 16)
+            : parseInt(code.slice(1), 10);
+        // Past U+10FFFF `fromCodePoint` throws: keep such an entity as typed.
+        return Number.isFinite(n) && n <= 0x10ffff ? String.fromCodePoint(n) : whole;
+      }
+      return ENTITIES[code.toLowerCase()] ?? whole;
+    })
+    .trim();
+}
+
+/**
+ * A stored notification body (`render()` output: substituted values are
+ * HTML-escaped, the typed text is not) as the plain text the patient reads
+ * in Telegram (audit G6-25). Staff screens printed it as is, so «G'ulom»
+ * showed as «G&#39;ulom». The same HTML pass as the sender first, so a typed
+ * «<14 лет» survives and only real formatting tags are dropped.
+ */
+export function notificationBodyText(body: string | null | undefined): string {
+  if (!body) return "";
+  return telegramHtmlToText(toTelegramHtml(body));
+}

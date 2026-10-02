@@ -26,8 +26,9 @@ import type {
  *  - conv         — selected conversation id (managed by page client); `c`
  *                   is read as an alias (the reception widget used it,
  *                   audit G6-07)
- *  - patientId    — scope deep-link from appointments table / patient page
- *                   (no UI chip; persists in URL so back-nav stays in scope)
+ *  - patientId    — scope deep-link from appointments table / patient page;
+ *                   shown as a chip that clears it, and a tab or a search
+ *                   lifts it (audit G6-20)
  *
  * Polling is 30s (the active chat polls faster in its own hook). Once
  * SSE `tg.message.new` lands, these intervals go away.

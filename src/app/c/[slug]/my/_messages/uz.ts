@@ -335,7 +335,6 @@ export const uzDict = {
     nameLabel: "F.I.Sh",
     phoneLabel: "Telefon",
     langLabel: "Interfeys tili",
-    consentLabel: "Bildirishnomalarga roziman",
     saveBtn: "Saqlash",
     saved: "Saqlandi",
     preferencesTitle: "Aloqa sozlamalari",

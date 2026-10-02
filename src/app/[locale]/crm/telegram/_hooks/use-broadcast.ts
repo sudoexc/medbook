@@ -120,6 +120,8 @@ export function useSendBroadcast() {
 
 export type CampaignSendStatus =
   | "QUEUED"
+  // A worker took the row and is talking to Telegram (D-1 claim).
+  | "SENDING"
   | "SENT"
   | "DELIVERED"
   | "READ"
@@ -137,6 +139,29 @@ export type BroadcastProgress = {
   sendsByStatus: Partial<Record<CampaignSendStatus, number>>;
 };
 
+/**
+ * Sends still on their way: QUEUED and the ones a worker already took
+ * (SENDING). Counting only QUEUED showed «Рассылка завершена 490/500» and
+ * stopped polling while the last sends were in flight (audit G6-19); the
+ * server finalises the campaign on the same pair (`record-delivery.ts`).
+ */
+export function pendingSendCount(
+  sendsByStatus: Partial<Record<CampaignSendStatus, number>>,
+): number {
+  return (sendsByStatus.QUEUED ?? 0) + (sendsByStatus.SENDING ?? 0);
+}
+
+/** Finished: the server closed the campaign, or nothing is left to send. */
+export function isBroadcastFinished(progress: BroadcastProgress): boolean {
+  const status = progress.campaign.status;
+  if (status === "DONE" || status === "CANCELLED") return true;
+  const total = Object.values(progress.sendsByStatus).reduce(
+    (sum, n) => sum + (n ?? 0),
+    0,
+  );
+  return total > 0 && pendingSendCount(progress.sendsByStatus) === 0;
+}
+
 export function useBroadcastProgress(campaignId: string | null) {
   return useQuery<BroadcastProgress>({
     queryKey: ["broadcast", "progress", campaignId],
@@ -149,12 +174,11 @@ export function useBroadcastProgress(campaignId: string | null) {
       if (!res.ok) throw new Error(`Progress failed: ${res.status}`);
       return (await res.json()) as BroadcastProgress;
     },
-    // Poll while sends are still QUEUED; stop once the queue drains.
+    // Poll until every send landed (QUEUED and SENDING drained).
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return 2000;
-      const pending = data.sendsByStatus.QUEUED ?? 0;
-      return pending > 0 ? 2000 : false;
+      return isBroadcastFinished(data) ? false : 2000;
     },
   });
 }

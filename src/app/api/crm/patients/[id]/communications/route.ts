@@ -32,6 +32,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
+import { notificationBodyText } from "@/server/notifications/telegram-html";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -219,7 +220,9 @@ export const GET = createApiListHandler(
         channel: s.channel,
         direction: "OUT",
         title: `Уведомление (${s.status})`,
-        body: s.body,
+        // As the patient read it: the stored body holds the template
+        // engine's «G&#39;ulom» (audit G6-25).
+        body: notificationBodyText(s.body),
         meta: {
           status: s.status,
           scheduledFor: s.scheduledFor,

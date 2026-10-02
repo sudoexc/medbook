@@ -22,6 +22,11 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
+import { telegramHtmlToText } from "@/server/notifications/telegram-html";
+
+// Lives with the HTML pass now (client-safe, audit G6-25); re-exported for
+// the callers that read it from here.
+export { telegramHtmlToText };
 
 export type MessageOrigin = "broadcast" | "notification";
 
@@ -36,36 +41,6 @@ export type NotificationMirrorInput = {
   campaignId: string | null;
   sentAt: Date;
 };
-
-const ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-};
-
-/**
- * Telegram HTML (what the notification worker sends) to the plain text the
- * chat bubble shows: line breaks kept, tags dropped, entities decoded.
- */
-export function telegramHtmlToText(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code: string) => {
-      if (code[0] === "#") {
-        const n =
-          code[1] === "x" || code[1] === "X"
-            ? parseInt(code.slice(2), 16)
-            : parseInt(code.slice(1), 10);
-        return Number.isFinite(n) ? String.fromCodePoint(n) : whole;
-      }
-      return ENTITIES[code.toLowerCase()] ?? whole;
-    })
-    .trim();
-}
 
 function previewOf(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 500);

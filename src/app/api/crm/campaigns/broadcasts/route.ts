@@ -5,7 +5,8 @@
  * Only inline-body broadcasts (`body != null`) are listed — template-backed
  * dormant campaigns live in the reactivation wizard. The funnel is computed
  * with two `groupBy` passes over the page's campaign ids (no N+1):
- *   1. status histogram → queued / sent / delivered / read / failed
+ *   1. status histogram → queued (QUEUED + SENDING) / sent / delivered /
+ *      read / failed
  *   2. FAILED rows whose `failedReason` looks like a block → `blocked`
  *      (a subset peeled out of `failed` so the two sum cleanly).
  *
@@ -95,7 +96,11 @@ export const GET = createApiListHandler(
       const n = row._count._all;
       f.total += n;
       switch (row.status) {
+        // `queued` is everything not finished yet: a send a worker already
+        // took (SENDING) too, or the history showed «Завершена» with the
+        // last messages still in flight (audit G6-19).
         case "QUEUED":
+        case "SENDING":
           f.queued += n;
           break;
         case "SENT":

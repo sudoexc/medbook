@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
 import { readTgBotToken } from "@/server/crypto/secret-fields";
+import { telegramApiBase } from "@/server/telegram/api-base";
 
 const Schema = z.object({
   baseUrl: z
@@ -48,7 +49,7 @@ export const POST = createApiHandler(
       return ok({ ok: true, url: webhookUrl, stub: true });
     }
 
-    const apiBase = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
+    const apiBase = telegramApiBase();
     const url = `${apiBase}/bot${botToken}/setWebhook`;
     const tgBody = {
       url: webhookUrl,

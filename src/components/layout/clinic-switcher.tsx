@@ -27,6 +27,10 @@ import {
   ChevronDownIcon,
 } from "lucide-react"
 
+import {
+  ClinicEntryDialog,
+  type ClinicEntryTarget,
+} from "@/components/layout/clinic-entry-dialog"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -36,7 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { askClinicEntry } from "@/lib/clinic-entry-prompt"
+import { postClinicEntry, type ClinicEntry } from "@/lib/clinic-entry"
 import { cn } from "@/lib/utils"
 
 type ClinicOption = {
@@ -72,6 +76,9 @@ export function ClinicSwitcher({
   const [loading, setLoading] = React.useState(false)
   const [switching, setSwitching] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [entering, setEntering] = React.useState<ClinicEntryTarget | null>(
+    null,
+  )
 
   const isSuperAdmin = userRole === "SUPER_ADMIN"
 
@@ -101,41 +108,27 @@ export function ClinicSwitcher({
     if (isSuperAdmin) void loadClinics()
   }, [isSuperAdmin, loadClinics])
 
-  // Phase 19 W4 — entering a clinic now requires a reason (≥4 chars) and a
-  // mode pick. Collected via window.prompt + window.confirm (SUPER_ADMIN-only
-  // surface, rarely used); anything but an explicit OK on the mode question
-  // enters read-only (audit CM-21, see askClinicEntry).
-  const switchTo = React.useCallback(async (clinicId: string) => {
-    const answer = askClinicEntry(window)
-    if (answer.kind === "cancelled") return
-    if (answer.kind === "invalid") {
-      setError(answer.message)
-      return
-    }
-    const { reason: trimmed, mode } = answer
-    setSwitching(clinicId)
-    setError(null)
-    try {
-      const res = await fetch("/api/platform/session/switch-clinic", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clinicId, reason: trimmed, mode }),
-      })
-      if (!res.ok) {
-        setError(`Switch failed: HTTP ${res.status}`)
+  // Phase 19 W4 — entering a clinic requires a reason (≥4 chars) and a mode.
+  // Both are asked in ClinicEntryDialog with read-only preselected; Cancel
+  // sends nothing (audit CM-21). A failed request is shown in the dialog,
+  // which stays open for a retry.
+  const switchTo = React.useCallback(
+    async (clinicId: string, entry: ClinicEntry) => {
+      setSwitching(clinicId)
+      try {
+        await postClinicEntry(clinicId, entry)
+      } catch (e) {
         setSwitching(null)
-        return
+        throw e
       }
       // Hard reload so NextAuth re-issues the JWT with the new clinic claim.
       // router.refresh() is not enough — the layout re-renders against the
       // already-decoded token, and inconsistent caches can leave the topbar
       // showing the previous clinic until the next full navigation.
       window.location.reload()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error")
-      setSwitching(null)
-    }
-  }, [])
+    },
+    [],
+  )
 
   const exitToPlatform = React.useCallback(async () => {
     setSwitching("__exit__")
@@ -174,85 +167,94 @@ export function ClinicSwitcher({
   const triggerLabel = current?.nameRu ?? fallbackLabel
 
   return (
-    <DropdownMenu onOpenChange={(open) => open && void loadClinics()}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="default"
-          className={cn(
-            "h-9 min-w-[180px] justify-start gap-2 text-foreground",
-            className,
+    <>
+      <DropdownMenu onOpenChange={(open) => open && void loadClinics()}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="default"
+            className={cn(
+              "h-9 min-w-[180px] justify-start gap-2 text-foreground",
+              className,
+            )}
+          >
+            <BuildingIcon className="size-4 text-muted-foreground" />
+            <span className="flex-1 truncate text-left text-sm">
+              {triggerLabel}
+            </span>
+            <ChevronDownIcon className="size-4 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel className="text-xs text-muted-foreground">
+            Войти в клинику
+          </DropdownMenuLabel>
+
+          {loading && <DropdownMenuItem disabled>Загрузка…</DropdownMenuItem>}
+
+          {!loading && error && (
+            <DropdownMenuItem disabled className="text-destructive">
+              {error}
+            </DropdownMenuItem>
           )}
-        >
-          <BuildingIcon className="size-4 text-muted-foreground" />
-          <span className="flex-1 truncate text-left text-sm">
-            {triggerLabel}
-          </span>
-          <ChevronDownIcon className="size-4 text-muted-foreground" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Войти в клинику
-        </DropdownMenuLabel>
 
-        {loading && <DropdownMenuItem disabled>Загрузка…</DropdownMenuItem>}
+          {!loading && !error && clinics && clinics.length === 0 && (
+            <DropdownMenuItem disabled>Нет доступных клиник</DropdownMenuItem>
+          )}
 
-        {!loading && error && (
-          <DropdownMenuItem disabled className="text-destructive">
-            {error}
+          {!loading &&
+            !error &&
+            clinics?.map((c) => {
+              const isActive = c.id === currentClinicId
+              const isSwitching = switching === c.id
+              return (
+                <DropdownMenuItem
+                  key={c.id}
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (!isActive && !isSwitching) {
+                      setEntering({ id: c.id, name: c.nameRu })
+                    }
+                  }}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm text-foreground">
+                      {c.nameRu}
+                    </span>
+                    <span className="truncate text-[11px] text-muted-foreground">
+                      /{c.slug}
+                    </span>
+                  </span>
+                  {isActive && <CheckIcon className="size-4 text-primary" />}
+                  {isSwitching && (
+                    <span className="text-xs text-muted-foreground">…</span>
+                  )}
+                </DropdownMenuItem>
+              )
+            })}
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault()
+              void exitToPlatform()
+            }}
+            className="flex items-center gap-2 text-sm font-medium text-foreground"
+          >
+            <ArrowLeftIcon className="size-4 text-muted-foreground" />
+            <span>Платформа</span>
+            {switching === "__exit__" && (
+              <span className="ml-auto text-xs text-muted-foreground">…</span>
+            )}
           </DropdownMenuItem>
-        )}
-
-        {!loading && !error && clinics && clinics.length === 0 && (
-          <DropdownMenuItem disabled>Нет доступных клиник</DropdownMenuItem>
-        )}
-
-        {!loading &&
-          !error &&
-          clinics?.map((c) => {
-            const isActive = c.id === currentClinicId
-            const isSwitching = switching === c.id
-            return (
-              <DropdownMenuItem
-                key={c.id}
-                onSelect={(e) => {
-                  e.preventDefault()
-                  if (!isActive && !isSwitching) void switchTo(c.id)
-                }}
-                className="flex items-center justify-between gap-2"
-              >
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm text-foreground">
-                    {c.nameRu}
-                  </span>
-                  <span className="truncate text-[11px] text-muted-foreground">
-                    /{c.slug}
-                  </span>
-                </span>
-                {isActive && <CheckIcon className="size-4 text-primary" />}
-                {isSwitching && (
-                  <span className="text-xs text-muted-foreground">…</span>
-                )}
-              </DropdownMenuItem>
-            )
-          })}
-
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault()
-            void exitToPlatform()
-          }}
-          className="flex items-center gap-2 text-sm font-medium text-foreground"
-        >
-          <ArrowLeftIcon className="size-4 text-muted-foreground" />
-          <span>Платформа</span>
-          {switching === "__exit__" && (
-            <span className="ml-auto text-xs text-muted-foreground">…</span>
-          )}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ClinicEntryDialog
+        target={entering}
+        onCancel={() => setEntering(null)}
+        onEnter={switchTo}
+      />
+    </>
   )
 }

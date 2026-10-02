@@ -1,8 +1,7 @@
 /**
  * P6 lane B3, the CRM chrome (topbar, switchers):
  *
- *   - CM-21: entering a clinic as SUPER_ADMIN writes only on an explicit OK;
- *     Cancel, Esc or a suppressed dialog enter read-only.
+ *   - CM-21: see p6-b3-clinic-entry.test.ts (the entry dialog).
  *   - CM-23: a branch switch drops the TanStack Query cache.
  *   - CM-24: the topbar language switch is saved to the profile, which
  *     sign-in copies back into the cookie.
@@ -14,7 +13,6 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { askClinicEntry } from "@/lib/clinic-entry-prompt";
 import {
   BOOKING_ROLES,
   CRM_SECTION_KEY,
@@ -27,52 +25,6 @@ import { persistUiLocale } from "@/lib/ui-locale-client";
 
 const ROOT = join(__dirname, "..", "..");
 const src = (p: string) => readFileSync(join(ROOT, p), "utf8");
-
-function dialogs(reason: string | null, ok: boolean) {
-  return {
-    prompt: vi.fn<(message: string, defaultValue?: string) => string | null>(() => reason),
-    confirm: vi.fn<(message: string) => boolean>(() => ok),
-  };
-}
-
-describe("CM-21: clinic entry mode", () => {
-  it("Cancel on the mode question enters VIEW_ONLY", () => {
-    expect(askClinicEntry(dialogs("проверка жалобы", false))).toEqual({
-      kind: "enter",
-      reason: "проверка жалобы",
-      mode: "VIEW_ONLY",
-    });
-  });
-
-  it("only an explicit OK enters with WRITE, and the question says so", () => {
-    const d = dialogs("  fix booking  ", true);
-    expect(askClinicEntry(d)).toEqual({ kind: "enter", reason: "fix booking", mode: "WRITE" });
-    expect(d.confirm.mock.calls[0][0]).toMatch(/^OK = WRITE/);
-  });
-
-  it("Cancel on the reason question aborts before the mode question", () => {
-    const d = dialogs(null, true);
-    expect(askClinicEntry(d)).toEqual({ kind: "cancelled" });
-    expect(d.confirm).not.toHaveBeenCalled();
-  });
-
-  it("a reason shorter than 4 characters is refused, no mode asked", () => {
-    const d = dialogs(" ab ", true);
-    expect(askClinicEntry(d).kind).toBe("invalid");
-    expect(d.confirm).not.toHaveBeenCalled();
-  });
-
-  it("both entry points use the shared questions", () => {
-    for (const file of [
-      "src/components/layout/clinic-switcher.tsx",
-      "src/app/admin/clinics/_components/clinics-page-client.tsx",
-    ]) {
-      const s = src(file);
-      expect(s).toContain("askClinicEntry(window)");
-      expect(s).not.toContain("Cancel = WRITE");
-    }
-  });
-});
 
 describe("CM-23: branch switch", () => {
   it("resets the query cache before refreshing the server render", () => {

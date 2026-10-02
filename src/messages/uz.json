@@ -4951,7 +4951,23 @@
       "adminLink": "Admin platform",
       "loading": "Yuklanmoqda…",
       "empty": "Mavjud klinikalar yo'q",
-      "clear": "Override'ni tozalash"
+      "clear": "Override'ni tozalash",
+      "entry": {
+        "title": "«{clinic}» klinikasiga kirish",
+        "description": "Kirish sababi va tanlangan rejim audit jurnaliga yoziladi.",
+        "reasonLabel": "Kirish sababi",
+        "reasonPlaceholder": "Masalan: klinika shikoyatini tekshirish",
+        "reasonTooShort": "Sababni kamida {min} ta belgida yozing",
+        "modeLabel": "Rejim",
+        "viewOnly": "Faqat ko'rish",
+        "viewOnlyHint": "Klinika ma'lumotlari ko'rinadi, lekin hech narsani o'zgartirib bo'lmaydi",
+        "write": "O'zgartirish huquqi bilan",
+        "writeHint": "Klinika ma'lumotlaridagi o'zgarishlar sizning nomingizdan saqlanadi",
+        "cancel": "Bekor qilish",
+        "enter": "Kirish",
+        "entering": "Kirilmoqda…",
+        "failed": "Klinikaga kirib bo'lmadi: {detail}"
+      }
     },
     "clinics": {
       "title": "Klinikalar",

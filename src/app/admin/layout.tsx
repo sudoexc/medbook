@@ -1,5 +1,10 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { NextIntlClientProvider } from "next-intl";
 import type * as React from "react";
+
+import ru from "@/messages/ru.json";
+import uz from "@/messages/uz.json";
 
 import {
   SUPER_ADMIN_ENROL_PATH,
@@ -23,6 +28,11 @@ import { AdminTopbar } from "./_components/admin-topbar";
  *   - SUPER_ADMIN without enrolled 2FA → the enrolment page (audit SEC-08).
  *     Not a lockout: they enrol there and come back. Pages that load data on
  *     the server repeat the check (`adminPageAccess`).
+ *
+ * /admin lives outside the [locale] segment and its pages are plain Russian,
+ * but the shared «enter clinic» dialog (audit CM-21) also runs in the CRM
+ * topbar and reads next-intl. Like /login, the pages get a provider in the
+ * browser's last language with only that namespace on the wire.
  */
 export default async function AdminLayout({
   children,
@@ -58,6 +68,10 @@ export default async function AdminLayout({
     );
   }
 
+  const store = await cookies();
+  const locale = store.get("NEXT_LOCALE")?.value === "uz" ? "uz" : "ru";
+  const entry = (locale === "uz" ? uz : ru).adminPlatform.switcher.entry;
+
   return (
     <QueryProvider>
       {/* Idle timeout counts only real input (audit SEC-06): without the
@@ -71,7 +85,12 @@ export default async function AdminLayout({
             userEmail={access.email}
           />
           <main className="min-h-0 flex-1 overflow-y-auto bg-surface">
-            {children}
+            <NextIntlClientProvider
+              locale={locale}
+              messages={{ adminPlatform: { switcher: { entry } } }}
+            >
+              {children}
+            </NextIntlClientProvider>
           </main>
         </div>
       </div>

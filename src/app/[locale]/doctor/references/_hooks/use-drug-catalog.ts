@@ -114,13 +114,16 @@ export type DrugFacets = {
   rxCount: number;
   otcCount: number;
   dosingCount: number;
-  photoCount: number;
+  /** Still without a packaging photo: what the «Без фото» worklist holds. */
+  noPhotoCount: number;
 };
+
+export const DRUG_FACETS_KEY = ["doctor", "references", "drug-facets"] as const;
 
 /** Counts for the ATC rail and the filter chips. */
 export function useDrugFacets() {
   return useQuery<DrugFacets, Error>({
-    queryKey: ["doctor", "references", "drug-facets"],
+    queryKey: DRUG_FACETS_KEY,
     queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/catalogs/drugs/facets", {
         credentials: "include",

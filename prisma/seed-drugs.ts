@@ -50,7 +50,12 @@ async function main() {
 
   for (const d of DRUGS) {
     const enr = DRUG_ENRICHMENT[d.id] ?? {};
-    const inn = enr.atcCode ? (d.intl ?? d.id) : (d.intl ?? d.id);
+    // `inn` is unique: a row without a Latin INN keeps its id as the handle
+    // («aspirin_cardio»). That is a key, never a name: readableInn() keeps it
+    // off every screen and the allergy buttons offer the Russian name (audit
+    // G4-19). Giving those rows a real INN here would collide on a live
+    // database with the rows of the same substance that already carry it.
+    const inn = d.intl ?? d.id;
 
     // Forms shape in DB: [{ form: "TAB", strengths: ["2,5 мг", "5 мг"] }, ...]
     const forms = d.forms.map((f) => ({

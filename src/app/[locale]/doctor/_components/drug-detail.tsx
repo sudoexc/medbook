@@ -7,6 +7,7 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 import { AlertTriangleIcon, BabyIcon, PillIcon } from "lucide-react";
 
+import { readableInn } from "@/lib/catalogs/drug-names";
 import { cn } from "@/lib/utils";
 
 // Mirror of the API response shape (kept inline — small, evolves together).
@@ -116,6 +117,39 @@ export const PREGNANCY_TONE: Record<DrugDetail["pregnancyCat"], string> = {
   UNKNOWN: "bg-muted text-muted-foreground",
 };
 
+/**
+ * The pregnancy category as a badge (audit CT-15): the letter for a known
+ * category, «нет данных» instead of the raw enum «UNKNOWN» that every
+ * register row showed. A list row passes `hideUnknown`: «нет данных» on
+ * most of 2.7k rows would only be noise there.
+ */
+export function PregnancyBadge({
+  cat,
+  hideUnknown = false,
+  className,
+}: {
+  cat: DrugDetail["pregnancyCat"];
+  hideUnknown?: boolean;
+  className?: string;
+}) {
+  const t = useTranslations("doctor.receptionDialogs");
+  if (cat === "UNKNOWN" && hideUnknown) return null;
+  return (
+    <span
+      className={cn(
+        "rounded-md px-1.5 py-0.5 text-[10px]",
+        cat !== "UNKNOWN" && "uppercase",
+        PREGNANCY_TONE[cat],
+        className,
+      )}
+      title={t("catalog.pregnancyCategory")}
+    >
+      <BabyIcon className="mr-0.5 inline size-2.5" />
+      {cat === "UNKNOWN" ? t("catalog.pregnancyUnknown") : cat}
+    </span>
+  );
+}
+
 // Resolve a server category enum to its localized label, falling back to the
 // raw enum string for codes not yet in the catalog.
 export function useCategoryLabel() {
@@ -156,6 +190,7 @@ export function DrugDetailView({
   const t = useTranslations("doctor.receptionDialogs");
   const categoryLabel = useCategoryLabel();
   const formLabel = useFormLabel();
+  const inn = readableInn(drug);
   return (
     <>
       <div className="flex items-start gap-3 border-b px-4 py-3">
@@ -177,11 +212,8 @@ export function DrugDetailView({
           <div className="text-base font-semibold leading-tight text-foreground">
             {drug.nameRu}
           </div>
-          {drug.inn &&
-          !drug.inn.startsWith("uzr:") &&
-          !drug.inn.startsWith("clinic:") &&
-          drug.inn.toLowerCase() !== drug.nameRu.toLowerCase() ? (
-            <div className="text-xs italic text-muted-foreground">{drug.inn}</div>
+          {inn ? (
+            <div className="text-xs italic text-muted-foreground">{inn}</div>
           ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
@@ -192,16 +224,7 @@ export function DrugDetailView({
                 {drug.atcCode}
               </span>
             ) : null}
-            <span
-              className={cn(
-                "rounded-md px-1.5 py-0.5 text-[10px] uppercase",
-                PREGNANCY_TONE[drug.pregnancyCat],
-              )}
-              title={t("catalog.pregnancyCategory")}
-            >
-              <BabyIcon className="mr-0.5 inline size-2.5" />
-              {drug.pregnancyCat}
-            </span>
+            <PregnancyBadge cat={drug.pregnancyCat} />
             <RxBadge rxOnly={drug.rxOnly} />
           </div>
         </div>

@@ -41,6 +41,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 import { DRUG_CATEGORIES } from "@/server/schemas/knowledge";
+import { readableInn } from "@/lib/catalogs/drug-names";
 
 import {
   SettingsApiError,
@@ -218,7 +219,8 @@ export function DrugsTab() {
                     ) : null}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {row.inn}
+                    {/* A register or slug handle is a key, not an INN. */}
+                    {readableInn(row)}
                   </TableCell>
                   <TableCell className="text-xs">
                     {categoryLabel(row.category)}
@@ -464,9 +466,13 @@ function DrugDialog({
         <div className="space-y-3 py-2">
           {isOverride && row ? (
             <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-              <div>
-                {t("drugs.fields.inn")}: <strong>{row.inn}</strong>
-              </div>
+              {readableInn(row) ? (
+                <div>
+                  {t("drugs.fields.inn")}: <strong>{readableInn(row)}</strong>
+                </div>
+              ) : (
+                <div />
+              )}
               <div>
                 {t("drugs.fields.category")}:{" "}
                 <strong>{categoryLabel(row.category)}</strong>

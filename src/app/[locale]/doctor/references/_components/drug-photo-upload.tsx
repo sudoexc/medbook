@@ -14,6 +14,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ImagePlusIcon, Loader2Icon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
+import { DRUG_FACETS_KEY } from "../_hooks/use-drug-catalog";
+
 export function DrugPhotoUpload({
   drugId,
   photoUrl,
@@ -32,6 +34,8 @@ export function DrugPhotoUpload({
     void qc.invalidateQueries({
       queryKey: ["doctor", "references", "drug-catalog"],
     });
+    // The «Без фото» count shrinks with every photo (audit CT-19).
+    void qc.invalidateQueries({ queryKey: DRUG_FACETS_KEY });
   };
 
   const upload = async (file: File) => {

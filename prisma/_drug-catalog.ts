@@ -607,12 +607,14 @@ export const DRUGS: Drug[] = [
     forms: [
       { form: "DROPS_ORAL", doses: ["500 МЕ/капля", "1000 МЕ/капля"] },
       { form: "CAP", doses: ["2000 МЕ", "5000 МЕ"] },
+      // From the extension's copy, merged here (audit G4-21).
+      { form: "TAB", doses: ["2000 МЕ", "5000 МЕ"] },
     ],
   },
   {
     id: "magnesium_b6",
     nameRu: "Магний B6",
-    brands: ["Магне B6"],
+    brands: ["Магне B6", "Магнелис B6"],
     category: "VITAMIN",
     forms: [
       { form: "TAB", doses: ["470 мг + 5 мг"] },
@@ -923,7 +925,7 @@ export const DRUGS: Drug[] = [
     id: "levodopa_carbidopa",
     nameRu: "Леводопа + карбидопа",
     intl: "Levodopa + Carbidopa",
-    brands: ["Наком", "Синемет", "Тидомет"],
+    brands: ["Наком", "Синемет", "Тидомет", "Синдопа"],
     category: "NEUROLOGICAL",
     forms: [{ form: "TAB", doses: ["250 мг + 25 мг", "100 мг + 25 мг"] }],
   },

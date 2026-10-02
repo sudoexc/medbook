@@ -150,13 +150,46 @@ export const REGISTER_COMPOSITION_FIXES: readonly {
 ];
 
 /**
- * The payload with `REGISTER_COMPOSITION_FIXES` applied. A fix whose brand
- * is no longer where it names (a newer payload files it right) does nothing.
+ * ATC groups the payload filed under the wrong category (audit CT-15). Its
+ * mapping went by the anatomical letter, so A10 (metformin, the insulins,
+ * the gliflozins: 32 entities) landed in GI with the antacids, and the M03
+ * muscle relaxants (tolperisone, tizanidine: 16) in OTHER. The curated
+ * catalog files both groups ENDOCRINE and NEUROLOGICAL, and the reference
+ * filters by category. `from` keeps the fix to rows still in the wrong one.
+ */
+export const REGISTER_CATEGORY_FIXES: readonly {
+  atc: string;
+  from: string;
+  to: string;
+}[] = [
+  { atc: "A10", from: "GI", to: "ENDOCRINE" },
+  { atc: "M03", from: "OTHER", to: "NEUROLOGICAL" },
+];
+
+/** A register row's category with `REGISTER_CATEGORY_FIXES` applied. */
+export function registerCategory(
+  atcCode: string | null,
+  category: string,
+): string {
+  const atc = atcCode?.trim().toUpperCase() ?? "";
+  const fix = REGISTER_CATEGORY_FIXES.find(
+    (f) => category === f.from && atc.startsWith(f.atc),
+  );
+  return fix ? fix.to : category;
+}
+
+/**
+ * The payload with `REGISTER_COMPOSITION_FIXES` and
+ * `REGISTER_CATEGORY_FIXES` applied. A fix whose brand is no longer where it
+ * names (a newer payload files it right) does nothing.
  */
 export function correctRegisterEntities(
   entities: readonly RegistryEntity[],
 ): RegistryEntity[] {
-  let out = [...entities];
+  let out = entities.map((e) => {
+    const category = registerCategory(e.atcCode, e.category);
+    return category === e.category ? e : { ...e, category };
+  });
   for (const fix of REGISTER_COMPOSITION_FIXES) {
     const key = normName(fix.brand);
     const brand = out

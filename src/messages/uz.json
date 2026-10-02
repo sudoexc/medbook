@@ -6972,7 +6972,9 @@
       },
       "favorites": {
         "add": "Sevimlilarga",
-        "remove": "Sevimlilardan olib tashlash"
+        "remove": "Sevimlilardan olib tashlash",
+        "loadFailed": "Sevimlilarni yuklab bo‘lmadi. Yulduzchalar oxirgi ma’lumotlar bo‘yicha ko‘rsatilgan.",
+        "saveFailed": "Sevimlilarni saqlab bo‘lmadi, qayta urinib ko‘ring"
       },
       "applyProtocol": {
         "fallbackSummary": "Qabulga protokoldagi tayinlovlar, tavsiyalar, nazorat tashrifi va xulosa matni qo‘shiladi.",
@@ -7002,6 +7004,7 @@
         "typeToSearch": "Dori nomini kiriting",
         "selectDrug": "Chapdan dorini tanlang",
         "pregnancyCategory": "Homiladorlik toifasi",
+        "pregnancyUnknown": "ma’lumot yo‘q",
         "addToPrescriptions": "Tayinlovlarga qo‘shish",
         "sections": {
           "forms": "Chiqarilish shakllari",

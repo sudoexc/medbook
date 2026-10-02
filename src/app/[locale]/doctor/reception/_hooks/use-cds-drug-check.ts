@@ -63,9 +63,10 @@ export type CdsCurrentTherapyDrug = {
 /**
  * Ф2 — a catalog-picked structured row: checked by id, no text resolution.
  * The label goes too: it tells the engine which name the drug was picked
- * under, so «Ибупрофен» + «Нурофен (ибупрофен)» warn (audit G4-12).
+ * under, so «Ибупрофен» + «Нурофен (ибупрофен)» warn (audit G4-12). So does
+ * the form: «Диклофенак» as a gel is not checked as tablets (audit G4-22).
  */
-export type CdsDrugRow = { id: string; displayName: string };
+export type CdsDrugRow = { id: string; displayName: string; form?: string | null };
 
 /** One diagnosis of the visit: a code, or the clinic's own words. */
 export type CdsVisitDiagnosis = { code: string | null; name: string | null };
@@ -101,8 +102,11 @@ export function cdsDrugCheckKey(args: Args) {
     // Adding a second diagnosis can raise a contraindication by itself.
     (args.diagnoses ?? []).map((d) => `${d.code ?? ""}:${d.name ?? ""}`).join("|"),
     args.prescriptions.join("|"),
-    // A renamed row changes the check: key on the label as well as the id.
-    (args.drugRows ?? []).map((r) => `${r.id}:${r.displayName}`).join("|"),
+    // A renamed row or another form changes the check: key on the label and
+    // the form as well as the id.
+    (args.drugRows ?? [])
+      .map((r) => `${r.id}:${r.displayName}:${r.form ?? ""}`)
+      .join("|"),
   ] as const;
 }
 

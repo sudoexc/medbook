@@ -143,7 +143,7 @@ const ACEI_ARB: DrugClass = {
 const POTASSIUM_SPARING: DrugClass = { atc: ["C03DA", "C03DB"], ids: ["spironolactone"] };
 const POTASSIUM_SUPPLEMENTS: DrugClass = {
   atc: ["A12B"],
-  ids: ["potassium_mg_asparaginate", "potassium-magnesium-asparaginate"],
+  ids: ["potassium_mg_asparaginate"],
 };
 
 const VKA: DrugClass = { atc: ["B01AA"], ids: ["warfarin"] };
@@ -177,7 +177,7 @@ const METOCLOPRAMIDE: DrugClass = { atc: ["A03FA01"], ids: ["metoclopramide"] };
 const DOPAMINERGIC: DrugClass = {
   atc: ["N04BA", "N04BC"],
   ids: [
-    "levodopa_carbidopa", "levodopa-carbidopa", "levodopa-benserazide",
+    "levodopa_carbidopa", "levodopa-benserazide",
     "pramipexole", "ropinirole",
   ],
 };

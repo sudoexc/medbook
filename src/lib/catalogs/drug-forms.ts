@@ -40,6 +40,32 @@ export function isOralForm(form: string | null | undefined): boolean {
   return !!form && ORAL_FORMS.has(form);
 }
 
+/**
+ * Applied where it acts and barely absorbed (audit G4-22): eye, ear and
+ * nose drops, gels, creams and ointments, named as the CDS card names them.
+ * The interaction pairs are about blood levels, and «Диклофенак гель» next
+ * to «Ибупрофен» is no stacking of NSAIDs. Sprays, patches, inhalers and
+ * suppositories stay systemic: sumatriptan nasal spray, nitroglycerin
+ * spray, the rivastigmine patch and rectal diclofenac all are.
+ */
+const LOCAL_FORMS: ReadonlyMap<string, string> = new Map([
+  ["DROPS_EYE", "глазные капли"],
+  ["DROPS_EAR", "ушные капли"],
+  ["DROPS_NASAL", "капли в нос"],
+  ["GEL", "гель"],
+  ["CREAM", "крем"],
+  ["OINT", "мазь"],
+]);
+
+export function isLocalForm(form: string | null | undefined): boolean {
+  return !!form && LOCAL_FORMS.has(form);
+}
+
+/** The Russian name of a local form («гель»), null for any other form. */
+export function localFormLabelRu(form: string | null | undefined): string | null {
+  return (form && LOCAL_FORMS.get(form)) || null;
+}
+
 export function isUnitForm(form: string | null | undefined): boolean {
   return !!form && UNIT_FORMS.has(form);
 }

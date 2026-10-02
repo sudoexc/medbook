@@ -65,7 +65,7 @@ export const LONG_TERM_THERAPY: DrugClass = {
   ],
   ids: [
     "oxcarbazepine", "phenytoin", "clonazepam", "ethosuximide", "zonisamide", "lacosamide",
-    "levodopa-carbidopa", "levodopa-benserazide", "amantadine", "trihexyphenidyl", "ropinirole",
+    "levodopa-benserazide", "amantadine", "trihexyphenidyl", "ropinirole",
     "rivastigmine", "galantamine",
     "fluoxetine", "paroxetine", "fluvoxamine", "mirtazapine", "trazodone", "agomelatine",
     "quetiapine", "risperidone", "olanzapine", "haloperidol", "chlorprothixene",

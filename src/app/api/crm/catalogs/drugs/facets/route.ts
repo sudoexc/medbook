@@ -5,23 +5,40 @@
  * group rail without counts is a rail nobody trusts («есть там что-нибудь по
  * нервной системе?»). One grouped query answers all of them; the numbers are
  * cheap enough to recompute per visit and stale-cached client-side.
+ *
+ * Audit CT-19: the counts read the same rows the list pages through, active
+ * and not hidden by the clinic. They counted retired and hidden drugs too,
+ * so «Все N» and the rail never matched what could be scrolled. The photo
+ * count is the worklist's: what is still missing a packaging photo, on the
+ * row or in the clinic's overlay.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import {
+  loadClinicOverlays,
+  overlayPhotoCodes,
+} from "@/server/catalog/clinic-overlay";
 import { ok } from "@/server/http";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR", "RECEPTIONIST", "NURSE"] },
   async ({ ctx }) => {
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
-    // Same visibility rule as the list route: the global catalog plus this
-    // clinic's own rows, never another tenant's.
-    const where = {
-      OR: [{ clinicId: null }, ...(clinicId ? [{ clinicId }] : [])],
-    };
+    const overlays = await loadClinicOverlays(clinicId, "DRUG");
+    // Same visibility rule as the list route: active rows of the global
+    // catalog the clinic has not hidden, plus this clinic's own rows, never
+    // another tenant's.
+    const visible: Prisma.DrugWhereInput[] = [
+      { OR: [{ clinicId: null }, ...(clinicId ? [{ clinicId }] : [])] },
+    ];
+    if (overlays.hidden.size > 0) {
+      visible.push({ id: { notIn: [...overlays.hidden] } });
+    }
+    const where: Prisma.DrugWhereInput = { active: true, AND: visible };
+    const photographed = overlayPhotoCodes(overlays);
 
-    const [rows, total, rxCount, dosingCount, photoCount] = await Promise.all([
+    const [rows, total, rxCount, dosingCount, noPhotoCount] = await Promise.all([
       prisma.drug.findMany({
         where,
         select: { atcCode: true },
@@ -32,7 +49,18 @@ export const GET = createApiListHandler(
       prisma.drug.count({
         where: { ...where, defaultDosing: { not: Prisma.DbNull } },
       }),
-      prisma.drug.count({ where: { ...where, photoUrl: { not: null } } }),
+      prisma.drug.count({
+        where: {
+          active: true,
+          photoUrl: null,
+          AND: [
+            ...visible,
+            ...(photographed.length > 0
+              ? [{ id: { notIn: photographed } }]
+              : []),
+          ],
+        },
+      }),
     ]);
 
     // Group in memory: Prisma cannot group by a computed substring, and the
@@ -57,7 +85,7 @@ export const GET = createApiListHandler(
       rxCount,
       otcCount: total - rxCount,
       dosingCount,
-      photoCount,
+      noPhotoCount,
     });
   },
 );

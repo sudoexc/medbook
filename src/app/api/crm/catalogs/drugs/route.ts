@@ -28,6 +28,7 @@ import { prisma } from "@/lib/prisma";
 import {
   applyClinicOverlay,
   loadClinicOverlays,
+  overlayPhotoCodes,
 } from "@/server/catalog/clinic-overlay";
 import {
   drugSearchWhere,
@@ -107,10 +108,8 @@ export const GET = createApiListHandler(
     // Curated rows are the ones a doctor can lean on for dosing text; the
     // register import brought names and forms but no instructions.
     if (q.withDosing) where.defaultDosing = { not: null };
-    // The photo worklist. Note this reads the GLOBAL column only: a clinic
-    // photo stored in its overlay is filtered client-side, which is fine —
-    // the worklist is about what is still missing, and an overlay row simply
-    // drops out of the list once the page renders it as done.
+    // The photo worklist: no photo on the row (a clinic's own row keeps it
+    // there) and, below, none in the clinic's overlay of a global row.
     if (q.noPhoto) where.photoUrl = null;
     if (q.ids && q.ids.trim()) {
       const ids = q.ids
@@ -152,6 +151,12 @@ export const GET = createApiListHandler(
     // ever removes the hidden global rows.
     if (!includeHidden && overlays.hidden.size > 0) {
       and.push({ id: { notIn: [...overlays.hidden] } });
+    }
+    // A global drug photographed by this clinic keeps the photo in its
+    // overlay: it is done, and leaves the worklist (audit CT-19).
+    const photographed = q.noPhoto ? overlayPhotoCodes(overlays) : [];
+    if (photographed.length > 0) {
+      and.push({ id: { notIn: photographed } });
     }
     if (search) {
       and.push({

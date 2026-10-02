@@ -268,13 +268,14 @@ export function PrescriptionsPanel() {
   // row, so it is checked by its name like a custom line — by id it would
   // count as «resolved» and pass every allergy/interaction check blind.
   // Each row keeps its label: «Ибупрофен» and «Нурофен (ибупрофен)» are one
-  // id twice, and only the names show the doctor wrote a double dose.
+  // id twice, and only the names show the doctor wrote a double dose. And its
+  // form: a gel or eye drops barely reach the blood (audit G4-22).
   const rxStructured = note?.visitPrescriptions ?? [];
   const cdsDrugRows = React.useMemo(
     () =>
       rxStructured.flatMap((r) =>
         r.drugId && !isBareClinicDrug(r.drugId)
-          ? [{ id: r.drugId, displayName: r.displayName }]
+          ? [{ id: r.drugId, displayName: r.displayName, form: r.form ?? null }]
           : [],
       ),
     [rxStructured],

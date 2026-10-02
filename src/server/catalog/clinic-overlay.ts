@@ -234,6 +234,22 @@ export function applyClinicOverlay<T extends Record<string, unknown>>(
 }
 
 /**
+ * Global drugs this clinic has photographed: the photo lives in the overlay,
+ * not on the global row, so a filter on `Drug.photoUrl` alone never saw it
+ * (audit CT-19: the «Без фото» worklist never shrank).
+ */
+export function overlayPhotoCodes(
+  overlays: Pick<ClinicOverlays, "overrides">,
+): string[] {
+  const out: string[] = [];
+  for (const [code, patch] of overlays.overrides) {
+    const url = patch.photoUrl;
+    if (typeof url === "string" && url.trim() !== "") out.push(code);
+  }
+  return out;
+}
+
+/**
  * G6 helper kept for routes that only need the hide list (labs, protocols).
  */
 export async function loadHiddenCodes(

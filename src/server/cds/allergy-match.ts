@@ -454,3 +454,38 @@ export function matchAllergy(
   }
   return null;
 }
+
+/**
+ * Reactions that make any re-exposure dangerous (audit G4-17): anaphylaxis
+ * and anaphylactic shock, angioedema (отёк Квинке), Stevens-Johnson
+ * (ССД) and Lyell / toxic epidermal necrolysis (ТЭН), DRESS. Whatever
+ * severity was picked in the form (it defaults to «Лёгкая»), a drug matching
+ * such an allergy is contraindicated. Stems cover case endings in Russian,
+ * Uzbek Latin and English; short words must be whole («шок» is not
+ * «шоколад»).
+ */
+const SEVERE_REACTION_STEMS = [
+  "анафилак", "anafilak", "anaphyla",
+  "квинке", "kvinke", "quincke",
+  "ангионевротическ", "ангиоотек", "angioedem", "angioneurot",
+  "стивенс", "stivens", "stevens",
+  "лайелл", "lyell", "layell",
+  "некролиз", "necroly", "nekroliz",
+];
+const SEVERE_REACTION_WORDS = new Set([
+  "шок", "шока", "шоке", "шоком", "shok", "shock",
+  "ссд", "тэн", "sjs", "dress",
+]);
+
+/** Does an allergy entry (its substance or reaction text) name one? */
+export function isSevereReaction(
+  ...texts: ReadonlyArray<string | null | undefined>
+): boolean {
+  return texts.some((text) =>
+    allergyTokens(text ?? "").some(
+      (t) =>
+        SEVERE_REACTION_WORDS.has(t) ||
+        SEVERE_REACTION_STEMS.some((s) => t.startsWith(s)),
+    ),
+  );
+}

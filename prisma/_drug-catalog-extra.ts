@@ -185,14 +185,9 @@ export const DRUGS_EXTRA: Drug[] = [
   },
 
   // ─── Неврология: паркинсонизм и деменция ─────────────────────────────
-  {
-    id: "levodopa-carbidopa",
-    nameRu: "Леводопа + Карбидопа",
-    intl: "Levodopa/Carbidopa",
-    brands: ["Наком", "Синдопа", "Тидомет"],
-    category: "NEUROLOGICAL",
-    forms: [{ form: "TAB", doses: ["250 мг/25 мг", "100 мг/25 мг"] }],
-  },
+  // Леводопа + карбидопа (Наком, Синдопа, Тидомет) is the curated
+  // levodopa_carbidopa: this list carried a second copy without its ATC,
+  // pairs and dosing (audit G4-21, merged by fix-g4-21-duplicate-drugs.ts).
   {
     id: "levodopa-benserazide",
     nameRu: "Леводопа + Бенсеразид",
@@ -852,17 +847,8 @@ export const DRUGS_EXTRA: Drug[] = [
     category: "ENDOCRINE",
     forms: [{ form: "INJ_SC", doses: ["100 ЕД/мл"] }],
   },
-  {
-    id: "colecalciferol",
-    nameRu: "Колекальциферол (витамин D3)",
-    intl: "Colecalciferol",
-    brands: ["Аквадетрим", "Вигантол"],
-    category: "VITAMIN",
-    forms: [
-      { form: "DROPS_ORAL", doses: ["15 000 МЕ/мл"] },
-      { form: "TAB", doses: ["2000 МЕ", "5000 МЕ"] },
-    ],
-  },
+  // Колекальциферол (Аквадетрим, Вигантол) is the curated vitamin_d3
+  // (audit G4-21).
   {
     id: "alendronic-acid",
     nameRu: "Алендроновая кислота",
@@ -873,19 +859,15 @@ export const DRUGS_EXTRA: Drug[] = [
   },
 
   // ─── Витамины и минералы ─────────────────────────────────────────────
-  {
-    id: "magnesium-b6",
-    nameRu: "Магния лактат + Пиридоксин",
-    intl: "Magnesium lactate/Pyridoxine",
-    brands: ["Магне B6", "Магнелис B6"],
-    category: "VITAMIN",
-    forms: [{ form: "TAB", doses: ["470 мг/5 мг"] }],
-  },
+  // Магния лактат + пиридоксин (Магне B6, Магнелис B6) is the curated
+  // magnesium_b6 (audit G4-21).
   {
     id: "ferrous-sulfate",
     nameRu: "Железа сульфат",
     intl: "Ferrous sulfate",
-    brands: ["Сорбифер Дурулес", "Тардиферон"],
+    // Not Сорбифер Дурулес: that is ferrous sulfate with ascorbic acid, the
+    // curated iron_sorbifer (audit G4-21).
+    brands: ["Тардиферон"],
     category: "VITAMIN",
     forms: [{ form: "TAB", doses: ["320 мг (100 мг Fe)"] }],
   },
@@ -900,14 +882,8 @@ export const DRUGS_EXTRA: Drug[] = [
       { form: "SYRUP", doses: ["50 мг/5 мл"] },
     ],
   },
-  {
-    id: "potassium-magnesium-asparaginate",
-    nameRu: "Калия и магния аспарагинат",
-    intl: "Potassium/Magnesium aspartate",
-    brands: ["Панангин", "Аспаркам"],
-    category: "VITAMIN",
-    forms: [{ form: "TAB", doses: ["158 мг/140 мг"] }],
-  },
+  // Калия и магния аспарагинат (Панангин, Аспаркам) is the curated
+  // potassium_mg_asparaginate (audit G4-21).
   {
     id: "pyridoxine",
     nameRu: "Пиридоксин (витамин B6)",

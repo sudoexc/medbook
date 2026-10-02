@@ -31,15 +31,27 @@
  * curated pairs, pregnancy category and contraindications of the substance
  * it contains, and the class rules see the diclofenac inside a combination.
  *
+ * Audit G4-22: a structured row brings its form. A drug prescribed only in
+ * a local form (eye or ear drops, gel, cream, ointment) barely reaches the
+ * blood, so the pairs and class rules, which are about blood levels, warn
+ * about it as MINOR with the reason, instead of «Ибупрофен + Диклофенак
+ * гель» reading as a red NSAID stacking.
+ *
  * Free-text lines that don't resolve to a Drug row are reported back as
  * `unresolvedLines` so the UI can show a "manual entry — CDS skipped" hint.
  */
 import { prisma } from "@/lib/prisma";
+import { isLocalForm, localFormLabelRu } from "@/lib/catalogs/drug-forms";
 import { formatDate } from "@/lib/format";
 import { parsePreVisitData } from "@/lib/patient-experience/pre-visit";
 import { visitDiagnosisKey } from "@/lib/visit-diagnoses";
 
-import { matchAllergy, type AllergyDrug, type AllergyMatch } from "./allergy-match";
+import {
+  isSevereReaction,
+  matchAllergy,
+  type AllergyDrug,
+  type AllergyMatch,
+} from "./allergy-match";
 import {
   describeRecord,
   findContraindicationHits,
@@ -149,8 +161,15 @@ export type CdsCheckInput = {
   now?: Date;
 };
 
-/** A structured prescription row: the catalog drug and the row's label. */
-export type PinnedDrugRow = { id: string; displayName?: string | null };
+/**
+ * A structured prescription row: the catalog drug, the row's label and its
+ * form (`VisitPrescription.form`, a `Drug.forms` code such as "GEL").
+ */
+export type PinnedDrugRow = {
+  id: string;
+  displayName?: string | null;
+  form?: string | null;
+};
 
 /** A drug the patient already takes, as the check counted it. */
 export type CurrentTherapyDrug = {
@@ -193,6 +212,40 @@ const SEVERITY_RANK: Record<CdsSeverity, number> = {
   MODERATE: 2,
   MINOR: 1,
 };
+
+/**
+ * A curated pair's severity for a patient with one of its risk diagnoses
+ * (audit G4-16): one step up, so NSAID + ACE inhibitor with chronic kidney
+ * disease is a red MAJOR, not the yellow of a patient with healthy kidneys.
+ * Capped at MAJOR: «противопоказано» is for the label to say, not a step.
+ */
+export function raiseForRisk(severity: CdsSeverity): CdsSeverity {
+  if (severity === "MINOR") return "MODERATE";
+  if (severity === "MODERATE") return "MAJOR";
+  return severity;
+}
+
+/**
+ * How serious a drug matching a recorded allergy is (audit G4-17). The form
+ * and the API default the severity to «Лёгкая», which used to become a
+ * yellow MODERATE under the words «Не назначать», and the reaction did not
+ * count at all: «Цефтриаксон, анафилактический шок» saved as «Лёгкая» read
+ * like any routine caution. Now an anaphylaxis, angioedema or SJS/TEN
+ * reaction, or a recorded «Тяжёлая», is CONTRAINDICATED, and any other
+ * match is at least MAJOR: the substance itself, a member of a
+ * cross-reactive class (the class table holds only groups guidelines tell
+ * prescribers to respect, see allergy-match.ts), an unverified
+ * questionnaire entry. The severity picked in the form only ever raises.
+ */
+export function allergyWarningSeverity(args: {
+  severity: string | null;
+  reaction: string | null;
+  substance: string;
+}): CdsSeverity {
+  if (isSevereReaction(args.substance, args.reaction)) return "CONTRAINDICATED";
+  if (args.severity === "SEVERE") return "CONTRAINDICATED";
+  return "MAJOR";
+}
 
 function normaliseToken(s: string): string {
   return s
@@ -697,26 +750,54 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
   const resolved: ResolvedDrug[] = [];
   const basketRows: DrugPick[] = [];
   // Every name each drug appears under: a structured row or a text line
-  // counts as the brand or name it is labelled with.
-  const namesById = new Map<string, Map<string, string>>();
-  const noteName = (id: string, nameKey: string, label: string) => {
-    const names = namesById.get(id) ?? new Map<string, string>();
-    if (!names.has(nameKey)) names.set(nameKey, label);
+  // counts as the brand or name it is labelled with, and whether it was
+  // ever written in a form that reaches the blood (see `systemicIds`).
+  const namesById = new Map<
+    string,
+    Map<string, { label: string; systemic: boolean }>
+  >();
+  const noteName = (
+    id: string,
+    nameKey: string,
+    label: string,
+    systemic: boolean,
+  ) => {
+    const names =
+      namesById.get(id) ?? new Map<string, { label: string; systemic: boolean }>();
+    const seen = names.get(nameKey);
+    names.set(nameKey, {
+      label: seen?.label ?? label,
+      systemic: systemic || (seen?.systemic ?? false),
+    });
     namesById.set(id, names);
   };
+  // Drugs prescribed in a form that reaches the blood (audit G4-22). A row
+  // in a local form (eye drops, gel…) does not; a text line says no form and
+  // counts as systemic, as every drug did before. A drug is local only when
+  // none of its rows is systemic.
+  const systemicIds = new Set<string>();
+  const localFormOf = new Map<string, string>();
+  for (const row of pinnedRows) {
+    if (isLocalForm(row.form)) {
+      if (!localFormOf.has(row.id)) localFormOf.set(row.id, row.form!);
+    } else {
+      systemicIds.add(row.id);
+    }
+  }
+  for (const h of textHits) systemicIds.add(h.drug.id);
   const pinnedById = new Map(pinnedDrugs.map((d) => [d.id, d]));
   for (const row of pinnedRows) {
     const d = pinnedById.get(row.id);
     if (!d) continue;
     const { nameKey, label } = pinnedRowName(d, row.displayName);
-    noteName(d.id, nameKey, label);
+    noteName(d.id, nameKey, label, !isLocalForm(row.form));
     if (seenIds.has(d.id)) continue;
     seenIds.add(d.id);
     resolved.push(toResolved(d, -1));
     basketRows.push(d);
   }
   for (const h of textHits) {
-    noteName(h.drug.id, h.nameKey, h.label);
+    noteName(h.drug.id, h.nameKey, h.label, true);
     if (seenIds.has(h.drug.id)) continue;
     seenIds.add(h.drug.id);
     resolved.push(toResolved(h.drug, h.lineIndex));
@@ -905,15 +986,9 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
         match ??= m;
       }
       if (!match) continue;
-      // Unverified questionnaire entries have no recorded severity: treat
-      // them as serious until the doctor has asked the patient.
-      const severity: CdsSeverity = allergy.patientReported
-        ? "MAJOR"
-        : allergy.severity === "SEVERE"
-          ? "CONTRAINDICATED"
-          : allergy.severity === "MODERATE"
-            ? "MAJOR"
-            : "MODERATE";
+      // Unverified questionnaire entries have no recorded severity: treated
+      // as serious until the doctor has asked the patient (MAJOR at least).
+      const severity = allergyWarningSeverity(allergy);
       const why =
         match.kind === "CLASS"
           ? match.namedClass
@@ -959,8 +1034,23 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     const [a, b] = aFirst ? [p.x, p.y] : [p.y, p.x];
     return `${a.drug.nameRu} + ${b.drug.nameRu}`;
   };
-  const pairDetail = (p: Pair, text: string) =>
-    p.ctx ? `${contextDetail(p.ctx)}${text}` : text;
+  // The drug of a pair prescribed only in a local form, if either is (a
+  // drug the patient already takes counts as systemic).
+  const localSide = (p: Pair): CheckDrug | null => {
+    if (!systemicIds.has(p.x.drug.id)) return p.x;
+    if (!p.ctx && !systemicIds.has(p.y.drug.id)) return p.y;
+    return null;
+  };
+  const localNote = (cd: CheckDrug) =>
+    `${cd.drug.nameRu}: ${localFormLabelRu(localFormOf.get(cd.drug.id)) ?? "местная форма"}, в кровь почти не попадает, системное взаимодействие маловероятно. `;
+  /** A pair warning's severity and detail, softened for a local form. */
+  const pairWarning = (p: Pair, severity: CdsSeverity, text: string) => {
+    const local = localSide(p);
+    const detail = p.ctx ? `${contextDetail(p.ctx)}${text}` : text;
+    return local
+      ? { severity: "MINOR" as const, detail: `${localNote(local)}${detail}` }
+      : { severity, detail };
+  };
   const pairRefs = (p: Pair, aFirst: boolean) => {
     const [a, b] = p.ctx || aFirst ? [p.x, p.y] : [p.y, p.x];
     return { drugA: ref(a.drug), drugB: ref(b.drug) };
@@ -972,31 +1062,40 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
   // substance (audit G4-08). One warning per pair: the most severe row.
   const curatedPairs = new Set<string>();
   const flaggedPairs = new Set<string>();
+  // A row whose risk diagnosis the patient has counts one step more severe
+  // (audit G4-16), and the most severe row after that wins.
+  const riskCodeOf = (row: (typeof interactions)[number]) =>
+    codes.find((c) =>
+      row.riskDiagnoses.some((r) => c.startsWith(r.toUpperCase())),
+    );
   for (const p of pairs) {
     const xs = ids(p.x);
     const ys = ids(p.y);
-    let best: { row: (typeof interactions)[number]; aFirst: boolean } | null = null;
+    let best: {
+      row: (typeof interactions)[number];
+      aFirst: boolean;
+      riskCode: string | undefined;
+      severity: CdsSeverity;
+    } | null = null;
     for (const row of interactions) {
       const forward = xs.has(row.drugAId) && ys.has(row.drugBId);
       const backward = ys.has(row.drugAId) && xs.has(row.drugBId);
       if (!forward && !backward) continue;
-      if (!best || SEVERITY_RANK[row.severity] > SEVERITY_RANK[best.row.severity]) {
-        best = { row, aFirst: forward };
+      const riskCode = riskCodeOf(row);
+      const severity = riskCode ? raiseForRisk(row.severity) : row.severity;
+      if (!best || SEVERITY_RANK[severity] > SEVERITY_RANK[best.severity]) {
+        best = { row, aFirst: forward, riskCode, severity };
       }
     }
     if (!best) continue;
-    const { row, aFirst } = best;
-    const riskCode = codes.find((c) =>
-      row.riskDiagnoses.some((r) => c.startsWith(r.toUpperCase())),
-    );
+    const { row, aFirst, riskCode } = best;
     const text = row.mechanism ? `${row.mechanism}. ${row.advice}` : row.advice;
     warnings.push({
       kind: riskCode ? "DIAGNOSIS_RISK" : "INTERACTION",
-      severity: row.severity,
+      ...pairWarning(p, best.severity, text),
       title: riskCode
         ? `Риск при ${riskCode}: ${pairTitle(p, aFirst)}`
         : pairTitle(p, aFirst),
-      detail: pairDetail(p, text),
       ...pairRefs(p, aFirst),
     });
     curatedPairs.add(pairKey(p));
@@ -1012,9 +1111,12 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
       flaggedPairs.add(pairKey(p));
       warnings.push({
         kind: "INTERACTION",
-        severity: hit.rule.severity,
+        ...pairWarning(
+          p,
+          hit.rule.severity,
+          `${hit.rule.mechanism}. ${hit.rule.advice}`,
+        ),
         title: pairTitle(p, hit.xIsA),
-        detail: pairDetail(p, `${hit.rule.mechanism}. ${hit.rule.advice}`),
         ...pairRefs(p, hit.xIsA),
       });
     }
@@ -1036,14 +1138,21 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
   // and «Нурофен 200 мг») are a double dose. The same name twice is left alone:
   // a split dose («Карбамазепин 200 мг утром», «… 400 мг вечером») is
   // written that way on purpose and the doctor sees both lines.
+  // Under two names of which at most one is taken systemically («Вольтарен»
+  // gel next to «Диклофенак» tablets) it is no double dose (audit G4-22).
   for (const drug of resolved) {
-    const labels = [...(namesById.get(drug.id)?.values() ?? [])];
-    if (labels.length < 2) continue;
+    const names = [...(namesById.get(drug.id)?.values() ?? [])];
+    if (names.length < 2) continue;
+    const systemic = names.filter((n) => n.systemic).length >= 2;
+    const labels = names.map((n) => `«${n.label}»`).join(", ");
+    const localForm = localFormLabelRu(localFormOf.get(drug.id)) ?? "местная форма";
     warnings.push({
       kind: "DUPLICATE_CLASS",
-      severity: "MAJOR",
+      severity: systemic ? "MAJOR" : "MINOR",
       title: `Одно вещество дважды: ${drug.nameRu}`,
-      detail: `${labels.map((l) => `«${l}»`).join(", ")}: это один и тот же препарат. Проверьте, не удваивается ли доза.`,
+      detail: systemic
+        ? `${labels}: это один и тот же препарат. Проверьте, не удваивается ли доза.`
+        : `${labels}: это один и тот же препарат, но местное назначение (${localForm}) системную дозу не удваивает.`,
       drugA: ref(drug),
     });
   }
@@ -1056,9 +1165,12 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     substancePairs.add(pairKey(p));
     warnings.push({
       kind: "DUPLICATE_CLASS",
-      severity: "MAJOR",
+      ...pairWarning(
+        p,
+        "MAJOR",
+        "Препараты содержат одно и то же действующее вещество. Проверьте, не удваивается ли доза.",
+      ),
       title: `Одно вещество дважды: ${p.x.drug.nameRu} и ${p.y.drug.nameRu}`,
-      detail: "Препараты содержат одно и то же действующее вещество. Проверьте, не удваивается ли доза.",
       drugA: ref(p.x.drug),
       drugB: ref(p.y.drug),
     });
@@ -1079,12 +1191,12 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     const other = p.ctx ? contextTitle(p.ctx) : p.y.drug.nameRu;
     warnings.push({
       kind: "DUPLICATE_CLASS",
-      severity: "MODERATE",
-      title: `${shared.title}: ${p.x.drug.nameRu} и ${other}`,
-      detail: pairDetail(
+      ...pairWarning(
         p,
+        "MODERATE",
         "Препараты относятся к одному классу. Проверьте необходимость дублирования.",
       ),
+      title: `${shared.title}: ${p.x.drug.nameRu} и ${other}`,
       drugA: ref(p.x.drug),
       drugB: ref(p.y.drug),
     });

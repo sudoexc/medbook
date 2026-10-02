@@ -25,12 +25,14 @@ const BodySchema = z.object({
   prescriptions: z.array(z.string().min(1)).max(50),
   // Ф2 — structured prescription rows, resolved by id without text match.
   // The label rides along so two rows of one drug under different names
-  // («Ибупрофен», «Нурофен (ибупрофен)») are caught (audit G4-12).
+  // («Ибупрофен», «Нурофен (ибупрофен)») are caught (audit G4-12), and the
+  // form so a gel or eye drops are not checked as tablets (audit G4-22).
   drugRows: z
     .array(
       z.object({
         id: z.string().min(1),
         displayName: z.string().max(300).nullish(),
+        form: z.string().max(40).nullish(),
       }),
     )
     .max(50)

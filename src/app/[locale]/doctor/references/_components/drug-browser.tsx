@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { useDebounced } from "@/hooks/use-debounced";
 import { ATC_GROUPS } from "@/lib/catalogs/atc-groups";
 import { matchedBrand } from "@/lib/catalogs/brand-match";
+import { readableInn } from "@/lib/catalogs/drug-names";
 import {
   Dialog,
   DialogContent,
@@ -52,7 +53,7 @@ import {
 } from "../_hooks/use-drug-catalog";
 import {
   DrugDetailView,
-  PREGNANCY_TONE,
+  PregnancyBadge,
   RxBadge,
   useCategoryLabel,
   type DrugDetail,
@@ -258,6 +259,7 @@ export function DrugBrowser() {
             active={noPhoto}
             onClick={() => setNoPhoto((v) => !v)}
             label={t("drugs.filterNoPhoto")}
+            count={facets.data?.noPhotoCount}
           />
 
           {filtersActive ? (
@@ -561,16 +563,10 @@ function DrugRow({
   // When the row leads with a brand, the substance must be the first thing
   // under it — that is what was actually prescribed.
   if (brandHit) sub.push(drug.nameRu);
-  // Register rows carry a synthetic «uzr:» handle — never show it as an INN.
-  if (
-    drug.inn &&
-    !drug.inn.startsWith("uzr:") &&
-    // A drug a doctor added for the clinic carries a private key, not an INN.
-    !drug.inn.startsWith("clinic:") &&
-    drug.inn.toLowerCase() !== drug.nameRu.toLowerCase()
-  ) {
-    sub.push(drug.inn);
-  }
+  // Register rows, clinic rows and slug-keyed curated rows carry a handle,
+  // not an INN: never show it (see readableInn).
+  const inn = readableInn(drug);
+  if (inn) sub.push(inn);
   if (drug.brands.length > 0) {
     // Cap the ribbon: popular molecules carry 20+ registered trade names.
     const shown = drug.brands.slice(0, 4).map((b) => b.name).join(", ");
@@ -624,14 +620,11 @@ function DrugRow({
           <span className="hidden rounded-md bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground sm:inline">
             {categoryLabel(drug.category)}
           </span>
-          <span
-            className={cn(
-              "rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-              PREGNANCY_TONE[drug.pregnancyCat],
-            )}
-          >
-            {drug.pregnancyCat}
-          </span>
+          <PregnancyBadge
+            cat={drug.pregnancyCat}
+            hideUnknown
+            className="font-semibold"
+          />
           <RxBadge rxOnly={drug.rxOnly} />
         </span>
       </button>

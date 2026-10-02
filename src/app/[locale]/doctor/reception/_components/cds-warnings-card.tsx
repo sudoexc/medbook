@@ -33,6 +33,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { allergySuggestionNames } from "@/lib/catalogs/drug-names";
 import { cdsWarningKey } from "@/lib/cds-warning-key";
 import { cn } from "@/lib/utils";
 
@@ -392,17 +393,13 @@ function AllergyQuickRecord({
   const [severity, setSeverity] = React.useState<AllergySeverity>("MODERATE");
   const record = useRecordAllergy(patientId);
 
-  const innSuggestions = React.useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const d of suggestions) {
-      const v = d.inn.trim();
-      if (!v || seen.has(v.toLowerCase())) continue;
-      seen.add(v.toLowerCase());
-      out.push(v);
-    }
-    return out.slice(0, 6);
-  }, [suggestions]);
+  // The drugs' Russian names, never their `inn` column (audit G4-19): that
+  // holds handles like «uzr:karbaleks» or «aspirin_cardio», and a click wrote
+  // them into the patient's record, the print and the reception's view.
+  const nameSuggestions = React.useMemo(
+    () => allergySuggestionNames(suggestions),
+    [suggestions],
+  );
 
   if (!patientId) return null;
 
@@ -460,21 +457,21 @@ function AllergyQuickRecord({
         placeholder={t("cds.allergySubstancePlaceholder")}
         className="h-7 rounded-md border border-border bg-background px-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/30"
       />
-      {innSuggestions.length > 0 && (
+      {nameSuggestions.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {innSuggestions.map((inn) => (
+          {nameSuggestions.map((name) => (
             <button
-              key={inn}
+              key={name}
               type="button"
-              onClick={() => setSubstance(inn)}
+              onClick={() => setSubstance(name)}
               className={cn(
                 "rounded-md border px-2 py-0.5 text-[11px] transition-colors",
-                substance === inn
+                substance === name
                   ? "border-primary bg-primary/10 text-foreground"
                   : "border-border bg-background text-muted-foreground hover:bg-muted/60",
               )}
             >
-              {inn}
+              {name}
             </button>
           ))}
         </div>

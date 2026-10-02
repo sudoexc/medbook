@@ -9,9 +9,22 @@
  *
  * Cache key is per-entityType so the drug drawer and handout drawer can each
  * use their own slice without invalidating each other.
+ *
+ * Audit CT-14: a failed request is an error, never «no favourites». The GET
+ * used to fold a 401/500 into an empty list, so every star vanished during
+ * an API blip; POST and DELETE never looked at the status, so the optimistic
+ * star stayed lit on a 500. Both now throw: the query keeps its cached stars
+ * and a failed toggle rolls back, each with a toast.
  */
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { toast } from "sonner";
 
 export type CatalogEntityType =
   | "DRUG"
@@ -30,98 +43,113 @@ export type DoctorFavoriteRow = {
   createdAt: string;
 };
 
-async function fetchFavorites(
+export function doctorFavoritesKey(entityType: CatalogEntityType) {
+  return ["doctor-favorites", entityType] as const;
+}
+
+export async function fetchFavorites(
   entityType: CatalogEntityType,
 ): Promise<DoctorFavoriteRow[]> {
   const res = await fetch(
     `/api/crm/doctor-favorites?entityType=${entityType}`,
     { credentials: "include" },
   );
-  if (!res.ok) return [];
+  // Thrown, not folded into []: TanStack then keeps the last good list.
+  if (!res.ok) throw new Error(`doctor-favorites GET ${res.status}`);
   const data = (await res.json()) as { favorites?: DoctorFavoriteRow[] };
   return data.favorites ?? [];
 }
 
-async function postFavorite(
+async function writeFavorite(
+  method: "POST" | "DELETE",
   entityType: CatalogEntityType,
   entityCode: string,
 ): Promise<void> {
-  await fetch("/api/crm/doctor-favorites", {
-    method: "POST",
+  const res = await fetch("/api/crm/doctor-favorites", {
+    method,
     credentials: "include",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ entityType, entityCode }),
   });
+  // Without this a 4xx/5xx resolved, and onError (the rollback) never ran.
+  if (!res.ok) throw new Error(`doctor-favorites ${method} ${res.status}`);
 }
 
-async function deleteFavorite(
+/** One star click: which code, and whether it is being pinned or unpinned. */
+export type FavoriteToggle = { entityCode: string; pin: boolean };
+
+/** The list with `entityCode` pinned (appended) or unpinned. */
+function withFavorite(
+  list: readonly DoctorFavoriteRow[],
   entityType: CatalogEntityType,
   entityCode: string,
-): Promise<void> {
-  await fetch("/api/crm/doctor-favorites", {
-    method: "DELETE",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ entityType, entityCode }),
-  });
-}
-
-export function useDoctorFavorites(entityType: CatalogEntityType) {
-  const queryClient = useQueryClient();
-  const queryKey = ["doctor-favorites", entityType] as const;
-
-  const query = useQuery({
-    queryKey,
-    queryFn: () => fetchFavorites(entityType),
-    staleTime: 30_000,
-  });
-
-  const favorites = React.useMemo(() => query.data ?? [], [query.data]);
-  const pinned = React.useMemo(
-    () => new Set(favorites.map((f) => f.entityCode)),
-    [favorites],
-  );
-
-  const mutation = useMutation({
-    mutationFn: async (entityCode: string) => {
-      if (pinned.has(entityCode)) {
-        await deleteFavorite(entityType, entityCode);
-      } else {
-        await postFavorite(entityType, entityCode);
-      }
+  pin: boolean,
+): DoctorFavoriteRow[] {
+  const has = list.some((f) => f.entityCode === entityCode);
+  if (pin === has) return [...list];
+  if (!pin) return list.filter((f) => f.entityCode !== entityCode);
+  return [
+    ...list,
+    {
+      id: `optimistic-${entityCode}`,
+      userId: "self",
+      entityType,
+      entityCode,
+      sortOrder: Math.floor(Date.now() / 1000),
+      createdAt: new Date().toISOString(),
     },
+  ];
+}
+
+/**
+ * The toggle mutation, apart from React so the tests can drive it.
+ *
+ * The direction travels with the click instead of being read from a render
+ * closure inside mutationFn: a quick double click on a stale closure sent
+ * DELETE for a star whose POST had not landed yet. Toggles of one list share
+ * a scope, so their requests run one after another in click order (their
+ * optimistic updates still apply at once).
+ */
+export function favoriteToggleOptions(
+  queryClient: QueryClient,
+  entityType: CatalogEntityType,
+  onFailed?: () => void,
+) {
+  const queryKey = doctorFavoritesKey(entityType);
+  const mutationKey = [...queryKey, "toggle"] as const;
+  return {
+    mutationKey,
+    scope: { id: `doctor-favorites:${entityType}` },
+    mutationFn: ({ entityCode, pin }: FavoriteToggle) =>
+      writeFavorite(pin ? "POST" : "DELETE", entityType, entityCode),
     // Optimistic update — toggle the pinned set immediately so the star
-    // doesn't lag a roundtrip behind. On error we restore the snapshot.
-    onMutate: async (entityCode: string) => {
+    // doesn't lag a roundtrip behind.
+    onMutate: async ({ entityCode, pin }: FavoriteToggle) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<DoctorFavoriteRow[]>(queryKey);
-      const isPinned = pinned.has(entityCode);
-      const next = isPinned
-        ? (previous ?? []).filter((f) => f.entityCode !== entityCode)
-        : [
-            ...(previous ?? []),
-            {
-              id: `optimistic-${entityCode}`,
-              userId: "self",
-              entityType,
-              entityCode,
-              sortOrder: Math.floor(Date.now() / 1000),
-              createdAt: new Date().toISOString(),
-            } satisfies DoctorFavoriteRow,
-          ];
-      queryClient.setQueryData(queryKey, next);
-      return { previous };
+      queryClient.setQueryData<DoctorFavoriteRow[]>(queryKey, (cur) =>
+        withFavorite(cur ?? [], entityType, entityCode, pin),
+      );
     },
-    onError: (_err, _entityCode, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(queryKey, ctx.previous);
+    // Undo this click only, on the list as it is now: restoring a snapshot
+    // taken at click time would also undo a star clicked since.
+    onError: (_err: unknown, { entityCode, pin }: FavoriteToggle) => {
+      queryClient.setQueryData<DoctorFavoriteRow[]>(queryKey, (cur) =>
+        withFavorite(cur ?? [], entityType, entityCode, !pin),
+      );
+      onFailed?.();
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey });
+      // A refetch while another toggle of this list is still in flight would
+      // overwrite its optimistic star with the server's older answer: only
+      // the last one settling reloads the list.
+      if (queryClient.isMutating({ mutationKey }) <= 1) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
       // A star reorders «мои частые» (starred first) — but not under the
       // doctor's cursor while the list is open: mark it stale only, and the
       // field refetches it the next time it opens.
       if (entityType === "DRUG" || entityType === "ICD10") {
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: [
             "doctor",
             "reception",
@@ -131,11 +159,60 @@ export function useDoctorFavorites(entityType: CatalogEntityType) {
         });
       }
     },
+  };
+}
+
+/** Pin or unpin, decided from the list as it stands right now (the cache). */
+export function nextFavoriteToggle(
+  queryClient: QueryClient,
+  entityType: CatalogEntityType,
+  entityCode: string,
+): FavoriteToggle {
+  const current =
+    queryClient.getQueryData<DoctorFavoriteRow[]>(
+      doctorFavoritesKey(entityType),
+    ) ?? [];
+  return {
+    entityCode,
+    pin: !current.some((f) => f.entityCode === entityCode),
+  };
+}
+
+export function useDoctorFavorites(entityType: CatalogEntityType) {
+  const t = useTranslations("doctor.receptionDialogs");
+  const queryClient = useQueryClient();
+  const queryKey = doctorFavoritesKey(entityType);
+
+  const query = useQuery({
+    queryKey,
+    queryFn: () => fetchFavorites(entityType),
+    staleTime: 30_000,
   });
 
+  // Several pickers mount this hook at once: one toast id says it once.
+  React.useEffect(() => {
+    if (query.isError) {
+      toast.error(t("favorites.loadFailed"), { id: "doctor-favorites-load" });
+    }
+  }, [query.isError, t]);
+
+  const favorites = React.useMemo(() => query.data ?? [], [query.data]);
+  const pinned = React.useMemo(
+    () => new Set(favorites.map((f) => f.entityCode)),
+    [favorites],
+  );
+
+  const mutation = useMutation(
+    favoriteToggleOptions(queryClient, entityType, () =>
+      toast.error(t("favorites.saveFailed"), { id: "doctor-favorites-save" }),
+    ),
+  );
+
+  const { mutate } = mutation;
   const toggle = React.useCallback(
-    (entityCode: string) => mutation.mutate(entityCode),
-    [mutation],
+    (entityCode: string) =>
+      mutate(nextFavoriteToggle(queryClient, entityType, entityCode)),
+    [mutate, queryClient, entityType],
   );
 
   return {

@@ -4126,6 +4126,7 @@
       "cannotDeactivateSelf": "O'z akkauntingizni nofaol qilib bo'lmaydi.",
       "emailTakenError": "Bu email boshqa akkauntda band.",
       "emailTakenInactiveError": "Bu emailli xodim nofaol qilingan. Uni ro'yxatda oching, «Tahrirlash» ni bosing va qayta yoqing.",
+      "lastAdminError": "Bu klinikaning oxirgi faol administratori. Avval boshqa xodimni administrator qiling.",
       "resetTotp": "2FA ni tiklash",
       "resetTotpTitle": "Xodimning 2FA sini tiklaysizmi?",
       "resetTotpDescription": "{name} endi ilovadagi kod yoki tiklash kodlari bilan kira olmaydi, uning barcha seanslari yakunlanadi. Keyingi kirishda parol yetarli bo'ladi, agar uning roli uchun 2FA majburiy bo'lsa, tizim darhol uni qayta ulashni so'raydi. Tasdiqlash uchun o'z parolingizni kiriting.",
@@ -4298,6 +4299,8 @@
       },
       "resources": {
         "Patient": "Bemorlar",
+        "ClinicalRecord": "Tashxislar, surunkali kasalliklar, klinik izoh",
+        "PatientAllergy": "Allergiyalar",
         "Appointment": "Yozilishlar",
         "Doctor": "Shifokorlar",
         "Cabinet": "Kabinetlar",

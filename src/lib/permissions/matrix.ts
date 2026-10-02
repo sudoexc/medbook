@@ -63,6 +63,8 @@ export interface ResourcePermissions {
 
 export type ResourceKey =
   | "Patient"
+  | "ClinicalRecord"
+  | "PatientAllergy"
   | "Appointment"
   | "Doctor"
   | "Cabinet"
@@ -99,6 +101,9 @@ function row(
 
 export const PERMISSION_MATRIX: ResourcePermissions[] = [
   // ── Patient ──────────────────────────────────────────────────────────────
+  // The card itself (/patients, /patients/[id]). The medical record on it is
+  // served by its own routes with other roles, so it has the two rows below:
+  // a nurse cannot edit the card yet adds and deletes diagnoses (ST-19).
   row("Patient", {
     SUPER_ADMIN: FULL,
     ADMIN: FULL,
@@ -107,6 +112,30 @@ export const PERMISSION_MATRIX: ResourcePermissions[] = [
     NURSE: { read: "all", write: false, update: "none", delete: false },
     // write — «Создать карточку» for an unknown caller (audit CM-08).
     CALL_OPERATOR: { read: "all", write: true, update: "none", delete: false },
+  }),
+
+  // ── ClinicalRecord (diagnoses, chronic conditions, clinical note) ───────
+  // /patients/[id]/diagnoses, /chronic-conditions and /clinical-note: the
+  // clinical roles only, any patient's record, with a real DELETE.
+  row("ClinicalRecord", {
+    SUPER_ADMIN: FULL,
+    ADMIN: FULL,
+    DOCTOR: FULL,
+    RECEPTIONIST: NONE,
+    NURSE: FULL,
+    CALL_OPERATOR: NONE,
+  }),
+
+  // ── PatientAllergy ──────────────────────────────────────────────────────
+  // Kept apart from the record above: the front desk and the call center
+  // read allergies (a warning about the patient), they do not write them.
+  row("PatientAllergy", {
+    SUPER_ADMIN: FULL,
+    ADMIN: FULL,
+    DOCTOR: FULL,
+    RECEPTIONIST: { read: "all", write: false, update: "none", delete: false },
+    NURSE: FULL,
+    CALL_OPERATOR: { read: "all", write: false, update: "none", delete: false },
   }),
 
   // ── Appointment ──────────────────────────────────────────────────────────

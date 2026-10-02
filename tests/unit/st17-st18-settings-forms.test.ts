@@ -12,7 +12,9 @@
  *       translated text that exists in both languages;
  *     - the cabinet and branch switches stayed flipped after a refusal;
  *     - the Telegram wizard validated the trimmed token but connected with
- *       the untrimmed one.
+ *       the untrimmed one;
+ *     - the user edit, delete and password dialogs toasted "conflict" for
+ *       email_taken, last_admin and cannot_deactivate_self.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -70,6 +72,54 @@ describe("ST-18 · cabinet refusals are translated", () => {
     expect(src).toMatch(/patchMutation\.mutate\(\{ id: c\.id, data \}, \{ onError: revert \}\)/);
     const branches = source("branches/_components/branches-settings-client.tsx");
     expect(branches).toMatch(/patchMutation\.mutate\(\{ row: b, data \}, \{ onError: revert \}\)/);
+  });
+});
+
+describe("ST-18 · user dialog refusals are translated", () => {
+  const src = source("users/_components/users-settings-client.tsx");
+  const API = path.join(process.cwd(), "src/app/api/crm/users");
+  const routes =
+    readFileSync(path.join(API, "route.ts"), "utf8") +
+    readFileSync(path.join(API, "[id]/route.ts"), "utf8");
+  const block = /USER_ERROR_KEYS[^{]*\{([\s\S]*?)\};/.exec(src)?.[1] ?? "";
+  const map = Object.fromEntries(
+    [...block.matchAll(/(\w+):\s*"([^"]+)"/g)].map((m) => [m[1]!, m[2]!]),
+  );
+
+  it("maps every refusal an admin can hit from the dialogs", () => {
+    for (const reason of [
+      "email_taken",
+      "email_taken_inactive",
+      "doctor_taken",
+      "doctor_id_required",
+      "cannot_deactivate_self",
+      "last_admin",
+    ]) {
+      expect(map[reason], reason).toBeTruthy();
+    }
+    // Each mapped reason is one the users API (or its binding plan) sends.
+    const binding = readFileSync(
+      path.join(process.cwd(), "src/server/users/staff-user.ts"),
+      "utf8",
+    );
+    for (const reason of Object.keys(map)) {
+      expect(routes + binding, reason).toContain(`"${reason}"`);
+    }
+  });
+
+  it("every mapped reason has text in ru and uz, without dashes in the new one", () => {
+    for (const key of Object.values(map)) {
+      expect(typeof lookup(ru.settings, key), `ru settings.${key}`).toBe("string");
+      expect(typeof lookup(uz.settings, key), `uz settings.${key}`).toBe("string");
+    }
+    expect(ru.settings.users.lastAdminError).not.toMatch(/[—–]/);
+    expect(uz.settings.users.lastAdminError).not.toMatch(/[—–]/);
+  });
+
+  it("no user mutation toasts the raw message directly", () => {
+    expect(src).not.toMatch(/onError: \(e: Error\) => toast\.error\(e\.message\)/);
+    // Create, edit, delete and reset password all go through the map.
+    expect(src.match(/onError: showError/g)?.length).toBe(4);
   });
 });
 

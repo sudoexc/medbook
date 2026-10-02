@@ -11,6 +11,11 @@
  *
  * Scopes narrower than "all" ('own') are not visible in the role lists;
  * each is backed by a check in the handler and pinned by its own tests.
+ *
+ * The patient card and its medical record (diagnoses, chronic conditions,
+ * the clinical note, allergies) are served by different routes with
+ * different roles, so they are separate rows checked against their own
+ * route files.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -18,6 +23,7 @@ import { describe, expect, it } from "vitest";
 
 import { CALL_CENTER_ROLES } from "@/lib/calls/roles";
 import { ONLINE_REQUEST_ROLES } from "@/server/schemas/online-request";
+import { CLINICAL_NOTE_ROLES } from "@/server/patient/clinical-note";
 import {
   ALL_ROLES,
   PERMISSION_MATRIX,
@@ -33,6 +39,7 @@ const API = path.join(process.cwd(), "src/app/api/crm");
 const SHARED_ROLE_LISTS: Record<string, readonly string[]> = {
   CALL_CENTER_ROLES,
   ONLINE_REQUEST_ROLES,
+  CLINICAL_NOTE_ROLES,
 };
 
 type Method = "GET" | "POST" | "PATCH" | "DELETE";
@@ -67,6 +74,31 @@ const ROUTES: Record<ResourceKey, Record<Method, string[]>> = {
     POST: ["patients/route.ts"],
     PATCH: ["patients/[id]/route.ts"],
     DELETE: ["patients/[id]/route.ts"],
+  },
+  // The medical record on the card has routes of its own, with other roles
+  // than the card (review of ST-19: a nurse deletes diagnoses).
+  ClinicalRecord: {
+    GET: [
+      "patients/[id]/diagnoses/route.ts",
+      "patients/[id]/chronic-conditions/route.ts",
+      "patients/[id]/clinical-note/route.ts",
+    ],
+    POST: ["patients/[id]/diagnoses/route.ts", "patients/[id]/chronic-conditions/route.ts"],
+    PATCH: [
+      "patients/[id]/diagnoses/[diagnosisId]/route.ts",
+      "patients/[id]/chronic-conditions/[conditionId]/route.ts",
+      "patients/[id]/clinical-note/route.ts",
+    ],
+    DELETE: [
+      "patients/[id]/diagnoses/[diagnosisId]/route.ts",
+      "patients/[id]/chronic-conditions/[conditionId]/route.ts",
+    ],
+  },
+  PatientAllergy: {
+    GET: ["patients/[id]/allergies/route.ts"],
+    POST: ["patients/[id]/allergies/route.ts"],
+    PATCH: ["patients/[id]/allergies/[allergyId]/route.ts"],
+    DELETE: ["patients/[id]/allergies/[allergyId]/route.ts"],
   },
   Appointment: {
     GET: ["appointments/route.ts"],
@@ -184,6 +216,41 @@ describe("PERMISSION_MATRIX matches the route role lists", () => {
     expect(PERMISSION_MATRIX.some((r) => Object.values(r.perRole).some((p) => p.read === "today"))).toBe(
       false,
     );
+  });
+
+  it("shows who writes the medical record, apart from the card", () => {
+    const cell = (resource: ResourceKey, role: Role) =>
+      PERMISSION_MATRIX.find((r) => r.resource === resource)!.perRole[role];
+    // A nurse cannot edit the card, yet adds, edits and deletes diagnoses,
+    // chronic conditions and allergies.
+    expect(cell("Patient", "NURSE")).toMatchObject({ write: false, update: "none", delete: false });
+    for (const resource of ["ClinicalRecord", "PatientAllergy"] as const) {
+      for (const role of ["NURSE", "DOCTOR"] as const) {
+        expect(cell(resource, role), `${resource} × ${role}`).toMatchObject({
+          read: "all",
+          write: true,
+          update: "all",
+          delete: true,
+        });
+      }
+    }
+    // The front desk reads allergies only, so they are a row of their own.
+    expect(cell("ClinicalRecord", "RECEPTIONIST").read).toBe("none");
+    expect(cell("PatientAllergy", "RECEPTIONIST")).toMatchObject({ read: "all", write: false });
+  });
+
+  it("one clinical record row is exact: its routes agree on roles", () => {
+    // A row backed by several routes says "yes" when any of them does; for
+    // the clinical record that is only honest while they all agree.
+    for (const method of ["GET", "POST", "PATCH", "DELETE"] as const) {
+      const sets = ROUTES.ClinicalRecord[method].map((file) => {
+        const handlers = handlerRoles(file);
+        return [...(handlers[method] ?? (method === "PATCH" ? handlers.PUT : undefined) ?? [])]
+          .sort()
+          .join(",");
+      });
+      expect(new Set(sets).size, method).toBe(1);
+    }
   });
 
   it("the screen no longer says it shows the implementation", () => {

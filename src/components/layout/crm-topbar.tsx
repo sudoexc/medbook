@@ -6,6 +6,7 @@ import { useParams, usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
 import {
   BellIcon,
+  CalendarPlusIcon,
   ChevronDownIcon,
   LogOutIcon,
   MoonIcon,
@@ -23,6 +24,9 @@ import {
 } from "@/i18n/navigation"
 
 import { cn } from "@/lib/utils"
+import { crmSectionKey, topbarActions } from "@/lib/crm-topbar"
+import { ENTERPRISE_FLAGS, type FeatureFlags } from "@/lib/feature-flags"
+import { persistUiLocale } from "@/lib/ui-locale-client"
 import { useShellSummary } from "@/hooks/use-shell-summary"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,26 +54,6 @@ const GlobalSearch = dynamic(
   { ssr: false },
 )
 
-/**
- * URL segment → key under `crmShell.topbar.sections`. The two diverge for
- * `call-center` (kebab-case path, camelCase translation key).
- */
-const SECTION_KEY: Record<string, string> = {
-  reception: "reception",
-  appointments: "appointments",
-  calendar: "calendar",
-  patients: "patients",
-  doctors: "doctors",
-  rooms: "rooms",
-  services: "services",
-  documents: "documents",
-  "call-center": "callCenter",
-  telegram: "telegram",
-  notifications: "notifications",
-  analytics: "analytics",
-  settings: "settings",
-}
-
 function useClock() {
   const [now, setNow] = React.useState<Date | null>(null)
   React.useEffect(() => {
@@ -94,6 +78,12 @@ export interface CrmTopbarProps {
   currentClinicId?: string | null
   /** Phase 9c — current active branch from the cookie (server-rendered). */
   currentBranchId?: string | null
+  /**
+   * Plan flags resolved by the CRM layout, as the sidebar gets them. Gate the
+   * Calls/Telegram shortcuts (CM-26). Defaults like the sidebar's for
+   * renders outside the layout.
+   */
+  flags?: Pick<FeatureFlags, "hasCallCenter" | "hasTelegramInbox">
   onSignOut?: () => void
 }
 
@@ -103,20 +93,15 @@ export function CrmTopbar({
   userRole,
   currentClinicId,
   currentBranchId,
+  flags = ENTERPRISE_FLAGS,
   onSignOut,
 }: CrmTopbarProps) {
   const params = useParams()
   const pathname = usePathname() ?? ""
   const locale = typeof params?.locale === "string" ? params.locale : "ru"
-  // With next-intl's `localePrefix: "as-needed"`, the default locale (`ru`)
-  // is served without a URL prefix, so the segment index is off-by-one
-  // between `/crm/telegram` (parts: ["crm","telegram"]) and
-  // `/uz/crm/telegram` (parts: ["uz","crm","telegram"]). Find the segment
-  // after "crm" instead of hard-coding an index.
-  const parts = pathname.split("/").filter(Boolean)
-  const crmIdx = parts.indexOf("crm")
-  const segment = crmIdx >= 0 ? (parts[crmIdx + 1] ?? "reception") : "reception"
-  const sectionKey = SECTION_KEY[segment] ?? "reception"
+  // Every CRM section has its own title now; a missing one read «Ресепшн»
+  // (audit CM-26: action center, site requests, account).
+  const sectionKey = crmSectionKey(pathname)
   const tTopbar = useTranslations("crmShell.topbar")
   const tSection = useTranslations(`crmShell.topbar.sections.${sectionKey}`)
   const tRoles = useTranslations("crmShell.topbar.roles")
@@ -129,7 +114,9 @@ export function CrmTopbar({
   const isDark = theme === "dark"
   const switchLocale = (next: "ru" | "uz") => {
     if (next === locale) return
-    document.cookie = `NEXT_LOCALE=${next}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`
+    // Cookie AND User.preferredLocale: sign-in re-seeds the cookie from the
+    // profile, so a cookie-only switch reverted at the next login (CM-24).
+    persistUiLocale(next)
     intlRouter.replace(intlPathname, { locale: next })
   }
   const [searchMounted, setSearchMounted] = React.useState(false)
@@ -167,6 +154,9 @@ export function CrmTopbar({
 
   const roleLabel = userRole ? tRoles(userRole) : tRoles("fallback")
   const [walkinOpen, setWalkinOpen] = React.useState(false)
+  // Only what this role may do on this plan (audit CM-26).
+  const actions = topbarActions(userRole, flags)
+  const canWalkin = actions.walkinTicket
 
   // Issuing a queue ticket is the clinic's dominant action — walk-ins far
   // outnumber bookings. The first cut swapped the button per screen
@@ -174,7 +164,9 @@ export function CrmTopbar({
   // randomly changing while reception moved between sections: same person,
   // same job, different primary. One primary everywhere now; booking sits
   // one click away in the dropdown.
+  // A role the walk-in API refuses gets neither the button nor F2.
   React.useEffect(() => {
+    if (!canWalkin) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "F2") {
         e.preventDefault()
@@ -183,7 +175,7 @@ export function CrmTopbar({
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [])
+  }, [canWalkin])
 
   return (
     <header className="relative flex h-[72px] shrink-0 items-center gap-4 overflow-hidden border-b border-border bg-card px-6">
@@ -214,45 +206,70 @@ export function CrmTopbar({
       ) : null}
 
       <div className="relative z-[1] ml-auto flex items-center gap-4">
-        {/* Split button: main + dropdown arrow */}
-        <div className="flex h-11 overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-sm">
-          <Button
-            size="lg"
-            onClick={() => setWalkinOpen(true)}
-            className={cn(
-              "h-full gap-2 rounded-none border-0 bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+        {/* Split button: main + dropdown arrow. The call operator books
+            but issues no tickets, so his main action is «Новая запись»; a
+            nurse has neither (CM-26). */}
+        {canWalkin || actions.booking ? (
+          <div className="flex h-11 overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-sm">
+            {canWalkin ? (
+              <Button
+                size="lg"
+                onClick={() => setWalkinOpen(true)}
+                className={cn(
+                  "h-full gap-2 rounded-none border-0 bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+                )}
+              >
+                <TicketIcon className="size-4" />
+                {tTopbar("issueTicket")}
+                <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[11px] font-bold tracking-wide">
+                  F2
+                </span>
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                onClick={() => setNewApptOpen(true)}
+                className={cn(
+                  "h-full gap-2 rounded-none border-0 bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+                )}
+              >
+                <CalendarPlusIcon className="size-4" />
+                {tTopbar("newAppointment")}
+              </Button>
             )}
-          >
-            <TicketIcon className="size-4" />
-            {tTopbar("issueTicket")}
-            <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[11px] font-bold tracking-wide">
-              F2
-            </span>
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={tTopbar("moreActions")}
-                className="flex h-full items-center border-l border-white/30 px-2 text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                <ChevronDownIcon className="size-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => setNewApptOpen(true)}>
-                {tTopbar("create.appointment")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => intlRouter.push("/crm/patients?new=true")}
-              >
-                {tTopbar("create.patient")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <NewAppointmentDialog open={newApptOpen} onOpenChange={setNewApptOpen} />
-        <WalkinTicketDialog open={walkinOpen} onOpenChange={setWalkinOpen} />
+            {actions.booking ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={tTopbar("moreActions")}
+                    className="flex h-full items-center border-l border-white/30 px-2 text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    <ChevronDownIcon className="size-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {canWalkin ? (
+                    <DropdownMenuItem onClick={() => setNewApptOpen(true)}>
+                      {tTopbar("create.appointment")}
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    onClick={() => intlRouter.push("/crm/patients?new=true")}
+                  >
+                    {tTopbar("create.patient")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
+        ) : null}
+        {actions.booking ? (
+          <NewAppointmentDialog open={newApptOpen} onOpenChange={setNewApptOpen} />
+        ) : null}
+        {canWalkin ? (
+          <WalkinTicketDialog open={walkinOpen} onOpenChange={setWalkinOpen} />
+        ) : null}
 
         {userRole === "SUPER_ADMIN" && (
           <ClinicSwitcher
@@ -288,30 +305,36 @@ export function CrmTopbar({
         </div>
 
         <div className="hidden items-center gap-4 md:flex">
-          <TopbarChannelIcon
-            label={tTopbar("channels.calls")}
-            icon={PhoneIcon}
-            badge={summary?.unread.calls ?? 0}
-            tone="danger"
-            iconClass="text-foreground"
-            // The badge counts missed calls to return: it opens their list
-            // (audit CM-13).
-            onClick={() =>
-              intlRouter.push(
-                (summary?.unread.calls ?? 0) > 0
-                  ? "/crm/call-center?tab=missed"
-                  : "/crm/call-center",
-              )
-            }
-          />
-          <TopbarChannelIcon
-            label={tTopbar("channels.telegram")}
-            icon={SendIcon}
-            badge={summary?.unread.telegram ?? 0}
-            tone="success"
-            iconClass="text-primary"
-            onClick={() => intlRouter.push("/crm/telegram")}
-          />
+          {/* Plan-gated like the sidebar items: both pages answer
+              notFound() without their module (CM-26). */}
+          {actions.calls ? (
+            <TopbarChannelIcon
+              label={tTopbar("channels.calls")}
+              icon={PhoneIcon}
+              badge={summary?.unread.calls ?? 0}
+              tone="danger"
+              iconClass="text-foreground"
+              // The badge counts missed calls to return: it opens their list
+              // (audit CM-13).
+              onClick={() =>
+                intlRouter.push(
+                  (summary?.unread.calls ?? 0) > 0
+                    ? "/crm/call-center?tab=missed"
+                    : "/crm/call-center",
+                )
+              }
+            />
+          ) : null}
+          {actions.telegram ? (
+            <TopbarChannelIcon
+              label={tTopbar("channels.telegram")}
+              icon={SendIcon}
+              badge={summary?.unread.telegram ?? 0}
+              tone="success"
+              iconClass="text-primary"
+              onClick={() => intlRouter.push("/crm/telegram")}
+            />
+          ) : null}
           <TopbarChannelIcon
             label={tTopbar("channels.notifications")}
             icon={BellIcon}

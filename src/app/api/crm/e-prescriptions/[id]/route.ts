@@ -128,6 +128,8 @@ export const PATCH = createApiHandler(
       return row;
     });
 
+    // Sole audit source: `eprescription.cancelled` is non-auditable in
+    // EVENT_META_OVERRIDES (audit CD-10), so the pumper writes no second row.
     await audit(request, {
       action: AUDIT_ACTION.EPRESCRIPTION_CANCELLED,
       entityType: "EPrescription",

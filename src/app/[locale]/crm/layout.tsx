@@ -230,6 +230,7 @@ export default async function CrmLayout({
             userRole={session?.user?.role ?? null}
             currentClinicId={session?.user?.clinicId ?? null}
             currentBranchId={branchCookie}
+            flags={flags}
           />
           <main className="min-h-0 flex-1 overflow-y-auto bg-surface">
             <CrmRoleProvider role={session?.user?.role ?? "ADMIN"}>

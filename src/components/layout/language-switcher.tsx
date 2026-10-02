@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "@/i18n/navigation";
 import { Globe, Check } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 
+import { persistUiLocale } from "@/lib/ui-locale-client";
+
 type Lang = "ru" | "uz";
 
 const LABELS: Record<Lang, { short: string; long: string }> = {
@@ -54,18 +56,9 @@ export function LanguageSwitcher() {
         setOpen(false);
         return;
       }
-      // Persist for future visits. next-intl also sets this cookie on navigation
-      // but we write it eagerly so the preference survives before the nav resolves.
-      document.cookie = `NEXT_LOCALE=${next}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
-
-      // Persist the staff preference server-side so it survives across devices
-      // (the cookie is per-browser). Best-effort: a 401 on public pages or a
-      // transient failure must not block the language change.
-      void fetch("/api/me", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locale: next }),
-      }).catch(() => {});
+      // Cookie now (survives before the nav resolves) plus the staff
+      // preference server-side (survives across devices); best-effort.
+      persistUiLocale(next);
 
       router.replace(pathname, { locale: next });
       setOpen(false);

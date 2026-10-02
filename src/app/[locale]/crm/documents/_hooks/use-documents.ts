@@ -13,9 +13,12 @@ export type DocumentType =
   | "RECEIPT"
   | "OTHER";
 
+/** Upload types plus CONCLUSION: a list filter, never a type to file (CD-17). */
+export type DocumentFilterType = DocumentType | "CONCLUSION";
+
 export interface DocumentFilters {
   q: string;
-  type: DocumentType | "";
+  type: DocumentFilterType | "";
   patientId: string;
   doctorId: string;
   from: string;

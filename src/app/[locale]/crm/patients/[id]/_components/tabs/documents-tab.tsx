@@ -290,6 +290,9 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">{t("typeFilterAll")}</SelectItem>
+            {/* Not an upload type, but the chart's most common document
+                (audit CD-17); the list API accepts it as a filter. */}
+            <SelectItem value="CONCLUSION">{tType("conclusion")}</SelectItem>
             {DOC_TYPES.map((dt) => (
               <SelectItem key={dt} value={dt}>
                 {tType(

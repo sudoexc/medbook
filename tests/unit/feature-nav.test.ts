@@ -112,7 +112,7 @@ describe("computeVisibleNav (pure helper)", () => {
 
 describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
   it("Basic plan hides Telegram + Call Center, keeps everything else", () => {
-    const visible = getVisibleCrmNav(DEFAULT_FLAGS);
+    const visible = getVisibleCrmNav(DEFAULT_FLAGS, "ADMIN");
     const hrefs = nameSet(visible);
     // Pro-only items dropped.
     expect(hrefs.has("telegram")).toBe(false);
@@ -139,11 +139,20 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
     expect(hrefs.has("patients")).toBe(true);
   });
 
-  it("Enterprise plan exposes every nav item", () => {
-    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS);
+  it("Enterprise plan exposes every nav item to ADMIN", () => {
+    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, "ADMIN");
     const everyHref = new Set<string>();
     for (const g of CRM_NAV) for (const i of g.items) everyHref.add(i.href);
     expect(nameSet(visible)).toEqual(everyHref);
+  });
+
+  // Audit CM-26: settings/layout.tsx sends every other role back to /crm.
+  it("Settings is ADMIN-only, on every plan", () => {
+    expect(nameSet(getVisibleCrmNav(ENTERPRISE_FLAGS, null)).has("settings")).toBe(false);
+    expect(nameSet(getVisibleCrmNav(DEFAULT_FLAGS, null)).has("settings")).toBe(false);
+    expect(nameSet(getVisibleCrmNav(DEFAULT_FLAGS, "ADMIN")).has("settings")).toBe(true);
+    // The rest of the workday menu stays for the desk.
+    expect(nameSet(getVisibleCrmNav(DEFAULT_FLAGS, null)).has("reception")).toBe(true);
   });
 
   it("Communications group survives on Basic because non-gated items remain", () => {

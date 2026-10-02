@@ -178,6 +178,14 @@
         "actionCenter": {
           "title": "Vazifalar markazi",
           "subtitle": "Klinika ustuvor vazifalari ro'yxati"
+        },
+        "onlineRequests": {
+          "title": "Saytdan arizalar",
+          "subtitle": "Saytda qoldirilgan qabulga yozilish so‘rovlari"
+        },
+        "account": {
+          "title": "Mening hisobim",
+          "subtitle": "Parol va kirish xavfsizligi"
         }
       },
       "issueTicket": "Talon berish"
@@ -8174,6 +8182,7 @@
       },
       "tabs": {
         "all": "Barcha hujjatlar",
+        "conclusion": "Xulosalar",
         "referral": "Yo‘llanmalar",
         "prescription": "Retseptlar",
         "result": "Natijalar",

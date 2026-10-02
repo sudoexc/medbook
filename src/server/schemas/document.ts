@@ -12,6 +12,18 @@ export const DocumentTypeEnum = z.enum([
   "OTHER",
 ]);
 
+/**
+ * What a list may be filtered by: every stored type, CONCLUSION included.
+ * Conclusions are never created or edited by hand (DocumentTypeEnum stays
+ * without them), but they are the most common document in a chart and the
+ * «Заключения» filter asked for `?type=CONCLUSION`, which answered 400
+ * (audit CD-17).
+ */
+export const DocumentQueryTypeEnum = z.enum([
+  ...DocumentTypeEnum.options,
+  "CONCLUSION",
+]);
+
 export const DocumentSourceEnum = z.enum(["STAFF", "PATIENT", "SYSTEM"]);
 
 /**
@@ -76,7 +88,7 @@ export const QueryDocumentSchema = z.object({
   patientId: z.string().optional(),
   appointmentId: z.string().optional(),
   doctorId: z.string().optional(),
-  type: DocumentTypeEnum.optional(),
+  type: DocumentQueryTypeEnum.optional(),
   /** CD-06: «от пациента» / clinic upload / rendered by the system. */
   source: DocumentSourceEnum.optional(),
   q: z.string().optional(),

@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
+import { askClinicEntry } from "@/lib/clinic-entry-prompt";
 import { cn } from "@/lib/utils";
 
 interface ClinicRow {
@@ -181,18 +182,12 @@ async function resetOwnerPassword(
 async function impersonateClinic(clinicId: string): Promise<void> {
   // Phase 19 W4 — switch-clinic now requires a reason (≥4 chars) and a mode
   // pick. Collect both via simple prompts so the existing flow stays one
-  // click + one input deep; the SUPER_ADMIN can always cancel.
-  const reason = window.prompt(
-    "Reason for entering this clinic (≥4 chars). This is logged.",
-    "",
-  );
-  if (reason === null) return;
-  const trimmed = reason.trim();
-  if (trimmed.length < 4) throw new Error("Reason must be ≥4 chars");
-  const viewOnly = window.confirm(
-    "OK = VIEW_ONLY (read-only).\nCancel = WRITE (mutations allowed).",
-  );
-  const mode: "WRITE" | "VIEW_ONLY" = viewOnly ? "VIEW_ONLY" : "WRITE";
+  // click + one input deep; the SUPER_ADMIN can always cancel, and only an
+  // explicit OK on the mode question allows writes (audit CM-21).
+  const answer = askClinicEntry(window);
+  if (answer.kind === "cancelled") return;
+  if (answer.kind === "invalid") throw new Error(answer.message);
+  const { reason: trimmed, mode } = answer;
   const r = await fetch("/api/platform/session/switch-clinic", {
     method: "POST",
     headers: { "content-type": "application/json" },

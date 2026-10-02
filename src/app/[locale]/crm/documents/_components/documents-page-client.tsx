@@ -35,7 +35,7 @@ import {
   flattenDocs,
   useDocumentsList,
   type DocumentFilters,
-  type DocumentType,
+  type DocumentFilterType,
 } from "../_hooks/use-documents";
 import { UploadDialog } from "./upload-dialog";
 import { documentHref } from "@/lib/storage-ref";
@@ -46,7 +46,10 @@ import {
   type DocumentSourceValue,
 } from "@/lib/document-guards";
 
-const DOC_TYPES: DocumentType[] = [
+// The filter also offers conclusions (audit CD-17): never uploaded here,
+// but the most common document in a chart.
+const DOC_TYPES: DocumentFilterType[] = [
+  "CONCLUSION",
   "REFERRAL",
   "PRESCRIPTION",
   "RESULT",
@@ -131,7 +134,7 @@ export function DocumentsPageClient() {
         <Select
           value={filters.type || "__all"}
           onValueChange={(v) =>
-            patch({ type: v === "__all" ? "" : (v as DocumentType) })
+            patch({ type: v === "__all" ? "" : (v as DocumentFilterType) })
           }
         >
           {/* aria-label: no visible <label> for this filter, and a closed

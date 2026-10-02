@@ -148,15 +148,15 @@ const EVENT_META_OVERRIDES: Partial<Record<EventType, EventMeta>> = {
   "notification.failed": { auditable: true, severity: "warning" },
   "lab.result.received": { auditable: true, severity: "info" },
   "lab.order.created": { auditable: true, severity: "info" },
-  "eprescription.issued": { auditable: true, severity: "info" },
   // Cross-surface sync §7.11 — medication regimen audit.
   "prescription.created": { auditable: true, severity: "info" },
   // Cross-surface sync §7.7 — schedule changes are auditable so support can
   // explain "почему слот вдруг пропал" via a single grep.
   "doctor.scheduleChanged": { auditable: true, severity: "info" },
-  "eprescription.cancelled": { auditable: true, severity: "info" },
-  "sickleave.issued": { auditable: true, severity: "info" },
-  "sickleave.cancelled": { auditable: true, severity: "info" },
+  // `eprescription.*` and `sickleave.*` are deliberately absent (audit
+  // CD-10): their routes call audit() with the request IP/UA after commit,
+  // so a pumper row on top gave every issue/cancel two AuditLog entries.
+  // Same single-source rule as `referral.created`.
   "cds.override.recorded": { auditable: true, severity: "warning" },
   // Phase B.5 — `draftSaved` is high-frequency autosave; skip audit. Finalize
   // closes the visit and warrants a row.

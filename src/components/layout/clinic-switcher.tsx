@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { askClinicEntry } from "@/lib/clinic-entry-prompt"
 import { cn } from "@/lib/utils"
 
 type ClinicOption = {
@@ -101,25 +102,17 @@ export function ClinicSwitcher({
   }, [isSuperAdmin, loadClinics])
 
   // Phase 19 W4 — entering a clinic now requires a reason (≥4 chars) and a
-  // mode pick (default WRITE; VIEW_ONLY for read-only support sessions). We
-  // collect both via window.prompt + window.confirm to ship without pulling
-  // in a heavier dialog primitive — the switcher is rarely used and the
-  // prompt UX is acceptable for SUPER_ADMIN-only surface.
+  // mode pick. Collected via window.prompt + window.confirm (SUPER_ADMIN-only
+  // surface, rarely used); anything but an explicit OK on the mode question
+  // enters read-only (audit CM-21, see askClinicEntry).
   const switchTo = React.useCallback(async (clinicId: string) => {
-    const reason = window.prompt(
-      "Reason for entering this clinic (≥4 chars). This is logged.",
-      "",
-    )
-    if (reason === null) return // cancelled
-    const trimmed = reason.trim()
-    if (trimmed.length < 4) {
-      setError("Reason must be at least 4 characters")
+    const answer = askClinicEntry(window)
+    if (answer.kind === "cancelled") return
+    if (answer.kind === "invalid") {
+      setError(answer.message)
       return
     }
-    const viewOnly = window.confirm(
-      "OK = VIEW_ONLY (read-only).\nCancel = WRITE (mutations allowed).",
-    )
-    const mode: "WRITE" | "VIEW_ONLY" = viewOnly ? "VIEW_ONLY" : "WRITE"
+    const { reason: trimmed, mode } = answer
     setSwitching(clinicId)
     setError(null)
     try {

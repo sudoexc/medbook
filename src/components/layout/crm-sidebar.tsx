@@ -173,7 +173,14 @@ export const CRM_NAV: NavGroup[] = [
           },
         ],
       },
-      { href: "settings", labelKey: "settings", icon: SettingsIcon },
+      // settings/layout.tsx sends every other role back to /crm, so the
+      // item only showed them a click that goes nowhere (audit CM-26).
+      {
+        href: "settings",
+        labelKey: "settings",
+        icon: SettingsIcon,
+        requiredRole: "ADMIN",
+      },
     ],
   },
 ]

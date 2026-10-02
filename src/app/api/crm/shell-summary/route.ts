@@ -28,6 +28,9 @@ import type { TenantContext } from "@/lib/tenant-context";
 import { ONLINE_REQUEST_ROLES } from "@/server/schemas/online-request";
 import { pendingMissedCallsWhere } from "@/lib/calls/call-state";
 
+/** Statuses left out of the sidebar's today count (audit CM-22). */
+const NOT_TODAY_STATUSES = ["CANCELLED", "NO_SHOW"] as const;
+
 function canWorkLeads(ctx: TenantContext): boolean {
   if (ctx.kind === "SUPER_ADMIN") return true;
   if (ctx.kind !== "TENANT") return false;
@@ -63,9 +66,15 @@ export const GET = createApiListHandler(
       failedNotificationsToday,
       newLeads,
     ] = await Promise.all([
-      // Today's appointments — every status, the sidebar wants raw volume.
+      // «Записей сегодня» in the sidebar footer: today's visits that still
+      // stand. A cancelled booking or a no-show is not one, and counting them
+      // made the number reception watches all day go up on every cancel
+      // (audit CM-22). SKIPPED stays: reception brings the patient back.
       prisma.appointment.count({
-        where: { date: { gte: todayStart, lt: todayEnd } },
+        where: {
+          date: { gte: todayStart, lt: todayEnd },
+          status: { notIn: [...NOT_TODAY_STATUSES] },
+        },
       }),
       // Sum of `durationMin` for non-cancelled appointments today — the numerator
       // of the load %. CANCELLED/NO_SHOW/SKIPPED don't consume the chair.

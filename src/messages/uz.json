@@ -4036,6 +4036,8 @@
         "workdayStart": "Ish kuni boshlanishi",
         "workdayEnd": "Ish kuni tugashi",
         "slotMin": "Slot uzunligi (daq.)",
+        "patientHours": "Bemorlar uchun ish vaqti",
+        "patientHoursHint": "Mini ilovada bemorlarga ko'rsatiladi. Qabulga ta'sir qilmaydi: bo'sh vaqt har bir shifokor jadvali bo'yicha hisoblanadi.",
         "brandColor": "Brend rangi",
         "tgBotUsername": "TG bot (username)",
         "tgBotToken": "TG Bot Token",
@@ -4247,6 +4249,10 @@
       "equipmentAdd": "Jihoz qo'shish",
       "equipmentPlaceholder": "UZI, EKG, …",
       "equipmentEmpty": "Jihozlar ko'rsatilmagan",
+      "errors": {
+        "numberTaken": "Bunday raqamli kabinet allaqachon bor",
+        "branchInvalid": "Filial topilmadi yoki o'chirilgan. Faol filialni tanlang."
+      },
       "cols": {
         "nameRu": "Nomi (RU)",
         "nameUz": "Nomi (UZ)",
@@ -4272,7 +4278,7 @@
     },
     "roles": {
       "title": "Ruxsatlar matritsasi / Permission Matrix",
-      "subtitle": "Manba: kod. Ushbu jadval joriy amalga oshirishni aks ettiradi.",
+      "subtitle": "Ma'lumot uchun: CRMda kim nima qila oladi. Huquqlar kodda belgilanadi, bu yerda ularni o'zgartirib bo'lmaydi.",
       "readOnlyForAdmin": "Faqat o'qish · tahrir — Phase 17+",
       "resourceCol": "Resurs",
       "legendTitle": "Belgilar",

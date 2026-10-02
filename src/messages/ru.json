@@ -4036,6 +4036,8 @@
         "workdayStart": "Начало дня",
         "workdayEnd": "Конец дня",
         "slotMin": "Шаг сетки (мин)",
+        "patientHours": "Часы работы для пациентов",
+        "patientHoursHint": "Видны пациентам в мини-приложении. На запись не влияют: свободное время считается по расписанию каждого врача.",
         "brandColor": "Фирменный цвет",
         "tgBotUsername": "TG бот (username)",
         "tgBotToken": "TG Bot Token",
@@ -4247,6 +4249,10 @@
       "equipmentAdd": "Добавить оборудование",
       "equipmentPlaceholder": "УЗИ, ЭКГ, …",
       "equipmentEmpty": "Оборудование не указано",
+      "errors": {
+        "numberTaken": "Кабинет с таким номером уже есть",
+        "branchInvalid": "Филиал не найден или отключён. Выберите активный филиал."
+      },
       "cols": {
         "nameRu": "Название (RU)",
         "nameUz": "Название (UZ)",
@@ -4272,7 +4278,7 @@
     },
     "roles": {
       "title": "Матрица прав / Permission Matrix",
-      "subtitle": "Источник: код. Эта таблица отражает текущую реализацию.",
+      "subtitle": "Справочная сводка: кто что может в CRM. Права задаются в коде, здесь их не изменить.",
       "readOnlyForAdmin": "Только чтение · правка — Phase 17+",
       "resourceCol": "Ресурс",
       "legendTitle": "Обозначения",

@@ -18,6 +18,11 @@ import {
 } from "@/server/schemas/user";
 import { redactStaffUser } from "@/server/users/staff-user";
 import { runClinicWide } from "@/server/branches/branch-rules";
+import {
+  LOGIN_LOOKUP_LIMIT,
+  anyCaseEmail,
+  sameEmailIgnoringCase,
+} from "@/server/auth/login-email";
 
 // Secrets (password hash, TOTP material) never leave the server.
 const redactUser = redactStaffUser;
@@ -97,15 +102,22 @@ export const POST = createApiHandler(
       return err("Forbidden", 403, { reason: "cannot_create_super_admin" });
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email: body.email },
-    });
-    if (existing) {
+    // Any case counts as taken (audit ST-15): the sign-in ignores case.
+    const taken = sameEmailIgnoringCase(
+      body.email,
+      await prisma.user.findMany({
+        where: { email: anyCaseEmail(body.email) },
+        select: { email: true, clinicId: true, active: true },
+        take: LOGIN_LOOKUP_LIMIT,
+      }),
+    );
+    if (taken.length > 0) {
       // Email is unique across the installation, so a deactivated colleague
       // keeps it. Say so: the way back is to switch that account on again
       // (audit ST-04), not a second login.
-      const inactiveHere =
-        existing.clinicId === ctx.clinicId && !existing.active;
+      const inactiveHere = taken.some(
+        (u) => u.clinicId === ctx.clinicId && !u.active,
+      );
       return err("conflict", 409, {
         reason: inactiveHere ? "email_taken_inactive" : "email_taken",
       });

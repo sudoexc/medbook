@@ -224,7 +224,6 @@ export function ClinicSettingsClient() {
       "timezone",
       "workdayStart",
       "workdayEnd",
-      "slotMin",
       // Phase 16 Patient Experience.
       "npsAlertThreshold",
       "referralRewardPercent",
@@ -385,7 +384,19 @@ export function ClinicSettingsClient() {
                 className="text-muted-foreground"
               />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            {/* Audit ST-17: these hours only reach patients (the Mini App
+                clinic card). Free slots come from each doctor's schedule on
+                a fixed grid, so the old «Шаг сетки» field changed nothing
+                and is gone, and the hours say who they are for. */}
+            <div>
+              <p className="text-sm font-medium">
+                {t("clinic.fields.patientHours")}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t("clinic.fields.patientHoursHint")}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="workdayStart">
                   {t("clinic.fields.workdayStart")}
@@ -409,23 +420,6 @@ export function ClinicSettingsClient() {
                   value={form.workdayEnd ?? "19:00"}
                   onChange={(e) =>
                     setForm({ ...form, workdayEnd: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="slotMin">{t("clinic.fields.slotMin")}</Label>
-                <Input
-                  id="slotMin"
-                  type="number"
-                  min={5}
-                  max={240}
-                  step={5}
-                  value={form.slotMin ?? 30}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      slotMin: Number(e.target.value) || 30,
-                    })
                   }
                 />
               </div>

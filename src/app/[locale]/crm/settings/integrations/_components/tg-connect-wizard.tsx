@@ -146,7 +146,10 @@ export function TgConnectWizard({ open, onOpenChange, onConnected }: Props) {
         {
           method: "POST",
           body: JSON.stringify({
-            token,
+            // Validated trimmed (step 2), so sent trimmed: a token pasted
+            // from BotFather with a trailing newline failed here with
+            // "ValidationError" after passing validation (audit ST-18).
+            token: token.trim(),
             expectedUsername: bot?.username,
             setupCommands,
             setupDescription,

@@ -54,6 +54,8 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: {
       findUnique: vi.fn(async ({ where }: { where: { email: string } }) => h.users.get(where.email) ?? null),
+      // Any-case fallback after an exact miss (audit ST-15): nothing here.
+      findMany: vi.fn(async () => []),
       update: vi.fn(async () => ({})),
     },
     userSession: { deleteMany: vi.fn(async () => ({ count: 1 })) },

@@ -171,7 +171,9 @@ export function BranchesSettingsClient() {
               <BranchCard
                 key={b.id}
                 row={b}
-                onPatch={(data) => patchMutation.mutate({ row: b, data })}
+                onPatch={(data, revert) =>
+                  patchMutation.mutate({ row: b, data }, { onError: revert })
+                }
                 onDelete={() => deleteMutation.mutate({ row: b })}
               />
             ))}
@@ -255,14 +257,21 @@ function BranchCard({
   onDelete,
 }: {
   row: BranchRow;
-  onPatch: (data: Partial<BranchRow>) => void;
+  /** `revert` runs when the server refuses the change. */
+  onPatch: (data: Partial<BranchRow>, revert: () => void) => void;
   onDelete: () => void;
 }) {
   const t = useTranslations("settings");
   const [local, setLocal] = React.useState(row);
   React.useEffect(() => setLocal(row), [row]);
 
-  const commit = (data: Partial<BranchRow>) => onPatch(data);
+  // Put back what the server holds when it refuses an edit (audit ST-18).
+  // The list refetch in `branchError` does not reach this state: an
+  // unchanged row keeps its identity, so the effect above never re-runs.
+  const commit = (data: Partial<BranchRow>) => {
+    const held = row;
+    onPatch(data, () => setLocal(held));
+  };
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">

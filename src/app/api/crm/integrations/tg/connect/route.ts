@@ -42,8 +42,10 @@ import {
 } from "@/server/telegram/clinic-bot";
 
 const Schema = z.object({
+  // Trimmed like the wizard's validation step trims it (audit ST-18).
   token: z
     .string()
+    .trim()
     .min(20)
     .max(80)
     .regex(/^\d+:[A-Za-z0-9_-]+$/, "format"),

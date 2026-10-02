@@ -63,6 +63,8 @@ vi.mock("@/lib/prisma", () => {
       user: {
         findFirst: vi.fn(async () => h.user),
         findUnique: vi.fn(async () => h.existingByEmail),
+        // The address check ignores case (audit ST-15).
+        findMany: vi.fn(async () => (h.existingByEmail ? [h.existingByEmail] : [])),
         count: vi.fn(async () => 1),
       },
       doctor: {
@@ -198,7 +200,7 @@ describe("PATCH /api/crm/users/[id]", () => {
 
 describe("POST /api/crm/users with the email of a deactivated colleague", () => {
   it("says the account exists and is switched off, so the admin reactivates it", async () => {
-    h.existingByEmail = { id: "doc1", clinicId: "c1", active: false };
+    h.existingByEmail = { id: "doc1", email: "d@x.uz", clinicId: "c1", active: false };
     const res = await createUser(
       new Request("https://x/api/crm/users", {
         method: "POST",

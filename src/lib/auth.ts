@@ -34,6 +34,11 @@ import {
   mintUserSessionOnSignIn,
 } from "@/server/auth/user-session";
 import { is2faDisabled } from "@/server/auth/security-policy";
+import {
+  LOGIN_LOOKUP_LIMIT,
+  anyCaseEmail,
+  findLoginAccount,
+} from "@/server/auth/login-email";
 import { activeBranchClearCookie } from "@/server/platform/branch-cookie";
 import {
   deleteSessionById,
@@ -133,10 +138,19 @@ async function checkStaffCredentials(
   const { totp, recoveryCode } = input;
   // User is in MODELS_WITHOUT_TENANT so the extension will not try
   // to inject a clinicId — and we're outside `runWithTenant` anyway.
+  // The address is matched whatever its case (audit ST-15).
+  const withClinic = {
+    include: { clinic: { select: { active: true } } },
+  } as const;
   const user = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.user.findUnique({
-      where: { email: input.email },
-      include: { clinic: { select: { active: true } } },
+    findLoginAccount(input.email, {
+      exact: (email) => prisma.user.findUnique({ where: { email }, ...withClinic }),
+      anyCase: (email) =>
+        prisma.user.findMany({
+          where: { email: anyCaseEmail(email) },
+          ...withClinic,
+          take: LOGIN_LOOKUP_LIMIT,
+        }),
     }),
   );
   // One bcrypt comparison on every path, so an unknown or inactive

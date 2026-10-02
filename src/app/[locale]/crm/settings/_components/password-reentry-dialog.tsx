@@ -16,6 +16,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { SettingsApiError } from "../_hooks/use-settings-api";
+
 /**
  * Small re-entry prompt: "enter your current password" before committing a
  * secret change. The parent receives the password on submit and bundles it
@@ -59,7 +61,15 @@ export function PasswordReentryDialog({
     try {
       await onConfirm(password);
     } catch (e) {
-      setError((e as Error).message || t("passwordReentry.wrong"));
+      // A wrong password comes back as 403 "Forbidden" with a reason; that
+      // code is what an unmapped caller showed under the field (audit ST-18).
+      const wrong =
+        e instanceof SettingsApiError && e.reason === "wrong_password";
+      setError(
+        wrong
+          ? t("passwordReentry.wrong")
+          : (e as Error).message || t("passwordReentry.wrong"),
+      );
     } finally {
       setBusy(false);
     }

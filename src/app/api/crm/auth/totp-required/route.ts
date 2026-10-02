@@ -52,9 +52,14 @@ import { isKnownLoginSource } from "@/server/auth/login-sources";
 import { realClientIp } from "@/lib/client-ip";
 import { clinicLocksOut } from "@/server/auth/clinic-access";
 import { recordLoginEvent } from "@/server/auth/login-audit";
+import {
+  LOGIN_LOOKUP_LIMIT,
+  anyCaseEmail,
+  findLoginAccount,
+} from "@/server/auth/login-email";
 
 const Schema = z.object({
-  email: z.string().email().max(200),
+  email: z.string().trim().email().max(200),
   password: z.string().min(1).max(200),
 });
 
@@ -91,19 +96,26 @@ export async function POST(request: Request): Promise<Response> {
     // We don't want to leak account existence via timing or response body.
     // Returning the same shape on both wrong-creds and unknown-user keeps
     // the surface uniform, and every path spends one bcrypt comparison.
+    // Same any-case match as the sign-in itself (audit ST-15).
+    const select = {
+      id: true,
+      email: true,
+      role: true,
+      clinicId: true,
+      passwordHash: true,
+      active: true,
+      totpEnabledAt: true,
+      clinic: { select: { active: true } },
+    } as const;
     user = await runWithTenant({ kind: "SYSTEM" }, () =>
-      prisma.user.findUnique({
-        where: { email },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          clinicId: true,
-          passwordHash: true,
-          active: true,
-          totpEnabledAt: true,
-          clinic: { select: { active: true } },
-        },
+      findLoginAccount(email, {
+        exact: (e) => prisma.user.findUnique({ where: { email: e }, select }),
+        anyCase: (e) =>
+          prisma.user.findMany({
+            where: { email: anyCaseEmail(e) },
+            select,
+            take: LOGIN_LOOKUP_LIMIT,
+          }),
       }),
     );
     valid = await verifyPasswordConstantTime(password, user?.passwordHash);

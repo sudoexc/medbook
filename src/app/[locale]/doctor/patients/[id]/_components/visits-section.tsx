@@ -14,6 +14,7 @@ import {
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
+import { formatCalendarDay } from "@/lib/format";
 
 import { AdditionalDiagnosesLine } from "../../../_components/additional-diagnoses-line";
 import {
@@ -23,26 +24,6 @@ import {
 } from "../../_hooks/use-doctor-patient-visits";
 import { documentHref } from "@/lib/storage-ref";
 import { isPatientDocument } from "@/lib/document-guards";
-
-const RU_MONTHS_SHORT = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
-
-function ruDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getDate()} ${RU_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
-}
 
 /**
  * Visit history as the single place where a patient's past lives.
@@ -257,7 +238,7 @@ function VisitEntry({
           />
 
           <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {ruDate(v.date)} ·{" "}
+            {formatCalendarDay(v.date, locale, { year: true })} ·{" "}
             {t("visits.durationMin", { min: v.durationMin })} ·{" "}
             {v.type === "repeat"
               ? t("visits.type.repeat")

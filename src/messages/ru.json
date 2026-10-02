@@ -500,7 +500,7 @@
       "active": "Активные пациенты",
       "dormantGt30": "Неактивные > 30 дней",
       "dormant": "Остывают",
-      "noShowRisk": "No-show risk",
+      "noShowRisk": "Риск неявки",
       "avgCheck": "Средний чек",
       "noData": "нет данных",
       "paymentsNotTracked": "Оплаты не ведутся в CRM",
@@ -2068,13 +2068,13 @@
       "smartTitle": "Умные рекомендации",
       "recRedistributeTitle": "Перераспределите очередь",
       "recRedistributeBody": "В кабинете {cabinet} высокая нагрузка. Рекомендуем перенаправить {count} пациент(ов).",
-      "recApply": "Применить",
+      "recApply": "Открыть расписание",
       "recOptimizeTitle": "Оптимизируйте расписание",
       "recOptimizeBody": "После {hour}:00 ожидается спад нагрузки на {pct}%. Можно добавить приёмы.",
       "recView": "Смотреть",
       "recRemindTitle": "Напоминания пациентам",
       "recRemindBody": "{count} пациент(ов) ожидают подтверждения записи.",
-      "recSend": "Отправить",
+      "recSend": "Открыть центр действий",
       "recEmpty": "Сегодня всё под контролем — рекомендаций нет.",
       "distributionTitle": "Распределение приёмов",
       "distributionByTime": "По времени",
@@ -2209,7 +2209,7 @@
       "openFull": "Все чаты",
       "unread": "{count} новых",
       "empty": "Нет непрочитанных сообщений",
-      "emptyHint": "Новые сообщения из Telegram и SMS появятся здесь.",
+      "emptyHint": "Новые сообщения из Telegram появятся здесь.",
       "voiceNote": "голосовое сообщение",
       "photo": "фото",
       "document": "документ",
@@ -3265,7 +3265,7 @@
       },
       "step2": {
         "title": "2. Канал",
-        "subtitle": "Telegram — бесплатно, у кого подключён; SMS — платно, но достанется всем с телефоном."
+        "subtitle": "Только Telegram: сообщение получат пациенты, у которых подключён Telegram."
       },
       "channelLabel": {
         "TG": "Telegram",
@@ -4281,7 +4281,7 @@
       "readOnlyForAdmin": "Только чтение · правка — Phase 17+",
       "resourceCol": "Ресурс",
       "legendTitle": "Обозначения",
-      "legendBody": "R — чтение, W — создание, U — изменение, D — удаление. Скоуп: all — все строки клиники, own — только свои, today — только сегодняшние.",
+      "legendBody": "R: чтение, W: создание, U: изменение, D: удаление. Охват: «все» (все строки клиники), «свои» (только свои), «сегодня» (только сегодняшние).",
       "legendChipsTitle": "Легенда:",
       "sourceNote": "Источник: жёстко зашитые роли в `src/lib/api-handler.ts` и guards в /api/crm/*. Изменение прав требует ревью кода.",
       "actions": {
@@ -4291,9 +4291,9 @@
         "d": "D"
       },
       "scope": {
-        "all": "all",
-        "own": "own",
-        "today": "today"
+        "all": "все",
+        "own": "свои",
+        "today": "сегодня"
       },
       "resources": {
         "Patient": "Пациенты",
@@ -4316,7 +4316,7 @@
       "title": "Настройки",
       "subtitle": "Управление клиникой, пользователями и интеграциями.",
       "clinicManagement": "Управление клиникой",
-      "clinicManagementHint": "Кабинеты, услуги, документы и SMS — раньше жили в основном меню, теперь собраны здесь.",
+      "clinicManagementHint": "Кабинеты, услуги и документы раньше жили в основном меню, теперь собраны здесь.",
       "coreSettings": "Базовые настройки",
       "coreSettingsHint": "Профиль клиники, пользователи и интеграции."
     },
@@ -4367,7 +4367,7 @@
       },
       "notifications": {
         "title": "Шаблоны уведомлений",
-        "description": "Триггеры и тексты SMS / Telegram / In-App."
+        "description": "Триггеры и тексты для Telegram и In-App."
       },
       "audit": {
         "title": "Журнал аудита",
@@ -4745,7 +4745,7 @@
         "dayCount": "{days, plural, one {# день} few {# дня} other {# дней}}",
         "channelsTitle": "Каналы",
         "channelsHint": "Если выбраны оба — отправим первым доступным каналом.",
-        "channelsDefault": "По умолчанию: TG если есть telegramId пациента, иначе SMS.",
+        "channelsDefault": "По умолчанию: только Telegram. Пациентам без Telegram сообщение не уходит, по напоминаниям о приёме в Центре действий появляется задача позвонить.",
         "channelsDefaultShort": "По умолчанию",
         "channelsSelected": "Порядок: {list}",
         "summaryTitle": "Текущая конфигурация",
@@ -7781,7 +7781,7 @@
         "saved": "Профиль обновлён",
         "nameLabel": "Имя в системе (для коллег)",
         "phoneLabel": "Телефон",
-        "emailLabel": "Email (readonly)",
+        "emailLabel": "Email (только чтение)",
         "roleLabel": "Роль",
         "fullNameRuLabel": "ФИО (русский)",
         "fullNameUzLabel": "ФИО (узбекский)",

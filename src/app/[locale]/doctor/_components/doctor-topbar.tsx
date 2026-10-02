@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { formatCalendarDay } from "@/lib/format";
 import { useTheme } from "@/components/providers/theme-provider";
 import {
   DropdownMenu,
@@ -24,30 +25,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const RU_WEEKDAYS = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"] as const;
-const RU_MONTHS = [
-  "января",
-  "февраля",
-  "марта",
-  "апреля",
-  "мая",
-  "июня",
-  "июля",
-  "августа",
-  "сентября",
-  "октября",
-  "ноября",
-  "декабря",
-] as const;
-
 function formatClock(d: Date) {
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
   return `${h}:${m}`;
-}
-
-function formatDate(d: Date) {
-  return `${d.getDate()} ${RU_MONTHS[d.getMonth()]}, ${RU_WEEKDAYS[d.getDay()]}`;
 }
 
 export interface DoctorTopbarProps {
@@ -130,7 +111,9 @@ export function DoctorTopbar({
             {now ? formatClock(now) : "—:—"}
           </span>
           <span className="mt-0.5 text-[11px] text-muted-foreground">
-            {now ? formatDate(now) : ""}
+            {now
+              ? formatCalendarDay(now, locale, { month: "long", weekday: true })
+              : ""}
           </span>
         </div>
 

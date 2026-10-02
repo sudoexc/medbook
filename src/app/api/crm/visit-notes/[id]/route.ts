@@ -495,18 +495,23 @@ export const PATCH = createApiHandler(
     });
     if (draftSaved) publishEphemeralEnvelope(draftSaved);
 
-    await audit(request, {
-      action: "visit_note.update",
-      entityType: "VisitNote",
-      entityId: id,
-      // The values themselves live in VisitNoteRevision: `revisions` names
-      // the before/after rows of a signed-note correction.
-      meta: {
-        fields: changedFields,
-        correlationId,
-        ...(revisions ? { revisions } : {}),
-      },
-    });
+    // Same rule as the envelope above (audit G1-12): the prescription
+    // constructor resends its unchanged list on every interaction, and each
+    // such PATCH wrote a `fields: []` row that buried real events in the log.
+    if (changedFields.length > 0) {
+      await audit(request, {
+        action: "visit_note.update",
+        entityType: "VisitNote",
+        entityId: id,
+        // The values themselves live in VisitNoteRevision: `revisions` names
+        // the before/after rows of a signed-note correction.
+        meta: {
+          fields: changedFields,
+          correlationId,
+          ...(revisions ? { revisions } : {}),
+        },
+      });
+    }
 
     // The reception's control-visit task follows a corrected plan. The
     // bridge writes it once after the signature and runs again only when

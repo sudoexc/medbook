@@ -391,7 +391,7 @@ export function DrugBrowser() {
               {selected?.nameRu}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              {t("drugs.detailsDescription")}
+              {t("drugs.detailDescription")}
             </DialogDescription>
           </DialogHeader>
           {selected ? (

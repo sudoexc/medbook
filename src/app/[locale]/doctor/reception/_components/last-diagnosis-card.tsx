@@ -1,36 +1,17 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { StethoscopeIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/atoms/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCalendarDay } from "@/lib/format";
 
 import { AdditionalDiagnosesLine } from "../../_components/additional-diagnoses-line";
 import {
   flattenVisits,
   useDoctorPatientVisits,
 } from "../../patients/_hooks/use-doctor-patient-visits";
-
-const RU_MONTHS_SHORT = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
-
-function longDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getDate()} ${RU_MONTHS_SHORT[d.getMonth()] ?? ""} ${d.getFullYear()}`;
-}
 
 /**
  * Right-rail "Последний диагноз" card on /doctor/visits/[patientId].
@@ -42,6 +23,7 @@ function longDate(iso: string): string {
  */
 export function LastDiagnosisCard({ patientId }: { patientId: string }) {
   const t = useTranslations("doctor.reception");
+  const locale = useLocale();
   const query = useDoctorPatientVisits(patientId);
   const rows = flattenVisits(query.data);
   const withDiagnosis =
@@ -109,7 +91,10 @@ export function LastDiagnosisCard({ patientId }: { patientId: string }) {
       />
 
       <div className="mt-3 space-y-1.5 text-xs">
-        <Row label={t("lastDiagnosis.establishedLabel")} value={longDate(withDiagnosis.date)} />
+        <Row
+          label={t("lastDiagnosis.establishedLabel")}
+          value={formatCalendarDay(withDiagnosis.date, locale, { year: true })}
+        />
       </div>
     </section>
   );

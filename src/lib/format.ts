@@ -204,6 +204,96 @@ export function formatClinicDateTime(
   }).format(d);
 }
 
+// Russian month names as the doctor cabinet has always printed them: the
+// genitive «23 июня», not Intl's «23 июн.», and no trailing «г.» after a
+// year. Kept here once instead of in ten component files (audit UX-12).
+const RU_MONTHS_SHORT = [
+  "янв.",
+  "февр.",
+  "мар.",
+  "апр.",
+  "мая",
+  "июня",
+  "июля",
+  "авг.",
+  "сент.",
+  "окт.",
+  "нояб.",
+  "дек.",
+] as const;
+const RU_MONTHS_LONG = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+] as const;
+const RU_WEEKDAYS_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"] as const;
+
+export interface CalendarDayOptions {
+  /** «сент.» / «sen» (default) or «сентября» / «sentabr». */
+  month?: "short" | "long";
+  /** Append the year: «23 сент. 2026» / «23-sen, 2026». */
+  year?: boolean;
+  /** Append the short weekday: «23 сентября, ср» / «23-sentabr, Chor». */
+  weekday?: boolean;
+  /** Append the clinic time: «…, 14:30». */
+  time?: boolean;
+}
+
+/**
+ * A calendar day with its month in words, in the clinic's wall-clock:
+ * «23 сент. 2026» (ru) / «23-sen, 2026» (uz).
+ *
+ * The doctor cabinet built these from hard-coded Russian month arrays, so a
+ * doctor with the Uzbek interface read «23 сентября, вт» (audit UX-12).
+ * Uzbek now comes from Intl; Russian keeps the exact wording the cabinet
+ * showed before, which Intl's ru short months would change.
+ */
+export function formatCalendarDay(
+  date: Date | string | number | null | undefined,
+  locale: Locale | string,
+  options: CalendarDayOptions = {},
+): string {
+  if (date === null || date === undefined || date === "") return "";
+  const d = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(d.getTime())) return "";
+  const { month = "short", year = false, weekday = false, time = false } = options;
+  const lang: Locale = locale === "uz" ? "uz" : "ru";
+
+  let out: string;
+  if (lang === "uz") {
+    const tag = intlLocale(lang);
+    out = new Intl.DateTimeFormat(tag, {
+      day: "numeric",
+      month,
+      ...(year ? { year: "numeric" as const } : {}),
+      timeZone: CLINIC_TZ,
+    }).format(d);
+    if (weekday) {
+      out += `, ${new Intl.DateTimeFormat(tag, { weekday: "short", timeZone: CLINIC_TZ }).format(d)}`;
+    }
+  } else {
+    const ordinal = clinicDayOrdinal(d);
+    // The ordinal re-packs the clinic's civil date through Date.UTC, so the
+    // UTC getters below read Tashkent's day, month, year and weekday.
+    const civil = new Date(ordinal * 86_400_000);
+    const names = month === "long" ? RU_MONTHS_LONG : RU_MONTHS_SHORT;
+    out = `${civil.getUTCDate()} ${names[civil.getUTCMonth()]}`;
+    if (year) out += ` ${civil.getUTCFullYear()}`;
+    if (weekday) out += `, ${RU_WEEKDAYS_SHORT[civil.getUTCDay()]}`;
+  }
+  if (time) out += `, ${formatDate(d, lang, "time")}`;
+  return out;
+}
+
 /**
  * The clinic-local civil date (year/month/day) for an instant, as an ordinal
  * day number. We read the date parts in Asia/Tashkent and re-pack them through

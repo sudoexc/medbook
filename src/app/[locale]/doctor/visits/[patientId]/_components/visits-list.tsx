@@ -10,16 +10,16 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   FileTextIcon,
-  InfoIcon,
   Loader2Icon,
   MoreVerticalIcon,
   PrinterIcon,
   UserIcon,
 } from "lucide-react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
+import { formatCalendarDay } from "@/lib/format";
 import type { VisitDiagnosis } from "@/lib/visit-diagnoses";
 import {
   DropdownMenu,
@@ -31,31 +31,6 @@ import {
 import { toast } from "@/components/ui/sonner";
 
 import { AdditionalDiagnosesLine } from "../../../_components/additional-diagnoses-line";
-
-const RU_MONTHS_FULL = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
-
-function shortDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getDate()} ${RU_MONTHS_FULL[d.getMonth()] ?? ""}`;
-}
-
-function longDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getDate()} ${RU_MONTHS_FULL[d.getMonth()] ?? ""} ${d.getFullYear()}`;
-}
 
 function hhmm(iso: string): string {
   const d = new Date(iso);
@@ -164,6 +139,7 @@ function TimelineCard({
   loading: boolean;
 }) {
   const t = useTranslations("doctor.visits");
+  const locale = useLocale();
   // Reverse to render chronologically left → right (oldest first).
   const points = [...rows].reverse();
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
@@ -227,7 +203,7 @@ function TimelineCard({
                       />
                     </div>
                     <div className="text-sm font-semibold text-foreground tabular-nums">
-                      {shortDate(p.date)}
+                      {formatCalendarDay(p.date, locale)}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       {t(`type.${p.type}`)}
@@ -341,7 +317,7 @@ function TableCard({
               >
                 <div>
                   <div className="text-sm font-semibold text-foreground tabular-nums">
-                    {longDate(v.date)}
+                    {formatCalendarDay(v.date, locale, { year: true })}
                   </div>
                   <div className="text-xs text-muted-foreground tabular-nums">
                     {hhmm(v.date)} – {hhmm(v.endDate)}
@@ -382,13 +358,8 @@ function TableCard({
                       </div>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    aria-label={t("table.diagnosisInfo")}
-                    className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-                  >
-                    <InfoIcon className="size-3.5" />
-                  </button>
+                  {/* The «i» next to the diagnosis opened nothing; the code
+                      and name are already printed in full (audit UX-13). */}
                 </div>
 
                 <ul className="min-w-0 space-y-0.5 text-xs text-foreground">

@@ -13,6 +13,7 @@ import {
 import { useTranslations } from "next-intl";
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { formatCalendarDay } from "@/lib/format";
 import { toast } from "sonner";
 
 import { usePatientsFilters } from "../_hooks/patients-context";
@@ -20,31 +21,6 @@ import {
   useDoctorPatientSummary,
   type DoctorPatientSummary,
 } from "../_hooks/use-doctor-patient-summary";
-
-const RU_MONTHS_SHORT = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
-
-function ruDateTime(iso: string): string {
-  const d = new Date(iso);
-  const day = d.getDate();
-  const month = RU_MONTHS_SHORT[d.getMonth()] ?? "";
-  const year = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${day} ${month} ${year}, ${hh}:${mm}`;
-}
 
 function ageFromBirth(iso: string | null): number | null {
   if (!iso) return null;
@@ -199,7 +175,10 @@ export function SelectedPatientCard() {
         {p.upcomingAppointment ? (
           <Row
             label={t("selectedCard.rows.nextAppointment")}
-            value={ruDateTime(p.upcomingAppointment.date)}
+            value={formatCalendarDay(p.upcomingAppointment.date, locale, {
+              year: true,
+              time: true,
+            })}
             mono
           />
         ) : (

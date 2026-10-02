@@ -500,7 +500,7 @@
       "active": "Faol bemorlar",
       "dormantGt30": "Faol bo'lmagan > 30 kun",
       "dormant": "Sovigan",
-      "noShowRisk": "No-show xavfi",
+      "noShowRisk": "Kelmaslik xavfi",
       "avgCheck": "O'rtacha chek",
       "noData": "ma'lumot yo'q",
       "paymentsNotTracked": "To'lovlar CRMda yuritilmaydi",
@@ -2068,13 +2068,13 @@
       "smartTitle": "Aqlli tavsiyalar",
       "recRedistributeTitle": "Navbatni qayta taqsimlang",
       "recRedistributeBody": "{cabinet}-kabinetda yuk yuqori. {count} ta bemorni boshqa kabinetga yo'naltirishni tavsiya qilamiz.",
-      "recApply": "Qo'llash",
+      "recApply": "Jadvalni ochish",
       "recOptimizeTitle": "Jadvalni optimallashtiring",
       "recOptimizeBody": "{hour}:00 dan keyin yuk {pct}% ga pasayishi kutilmoqda. Qo'shimcha qabullar kiritish mumkin.",
       "recView": "Ko'rish",
       "recRemindTitle": "Bemorlarga eslatma",
       "recRemindBody": "{count} ta bemor yozuv tasdiqlanishini kutmoqda.",
-      "recSend": "Yuborish",
+      "recSend": "Vazifalar markazini ochish",
       "recEmpty": "Bugun hammasi nazoratda — tavsiyalar yo'q.",
       "distributionTitle": "Qabullar taqsimoti",
       "distributionByTime": "Vaqt bo'yicha",
@@ -2209,7 +2209,7 @@
       "openFull": "Barcha chatlar",
       "unread": "{count} yangi",
       "empty": "O'qilmagan xabarlar yo'q",
-      "emptyHint": "Telegram va SMS'dan yangi xabarlar shu yerda paydo bo'ladi.",
+      "emptyHint": "Telegramdan yangi xabarlar shu yerda paydo bo'ladi.",
       "voiceNote": "ovozli xabar",
       "photo": "rasm",
       "document": "hujjat",
@@ -3265,7 +3265,7 @@
       },
       "step2": {
         "title": "2. Kanal",
-        "subtitle": "Telegram — Telegram ulagan bemorlarga bepul; SMS — pullik, telefon raqami bor barchaga yetadi."
+        "subtitle": "Faqat Telegram: xabarni Telegram ulangan bemorlar oladi."
       },
       "channelLabel": {
         "TG": "Telegram",
@@ -4281,7 +4281,7 @@
       "readOnlyForAdmin": "Faqat o'qish · tahrir — Phase 17+",
       "resourceCol": "Resurs",
       "legendTitle": "Belgilar",
-      "legendBody": "R — o'qish, W — yaratish, U — tahrirlash, D — o'chirish. Skoup: all — klinikaning barcha yozuvlari, own — faqat o'ziniki, today — faqat bugungi.",
+      "legendBody": "R: o'qish, W: yaratish, U: tahrirlash, D: o'chirish. Qamrov: «hammasi» (klinikaning barcha yozuvlari), «o'ziniki» (faqat o'ziniki), «bugungi» (faqat bugungi).",
       "legendChipsTitle": "Legenda:",
       "sourceNote": "Manba: `src/lib/api-handler.ts` va /api/crm/* dagi guard'lar. Ruxsatni o'zgartirish kod-review talab qiladi.",
       "actions": {
@@ -4291,9 +4291,9 @@
         "d": "D"
       },
       "scope": {
-        "all": "all",
-        "own": "own",
-        "today": "today"
+        "all": "hammasi",
+        "own": "o'ziniki",
+        "today": "bugungi"
       },
       "resources": {
         "Patient": "Bemorlar",
@@ -4316,7 +4316,7 @@
       "title": "Sozlamalar",
       "subtitle": "Klinika, foydalanuvchilar va integratsiyalarni boshqarish.",
       "clinicManagement": "Klinika boshqaruvi",
-      "clinicManagementHint": "Kabinetlar, xizmatlar, hujjatlar va SMS — avval asosiy menyuda edi, endi shu yerga yig'ildi.",
+      "clinicManagementHint": "Kabinetlar, xizmatlar va hujjatlar avval asosiy menyuda edi, endi shu yerga yig'ildi.",
       "coreSettings": "Asosiy sozlamalar",
       "coreSettingsHint": "Klinika profili, foydalanuvchilar va integratsiyalar."
     },
@@ -4367,7 +4367,7 @@
       },
       "notifications": {
         "title": "Bildirishnoma shablonlari",
-        "description": "Triggerlar va SMS / Telegram / In-App matnlari."
+        "description": "Telegram va In-App uchun triggerlar va matnlar."
       },
       "audit": {
         "title": "Audit jurnali",
@@ -4745,7 +4745,7 @@
         "dayCount": "{days, plural, other {# kun}}",
         "channelsTitle": "Kanallar",
         "channelsHint": "Ikkalasi tanlansa — birinchi mavjudi orqali yuboramiz.",
-        "channelsDefault": "Sukut: bemorda telegramId bo'lsa TG, aks holda SMS.",
+        "channelsDefault": "Sukut bo'yicha: faqat Telegram. Telegrami yo'q bemorlarga xabar yuborilmaydi, qabul eslatmalari bo'yicha Vazifalar markazida qo'ng'iroq qilish vazifasi paydo bo'ladi.",
         "channelsDefaultShort": "Sukut",
         "channelsSelected": "Tartib: {list}",
         "summaryTitle": "Joriy konfiguratsiya",

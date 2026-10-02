@@ -21,6 +21,9 @@ type Rec = {
   description: string;
 };
 
+/** Shown before «Показать все рекомендации» reveals the rest. */
+const COLLAPSED_COUNT = 3;
+
 function daysSince(at: string | null, nowMs: number): number | null {
   if (!at) return null;
   const t = new Date(at).getTime();
@@ -35,6 +38,7 @@ export function PatientRecommendationsCard({
 }: PatientRecommendationsCardProps) {
   const t = useTranslations("patientCard.recs");
   const [nowMs] = React.useState(() => Date.now());
+  const [expanded, setExpanded] = React.useState(false);
   const recs = React.useMemo<Rec[]>(() => {
     const out: Rec[] = [];
     const since = daysSince(patient.lastVisitAt, nowMs);
@@ -87,8 +91,12 @@ export function PatientRecommendationsCard({
       });
     }
 
-    return out.slice(0, 3);
+    return out;
   }, [patient, appointments, nowMs, t]);
+  // The button used to do nothing while the list was cut at three (audit
+  // UX-13): it now reveals the rest, and only shows when there is a rest.
+  const visible = expanded ? recs : recs.slice(0, COLLAPSED_COUNT);
+  const hiddenCount = recs.length - visible.length;
 
   return (
     <section
@@ -107,7 +115,7 @@ export function PatientRecommendationsCard({
             {t("empty")}
           </li>
         ) : (
-          recs.map((r, i) => (
+          visible.map((r, i) => (
             <li
               key={r.id}
               className="flex items-start gap-2 rounded-xl border border-border bg-background p-2.5"
@@ -128,11 +136,19 @@ export function PatientRecommendationsCard({
         )}
       </ol>
 
-      <div className="mt-3">
-        <Button variant="outline" size="sm" className="w-full text-[12px]">
-          {t("viewAll")}
-        </Button>
-      </div>
+      {hiddenCount > 0 ? (
+        <div className="mt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full text-[12px]"
+            onClick={() => setExpanded(true)}
+          >
+            {t("viewAll")}
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { toast } from "sonner";
 import {
   BellIcon,
   LightbulbIcon,
@@ -236,6 +235,11 @@ function SmartRecommendations({
   const locale = useLocale();
   const recs = useSmartRecs(todayRows);
 
+  // The cards point at the screen where reception acts on them; they do not
+  // move or message anyone themselves. Their buttons used to read «Применить»
+  // and «Отправить», and the first echoed the card in a toast, so a
+  // receptionist could believe patients were redistributed or reminded
+  // (audit UX-13). The labels now name the screen they open.
   const cards: React.ReactNode[] = [];
 
   if (recs.redistribute) {
@@ -249,9 +253,6 @@ function SmartRecommendations({
         body={t("recRedistributeBody", { cabinet, count })}
         cta={t("recApply")}
         onClick={() => {
-          toast.info(t("recRedistributeTitle"), {
-            description: t("recRedistributeBody", { cabinet, count }),
-          });
           router.push(`/${locale}/crm/calendar`);
         }}
       />,

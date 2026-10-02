@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { formatCalendarDay, formatDate } from "@/lib/format";
 import { toast } from "sonner";
 
 import { usePatientsFilters } from "../_hooks/patients-context";
@@ -36,29 +37,12 @@ import {
 const GRID =
   "grid grid-cols-[minmax(0,1.7fr)_64px_150px_110px_minmax(0,1.4fr)_110px_140px_84px] gap-3";
 
-const RU_MONTHS_SHORT = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
-
-function ruDate(iso: string): { date: string; time: string } {
-  const d = new Date(iso);
-  const day = d.getDate();
-  const month = RU_MONTHS_SHORT[d.getMonth()] ?? "";
-  const year = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return { date: `${day} ${month} ${year}`, time: `${hh}:${mm}` };
+// The month in the interface's language (audit UX-12).
+function dateAndTime(iso: string, locale: string): { date: string; time: string } {
+  return {
+    date: formatCalendarDay(iso, locale, { year: true }),
+    time: formatDate(iso, locale === "uz" ? "uz" : "ru", "time"),
+  };
 }
 
 function ageFromBirth(iso: string | null): number | null {
@@ -197,10 +181,10 @@ export function PatientsTable() {
           {rows.map((p) => {
             const age = ageFromBirth(p.birthDate);
             const lastVisit = p.lastVisitWithMeAt
-              ? ruDate(p.lastVisitWithMeAt)
+              ? dateAndTime(p.lastVisitWithMeAt, locale)
               : null;
             const nextAppt = p.nextAppointmentWithMeAt
-              ? ruDate(p.nextAppointmentWithMeAt)
+              ? dateAndTime(p.nextAppointmentWithMeAt, locale)
               : null;
             const status = deriveStatus(p);
 

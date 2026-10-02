@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2Icon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { formatCalendarDay } from "@/lib/format";
 import {
   birthYearOf,
   isYearOnlyBirthDate,
@@ -14,28 +15,6 @@ import {
   doctorPatientSummaryKey,
   type DoctorPatientSummary,
 } from "../../_hooks/use-doctor-patient-summary";
-
-const RU_MONTHS = [
-  "января",
-  "февраля",
-  "марта",
-  "апреля",
-  "мая",
-  "июня",
-  "июля",
-  "августа",
-  "сентября",
-  "октября",
-  "ноября",
-  "декабря",
-];
-
-function ruDateTime(iso: string): string {
-  const d = new Date(iso);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${d.getDate()} ${RU_MONTHS[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`;
-}
 
 const fieldCls =
   "h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -54,6 +33,7 @@ const APPOINTMENT_STATUS_KEY: Record<string, string> = {
 
 export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) {
   const t = useTranslations("doctor.patients");
+  const locale = useLocale();
   const qc = useQueryClient();
   const [editing, setEditing] = React.useState(false);
   const [name, setName] = React.useState(summary.fullName);
@@ -179,7 +159,10 @@ export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) 
                     ? t("overview.birthYear", {
                         year: birthYearOf(summary.birthDate),
                       })
-                    : (ruDateTime(summary.birthDate).split(",")[0] ?? "—")
+                    : formatCalendarDay(summary.birthDate, locale, {
+                        month: "long",
+                        year: true,
+                      }) || "—"
                 }
                 mono
               />
@@ -198,7 +181,11 @@ export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) 
         {summary.upcomingAppointment ? (
           <div className="mt-3 space-y-1.5 text-sm">
             <div className="font-medium tabular-nums text-foreground">
-              {ruDateTime(summary.upcomingAppointment.date)}
+              {formatCalendarDay(summary.upcomingAppointment.date, locale, {
+                month: "long",
+                year: true,
+                time: true,
+              })}
             </div>
             <div className="text-muted-foreground">
               {/* «Статус: WAITING» is machine vocabulary — translate the enum,

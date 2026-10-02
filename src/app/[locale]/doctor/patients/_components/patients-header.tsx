@@ -1,6 +1,5 @@
 "use client";
 
-import { SlidersHorizontalIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -63,17 +62,8 @@ export function PatientsHeader() {
             );
           })}
         </nav>
-
-        <div className="flex shrink-0 items-center gap-2 pb-2">
-          {/* «Экспорт» removed per doctor feedback. */}
-          <button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-          >
-            <SlidersHorizontalIcon className="size-4 text-muted-foreground" />
-            {t("actions.configureView")}
-          </button>
-        </div>
+        {/* «Экспорт» removed per doctor feedback; «Настроить вид» had no
+            view settings behind it (audit UX-13). */}
       </div>
     </>
   );

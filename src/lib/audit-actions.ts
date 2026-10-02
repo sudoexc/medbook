@@ -683,6 +683,13 @@ export const AUDIT_ACTION = {
   // rowCount, via }`.
   CRM_EXPORT_COMPLETED: "CRM_EXPORT_COMPLETED",
 
+  // Audit G1-11 — the finished CSV was handed to someone: one row per
+  // download from `/api/crm/exports/[jobId]/download`, so who took a copy of
+  // the patient base, from which IP and how many times is on record.
+  // `entityType: "ExportJob"`, `entityId: <job.id>`. `meta` carries
+  // `{ kind, rowCount, fileSize }`.
+  CRM_EXPORT_DOWNLOADED: "CRM_EXPORT_DOWNLOADED",
+
   // Reactivation campaigns. `entityType: "Campaign"`, `entityId:
   // <campaignId>`.
   //

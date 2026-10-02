@@ -14,6 +14,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  discardDocumentUpload,
+  uploadDocumentFile,
+  type UploadedDocumentFile,
+} from "@/lib/document-upload-client";
 
 import { useDocumentsFilters } from "../_hooks/documents-context";
 import type { DocumentType } from "../_hooks/use-doctor-documents";
@@ -110,31 +115,13 @@ export function UploadDocumentDialog({
     if (!file || !patient || submitting) return;
     setSubmitting(true);
     setError(null);
+    // Bytes stored by step 1 that no document points at yet.
+    let stored: UploadedDocumentFile | null = null;
     try {
       // 1) Upload bytes — server stores via uploadObject() (MinIO/S3 in prod,
       //    local stub root in dev) and returns a real `fileUrl` either way.
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("patientId", patient.id);
-      const uploadRes = await fetch("/api/crm/documents/upload", {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      if (!uploadRes.ok) {
-        let detail = `upload: ${uploadRes.status}`;
-        try {
-          const body = (await uploadRes.json()) as { error?: string };
-          if (body?.error) detail = body.error;
-        } catch {
-          // ignore
-        }
-        throw new Error(detail);
-      }
-      const uploaded = (await uploadRes.json()) as {
-        fileUrl: string;
-        uploadToken?: string | null;
-      };
+      const uploaded = await uploadDocumentFile(file, patient.id);
+      stored = uploaded;
       const fileUrl = uploaded.fileUrl;
 
       // 2) Persist metadata.
@@ -158,12 +145,17 @@ export function UploadDocumentDialog({
         const txt = await metaRes.text();
         throw new Error(`metadata: ${txt || metaRes.status}`);
       }
+      stored = null;
 
       await queryClient.invalidateQueries({
         queryKey: ["doctor", "me", "documents", filters],
       });
       onClose();
     } catch (e) {
+      // The document was not saved: take its scan back out of the bucket,
+      // where nothing would ever list, delete or account for it (audit
+      // G1-13). A retry uploads afresh.
+      if (stored) void discardDocumentUpload(stored.fileUrl, stored.uploadToken);
       setError(e instanceof Error ? e.message : t("upload.genericError"));
     } finally {
       setSubmitting(false);

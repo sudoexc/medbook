@@ -2,15 +2,9 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import {
-  ArrowRightIcon,
-  CalendarClockIcon,
-  ChevronRightIcon,
-  PhoneIcon,
-  SendIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,36 +21,6 @@ export interface PatientsRightRailProps {
   activeSegment?: PatientRow["segment"];
   onSelectSegment: (segment: PatientRow["segment"] | undefined) => void;
 }
-
-type Tone = "primary" | "info" | "success" | "warning" | "danger";
-
-const TONE_CLASS: Record<Tone, { icon: string; border: string; chip: string }> = {
-  primary: {
-    icon: "bg-primary/10 text-primary",
-    border: "border-l-primary",
-    chip: "bg-primary/10 text-primary",
-  },
-  info: {
-    icon: "bg-info/15 text-info",
-    border: "border-l-info",
-    chip: "bg-info/15 text-info",
-  },
-  success: {
-    icon: "bg-success/15 text-success",
-    border: "border-l-success",
-    chip: "bg-success/15 text-success",
-  },
-  warning: {
-    icon: "bg-warning/15 text-warning",
-    border: "border-l-warning",
-    chip: "bg-warning/15 text-warning",
-  },
-  danger: {
-    icon: "bg-destructive/10 text-destructive",
-    border: "border-l-destructive",
-    chip: "bg-destructive/10 text-destructive",
-  },
-};
 
 const SourcesWidget = dynamic(
   () => import("./sources-widget").then((m) => m.SourcesWidget),
@@ -115,96 +79,26 @@ export function PatientsRightRail({
     return count;
   }, [rows, segmentCounts]);
 
-  const actions: Array<{
-    tone: Tone;
-    icon: LucideIcon;
-    title: string;
-    subtitle: string;
-    count: number;
-  }> = [
-    {
-      tone: "primary",
-      icon: PhoneIcon,
-      title: t("actions.callTitle"),
-      subtitle: t("actions.callSubtitle"),
-      count: segments.DORMANT,
-    },
-    {
-      tone: "info",
-      icon: SendIcon,
-      title: t("actions.telegramTitle"),
-      subtitle: t("actions.telegramSubtitle"),
-      count: segments.NEW,
-    },
-    {
-      tone: "success",
-      icon: CalendarClockIcon,
-      title: t("actions.bookTitle"),
-      subtitle: t("actions.bookSubtitle"),
-      count: segments.VIP + segments.DORMANT,
-    },
-  ];
-
   const fmt = (n: number) =>
     new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(n);
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto">
+      {/* The three action cards here were a mock: their counts were the
+          DORMANT / NEW / VIP+DORMANT segment sizes under captions that did
+          not match them, and neither the cards nor this button opened
+          anything (audit UX-15). The real worklist is the Action Center. */}
       <section>
         <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {t("actionsHeading")}
         </h3>
-        <ul className="space-y-2">
-          {actions.map((a) => {
-            const tone = TONE_CLASS[a.tone];
-            const Icon = a.icon;
-            return (
-              <li
-                key={a.title}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-xl border border-border bg-card p-2.5 border-l-[3px] cursor-pointer hover:bg-muted/30",
-                  tone.border,
-                )}
-              >
-                <span
-                  className={cn(
-                    "inline-flex size-8 shrink-0 items-center justify-center rounded-lg",
-                    tone.icon,
-                  )}
-                  aria-hidden
-                >
-                  <Icon className="size-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-[12px] font-semibold text-foreground">
-                      {a.title}
-                    </span>
-                    <span
-                      className={cn(
-                        "shrink-0 text-[11px] font-bold tabular-nums",
-                        tone.chip.replace(/bg-[^\s]+\s?/, "").trim(),
-                      )}
-                    >
-                      {a.count}
-                    </span>
-                  </div>
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {a.subtitle}
-                  </p>
-                </div>
-                <ChevronRightIcon className="size-3.5 text-muted-foreground" />
-              </li>
-            );
-          })}
-        </ul>
-        <button
-          type="button"
-          className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-xl border border-border bg-card px-3 py-2 text-[12px] font-semibold text-primary hover:bg-primary/5"
+        <Link
+          href={`/${locale}/crm/action-center`}
+          className="inline-flex w-full items-center justify-center gap-1 rounded-xl border border-border bg-card px-3 py-2 text-[12px] font-semibold text-primary hover:bg-primary/5"
         >
           {t("viewAllActions")}
           <ArrowRightIcon className="size-3.5" />
-        </button>
+        </Link>
       </section>
 
       <section>
@@ -246,13 +140,8 @@ export function PatientsRightRail({
             );
           })}
         </ul>
-        <button
-          type="button"
-          className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
-        >
-          {t("viewAllSegments")}
-          <ArrowRightIcon className="size-3" />
-        </button>
+        {/* No «Все сегменты»: the list above is every segment, each row
+            filters the table, and there is no segments index page. */}
       </section>
 
       <section>

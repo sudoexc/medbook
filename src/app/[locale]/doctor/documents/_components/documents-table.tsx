@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   DownloadIcon,
   FileTextIcon,
@@ -13,6 +13,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+import { formatCalendarDay, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/sonner";
 
 import {
@@ -32,29 +33,12 @@ import {
 } from "../_hooks/use-doctor-documents";
 import { documentHref } from "@/lib/storage-ref";
 
-const RU_MONTHS_SHORT = [
-  "янв.",
-  "февр.",
-  "мар.",
-  "апр.",
-  "мая",
-  "июня",
-  "июля",
-  "авг.",
-  "сент.",
-  "окт.",
-  "нояб.",
-  "дек.",
-];
-
-function ruDate(iso: string): { date: string; time: string } {
-  const d = new Date(iso);
-  const day = d.getDate();
-  const month = RU_MONTHS_SHORT[d.getMonth()] ?? "";
-  const year = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return { date: `${day} ${month} ${year}`, time: `${hh}:${mm}` };
+// The month in the interface's language (audit UX-12).
+function dateAndTime(iso: string, locale: string): { date: string; time: string } {
+  return {
+    date: formatCalendarDay(iso, locale, { year: true }),
+    time: formatDate(iso, locale === "uz" ? "uz" : "ru", "time"),
+  };
 }
 
 function formatSize(
@@ -181,7 +165,8 @@ function DocumentRow({
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [replaceOpen, setReplaceOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const { date, time } = ruDate(doc.createdAt);
+  const locale = useLocale();
+  const { date, time } = dateAndTime(doc.createdAt, locale);
 
   // Own uploads only; conclusions / worker-rendered PDFs stay read-only.
   // Server enforces the same rules — this just hides buttons that would 403.

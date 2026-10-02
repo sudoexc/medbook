@@ -158,6 +158,25 @@ describe("PT-24: the card's status and links", () => {
     ).toContain("patients.segment.erased");
   });
 
+  it("every status chip is readable: no white `-foreground` text on a pale tint", () => {
+    // Review of A5: ACTIVE / DORMANT used `text-*-foreground` (#fff in the
+    // light theme) on a /15 tint, about 1.1:1 contrast on the card.
+    const segments = ["NEW", "ACTIVE", "DORMANT", "VIP", "CHURN"] as const;
+    for (const segment of segments) {
+      const html = renderToStaticMarkup(
+        React.createElement(PatientStatusBadge, { segment }),
+      );
+      expect(html, segment).not.toMatch(/-foreground/);
+      expect(html, segment).toMatch(/bg-[a-z]+\/(10|15)/);
+    }
+    expect(
+      renderToStaticMarkup(React.createElement(PatientStatusBadge, { segment: "ACTIVE" })),
+    ).toContain("text-success");
+    expect(
+      renderToStaticMarkup(React.createElement(PatientStatusBadge, { segment: "DORMANT" })),
+    ).toContain("text-warning-text");
+  });
+
   it("`?tab=` names a tab, anything else is ignored", () => {
     expect(tabFromParam("communications")).toBe("communications");
     expect(tabFromParam("cases")).toBe("cases");

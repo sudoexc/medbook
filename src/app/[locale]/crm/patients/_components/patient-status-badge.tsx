@@ -7,7 +7,12 @@ import { cn } from "@/lib/utils";
 
 export type PatientSegment = "NEW" | "ACTIVE" | "DORMANT" | "VIP" | "CHURN";
 
-/** One look per segment, shared by the list's «Статус» column and the card. */
+/**
+ * One look per segment, shared by the list's «Статус» column and the card.
+ * The chips are pale tints, so the text uses the colour itself (or the
+ * darker `warning-text` for amber), never a `*-foreground` token: those are
+ * white, meant for solid fills, and vanish on a /15 tint over a white card.
+ */
 export const SEGMENT_STYLE: Record<
   PatientSegment,
   { tKey: string; className: string }
@@ -18,8 +23,7 @@ export const SEGMENT_STYLE: Record<
   },
   ACTIVE: {
     tKey: "segment.active",
-    className:
-      "bg-success/15 text-success-foreground",
+    className: "bg-success/15 text-success",
   },
   VIP: {
     tKey: "segment.vip",
@@ -27,8 +31,7 @@ export const SEGMENT_STYLE: Record<
   },
   DORMANT: {
     tKey: "segment.dormant",
-    className:
-      "bg-warning/15 text-warning-foreground",
+    className: "bg-warning/15 text-warning-text",
   },
   CHURN: {
     tKey: "segment.churn",

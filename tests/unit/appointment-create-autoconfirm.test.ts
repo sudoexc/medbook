@@ -49,6 +49,8 @@ vi.mock("@/lib/pin", () => ({ hasValidPin: () => false }));
 
 vi.mock("@/lib/tenant-context", () => ({
   runWithTenant: <T,>(_ctx: unknown, fn: () => T) => fn(),
+  // The ticket code's global uniqueness check runs unscoped (AP-15).
+  runUnscoped: <T,>(_reason: string, fn: () => T) => fn(),
   getTenant: () => currentCtx,
 }));
 

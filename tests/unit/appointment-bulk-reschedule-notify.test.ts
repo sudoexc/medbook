@@ -27,12 +27,17 @@ type Appointment = {
   status: string;
   queueStatus: string;
   channel: string;
+  medicalCaseId?: string | null;
+  queuedAt?: Date | null;
 };
 
 const state = {
   rows: [] as Appointment[],
   updates: [] as Array<{ id: string; date: Date; time: string | null }>,
-  emitted: [] as Array<{ kind: string; appointmentId: string }>,
+  /** The full `data` of every row update (AP-16 un-arrive). */
+  updateData: [] as Array<{ id: string; data: Record<string, unknown> }>,
+  emitted: [] as Array<{ kind: string; appointmentId: string; alsoQueueUpdate?: boolean }>,
+  repriced: [] as string[],
   fired: [] as Array<{ kind: string; appointmentId: string }>,
   audits: [] as Array<{ action: string }>,
   /** The visits' risk tasks, one open, one a callback promised on the phone. */
@@ -105,8 +110,12 @@ vi.mock("@/lib/audit", () => ({
 
 vi.mock("@/server/appointments/emit-change", () => ({
   emitAppointmentChangeViaOutbox: vi.fn(
-    async (input: { kind: string; after: { id: string } }) => {
-      state.emitted.push({ kind: input.kind, appointmentId: input.after.id });
+    async (input: { kind: string; after: { id: string }; alsoQueueUpdate?: boolean }) => {
+      state.emitted.push({
+        kind: input.kind,
+        appointmentId: input.after.id,
+        alsoQueueUpdate: input.alsoQueueUpdate,
+      });
       return { eventId: "ev_1" };
     },
   ),
@@ -120,6 +129,13 @@ vi.mock("@/server/realtime/outbox", () => ({
 vi.mock("@/server/notifications/triggers", () => ({
   fireTrigger: vi.fn((p: { kind: string; appointmentId: string }) => {
     state.fired.push(p);
+  }),
+}));
+
+vi.mock("@/server/pricing/recompute-appointment-price", () => ({
+  recomputeCaseAppointments: vi.fn(async (_tx: unknown, caseId: string) => {
+    state.repriced.push(caseId);
+    return [];
   }),
 }));
 
@@ -138,6 +154,7 @@ vi.mock("@/lib/prisma", () => ({
         }) => {
           const row = state.rows.find((r) => r.id === where.id)!;
           const merged = { ...row, ...data };
+          state.updateData.push({ id: where.id, data });
           state.updates.push({
             id: where.id,
             date: data.date,
@@ -145,6 +162,9 @@ vi.mock("@/lib/prisma", () => ({
           });
           return merged;
         },
+      ),
+      findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) =>
+        state.rows.find((r) => r.id === where.id)!,
       ),
     },
     action: {
@@ -184,6 +204,8 @@ function req(body: unknown): Request {
 beforeEach(() => {
   state.rows = [makeAppt("apt_1"), makeAppt("apt_2", 60)];
   state.updates = [];
+  state.updateData = [];
+  state.repriced = [];
   state.emitted = [];
   state.fired = [];
   state.audits = [];
@@ -274,5 +296,66 @@ describe("bulk-reschedule and the risk tasks", () => {
     expect(res.status).toBe(200);
     expect(state.actionWrites).toBe(0);
     expect(state.audits.map((a) => a.action)).not.toContain("ACTION_OUTCOME");
+  });
+});
+
+// Audit AP-16: the bulk shift wrote only the times. A patient already in the
+// hall (WAITING) moved to tomorrow stayed WAITING with today's queuedAt, and
+// a case whose first visit moved kept yesterday's free-repeat prices.
+describe("bulk-reschedule takes the single PATCH's side effects (AP-16)", () => {
+  it("un-arrives a WAITING row moved to another day and tells the boards", async () => {
+    state.rows = [
+      {
+        ...makeAppt("apt_w"),
+        status: "WAITING",
+        queueStatus: "WAITING",
+        queuedAt: new Date(BASE.getTime() - 10 * 60_000),
+      },
+    ];
+    const POST = await loadPost();
+    const res = await POST(req({ ids: ["apt_w"], deltaMinutes: 24 * 60 }));
+    expect(res.status).toBe(200);
+    expect(state.updateData[0]!.data).toMatchObject({
+      status: "CONFIRMED",
+      queueStatus: "CONFIRMED",
+      queuedAt: null,
+    });
+    expect(state.emitted[0]!.alsoQueueUpdate).toBe(true);
+  });
+
+  it("keeps the arrival of a WAITING row moved within the same day", async () => {
+    state.rows = [{ ...makeAppt("apt_w"), status: "WAITING", queueStatus: "WAITING" }];
+    const POST = await loadPost();
+    await POST(req({ ids: ["apt_w"], deltaMinutes: 30 }));
+    expect(state.updateData[0]!.data).not.toHaveProperty("status");
+    expect(state.updateData[0]!.data).not.toHaveProperty("queuedAt");
+    expect(state.emitted[0]!.alsoQueueUpdate).toBe(false);
+  });
+
+  it("leaves a booking's status alone on a day move", async () => {
+    const POST = await loadPost();
+    await POST(req({ ids: ["apt_1"], deltaMinutes: 24 * 60 }));
+    expect(state.updateData[0]!.data).not.toHaveProperty("status");
+  });
+
+  it("reprices every case a moved row belongs to, once each", async () => {
+    state.rows = [
+      { ...makeAppt("apt_1"), medicalCaseId: "case_a" },
+      { ...makeAppt("apt_2", 60), medicalCaseId: "case_a" },
+      { ...makeAppt("apt_3", 120), medicalCaseId: "case_b" },
+      makeAppt("apt_4", 180),
+    ];
+    const POST = await loadPost();
+    const res = await POST(
+      req({ ids: ["apt_1", "apt_2", "apt_3", "apt_4"], deltaMinutes: 24 * 60 }),
+    );
+    expect(res.status).toBe(200);
+    expect(state.repriced.sort()).toEqual(["case_a", "case_b"]);
+  });
+
+  it("reprices nothing when no moved row is in a case", async () => {
+    const POST = await loadPost();
+    await POST(req({ ids: ["apt_1", "apt_2"], deltaMinutes: 30 }));
+    expect(state.repriced).toEqual([]);
   });
 });

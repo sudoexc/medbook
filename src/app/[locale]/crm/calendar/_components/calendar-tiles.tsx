@@ -14,15 +14,35 @@ import {
 
 import { cn } from "@/lib/utils";
 import { CountUp } from "@/components/atoms/count-up";
+import { ARRIVED_STATUSES } from "@/lib/appointments/list-tiles";
+import { atNoShowRisk } from "@/lib/appointments/overdue";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { useTodayFreeSlots } from "../../appointments/_hooks/use-today-free-slots";
+import type { DoctorResource } from "../_hooks/use-calendar-data";
+
+/**
+ * What the visible range is, for the first tile's label: «Записей сегодня»
+ * only when the calendar shows today alone (audit AP-20: the week view
+ * called its whole week «сегодня»).
+ */
+export type CalendarRangeKind = "today" | "day" | "range";
 
 export interface CalendarTilesProps {
   appointments: AppointmentRow[];
-  /** YYYY-MM-DD of the day the calendar is showing — used for drill-down links. */
-  date?: string;
+  /** The visible range (end exclusive): what the tiles count and drill into. */
+  range: { from: Date; to: Date };
+  rangeKind: CalendarRangeKind;
+  /** Active doctors, whose free slots today the last tile sums. */
+  doctors: DoctorResource[];
   className?: string;
 }
+
+/** «Подтверждено»: confirmed, or already in the building or seen. */
+const CONFIRMED_OR_ARRIVED: ReadonlySet<string> = new Set([
+  "CONFIRMED",
+  ...ARRIVED_STATUSES,
+]);
 
 type Tone = "info" | "success" | "warning" | "danger" | "neutral";
 
@@ -48,7 +68,9 @@ type Tile = {
 
 export function CalendarTiles({
   appointments,
-  date,
+  range,
+  rangeKind,
+  doctors,
   className,
 }: CalendarTilesProps) {
   const t = useTranslations("calendar.tiles");
@@ -57,82 +79,58 @@ export function CalendarTiles({
   const [now] = React.useState(() => Date.now());
   const stats = React.useMemo(() => {
     const total = appointments.length;
-    const confirmed = appointments.filter(
-      (a) => a.status === "IN_PROGRESS" || a.status === "COMPLETED",
+    // Audit AP-20: «Подтверждено» was IN_PROGRESS + COMPLETED, so a
+    // CONFIRMED booking counted nowhere; the risk tile counted patients
+    // sitting in the hall (WAITING).
+    const confirmed = appointments.filter((a) =>
+      CONFIRMED_OR_ARRIVED.has(a.status),
     ).length;
     const pending = appointments.filter((a) => a.status === "BOOKED").length;
     const cancelled = appointments.filter((a) => a.status === "CANCELLED").length;
-    const fiveMin = 5 * 60 * 1000;
-    const risk = appointments.filter((a) => {
-      if (a.status === "NO_SHOW") return true;
-      const start = new Date(a.date).getTime();
-      return (
-        (a.status === "BOOKED" || a.status === "WAITING") &&
-        now - start > fiveMin * 3
-      );
-    }).length;
-    const byDay = new Map<string, AppointmentRow[]>();
-    for (const a of appointments) {
-      const key = a.date.slice(0, 10);
-      const list = byDay.get(key) ?? [];
-      list.push(a);
-      byDay.set(key, list);
-    }
-    let free = 0;
-    for (const list of byDay.values()) {
-      const scheduled = list.reduce(
-        (acc, a) => acc + Math.max(5, a.durationMin || 30),
-        0,
-      );
-      const dayCap = 11 * 60;
-      free += Math.max(0, Math.floor((dayCap - scheduled) / 30));
-    }
+    const risk = appointments.filter((a) => atNoShowRisk(a, now)).length;
     return {
       total,
       confirmed,
       pending,
       cancelled,
       risk,
-      free,
       confirmedPct: total > 0 ? Math.round((confirmed / total) * 100) : 0,
       pendingPct: total > 0 ? Math.round((pending / total) * 100) : 0,
       riskPct: total > 0 ? Math.round((risk / total) * 100) : 0,
     };
   }, [appointments, now]);
 
-  const dayWindow = React.useMemo(() => {
-    if (!date) return null;
-    const [yStr, mStr, dStr] = date.split("-");
-    const y = Number(yStr);
-    const m = Number(mStr);
-    const d = Number(dStr);
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
-      return null;
-    }
-    const from = new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
-    const to = new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
-    return { from, to };
-  }, [date]);
+  // Free slots today: the sum of what the SlotPicker offers per active
+  // doctor, from his schedule (it was «(11 h minus every booking, cancelled
+  // ones too) / 30» for all doctors together).
+  const slotQueries = useTodayFreeSlots(
+    doctors.filter((d) => d.isActive).map((d) => d.id),
+  );
+  const free = slotQueries.reduce((sum, q) => sum + (q.data?.length ?? 0), 0);
 
   const buildHref = React.useCallback(
     (bucket?: string) => {
       const sp = new URLSearchParams();
-      if (dayWindow) {
-        sp.set("from", dayWindow.from);
-        sp.set("to", dayWindow.to);
-        sp.set("dateMode", "range");
-      }
+      // The drill-down opens the range the tiles count, not just its first
+      // day (`to` is exclusive here, inclusive on «Записи»).
+      sp.set("from", range.from.toISOString());
+      sp.set("to", new Date(range.to.getTime() - 1).toISOString());
+      sp.set("dateMode", "range");
       if (bucket) sp.set("bucket", bucket);
-      const qs = sp.toString();
-      return `/${locale}/crm/appointments${qs ? `?${qs}` : ""}`;
+      return `/${locale}/crm/appointments?${sp.toString()}`;
     },
-    [dayWindow, locale],
+    [range, locale],
   );
 
   const tiles: Tile[] = [
     {
       key: "total",
-      label: t("total"),
+      label:
+        rangeKind === "today"
+          ? t("total")
+          : rangeKind === "day"
+            ? t("totalDay")
+            : t("totalRange"),
       value: stats.total,
       subtitle:
         stats.cancelled > 0
@@ -152,7 +150,7 @@ export function CalendarTiles({
           : undefined,
       icon: CheckCircle2Icon,
       tone: "success",
-      href: buildHref("arrived"),
+      // No drill-down: no «Записи» tile is «confirmed or arrived».
     },
     {
       key: "pending",
@@ -176,12 +174,13 @@ export function CalendarTiles({
           : undefined,
       icon: AlertTriangleIcon,
       tone: "danger",
-      href: buildHref("needs_attention"),
+      // No drill-down: «Срочные» on «Записи» is the hall plus the overdue,
+      // the very patients this tile leaves out.
     },
     {
       key: "free",
       label: t("freeSlots"),
-      value: stats.free,
+      value: free,
       subtitle: t("freeSlotsSubtitle"),
       icon: UsersRoundIcon,
       tone: "neutral",

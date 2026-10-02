@@ -8,7 +8,10 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, conflict, parseQuery } from "@/server/http";
-import { appointmentSearchOr } from "@/server/appointments/list-where";
+import {
+  appointmentSearchOr,
+  appointmentServiceWhere,
+} from "@/server/appointments/list-where";
 import {
   CreateAppointmentSchema,
   QueryAppointmentSchema,
@@ -19,6 +22,7 @@ import { isOnClinicDay } from "@/lib/appointment-transitions";
 import { findStandingAutoNoShows } from "@/server/appointments/auto-no-show";
 import { ensureQuotaForApi } from "@/server/billing/plan-limits";
 import { canEditPrice, priceFieldsIn } from "@/lib/appointments/price-edit";
+import { timedTileWheres } from "@/lib/appointments/list-tiles";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -47,6 +51,8 @@ export const GET = createApiListHandler(
     // Shared with the CSV export (audit INF-02).
     const searchOr = appointmentSearchOr(q.q);
     if (searchOr) where.OR = searchOr;
+    const serviceWhere = appointmentServiceWhere(q.serviceId);
+    if (serviceWhere) where.AND = [serviceWhere];
 
     // DOCTOR sees only their own records
     if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
@@ -148,10 +154,24 @@ export const GET = createApiListHandler(
       tally.all += c;
     }
 
+    const now = new Date();
+    // The «Записи» tiles that depend on the clock (audit AP-21), over the
+    // same filter set as the status counts. Only the first page carries
+    // them (the tiles read page one), so the later pages of the full-range
+    // readers (reception, calendar) skip the two counts.
+    if (!q.cursor) {
+      const timed = timedTileWheres(now);
+      const [soon, overdue] = await Promise.all([
+        prisma.appointment.count({ where: { AND: [whereWithoutStatus, timed.soon] } }),
+        prisma.appointment.count({ where: { AND: [whereWithoutStatus, timed.overdue] } }),
+      ]);
+      tally.soon = soon;
+      tally.overdue = overdue;
+    }
+
     // «Пришёл» after the sweep's no-show (`canArriveAfterAutoNoShow`): the
     // doctors panel offers it only on rows the server flags here. Only
     // today's no-shows can use it, which keeps the audit lookup small.
-    const now = new Date();
     const autoNoShows = await findStandingAutoNoShows(
       rows
         .filter((r) => r.status === "NO_SHOW" && isOnClinicDay(r.date, now))

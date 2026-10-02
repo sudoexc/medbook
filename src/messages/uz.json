@@ -663,13 +663,13 @@
       "late": "Kechikkanlar",
       "overdue": "Muddati o'tdi",
       "arrived": "Yetib kelganlar",
-      "allHint": "Bugun uchun +{count}",
+      "allHint": "Tanlangan davr uchun",
       "needsAttentionHint": "Choralar talab qilinadi",
-      "soonHint": "Eng yaqin soatda",
+      "soonHint": "Keyingi 15 daqiqada",
       "unconfirmedHint": "Tasdiqlash kerak",
       "lateHint": "5–15 daqiqa",
       "overdueHint": "Vaqti o'tdi — qaror kerak",
-      "arrivedHint": "Qabulga tayyor"
+      "arrivedHint": "Zalda, qabulda va qabul qilinganlar"
     },
     "kpiStrip": {
       "ariaLabel": "Tez filtrlar",
@@ -782,7 +782,16 @@
         "invalid_transition": "Bunday status o'zgarishi mumkin emas",
         "not_today": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin.",
         "too_early_for_no_show": "«Kelmadi» belgisini faqat yozuv vaqtidan keyin qo'yish mumkin",
-        "walkin_locked": "Jonli navbat taloni: kanal va vaqt o'zgarmaydi"
+        "walkin_locked": "Jonli navbat taloni: kanal va vaqt o'zgarmaydi",
+        "no_show_final": "Bemor «Kelmadi» deb belgilangan va bu belgini faqat shifokor olib tashlay oladi. Bemorni hozir qabul qilish uchun uni jonli navbatga qo'ying.",
+        "another_visit_in_progress": "Shifokorda qabul davom etmoqda. Avval uni yakunlang.",
+        "visit_note_unsigned": "Xulosa imzolanmagan. Shifokor tashrifni xulosani imzolab yakunlaydi.",
+        "role_cannot_advance_to": "Sizning rolingiz bu statusni qo'ya olmaydi",
+        "role_cannot_edit_price": "Narxni faqat registratura va administrator o'zgartiradi",
+        "doctor_not_found": "Shifokor topilmadi",
+        "completed": "Qabul allaqachon yakunlangan",
+        "cancelled": "Yozuv allaqachon bekor qilingan",
+        "not_cancellable": "Bu yozuvni endi bekor qilib bo'lmaydi"
       },
       "preVisit": {
         "title": "Tashrifdan oldin anketa",
@@ -1050,6 +1059,8 @@
     },
     "tiles": {
       "total": "Bugungi yozilishlar",
+      "totalDay": "Kun yozilishlari",
+      "totalRange": "Davr yozilishlari",
       "totalHint": "Kecha bilan solishtirish",
       "totalDeltaYesterday": "+{count} kechaga",
       "totalSubtitleCancelled": "{count, plural, one {# bekor qilingan} other {# bekor qilingan}}",
@@ -1089,6 +1100,7 @@
       "noActiveDoctors": "Faol shifokorlar yo'q.",
       "slotsCount": "{count, plural, one {# oyna} other {# oyna}}",
       "dailyStats": "Kun statistikasi",
+      "rangeStats": "Davr statistikasi",
       "statAppointments": "Yozilishlar",
       "statConversion": "Konversiya",
       "statRevenue": "Daromad"
@@ -1956,6 +1968,10 @@
       "cancel": "Bekor qilish",
       "errPatient": "Bemorni tanlang yoki ism va telefonni kiriting",
       "errDoctor": "Shifokorni tanlang",
+      "errBadPhone": "Telefon raqamini tekshiring",
+      "errDoctorNotFound": "Shifokor topilmadi",
+      "errPatientNotFound": "Bemor topilmadi",
+      "errFailed": "Talon berib bo'lmadi",
       "toastIssued": "{number} talon berildi",
       "toastDuplicate": "Bemor allaqachon navbatda, talon {number}",
       "result": {
@@ -2077,6 +2093,7 @@
       "recRemindTitle": "Bemorlarga eslatma",
       "recRemindBody": "{count} ta bemor yozuv tasdiqlanishini kutmoqda.",
       "recSend": "Yuborish",
+      "recRemindConfirm": "{count} ta bemorga eslatma yuborilsinmi?",
       "recEmpty": "Bugun hammasi nazoratda — tavsiyalar yo'q.",
       "distributionTitle": "Qabullar taqsimoti",
       "distributionByTime": "Vaqt bo'yicha",

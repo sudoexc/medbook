@@ -14,8 +14,11 @@
  *      rows in the same call.
  *   5. If ANY conflict, return 409 with the offending row + reason.
  *   6. Otherwise persist all updates in a single transaction so partial
- *      success is impossible.
+ *      success is impossible, with the single PATCH's side effects: an
+ *      arrived row moved to another day is un-arrived, and every case a
+ *      moved row belongs to is repriced (audit AP-16).
  */
+import type { Appointment } from "@/generated/prisma/client";
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
@@ -30,7 +33,11 @@ import { tashkentComponents } from "@/lib/booking-validation";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { fireTrigger } from "@/server/notifications/triggers";
-import { checkInResetOnMove } from "@/lib/appointments/self-check-in";
+import {
+  arrivalResetOnMove,
+  checkInResetOnMove,
+} from "@/lib/appointments/self-check-in";
+import { recomputeCaseAppointments } from "@/server/pricing/recompute-appointment-price";
 
 export const POST = createApiHandler(
   {
@@ -54,6 +61,8 @@ export const POST = createApiHandler(
         // Two-lanes: WALKIN rows are order-based and exempt from slot-overlap
         // checks below (their date window is technical — TZ I4).
         channel: true,
+        // Moved dates can reorder a case, so its prices are recomputed.
+        medicalCaseId: true,
       },
     });
 
@@ -87,6 +96,7 @@ export const POST = createApiHandler(
       patientId: r.patientId,
       status: r.status,
       queueStatus: r.queueStatus,
+      medicalCaseId: r.medicalCaseId,
       oldStart: r.date,
       newStart: new Date(r.date.getTime() + deltaMs),
       newEnd: new Date(r.endDate.getTime() + deltaMs),
@@ -198,7 +208,11 @@ export const POST = createApiHandler(
     // open still saw the old slot and the reminder cascade kept the old time.
     const correlationId = newCorrelationId();
     await prisma.$transaction(async (tx) => {
+      const moved = new Map<string, { after: Appointment; unarrived: boolean }>();
       for (const p of planned) {
+        // AP-16: an arrived patient moved to another day is not in that
+        // day's hall, exactly as the single PATCH un-arrives him.
+        const arrivalReset = arrivalResetOnMove(p.queueStatus, p.oldStart, p.newStart);
         const updated = await tx.appointment.update({
           where: { id: p.id },
           data: {
@@ -210,22 +224,46 @@ export const POST = createApiHandler(
             // A shift onto another clinic day drops a Mini App check-in made
             // for the old one, as the single PATCH does (review of G3-01).
             ...checkInResetOnMove(p.oldStart, p.newStart),
+            ...arrivalReset,
           },
         });
+        moved.set(p.id, { after: updated, unarrived: "queuedAt" in arrivalReset });
+      }
 
-        if (ctx.kind === "TENANT") {
-          const actorUserId = ctx.userId || null;
+      // AP-16: a moved date can change which visit of a case is the first
+      // and whether a repeat still falls in the free window, so every case
+      // touched is repriced once, after all its rows have moved (the single
+      // PATCH does the same per move). The repriced rows are re-read so the
+      // events carry the new prices.
+      const caseIds = new Set(
+        planned.flatMap((p) => (p.medicalCaseId ? [p.medicalCaseId] : [])),
+      );
+      for (const caseId of caseIds) {
+        await recomputeCaseAppointments(tx, caseId);
+      }
+      for (const [id, entry] of moved) {
+        if (!entry.after.medicalCaseId) continue;
+        entry.after = await tx.appointment.findUniqueOrThrow({ where: { id } });
+      }
+
+      if (ctx.kind === "TENANT") {
+        const actorUserId = ctx.userId || null;
+        for (const p of planned) {
+          const entry = moved.get(p.id);
+          if (!entry) continue;
           await emitAppointmentChangeViaOutbox({
             tx,
             kind: "moved",
             before: { status: p.status, queueStatus: p.queueStatus },
-            after: updated,
+            after: entry.after,
             clinicId: ctx.clinicId,
             actorId: actorUserId,
             actorRole: ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST",
             actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
             surface: ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM",
             correlationId,
+            // The un-arrived row leaves today's queue: boards must drop it.
+            alsoQueueUpdate: entry.unarrived,
           });
         }
       }

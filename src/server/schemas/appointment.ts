@@ -127,6 +127,9 @@ export const QueryAppointmentSchema = z.object({
   cabinetId: z.string().optional(),
   status: AppointmentStatusEnum.optional(),
   channel: ChannelTypeEnum.optional(),
+  // The «Услуга» filter (audit AP-23): zod dropped it, so the list never
+  // narrowed while the filter indicator lit up.
+  serviceId: z.string().optional(),
   unpaid: queryBool(),
   q: z.string().optional(),
   cursor: z.string().optional(),

@@ -23,7 +23,7 @@ import {
   defaultRangeLabel,
 } from "./calendar-toolbar";
 import { CalendarRightRail } from "./calendar-right-rail";
-import { CalendarTiles } from "./calendar-tiles";
+import { CalendarTiles, type CalendarRangeKind } from "./calendar-tiles";
 import { CalendarLegend } from "./calendar-legend";
 import type { PendingReschedule } from "./calendar-view";
 import { RescheduleConfirmDialog } from "./reschedule-confirm-dialog";
@@ -90,6 +90,13 @@ export function CalendarPageClient() {
   const onToday = () => setFilters({ date: todayKey() });
 
   const rangeLabel = defaultRangeLabel(range.from, range.to, locale);
+  // What the tiles and the rail call the visible range (audit AP-20).
+  const rangeKind: CalendarRangeKind =
+    filters.view !== "day"
+      ? "range"
+      : filters.date === todayKey()
+        ? "today"
+        : "day";
 
   const appointmentsRows = apptsQ.data?.rows ?? [];
   const isPartial = apptsQ.data?.partial ?? false;
@@ -107,7 +114,9 @@ export function CalendarPageClient() {
         <div className="shrink-0 border-b border-border bg-background px-4 pt-3 pb-2">
           <CalendarTiles
             appointments={appointmentsRows}
-            date={filters.date}
+            range={range}
+            rangeKind={rangeKind}
+            doctors={doctorsQ.data ?? []}
           />
         </div>
         <CalendarToolbar
@@ -179,6 +188,7 @@ export function CalendarPageClient() {
           <CalendarRightRail
             appointments={appointmentsRows}
             doctors={doctorsQ.data ?? []}
+            rangeKind={rangeKind}
           />
         </div>
       </div>

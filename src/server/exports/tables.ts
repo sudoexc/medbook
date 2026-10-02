@@ -15,7 +15,10 @@
  */
 import { prisma } from "@/lib/prisma";
 import { tashkentDayWindow, isTashkentDateString } from "@/lib/tashkent-time";
-import { appointmentSearchOr } from "@/server/appointments/list-where";
+import {
+  appointmentSearchOr,
+  appointmentServiceWhere,
+} from "@/server/appointments/list-where";
 import { clinicPatientBalances } from "@/server/patient/finance";
 import {
   buildPatientListWhere,
@@ -33,8 +36,10 @@ export type AppointmentExportFilters = {
   doctorId?: string;
   cabinetId?: string;
   channel?: string;
+  /** The «Услуга» filter of the list (audit AP-23). */
+  serviceId?: string;
   status?: string;
-  /** Several statuses at once (the «Пришли» tile: on the table + done). */
+  /** Several statuses at once (the «Прибыли» tile: hall, table and done). */
   statuses?: string[];
   unpaid?: boolean;
   dateFrom?: string;
@@ -190,6 +195,8 @@ export function appointmentExportWhere(
   if (date) where.date = date;
   const searchOr = appointmentSearchOr(f.q);
   if (searchOr) where.OR = searchOr;
+  const serviceWhere = appointmentServiceWhere(f.serviceId);
+  if (serviceWhere) where.AND = [serviceWhere];
   return where;
 }
 

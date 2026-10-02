@@ -1,9 +1,14 @@
 "use client";
 
+import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import {
+  conflictReasonText,
+  type ConflictTranslator,
+} from "@/lib/appointments/conflict-message";
 import { queuedMs } from "@/lib/queue-ordering";
 import type {
   AppointmentCabinetShort,
@@ -17,7 +22,9 @@ import type {
 
 /**
  * Shape returned by `GET /api/crm/appointments/[id]` — slightly richer than a
- * list row: patient object is the full record, not the short variant.
+ * list row: the patient also carries birth date, gender and segment. Only
+ * these fields leave the server (audit AP-13); add one to the route's
+ * `select` before reading it here.
  */
 export type AppointmentCaseShort = {
   id: string;
@@ -154,7 +161,17 @@ export type AppointmentConflict = {
     // «Не пришёл» before the visit's slot has started (Q-04).
     | "too_early_for_no_show"
     // A live-queue ticket keeps its channel and time (AP-06).
-    | "walkin_locked";
+    | "walkin_locked"
+    // AP-18 — the other refusals these routes name, each with a message in
+    // `appointments.drawer.conflict`.
+    | "another_visit_in_progress"
+    | "visit_note_unsigned"
+    | "role_cannot_advance_to"
+    | "role_cannot_edit_price"
+    | "doctor_not_found"
+    | "completed"
+    | "cancelled"
+    | "not_cancellable";
   until?: string;
 };
 
@@ -166,9 +183,58 @@ export class AppointmentConflictError extends Error {
   }
 }
 
+/**
+ * Read a failed appointment write (audit AP-18). Every answer that names a
+ * `reason` becomes an AppointmentConflictError: the 409s, and the 403
+ * `role_cannot_advance_to` that used to reach the screen as «HTTP 403». A
+ * 409 without one takes the route's usual reason. Anything else keeps its
+ * bare code, which no toast shows.
+ */
+async function appointmentWriteError(
+  res: Response,
+  conflictDefault: AppointmentConflict["reason"],
+): Promise<Error> {
+  const j = (await res.json().catch(() => null)) as {
+    error?: string;
+    reason?: string;
+    until?: string;
+  } | null;
+  const reason = j?.reason ?? (res.status === 409 ? conflictDefault : null);
+  if (reason) {
+    return new AppointmentConflictError({
+      reason: reason as AppointmentConflict["reason"],
+      until: j?.until,
+    });
+  }
+  return new Error(j?.error ?? `HTTP ${res.status}`);
+}
+
+/**
+ * The one toast text for a failed appointment write (audit AP-18): a named
+ * reason in the operator's language, otherwise the caller's generic line.
+ * Each mutation toasts its own failure exactly once; callers do not add a
+ * second toast.
+ */
+function useWriteErrorText(): (err: Error, fallback: string) => string {
+  const tConflict = useTranslations("appointments.drawer.conflict");
+  return React.useCallback(
+    (err: Error, fallback: string) =>
+      err instanceof AppointmentConflictError
+        ? conflictReasonText(
+            tConflict as unknown as ConflictTranslator,
+            err.conflict.reason,
+            err.conflict.until,
+            fallback,
+          )
+        : fallback,
+    [tConflict],
+  );
+}
+
 export function usePatchAppointment(id: string) {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.appointment");
+  const errorText = useWriteErrorText();
   return useMutation<
     AppointmentDetail,
     Error,
@@ -182,24 +248,7 @@ export function usePatchAppointment(id: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      if (res.status === 409) {
-        const j = (await res.json().catch(() => null)) as {
-          error?: string;
-          reason?: string;
-          until?: string;
-        } | null;
-        throw new AppointmentConflictError({
-          reason:
-            (j?.reason as AppointmentConflict["reason"]) ?? "doctor_busy",
-          until: j?.until,
-        });
-      }
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw await appointmentWriteError(res, "doctor_busy");
       return (await res.json()) as AppointmentDetail;
     },
     onMutate: async (patch) => {
@@ -219,9 +268,7 @@ export function usePatchAppointment(id: string) {
       if (context?.previous) {
         qc.setQueryData(appointmentKey(id), context.previous);
       }
-      if (!(err instanceof AppointmentConflictError)) {
-        toast.error(err.message || t("saveFailed"));
-      }
+      toast.error(errorText(err, t("saveFailed")));
     },
     onSuccess: (fresh) => {
       qc.setQueryData<AppointmentDetail>(appointmentKey(id), (prev) =>
@@ -237,6 +284,7 @@ export function usePatchAppointment(id: string) {
 export function useDeleteAppointment(id: string) {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.appointment");
+  const errorText = useWriteErrorText();
   return useMutation<
     { id: string; cancelled: true },
     Error,
@@ -248,7 +296,7 @@ export function useDeleteAppointment(id: string) {
         method: "DELETE",
         credentials: "include",
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw await appointmentWriteError(res, "invalid_transition");
       return (await res.json()) as { id: string; cancelled: true };
     },
     onMutate: async () => {
@@ -267,7 +315,7 @@ export function useDeleteAppointment(id: string) {
       if (context?.previous) {
         qc.setQueryData(appointmentKey(id), context.previous);
       }
-      toast.error(err.message || t("cancelFailed"));
+      toast.error(errorText(err, t("cancelFailed")));
     },
     onSuccess: () => {
       qc.removeQueries({ queryKey: appointmentKey(id) });
@@ -281,6 +329,7 @@ export function useDeleteAppointment(id: string) {
 export function useSetQueueStatus(id: string) {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.appointment");
+  const errorText = useWriteErrorText();
   return useMutation<
     AppointmentDetail,
     Error,
@@ -297,16 +346,7 @@ export function useSetQueueStatus(id: string) {
           body: JSON.stringify({ queueStatus }),
         },
       );
-      if (res.status === 409) {
-        const j = (await res.json().catch(() => null)) as {
-          reason?: string;
-        } | null;
-        throw new AppointmentConflictError({
-          reason:
-            (j?.reason as AppointmentConflict["reason"]) ?? "invalid_transition",
-        });
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw await appointmentWriteError(res, "invalid_transition");
       return (await res.json()) as AppointmentDetail;
     },
     onMutate: async (queueStatus) => {
@@ -327,19 +367,7 @@ export function useSetQueueStatus(id: string) {
       }
       // A refused transition says why in the operator's language; the raw
       // `conflict:<reason>` message never reaches the screen.
-      if (err instanceof AppointmentConflictError) {
-        toast.error(
-          err.conflict.reason === "not_today"
-            ? t("notToday")
-            : err.conflict.reason === "no_show_final"
-              ? t("noShowFinal")
-              : err.conflict.reason === "too_early_for_no_show"
-                ? t("tooEarlyNoShow")
-                : t("statusFailed"),
-        );
-        return;
-      }
-      toast.error(err.message || t("actionFailed"));
+      toast.error(errorText(err, t("statusFailed")));
     },
     onSettled: () => {
       invalidateAppointmentSurfaces(qc, id);
@@ -357,6 +385,7 @@ export function useSetQueueStatus(id: string) {
 export function useSetQueuePriority(id: string) {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.appointment");
+  const errorText = useWriteErrorText();
   return useMutation<
     AppointmentDetail,
     Error,
@@ -370,7 +399,7 @@ export function useSetQueuePriority(id: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ queuePriority }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw await appointmentWriteError(res, "invalid_transition");
       return (await res.json()) as AppointmentDetail;
     },
     onMutate: async (queuePriority) => {
@@ -404,7 +433,7 @@ export function useSetQueuePriority(id: string) {
           qc.setQueryData(key, prev);
         }
       }
-      toast.error(err.message || t("actionFailed"));
+      toast.error(errorText(err, t("actionFailed")));
     },
     onSettled: () => {
       invalidateAppointmentSurfaces(qc, id);
@@ -415,6 +444,7 @@ export function useSetQueuePriority(id: string) {
 export function useBulkReschedule() {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.appointment");
+  const errorText = useWriteErrorText();
   return useMutation<
     { count: number; ids: string[] },
     Error,
@@ -427,27 +457,14 @@ export function useBulkReschedule() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (res.status === 409) {
-        const j = (await res.json().catch(() => null)) as {
-          reason?: string;
-          until?: string;
-        } | null;
-        throw new AppointmentConflictError({
-          reason:
-            (j?.reason as AppointmentConflict["reason"]) ?? "invalid_transition",
-          until: j?.until,
-        });
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw await appointmentWriteError(res, "invalid_transition");
       return (await res.json()) as { count: number; ids: string[] };
     },
     onSuccess: () => {
       invalidateAppointmentSurfaces(qc);
     },
     onError: (err) => {
-      if (!(err instanceof AppointmentConflictError)) {
-        toast.error(err.message || t("rescheduleFailed"));
-      }
+      toast.error(errorText(err, t("rescheduleFailed")));
     },
   });
 }
@@ -563,6 +580,7 @@ export function useReorderQueue() {
 export function useBulkStatus() {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.appointment");
+  const errorText = useWriteErrorText();
   return useMutation<
     { count: number },
     Error,
@@ -576,16 +594,7 @@ export function useBulkStatus() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (res.status === 409) {
-        const j = (await res.json().catch(() => null)) as {
-          reason?: string;
-        } | null;
-        throw new AppointmentConflictError({
-          reason:
-            (j?.reason as AppointmentConflict["reason"]) ?? "invalid_transition",
-        });
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw await appointmentWriteError(res, "invalid_transition");
       return (await res.json()) as { count: number };
     },
     onMutate: async ({ ids, status }) => {
@@ -613,9 +622,7 @@ export function useBulkStatus() {
           qc.setQueryData(appointmentKey(id), prev);
         }
       }
-      if (!(err instanceof AppointmentConflictError)) {
-        toast.error(err.message || t("statusFailed"));
-      }
+      toast.error(errorText(err, t("statusFailed")));
     },
     onSettled: () => {
       invalidateAppointmentSurfaces(qc);

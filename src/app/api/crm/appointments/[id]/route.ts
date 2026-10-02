@@ -13,7 +13,6 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
-import { tashkentComponents } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
 import { applyWaitingIntake } from "@/server/appointments/intake";
 import { runCompletionEffects } from "@/server/appointments/completion-effects";
@@ -67,7 +66,10 @@ import {
   restoredStatusOf,
   revivesBooking,
 } from "@/server/appointments/revert-restore";
-import { checkInResetOnMove } from "@/lib/appointments/self-check-in";
+import {
+  arrivalResetOnMove,
+  checkInResetOnMove,
+} from "@/lib/appointments/self-check-in";
 import { canEditPrice, priceFieldsIn } from "@/lib/appointments/price-edit";
 import {
   loadDoctorMoveTerms,
@@ -113,7 +115,22 @@ export const GET = createApiListHandler(
     const row = await prisma.appointment.findUnique({
       where: { id },
       include: {
-        patient: true,
+        // Audit AP-13: every role that opens the drawer (call operator and
+        // nurse included) got the whole Patient row, passport, address,
+        // notes and telegramId among it. The drawer reads only these fields
+        // (`AppointmentDetail.patient`); the card page is where the rest
+        // lives, behind its own permissions.
+        patient: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            photoUrl: true,
+            segment: true,
+            birthDate: true,
+            gender: true,
+          },
+        },
         doctor: {
           select: {
             id: true,
@@ -127,7 +144,11 @@ export const GET = createApiListHandler(
         cabinet: true,
         primaryService: true,
         services: { include: { service: true } },
-        payments: true,
+        // Same shape as the list route (`AppointmentPaymentShort`): receipt
+        // links and external refs are the payments screen's business.
+        payments: {
+          select: { id: true, amount: true, status: true, method: true },
+        },
         medicalCase: {
           select: {
             id: true,
@@ -846,24 +867,15 @@ export const PATCH = createApiHandler(
     }
 
     // Rescheduling an arrived (WAITING) row onto a different Tashkent day
-    // un-arrives it: the patient isn't in today's waiting room anymore, so
-    // status returns to CONFIRMED and the FIFO anchor (queuedAt) clears.
-    // ticketSeq/queueOrder stay frozen (two-lanes I5) — if they come back the
-    // same day their printed ticket is still theirs. Skipped when the caller
-    // drives status explicitly in the same PATCH: an explicit transition wins.
-    const dayMoved =
-      timeChanged &&
-      tashkentComponents(before.date).date !== tashkentComponents(startAt).date;
-    const unarriveOnDayMove =
-      dayMoved &&
-      before.queueStatus === "WAITING" &&
-      body.status === undefined &&
-      body.queueStatus === undefined;
-    if (unarriveOnDayMove) {
-      data.status = "CONFIRMED";
-      data.queueStatus = "CONFIRMED";
-      data.queuedAt = null;
-    }
+    // un-arrives it (`arrivalResetOnMove`, shared with the bulk shift).
+    // Skipped when the caller drives status explicitly in the same PATCH: an
+    // explicit transition wins.
+    const arrivalReset =
+      timeChanged && body.status === undefined && body.queueStatus === undefined
+        ? arrivalResetOnMove(before.queueStatus, before.date, startAt)
+        : {};
+    const unarriveOnDayMove = "queuedAt" in arrivalReset;
+    Object.assign(data, arrivalReset);
     // Review of G3-01: a Mini App «Я на месте» belongs to the day it was
     // made. The Mini App refuses to move a checked-in visit, so this is the
     // path such a visit moves by; moved to another clinic day it drops the

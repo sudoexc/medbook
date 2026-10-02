@@ -15,11 +15,11 @@ import {
 import { cn } from "@/lib/utils";
 import { CountUp } from "@/components/atoms/count-up";
 
-import { tallyBuckets, type AppointmentRow } from "../_hooks/use-appointments-list";
+import { tilesFromTally } from "@/lib/appointments/list-tiles";
 
 export interface AppointmentsTilesProps {
-  rows: AppointmentRow[];
-  total: number | null;
+  /** The list response's `tally`: the whole filter set, not the loaded page. */
+  tally: Record<string, number> | null | undefined;
   activeBucket?: string | null;
   onSelect?: (bucket: string) => void;
   className?: string;
@@ -48,26 +48,27 @@ const TONE: Record<Tone, { bg: string; fg: string }> = {
  * Display-only stat tiles above the appointments table — per docs/2 - Записи
  * (2).png.
  *
- * Six cards: total, "сейчас важно", "скоро приём", "не подтверждены",
- * "опоздания", "пришли". Counts are derived from the already-loaded rows;
- * a server-side "whole filter set" total is still respected for `all`.
+ * Six cards: total, "срочные", "скоро", "не подтверждены", "просрочены",
+ * "прибыли". The server counts them over every filter but the status
+ * (`lib/appointments/list-tiles`, audit AP-21): the loaded page of 50 rows
+ * under-counted a busy day, and a tile that filtered by status zeroed the
+ * others.
  */
 export function AppointmentsTiles({
-  rows,
-  total,
+  tally,
   activeBucket,
   onSelect,
   className,
 }: AppointmentsTilesProps) {
   const t = useTranslations("appointments.tiles");
-  const buckets = React.useMemo(() => tallyBuckets(rows), [rows]);
+  const buckets = React.useMemo(() => tilesFromTally(tally), [tally]);
 
   const tiles: Tile[] = [
     {
       key: "all",
       label: t("all"),
-      value: total ?? buckets.all,
-      hint: t("allHint", { count: buckets.arrived }),
+      value: buckets.all,
+      hint: t("allHint"),
       icon: CalendarCheck2Icon,
       tone: "purple",
     },

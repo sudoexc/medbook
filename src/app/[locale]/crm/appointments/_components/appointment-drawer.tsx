@@ -18,7 +18,6 @@ import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
-import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -66,7 +65,6 @@ import { AppointmentLifecycle } from "./appointment-lifecycle";
 import { PatientSummaryCard } from "../../patients/[id]/_components/patient-summary-card";
 import { PreVisitQuestionnaireCard } from "./pre-visit-questionnaire-card";
 import {
-  AppointmentConflictError,
   useAppointment,
   useDeleteAppointment,
   usePatchAppointment,
@@ -198,25 +196,9 @@ export function AppointmentDrawer({
 
   const onChannelChange = (next: (typeof CHANNELS)[number]) => {
     if (!appt) return;
-    patch.mutate(
-      { channel: next },
-      {
-        onError: (err) => {
-          // A refused change says why (e.g. a live-queue ticket keeps its
-          // channel, AP-06) instead of silently snapping back. Other errors
-          // are toasted by the mutation hook itself.
-          if (!(err instanceof AppointmentConflictError)) return;
-          toast.error(
-            (
-              t as unknown as (k: string, v?: Record<string, string>) => string
-            )(
-              `conflict.${err.conflict.reason}`,
-              conflictMessageValues(err.conflict.until),
-            ),
-          );
-        },
-      },
-    );
+    // A refused change says why (e.g. a live-queue ticket keeps its channel,
+    // AP-06): the mutation toasts every failure in words itself (AP-18).
+    patch.mutate({ channel: next });
   };
 
   const onSlotChange = (next: { date: Date; time: string }) => {
@@ -246,23 +228,8 @@ export function AppointmentDrawer({
           );
           void qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
         },
-        onError: (err) => {
-          if (err instanceof AppointmentConflictError) {
-            toast.error(
-              (
-                t as unknown as (
-                  k: string,
-                  v?: Record<string, string>,
-                ) => string
-              )(
-                `conflict.${err.conflict.reason}`,
-                conflictMessageValues(err.conflict.until),
-              ),
-            );
-          } else {
-            toast.error(err.message);
-          }
-        },
+        // A refused move («Врач занят до 14:30») is toasted by the mutation
+        // itself, once (audit AP-18: it used to come twice).
       },
     );
   };

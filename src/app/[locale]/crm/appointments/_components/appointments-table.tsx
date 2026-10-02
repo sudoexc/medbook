@@ -741,8 +741,6 @@ export function AppointmentsTable({
           footer renders in exactly the same place. */}
       {!isLoading && rows.length > 0 ? (
         <PaginationFooter
-          shown={rows.length}
-          total={total ?? rows.length}
           hasNext={hasNextPage}
           isFetching={isFetchingNextPage}
           onMore={onLoadMore}
@@ -758,9 +756,12 @@ export function AppointmentsTable({
   );
 }
 
+/**
+ * «Показано N из M» and «Загрузить ещё». The list is an infinite query (a
+ * cursor per 50 rows), so there is no page to jump to: the page numbers that
+ * used to sit here could not be clicked at all (audit AP-17).
+ */
 function PaginationFooter({
-  shown,
-  total,
   hasNext,
   isFetching,
   onMore,
@@ -768,8 +769,6 @@ function PaginationFooter({
   loadMoreLabel,
   loadingLabel,
 }: {
-  shown: number;
-  total: number;
   hasNext: boolean;
   isFetching: boolean;
   onMore: () => void;
@@ -777,53 +776,22 @@ function PaginationFooter({
   loadMoreLabel: string;
   loadingLabel: string;
 }) {
-  const pageSize = 50;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const currentPage = Math.min(totalPages, Math.max(1, Math.ceil(shown / pageSize)));
-  const pages: number[] = [];
-  const windowSize = 4;
-  const start = Math.max(1, currentPage - 1);
-  const end = Math.min(totalPages, start + windowSize - 1);
-  for (let p = start; p <= end; p++) pages.push(p);
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2.5">
       <span className="text-xs tabular-nums text-muted-foreground">
         {rangeLabel}
       </span>
-      <div className="flex items-center gap-1">
-        {pages.map((p) => (
-          <button
-            key={p}
-            type="button"
-            disabled={p > currentPage}
-            onClick={() => {
-              if (hasNext && !isFetching && p > currentPage) onMore();
-            }}
-            className={cn(
-              "inline-flex size-7 items-center justify-center rounded-md text-[12px] font-semibold tabular-nums transition-colors",
-              p === currentPage
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent",
-            )}
-          >
-            {p}
-          </button>
-        ))}
-        {totalPages > end ? (
-          <span className="px-1 text-xs text-muted-foreground">…</span>
-        ) : null}
-        {hasNext ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onMore}
-            disabled={isFetching}
-            className="ml-2 h-7"
-          >
-            {isFetching ? loadingLabel : loadMoreLabel}
-          </Button>
-        ) : null}
-      </div>
+      {hasNext ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onMore}
+          disabled={isFetching}
+          className="h-7"
+        >
+          {isFetching ? loadingLabel : loadMoreLabel}
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -3,17 +3,16 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { toast } from "sonner";
 import {
   BellIcon,
   LightbulbIcon,
-  RefreshCwIcon,
   SparklesIcon,
   TrendingUpIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { useBulkReminders } from "../../appointments/_hooks/use-bulk-reminders";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 
 export function BottomRow({
@@ -38,49 +37,33 @@ export function BottomRow({
   );
 }
 
+/**
+ * The recommendations the desk can act on. «Перераспределите очередь» is
+ * gone (audit AP-14): a cabinet belongs to its doctor, so «send N patients
+ * from cabinet X elsewhere» could not be done, its «Применить» only showed
+ * a toast, and its count included finished visits.
+ */
 type SmartRecs = {
-  redistribute: { cabinet: string; count: number } | null;
   optimize: { hour: number; dropPct: number } | null;
-  remind: number;
+  /** Today's upcoming bookings nobody confirmed yet: whom «Отправить» reminds. */
+  remindIds: string[];
 };
 
 function useSmartRecs(todayRows: AppointmentRow[]): SmartRecs {
   return React.useMemo(() => {
     const now = new Date();
-    const cabinetCounts = new Map<string, number>();
     const hourCounts = new Map<number, number>();
-    let remind = 0;
+    const remindIds: string[] = [];
 
     for (const row of todayRows) {
       if (row.queueStatus === "CANCELLED" || row.queueStatus === "NO_SHOW") {
         continue;
       }
-      if (row.cabinet) {
-        cabinetCounts.set(
-          row.cabinet.number,
-          (cabinetCounts.get(row.cabinet.number) ?? 0) + 1,
-        );
-      }
       const start = new Date(row.date);
       const h = start.getHours();
       hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
       if (row.queueStatus === "BOOKED" && start.getTime() > now.getTime()) {
-        remind += 1;
-      }
-    }
-
-    // Cabinet imbalance: peak vs average.
-    let redistribute: SmartRecs["redistribute"] = null;
-    if (cabinetCounts.size >= 2) {
-      const entries = Array.from(cabinetCounts.entries()).sort(
-        (a, b) => b[1] - a[1],
-      );
-      const [peakCab, peakCount] = entries[0];
-      const total = entries.reduce((acc, [, c]) => acc + c, 0);
-      const avg = total / entries.length;
-      const overflow = Math.round(peakCount - avg);
-      if (overflow >= 2) {
-        redistribute = { cabinet: peakCab, count: overflow };
+        remindIds.push(row.id);
       }
     }
 
@@ -101,7 +84,7 @@ function useSmartRecs(todayRows: AppointmentRow[]): SmartRecs {
       }
     }
 
-    return { redistribute, optimize, remind };
+    return { optimize, remindIds };
   }, [todayRows]);
 }
 
@@ -141,7 +124,7 @@ function SectionCard({
   );
 }
 
-type RecCardVariant = "redistribute" | "optimize" | "remind";
+type RecCardVariant = "optimize" | "remind";
 
 const REC_VARIANT_STYLES: Record<
   RecCardVariant,
@@ -152,13 +135,6 @@ const REC_VARIANT_STYLES: Record<
     button: string;
   }
 > = {
-  redistribute: {
-    surface: "bg-orange-50 dark:bg-orange-500/10 border-orange-200/60 dark:border-orange-500/20",
-    title: "text-orange-600 dark:text-orange-400",
-    iconWrap: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
-    button:
-      "bg-orange-600 text-white hover:bg-orange-600/90 focus-visible:outline-orange-600",
-  },
   optimize: {
     surface: "bg-violet-50 dark:bg-violet-500/10 border-violet-200/60 dark:border-violet-500/20",
     title: "text-violet-600 dark:text-violet-400",
@@ -182,6 +158,7 @@ function RecCard({
   body,
   cta,
   onClick,
+  disabled,
 }: {
   variant: RecCardVariant;
   icon: React.ComponentType<{ className?: string }>;
@@ -189,6 +166,7 @@ function RecCard({
   body: string;
   cta: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   const styles = REC_VARIANT_STYLES[variant];
   return (
@@ -215,8 +193,9 @@ function RecCard({
       <button
         type="button"
         onClick={onClick}
+        disabled={disabled}
         className={cn(
-          "motion-press inline-flex h-8 items-center justify-center self-end rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+          "motion-press inline-flex h-8 items-center justify-center self-end rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60",
           styles.button,
         )}
       >
@@ -235,28 +214,9 @@ function SmartRecommendations({
   const router = useRouter();
   const locale = useLocale();
   const recs = useSmartRecs(todayRows);
+  const reminders = useBulkReminders();
 
   const cards: React.ReactNode[] = [];
-
-  if (recs.redistribute) {
-    const { cabinet, count } = recs.redistribute;
-    cards.push(
-      <RecCard
-        key="redistribute"
-        variant="redistribute"
-        icon={RefreshCwIcon}
-        title={t("recRedistributeTitle")}
-        body={t("recRedistributeBody", { cabinet, count })}
-        cta={t("recApply")}
-        onClick={() => {
-          toast.info(t("recRedistributeTitle"), {
-            description: t("recRedistributeBody", { cabinet, count }),
-          });
-          router.push(`/${locale}/crm/calendar`);
-        }}
-      />,
-    );
-  }
 
   if (recs.optimize) {
     const { hour, dropPct } = recs.optimize;
@@ -275,17 +235,23 @@ function SmartRecommendations({
     );
   }
 
-  if (recs.remind > 0) {
+  if (recs.remindIds.length > 0) {
+    const count = recs.remindIds.length;
     cards.push(
       <RecCard
         key="remind"
         variant="remind"
         icon={BellIcon}
         title={t("recRemindTitle")}
-        body={t("recRemindBody", { count: recs.remind })}
+        body={t("recRemindBody", { count })}
         cta={t("recSend")}
+        disabled={reminders.isPending}
         onClick={() => {
-          router.push(`/${locale}/crm/action-center`);
+          // «Отправить» sends (audit AP-14): the same staff reminder as
+          // «Напомнить всем» on «Записи», once per visit, after the desk
+          // says yes to the number of patients it goes to.
+          if (!window.confirm(t("recRemindConfirm", { count }))) return;
+          reminders.send(recs.remindIds);
         }}
       />,
     );

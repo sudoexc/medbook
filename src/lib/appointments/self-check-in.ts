@@ -58,6 +58,27 @@ export function checkInResetOnMove(
 }
 
 /**
+ * The desk's «Пришёл» belongs to its day as well: an arrived (WAITING) visit
+ * moved to another clinic day is not in today's hall any more, so it goes
+ * back to CONFIRMED and loses its FIFO anchor (`queuedAt`). ticketSeq and
+ * queueOrder stay (two-lanes I5): back on the same day, the printed ticket
+ * is still the patient's. A move within the day keeps the arrival. The
+ * single PATCH and the bulk shift (audit AP-16, which used to leave tomorrow
+ * a WAITING row queued since today) both spread this into the update.
+ */
+export function arrivalResetOnMove(
+  queueStatus: string | null | undefined,
+  from: Date,
+  to: Date,
+):
+  | { status: "CONFIRMED"; queueStatus: "CONFIRMED"; queuedAt: null }
+  | Record<string, never> {
+  if (queueStatus !== "WAITING") return {};
+  if (tashkentDateOf(from) === tashkentDateOf(to)) return {};
+  return { status: "CONFIRMED", queueStatus: "CONFIRMED", queuedAt: null };
+}
+
+/**
  * True while the patient has checked in from the Mini App for this visit and
  * the desk has not marked him arrived. Reads the queue column first:
  * reception's lanes go by `queueStatus`.

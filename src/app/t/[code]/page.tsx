@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Short codes resolved per address per minute. A patient scans once or
- * twice; the cap is only there so the 6-character code space cannot be
+ * twice; the cap is only there so the short code space cannot be
  * walked from one machine to find whose ticket is live today (audit INF-10).
  */
 const RESOLVES_PER_MINUTE = 20;

@@ -4,8 +4,6 @@ import * as React from "react";
 import { AlertTriangleIcon, PlusIcon, RotateCwIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
-import { useMutation } from "@tanstack/react-query";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { EmptyState } from "@/components/atoms/empty-state";
@@ -20,6 +18,7 @@ import {
   useAppointmentsRealtime,
 } from "../_hooks/use-appointments-list";
 import { useAppointmentsFilters } from "../_hooks/use-appointments-filters";
+import { useBulkReminders } from "../_hooks/use-bulk-reminders";
 import { AppointmentsFilters } from "./appointments-filters";
 import { AppointmentsTiles } from "./appointments-tiles";
 import { AppointmentsBulkBar } from "./appointments-bulk-bar";
@@ -101,7 +100,7 @@ export function AppointmentsPageClient() {
     () => flattenAppointments(query.data),
     [query.data],
   );
-  // Tiles see every row so counts stay stable; the table sees the bucket-narrowed slice.
+  // The table sees the bucket-narrowed slice; the tiles count on the server.
   const rows = React.useMemo(
     () => filterRowsByBucket(allRows, state.bucket ?? null),
     [allRows, state.bucket],
@@ -130,67 +129,7 @@ export function AppointmentsPageClient() {
 
   const selectedIds = React.useMemo(() => Array.from(selected), [selected]);
 
-  type RemindersResult = {
-    requested: number;
-    scoped: number;
-    reminded: number;
-    skipped: number;
-    noChannel: number;
-    templateDisabled: boolean;
-  };
-  const remindersMutation = useMutation<RemindersResult, Error, { ids: string[] }>({
-    mutationFn: async (input) => {
-      const res = await fetch(`/api/crm/appointments/bulk-reminders`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ appointmentIds: input.ids }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as
-          | { error?: string; reason?: string }
-          | null;
-        throw new Error(data?.reason ?? data?.error ?? `HTTP ${res.status}`);
-      }
-      return (await res.json()) as RemindersResult;
-    },
-    // The toast reports what really happened: patients reminded, not queue
-    // rows (each reminder also has an in-app mirror), and who could not be
-    // reached at all (AP-02).
-    onSuccess: (result) => {
-      const noChannel =
-        result.noChannel > 0
-          ? t("rail.remindersNoChannel", { count: result.noChannel })
-          : undefined;
-      if (result.templateDisabled) {
-        toast.info(t("rail.remindersTemplateOff"));
-      } else if (result.reminded > 0) {
-        toast.success(t("rail.remindersSent", { count: result.reminded }), {
-          description: noChannel,
-        });
-      } else if (result.noChannel > 0) {
-        toast.info(noChannel);
-      } else if (result.skipped > 0) {
-        toast.info(t("rail.remindersAllSkipped"));
-      } else {
-        toast.info(t("rail.remindersNothing"));
-      }
-    },
-    onError: (e) => {
-      toast.error(t("rail.remindersFailed"), { description: e.message });
-    },
-  });
-
-  const sendReminders = React.useCallback(
-    (ids: string[]) => {
-      if (ids.length === 0) {
-        toast.info(t("rail.remindersNothing"));
-        return;
-      }
-      remindersMutation.mutate({ ids });
-    },
-    [remindersMutation, t],
-  );
+  const { send: sendReminders, isPending: remindersBusy } = useBulkReminders();
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -218,8 +157,7 @@ export function AppointmentsPageClient() {
           </div>
 
           <AppointmentsTiles
-            rows={allRows}
-            total={total}
+            tally={query.data?.pages?.[0]?.tally}
             activeBucket={state.bucket ?? "all"}
             onSelect={(b) => setFilter("bucket", b as typeof state.bucket)}
           />
@@ -297,7 +235,7 @@ export function AppointmentsPageClient() {
             openCreateDialog({ doctorId, date, time })
           }
           onSendReminders={sendReminders}
-          remindersBusy={remindersMutation.isPending}
+          remindersBusy={remindersBusy}
         />
       </aside>
 

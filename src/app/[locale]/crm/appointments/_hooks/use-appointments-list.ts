@@ -4,6 +4,11 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { isOverdue, isRunningLate } from "@/lib/appointments/overdue";
+import {
+  ARRIVED_STATUSES,
+  SOON_STATUSES,
+  SOON_WINDOW_MIN,
+} from "@/lib/appointments/list-tiles";
 
 /**
  * Denormalised row returned by `GET /api/crm/appointments` — see §6.2.
@@ -239,87 +244,6 @@ export function flattenAppointments(
 }
 
 /**
- * Business-focused counts for the top tiles / smart tabs on the Записи page.
- *
- * - `needsAttention` — WAITING rows **or** any overdue row (status
- *   BOOKED/CONFIRMED/SKIPPED whose end time has passed beyond the grace).
- * - `soon` — BOOKED/CONFIRMED rows starting within the next 15 minutes.
- * - `unconfirmed` — BOOKED rows (CONFIRMED is its own state now).
- * - `late` — running-late rows (start passed, end window still open) for
- *   pre-arrival statuses.
- * - `overdue` — rows past their end window without resolution; the receptionist
- *   needs to decide arrive/no-show/reschedule.
- * - `arrived` — IN_PROGRESS or COMPLETED rows.
- * - `needsCall` — BOOKED rows arriving via PHONE/TELEGRAM without any payment yet.
- * - `riskNoShow` — NO_SHOW + overdue + running-late non-walkin rows.
- */
-export function tallyBuckets(
-  rows: AppointmentRow[],
-  now = new Date(),
-): {
-  all: number;
-  needsAttention: number;
-  soon: number;
-  unconfirmed: number;
-  late: number;
-  overdue: number;
-  arrived: number;
-  needsCall: number;
-  riskNoShow: number;
-} {
-  const nowMs = now.getTime();
-  const fifteenMin = 15 * 60 * 1000;
-  let needsAttention = 0;
-  let soon = 0;
-  let unconfirmed = 0;
-  let late = 0;
-  let overdue = 0;
-  let arrived = 0;
-  let needsCall = 0;
-  let riskNoShow = 0;
-  for (const r of rows) {
-    const startMs = new Date(r.date).getTime();
-    const rowIsOverdue = isOverdue(r, nowMs);
-    const rowIsLate = isRunningLate(r, nowMs);
-    const isSoon =
-      (r.status === "BOOKED" || r.status === "CONFIRMED") &&
-      startMs - nowMs >= 0 &&
-      startMs - nowMs <= fifteenMin;
-    if (r.status === "WAITING" || rowIsOverdue) needsAttention += 1;
-    if (isSoon) soon += 1;
-    if (r.status === "BOOKED") unconfirmed += 1;
-    if (rowIsLate) late += 1;
-    if (rowIsOverdue) overdue += 1;
-    if (r.status === "IN_PROGRESS" || r.status === "COMPLETED") arrived += 1;
-    if (
-      r.status === "BOOKED" &&
-      (r.channel === "PHONE" || r.channel === "TELEGRAM") &&
-      r.payments.length === 0
-    ) {
-      needsCall += 1;
-    }
-    if (
-      r.status === "NO_SHOW" ||
-      rowIsOverdue ||
-      (rowIsLate && r.channel !== "WALKIN")
-    ) {
-      riskNoShow += 1;
-    }
-  }
-  return {
-    all: rows.length,
-    needsAttention,
-    soon,
-    unconfirmed,
-    late,
-    overdue,
-    arrived,
-    needsCall,
-    riskNoShow,
-  };
-}
-
-/**
  * Client-side narrowing for UX-only tile buckets that don't translate to a
  * single API status. Returns the same array reference when `bucket` doesn't
  * trigger any filtering so React.useMemo callers stay cheap.
@@ -331,7 +255,7 @@ export function filterRowsByBucket(
 ): AppointmentRow[] {
   if (!bucket || bucket === "all") return rows;
   const nowMs = now.getTime();
-  const fifteenMin = 15 * 60 * 1000;
+  const soonMs = SOON_WINDOW_MIN * 60 * 1000;
   switch (bucket) {
     case "needs_attention":
       return rows.filter(
@@ -341,9 +265,9 @@ export function filterRowsByBucket(
       return rows.filter((r) => {
         const startMs = new Date(r.date).getTime();
         return (
-          (r.status === "BOOKED" || r.status === "CONFIRMED") &&
+          (SOON_STATUSES as readonly string[]).includes(r.status) &&
           startMs - nowMs >= 0 &&
-          startMs - nowMs <= fifteenMin
+          startMs - nowMs <= soonMs
         );
       });
     case "unconfirmed":
@@ -353,8 +277,8 @@ export function filterRowsByBucket(
     case "overdue":
       return rows.filter((r) => isOverdue(r, nowMs));
     case "arrived":
-      return rows.filter(
-        (r) => r.status === "IN_PROGRESS" || r.status === "COMPLETED",
+      return rows.filter((r) =>
+        (ARRIVED_STATUSES as readonly string[]).includes(r.status),
       );
     default:
       return rows;

@@ -16,12 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 
-import {
-  AppointmentConflictError,
-  useBulkReschedule,
-} from "../_hooks/use-appointment";
+import { useBulkReschedule } from "../_hooks/use-appointment";
 
 export interface BulkRescheduleDialogProps {
   open: boolean;
@@ -50,7 +46,6 @@ export function BulkRescheduleDialog({
   onCompleted,
 }: BulkRescheduleDialogProps) {
   const t = useTranslations("appointments.bulkReschedule");
-  const tConflict = useTranslations("appointments.drawer.conflict");
   const mutation = useBulkReschedule();
 
   const [direction, setDirection] = React.useState<Direction>("forward");
@@ -90,16 +85,8 @@ export function BulkRescheduleDialog({
           onOpenChange(false);
           onCompleted?.(count);
         },
-        onError: (err) => {
-          if (err instanceof AppointmentConflictError) {
-            toast.error(
-              tConflict(
-                err.conflict.reason,
-                conflictMessageValues(err.conflict.until),
-              ),
-            );
-          }
-        },
+        // A refused shift («Врач занят до 14:30») is toasted in words by
+        // the mutation itself (audit AP-18).
       },
     );
   }, [
@@ -110,7 +97,6 @@ export function BulkRescheduleDialog({
     onOpenChange,
     selectedIds,
     t,
-    tConflict,
   ]);
 
   return (

@@ -19,11 +19,15 @@ import type { AppointmentStatus } from "@/lib/appointment-transitions";
  * they're not overdue (the doctor is). IN_PROGRESS means the visit is
  * underway. Terminal statuses are obviously skipped.
  */
-const OVERDUE_CANDIDATE_STATUSES: ReadonlySet<AppointmentStatus> = new Set([
+export const OVERDUE_CANDIDATE_STATUS_LIST = [
   "BOOKED",
   "CONFIRMED",
   "SKIPPED",
-]);
+] as const satisfies readonly AppointmentStatus[];
+
+const OVERDUE_CANDIDATE_STATUSES: ReadonlySet<AppointmentStatus> = new Set(
+  OVERDUE_CANDIDATE_STATUS_LIST,
+);
 
 /** Patient is already inside the clinic — different UX problem. */
 const PRESENT_STATUSES: ReadonlySet<AppointmentStatus> = new Set([
@@ -83,6 +87,22 @@ export function isRunningLate(
   const startMs = toMs(row.date);
   const endMs = toMs(row.endDate);
   return nowMs > startMs && nowMs <= endMs + OVERDUE_GRACE_MIN * 60_000;
+}
+
+/**
+ * «Высокий риск no-show» on the calendar tiles and rail (audit AP-20): a
+ * no-show already, or a patient who has not reached the desk 15 minutes past
+ * the start. CONFIRMED counts (a confirmed patient can still not come);
+ * WAITING does not: that patient is sitting in the hall.
+ */
+export function atNoShowRisk(
+  row: Pick<OverdueRowInput, "status" | "date">,
+  now: number | Date = Date.now(),
+): boolean {
+  if (row.status === "NO_SHOW") return true;
+  if (!OVERDUE_CANDIDATE_STATUSES.has(row.status)) return false;
+  const nowMs = typeof now === "number" ? now : now.getTime();
+  return nowMs - toMs(row.date) > OVERDUE_GRACE_MIN * 60_000;
 }
 
 /** Minutes elapsed past the scheduled start. Clamped at 0 for future rows. */

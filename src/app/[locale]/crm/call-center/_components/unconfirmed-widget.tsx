@@ -166,8 +166,10 @@ function UnconfirmedRow({
     try {
       await setQueueStatus.mutateAsync("CONFIRMED");
       toast.success(t("toasts.confirmed", { name: row.payload.patientName }));
-    } catch (e) {
-      toast.error((e as Error).message || t("toasts.confirmFailed"));
+    } catch {
+      // The mutation already toasted the refusal in words («Запись
+      // отменена»); its raw «conflict:cancelled» used to follow as a second
+      // toast (audit AP-18).
     }
   };
 

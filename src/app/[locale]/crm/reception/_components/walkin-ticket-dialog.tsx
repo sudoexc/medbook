@@ -34,6 +34,20 @@ import {
 } from "@/components/appointments/phone-owner-prompt";
 import { readPlanLimit } from "@/lib/plan-limit";
 
+/**
+ * The walk-in route's refusals, in words (audit AP-18): the dialog used to
+ * toast the bare «bad_phone», «doctor_not_found» or «conflict». A refusal
+ * not listed here (validation, a doctor off duty) gets the generic line.
+ */
+const WALKIN_ERROR_KEY: Record<
+  string,
+  "errBadPhone" | "errDoctorNotFound" | "errPatientNotFound"
+> = {
+  bad_phone: "errBadPhone",
+  doctor_not_found: "errDoctorNotFound",
+  patient_not_found: "errPatientNotFound",
+};
+
 interface WalkinTicket {
   appointmentId: string;
   /**
@@ -146,13 +160,15 @@ export function WalkinTicketDialog({
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as {
           error?: string;
+          reason?: string;
         } | null;
         const owner = readPhoneOwnerMismatch(res.status, j);
         if (owner) throw new PhoneOwnerMismatchError(owner);
         // The plan's limit, said in words (audit SEC-10).
         const limit = readPlanLimit(res.status, j);
         if (limit) throw new Error(tLimit(limit.quota, { max: limit.max }));
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        const code = j?.reason ?? j?.error ?? "";
+        throw new Error(t(WALKIN_ERROR_KEY[code] ?? "errFailed"));
       }
       return (await res.json()) as WalkinTicket;
     },

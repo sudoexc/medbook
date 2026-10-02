@@ -214,11 +214,12 @@ describe("appointments export (INF-02)", () => {
       q: "Алиев",
       status: undefined,
     };
+    // «Прибыли» counts the hall too (audit AP-21), and the file follows it.
     expect(appointmentExportFilters({ dateMode: "today", bucket: "arrived" }, api)).toEqual({
       dateFrom: api.from,
       dateTo: api.to,
       q: "Алиев",
-      statuses: ["IN_PROGRESS", "COMPLETED"],
+      statuses: ["WAITING", "IN_PROGRESS", "COMPLETED"],
     });
     expect(appointmentExportFilters({ bucket: "unconfirmed" }, api).status).toBe("BOOKED");
   });

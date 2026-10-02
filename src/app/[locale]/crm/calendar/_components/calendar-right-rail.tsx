@@ -18,14 +18,19 @@ import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
 import { InDevelopment } from "@/components/ui/in-development";
 import { MoneyText } from "@/components/atoms/money-text";
+import { atNoShowRisk } from "@/lib/appointments/overdue";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { useTodayFreeSlots } from "../../appointments/_hooks/use-today-free-slots";
 import type { DoctorResource } from "../_hooks/use-calendar-data";
+import type { CalendarRangeKind } from "./calendar-tiles";
 import { composeStart } from "./calendar-utils";
 
 export interface CalendarRightRailProps {
   appointments: AppointmentRow[];
   doctors: DoctorResource[];
+  /** The stats section names the range it counts (audit AP-20). */
+  rangeKind: CalendarRangeKind;
 }
 
 type Tone = "primary" | "warning" | "danger" | "success" | "info";
@@ -70,6 +75,7 @@ const TONE_CLASS: Record<Tone, { icon: string; border: string; chip: string }> =
 export function CalendarRightRail({
   appointments,
   doctors,
+  rangeKind,
 }: CalendarRightRailProps) {
   const locale = useLocale();
   const t = useTranslations("calendar.rail");
@@ -88,14 +94,8 @@ export function CalendarRightRail({
         revenue += a.priceFinal ?? 0;
       }
       if (a.status === "BOOKED") unconfirmed += 1;
-      const start = composeStart(a.date, a.time).getTime();
-      if (a.status === "NO_SHOW") noShowRisk += 1;
-      else if (
-        (a.status === "BOOKED" || a.status === "WAITING") &&
-        now - start > 15 * 60_000
-      ) {
-        noShowRisk += 1;
-      }
+      // The calendar tiles' rule: a patient in the hall is no risk (AP-20).
+      if (atNoShowRisk(a, now)) noShowRisk += 1;
     }
     const conversionPct = total > 0 ? Math.round((completed / total) * 100) : 0;
     return { total, completed, unconfirmed, noShowRisk, revenue, conversionPct };
@@ -113,27 +113,17 @@ export function CalendarRightRail({
       .slice(0, 4);
   }, [appointments]);
 
-  const freeSlotsByDoctor = React.useMemo(() => {
-    const byDoctor = new Map<string, number>();
-    for (const a of appointments) {
-      byDoctor.set(
-        a.doctor.id,
-        (byDoctor.get(a.doctor.id) ?? 0) + (a.durationMin || 30),
-      );
-    }
-    // Rough heuristic — assume 11h workday, 30-min slots.
-    const dayCapMin = 11 * 60;
-    return doctors.slice(0, 5).map((d) => {
-      const scheduled = byDoctor.get(d.id) ?? 0;
-      const free = Math.max(0, Math.floor((dayCapMin - scheduled) / 30));
-      return {
-        id: d.id,
-        name: locale === "uz" ? d.nameUz : d.nameRu,
-        color: d.color ?? "#3DD5C0",
-        free,
-      };
-    });
-  }, [appointments, doctors, locale]);
+  // «Свободные слоты сегодня»: today's SlotPicker slots per doctor, from his
+  // schedule (audit AP-20). It was an 11 hour day minus the bookings of the
+  // whole visible range, so a week view emptied every doctor.
+  const railDoctors = doctors.slice(0, 5);
+  const slotQueries = useTodayFreeSlots(railDoctors.map((d) => d.id));
+  const freeSlotsByDoctor = railDoctors.map((d, i) => ({
+    id: d.id,
+    name: locale === "uz" ? d.nameUz : d.nameRu,
+    color: d.color ?? "#3DD5C0",
+    free: slotQueries[i]?.data?.length ?? 0,
+  }));
 
   const recommendations: Array<{
     tone: Tone;
@@ -332,7 +322,7 @@ export function CalendarRightRail({
       {/* Daily stats */}
       <section>
         <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {t("dailyStats")}
+          {rangeKind === "range" ? t("rangeStats") : t("dailyStats")}
         </h3>
         <div className="grid grid-cols-2 gap-2">
           <StatCell label={t("statAppointments")} value={stats.total} />

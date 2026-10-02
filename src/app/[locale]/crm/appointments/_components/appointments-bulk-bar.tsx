@@ -19,11 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { actionsForMany } from "@/lib/appointment-transitions";
-import { conflictMessageValues } from "@/lib/appointments/conflict-message";
-import {
-  AppointmentConflictError,
-  useBulkStatus,
-} from "../_hooks/use-appointment";
+import { useBulkStatus } from "../_hooks/use-appointment";
 import type { AppointmentRow } from "../_hooks/use-appointments-list";
 import { BulkRescheduleDialog } from "./bulk-reschedule-dialog";
 
@@ -49,21 +45,9 @@ export function AppointmentsBulkBar({
   className,
 }: AppointmentsBulkBarProps) {
   const t = useTranslations("appointments.bulk");
-  const tConflict = useTranslations("appointments.drawer.conflict");
+  // A refused batch («Не пришёл» before the slot, a role that cannot set the
+  // status) is toasted in words by the mutation itself, once (audit AP-18).
   const mutation = useBulkStatus();
-
-  const onMutationError = React.useCallback(
-    (err: Error) => {
-      if (err instanceof AppointmentConflictError) {
-        toast.error(
-          tConflict(err.conflict.reason, conflictMessageValues(err.conflict.until)),
-        );
-      } else {
-        toast.error(err.message || t("error"));
-      }
-    },
-    [tConflict, t],
-  );
 
   const count = selectedIds.length;
   const selectedSet = React.useMemo(
@@ -90,7 +74,6 @@ export function AppointmentsBulkBar({
           toast.success(t("markedArrived", { count }));
           onClear();
         },
-        onError: onMutationError,
       },
     );
   };
@@ -104,7 +87,6 @@ export function AppointmentsBulkBar({
           toast.success(t("markedNoShow", { count }));
           onClear();
         },
-        onError: onMutationError,
       },
     );
   };

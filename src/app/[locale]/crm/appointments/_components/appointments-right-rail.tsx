@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -28,6 +28,7 @@ import { CountUp } from "@/components/atoms/count-up";
 import { AnimatedMoney } from "@/components/motion/animated-money";
 
 import type { AppointmentRow } from "../_hooks/use-appointments-list";
+import { useTodayFreeSlots } from "../_hooks/use-today-free-slots";
 
 type DoctorOption = {
   id: string;
@@ -294,22 +295,7 @@ function FreeSlotsSection({
   // Fan-out slot fetches at the parent so we can filter doctors who actually
   // have free slots today — showing rows with "—" for fully-booked doctors
   // was misleading (looked like the widget was broken).
-  const slotQueries = useQueries({
-    queries: doctors.map((d) => ({
-      queryKey: ["appointments", "slots", d.id, "today"] as const,
-      queryFn: async ({ signal }: { signal?: AbortSignal }) => {
-        const dateIso = new Date().toISOString();
-        const res = await fetch(
-          `/api/crm/appointments/slots/available?doctorId=${d.id}&date=${encodeURIComponent(dateIso)}`,
-          { credentials: "include", signal },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j = (await res.json()) as { slots: string[] };
-        return j.slots ?? [];
-      },
-      staleTime: 60_000,
-    })),
-  });
+  const slotQueries = useTodayFreeSlots(doctors.map((d) => d.id));
 
   const withSlots = React.useMemo(
     () =>

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 
@@ -44,6 +45,17 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
   const locale = useLocale();
   const aiScores = useAiQueueScores();
   const doctorsQuery = useActiveDoctors();
+  const qc = useQueryClient();
+  // «Обновить очередь» re-reads the day's appointments and the dashboard
+  // (audit AP-14): it used to refetch only the AI scores, a query that is
+  // off while AI is, so a patient registered elsewhere never appeared.
+  const refreshing =
+    useIsFetching({ queryKey: ["reception", "appointments", "today"] }) > 0;
+  const refreshQueue = () => {
+    void qc.invalidateQueries({ queryKey: ["reception", "appointments", "today"] });
+    void qc.invalidateQueries({ queryKey: ["reception", "dashboard"] });
+    if (AI_ENABLED) void aiScores.refetch();
+  };
 
   /**
    * "Now" stamp for the wait-time fallback. Ticks every 30s so the orange
@@ -177,16 +189,14 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
         <footer className="border-t border-border px-3 py-2">
           <button
             type="button"
-            onClick={() => {
-              void aiScores.refetch();
-            }}
-            disabled={aiScores.isFetching}
+            onClick={refreshQueue}
+            disabled={refreshing}
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
             <RefreshCwIcon
               className={cn(
                 "size-3",
-                aiScores.isFetching && "animate-spin",
+                refreshing && "animate-spin",
               )}
             />
             {t("refreshQueue")}

@@ -47,6 +47,7 @@ const Schema = z.object({
       doctorId: z.string().optional(),
       cabinetId: z.string().optional(),
       channel: z.string().optional(),
+      serviceId: z.string().optional(),
       status: z.string().optional(),
       statuses: z.array(z.string()).max(10).optional(),
       unpaid: z.boolean().optional(),

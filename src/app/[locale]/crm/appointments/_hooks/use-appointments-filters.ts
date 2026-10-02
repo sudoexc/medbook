@@ -4,6 +4,7 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useClinicToday } from "@/hooks/use-clinic-today";
+import { ARRIVED_STATUSES } from "@/lib/appointments/list-tiles";
 import { addTashkentDays, tashkentDayWindow } from "@/lib/tashkent-time";
 
 import type { AppointmentsListFilters } from "./use-appointments-list";
@@ -42,6 +43,7 @@ export type StatusBucket =
   | "soon"
   | "unconfirmed"
   | "late"
+  | "overdue"
   | "arrived";
 
 export type AppointmentsFilterState = AppointmentsListFilters & {
@@ -107,6 +109,8 @@ function parse(sp: URLSearchParams): AppointmentsFilterState {
         "soon",
         "unconfirmed",
         "late",
+        // The «Просрочены» tile: dropped here, its click filtered nothing.
+        "overdue",
         "arrived",
       ];
       if ((allowed as string[]).includes(v)) {
@@ -172,11 +176,14 @@ const BUCKET_TO_STATUS: Record<StatusBucket, string | undefined> = {
   completed: "COMPLETED",
   cancelled: "CANCELLED",
   no_show: "NO_SHOW",
+  // «Не подтверждены» is exactly BOOKED, so the server filters it and the
+  // list shows every such row, not the ones on the loaded page (AP-21).
+  unconfirmed: "BOOKED",
   // UX-only buckets: no server filter, rows narrowed client-side.
   needs_attention: undefined,
   soon: undefined,
-  unconfirmed: undefined,
   late: undefined,
+  overdue: undefined,
   arrived: undefined,
 };
 
@@ -201,9 +208,10 @@ export function appointmentExportFilters(
   put("doctorId", api.doctorId);
   put("cabinetId", api.cabinetId);
   put("channel", api.channel);
+  put("serviceId", api.serviceId);
   put("unpaid", api.onlyUnpaid);
   put("q", api.q);
-  if (state.bucket === "arrived") put("statuses", ["IN_PROGRESS", "COMPLETED"]);
+  if (state.bucket === "arrived") put("statuses", [...ARRIVED_STATUSES]);
   else if (state.bucket === "unconfirmed") put("status", "BOOKED");
   else put("status", api.status);
   return out;

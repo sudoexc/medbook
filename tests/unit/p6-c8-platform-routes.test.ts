@@ -285,6 +285,34 @@ describe("G5-06 PATCH /api/platform/users/[id]", () => {
     ]);
     expect(h.audits[0]).toMatchObject({ meta: { doctorCard: { released: "d1" } } });
   });
+
+  it("refuses to switch a doctor back on, or promote one, when no card is bound", async () => {
+    for (const [user, body] of [
+      [{ id: "u1", role: "DOCTOR", active: false, clinicId: "c1" }, { active: true }],
+      [{ id: "u1", role: "NURSE", active: true, clinicId: "c1" }, { role: "DOCTOR", clinicId: "c1" }],
+    ] as const) {
+      h.user = { ...user };
+      const res = await patchUser(json(url, "PATCH", body));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ reason: "doctor_id_required" });
+    }
+    expect(h.userUpdates).toHaveLength(0);
+  });
+
+  it("switches back on a doctor who still holds a card", async () => {
+    h.user = { id: "u1", role: "DOCTOR", active: false, clinicId: "c1" };
+    h.card = { id: "d1", clinicId: "c1" };
+    const res = await patchUser(json(url, "PATCH", { active: true }));
+    expect(res.status).toBe(200);
+    expect(h.cardReleases).toEqual([]);
+    expect(h.userUpdates[0]).toMatchObject({ data: { active: true } });
+  });
+
+  it("does not stop a no-op «Переназначить» save of a doctor without a card", async () => {
+    h.user = { id: "u1", role: "DOCTOR", active: true, clinicId: "c1" };
+    const res = await patchUser(json(url, "PATCH", { clinicId: "c1", role: "DOCTOR" }));
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("G5-07 reset-owner-password", () => {

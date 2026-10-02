@@ -44,30 +44,58 @@ describe("G5-06 leavesAdminSeat", () => {
 describe("G5-06 planPlatformDoctorCard", () => {
   const card = { id: "d1", clinicId: "c1" };
   const doctor = { role: "DOCTOR", active: true, clinicId: "c1" };
+  const plan = (
+    after: typeof doctor,
+    c: typeof card | null = card,
+    before: typeof doctor = doctor,
+  ) => planPlatformDoctorCard({ before, after, card: c });
 
   it("keeps the card of an active doctor in the card's clinic", () => {
-    expect(planPlatformDoctorCard({ after: doctor, card })).toEqual({ ok: true, unlinkCardId: null });
+    expect(plan(doctor)).toEqual({ ok: true, unlinkCardId: null });
   });
 
   it("refuses to move an active doctor away from the card's clinic", () => {
-    expect(planPlatformDoctorCard({ after: { ...doctor, clinicId: "c2" }, card })).toEqual({
+    expect(plan({ ...doctor, clinicId: "c2" })).toEqual({
       ok: false,
       reason: "doctor_card_bound",
     });
   });
 
   it("releases the card of a doctor switched off or given another role, moved or not", () => {
-    expect(planPlatformDoctorCard({ after: { ...doctor, active: false }, card })).toEqual({
+    expect(plan({ ...doctor, active: false })).toEqual({ ok: true, unlinkCardId: "d1" });
+    expect(plan({ ...doctor, role: "RECEPTIONIST", clinicId: "c2" })).toEqual({
       ok: true,
       unlinkCardId: "d1",
     });
-    expect(
-      planPlatformDoctorCard({ after: { ...doctor, role: "RECEPTIONIST", clinicId: "c2" }, card }),
-    ).toEqual({ ok: true, unlinkCardId: "d1" });
   });
 
-  it("has nothing to do without a card", () => {
-    expect(planPlatformDoctorCard({ after: { ...doctor, clinicId: "c2" }, card: null })).toEqual({
+  it("keeps the card when a deactivated doctor who still holds one is switched back on", () => {
+    expect(plan(doctor, card, { ...doctor, active: false })).toEqual({
+      ok: true,
+      unlinkCardId: null,
+    });
+  });
+
+  // Review of C8: «Деактивировать» released the card, then «Активировать» (or
+  // DOCTOR → NURSE → DOCTOR) brought back an active doctor with no card.
+  it("refuses to switch on or promote into an active doctor without a card", () => {
+    expect(plan(doctor, null, { ...doctor, active: false })).toEqual({
+      ok: false,
+      reason: "doctor_id_required",
+    });
+    expect(plan(doctor, null, { ...doctor, role: "NURSE" })).toEqual({
+      ok: false,
+      reason: "doctor_id_required",
+    });
+  });
+
+  it("leaves alone what this edit does not turn into a cardless doctor", () => {
+    // An active doctor who already had no card: a move or a no-op passes.
+    expect(plan({ ...doctor, clinicId: "c2" }, null)).toEqual({ ok: true, unlinkCardId: null });
+    expect(plan(doctor, null)).toEqual({ ok: true, unlinkCardId: null });
+    // Not a doctor afterwards, or switched off: nothing to bind.
+    expect(plan({ ...doctor, role: "NURSE" }, null)).toEqual({ ok: true, unlinkCardId: null });
+    expect(plan({ ...doctor, active: false }, null, { ...doctor, active: false })).toEqual({
       ok: true,
       unlinkCardId: null,
     });

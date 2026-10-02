@@ -10,8 +10,10 @@
  * `server/platform/user-change.ts`): the last active ADMIN of a clinic is not
  * switched off, demoted or moved away (409 `last_admin`), an active doctor
  * is not moved away from the clinic holding their doctor card (409
- * `doctor_card_bound`), and a doctor switched off or given another role has
- * the card released. The audit row carries the values before and after.
+ * `doctor_card_bound`), a doctor switched off or given another role has the
+ * card released, and an account is not switched on or promoted into an
+ * active DOCTOR without a card (409 `doctor_id_required`: the card is picked
+ * in the clinic's CRM). The audit row carries the values before and after.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -137,7 +139,11 @@ export async function PATCH(request: Request): Promise<Response> {
           select: { id: true, clinicId: true },
         })
       : null;
-    const cardPlan = planPlatformDoctorCard({ after: afterState, card });
+    const cardPlan = planPlatformDoctorCard({
+      before: beforeState,
+      after: afterState,
+      card,
+    });
     if (!cardPlan.ok) {
       return err("conflict", 409, { reason: cardPlan.reason });
     }

@@ -5797,7 +5797,7 @@
       },
       "OVERDUE_FOLLOW_UP": {
         "label": "Muddati o'tgan follow-up",
-        "title": "Follow-up {daysSinceVisit} kundan beri bajarilmagan",
+        "title": "{patientName}: follow-up {daysSinceVisit} kundan beri bajarilmagan",
         "body": "Vazifani shifokorga uzating yoki kerak bo'lmasa yoping."
       },
       "DOCTOR_OVERLOAD": {

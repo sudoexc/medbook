@@ -6,10 +6,17 @@
  * follow-up wasn't done" is:
  *
  *   - the appointment is COMPLETED
- *   - it happened between [now - followUpStaleDays * 24h, now - 24h]
+ *   - it happened between [now - followUpMaxAgeDays, now - followUpStaleDays]
  *   - it belongs to an OPEN MedicalCase
  *   - the case has no later non-CANCELLED appointment (i.e. nothing
  *     followed up the visit yet)
+ *   - the doctor did not plan a control visit in the note: that plan has
+ *     its own task, VISIT_FOLLOW_UP_DUE, on the day the doctor named, and
+ *     a 30 day plan must not read as «просрочен» on day 7
+ *
+ * The window used to be [now - followUpStaleDays, now - 24h): the card came
+ * the day after the visit and vanished on day 7, the very day the follow-up
+ * became overdue, and it never named the patient (audit AC-21).
  *
  * Severity: `low` per spec. Assignee: ADMIN (default for OVERDUE_FOLLOW_UP).
  */
@@ -24,6 +31,8 @@ type ApptRow = {
   date: Date;
   patientId: string;
   medicalCaseId: string | null;
+  patient: { fullName: string } | null;
+  visitNote: { followUpDays: number | null; followUpDate: Date | null } | null;
 };
 
 export async function detectOverdueFollowUp(
@@ -32,13 +41,14 @@ export async function detectOverdueFollowUp(
   now: Date,
   config: DetectorConfig,
 ): Promise<OverdueFollowUpPayload[]> {
-  const upper = addDays(now, -1);
-  const lower = addDays(now, -config.followUpStaleDays);
+  const upper = addDays(now, -config.followUpStaleDays);
+  const lower = addDays(now, -config.followUpMaxAgeDays);
 
-  const visits = (await prisma.appointment.findMany({
+  const rows = (await prisma.appointment.findMany({
     where: {
       status: "COMPLETED",
-      date: { gte: lower, lt: upper },
+      // "At least followUpStaleDays ago", the config contract: lte, not lt.
+      date: { gte: lower, lte: upper },
       medicalCaseId: { not: null },
     },
     select: {
@@ -46,8 +56,13 @@ export async function detectOverdueFollowUp(
       date: true,
       patientId: true,
       medicalCaseId: true,
+      patient: { select: { fullName: true } },
+      visitNote: { select: { followUpDays: true, followUpDate: true } },
     },
   })) as ApptRow[];
+  const visits = rows.filter(
+    (v) => v.visitNote?.followUpDays == null && v.visitNote?.followUpDate == null,
+  );
   if (visits.length === 0) return [];
 
   const caseIds = Array.from(
@@ -87,14 +102,12 @@ export async function detectOverdueFollowUp(
       (d) => d.getTime() > v.date.getTime(),
     );
     if (hasFollowUp) continue;
-    const daysSinceVisit = Math.max(
-      1,
-      Math.floor((now.getTime() - v.date.getTime()) / dayMs),
-    );
+    const daysSinceVisit = Math.floor((now.getTime() - v.date.getTime()) / dayMs);
     out.push({
       type: "OVERDUE_FOLLOW_UP",
       appointmentId: v.id,
       patientId: v.patientId,
+      patientName: v.patient?.fullName ?? "",
       daysSinceVisit,
     });
   }

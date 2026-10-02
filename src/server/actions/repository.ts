@@ -17,11 +17,13 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   DETECTOR_ACTION_TYPES,
   RISK_ACTION_TYPES,
+  SEVERITY_RANK,
   actionDeeplinkPath,
   actionSubjectOf,
   defaultAssigneeRole,
   defaultSeverity,
   dedupeKeyFor,
+  isActionSeverity,
   type ActionPayload,
   type ActionSeverity,
 } from "@/lib/actions/types";
@@ -30,6 +32,7 @@ import type { TenantScopedPrisma } from "@/lib/prisma";
 import {
   ABANDONED_RESCHEDULE_GRACE_MIN,
   CLOSED_SIGNAL_LAPSE_HOURS,
+  NO_ANSWER_MAX_ATTEMPTS,
 } from "./config";
 
 /**
@@ -191,6 +194,26 @@ export function closedRowReopens(
   if (!DETECTOR_TYPES.has(next.type) || !existing.updatedAt) return false;
   const silentMs = now.getTime() - existing.updatedAt.getTime();
   return silentMs > CLOSED_SIGNAL_LAPSE_HOURS * 60 * 60 * 1000;
+}
+
+/**
+ * The severity an update writes (audit AC-28). Normally the detector's
+ * reading. But the third «Не дозвонился» raised the row to «Высокий»
+ * (`outcomeStamp`), and the next 15-minute pass wrote the detector's
+ * «Средний» back over it: the escalation lasted minutes. While the row
+ * carries that many failed calls it keeps the louder of the two. A reopened
+ * row is a new occurrence and starts from the detector again.
+ */
+export function severityAfterUpsert(
+  existing: { severity: string; callAttempts?: number | null },
+  detector: ActionSeverity,
+  reopened: boolean,
+): ActionSeverity {
+  if (reopened || (existing.callAttempts ?? 0) < NO_ANSWER_MAX_ATTEMPTS) return detector;
+  if (!isActionSeverity(existing.severity)) return detector;
+  return SEVERITY_RANK[existing.severity] > SEVERITY_RANK[detector]
+    ? existing.severity
+    : detector;
 }
 
 /**
@@ -366,6 +389,12 @@ export async function upsertAction(
   const resurfaces =
     reopened || (reschedule && (scheduledUntil != null || wasHidden));
 
+  const nextSeverity = severityAfterUpsert(
+    existing as { severity: string; callAttempts?: number | null },
+    severity,
+    reopened,
+  );
+
   const oldPayload = existing.payload as ActionPayload | null;
   const payloadChanged =
     !oldPayload ||
@@ -375,14 +404,14 @@ export async function upsertAction(
     (existing.expiresAt?.toISOString() ?? null) !==
       (expiresAt?.toISOString() ?? null) ||
     existing.type !== payload.type;
-  const severityChanged = existing.severity !== severity;
+  const severityChanged = existing.severity !== nextSeverity;
 
   await prisma.action.update({
     where: { id: existing.id },
     data: {
       branchId,
       type: payload.type,
-      severity,
+      severity: nextSeverity,
       payload: payload as never,
       status: newStatus,
       assigneeRole,
@@ -408,7 +437,7 @@ export async function upsertAction(
       entityId: existing.id,
       meta: {
         type: payload.type,
-        severity,
+        severity: nextSeverity,
         oldSeverity: existing.severity,
         oldStatus: existing.status,
         newStatus,
@@ -426,7 +455,7 @@ export async function upsertAction(
   return {
     id: existing.id,
     created: false,
-    severity,
+    severity: nextSeverity,
     payloadChanged,
     severityChanged,
     keptClosed,

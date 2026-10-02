@@ -4,6 +4,7 @@
  * See docs/TZ.md §6.0 top-bar search.
  */
 import { createApiListHandler } from "@/lib/api-handler";
+import { GLOBAL_SEARCH_MIN_CHARS } from "@/lib/global-search";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/phone";
 import { patientSearchWhere } from "@/server/patient/search-where";
@@ -14,7 +15,7 @@ export const GET = createApiListHandler(
   async ({ request }) => {
     const u = new URL(request.url);
     const q = (u.searchParams.get("q") ?? "").trim();
-    if (!q) {
+    if (q.length < GLOBAL_SEARCH_MIN_CHARS) {
       return ok({
         patients: [],
         doctors: [],
@@ -50,6 +51,16 @@ export const GET = createApiListHandler(
           phone: true,
           photoUrl: true,
         },
+        // Five of possibly dozens of «Каримов»: without an order Postgres
+        // returned whichever five it met first, often not the one at the
+        // desk (audit AC-23). The most recently seen first, never-seen cards
+        // after them, the newest card first among those; the id keeps equal
+        // rows stable between keystrokes.
+        orderBy: [
+          { lastVisitAt: { sort: "desc", nulls: "last" } },
+          { createdAt: "desc" },
+          { id: "asc" },
+        ],
         take: 5,
       }),
       prisma.doctor.findMany({

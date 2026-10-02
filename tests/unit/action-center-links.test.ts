@@ -105,6 +105,7 @@ const SAMPLES: Record<ActionType, ActionPayload> = {
     type: "OVERDUE_FOLLOW_UP",
     appointmentId: "ap1",
     patientId: "p1",
+    patientName: "x",
     daysSinceVisit: 9,
   },
   DOCTOR_OVERLOAD: {

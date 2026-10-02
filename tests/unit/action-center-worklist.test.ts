@@ -16,6 +16,11 @@
  * it. Acceptance: with 200 open tasks the first page holds every critical
  * task before any high one, paging reaches every task exactly once, and the
  * KPI summary equals the aggregate over the whole table.
+ *
+ * Audit AC-22 — «Обработано сегодня» listed outcomes on visits of other days:
+ * a snoozed row is rewritten by the engine every 15 minutes, so its
+ * `updatedAt` is always today. Acceptance: the trail holds outcomes on
+ * today's visits only.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -511,6 +516,93 @@ describe("«Перезвонить» tomorrow 11:00 for today's visit (AC-09 acc
     });
     expect(callbackTasks()).toHaveLength(1);
     expect(callbackTasks()[0]).toMatchObject({ status: "SNOOZED", snoozeUntil: later });
+  });
+});
+
+// ── AC-22 ────────────────────────────────────────────────────────────────────
+
+describe("«Обработано сегодня» holds today's visits only (AC-22 acceptance)", () => {
+  const MONDAY_AT = new Date("2026-09-28T05:00:00.000Z"); // Mon 10:00 Tashkent
+
+  function seedVisit(id: string, date: Date) {
+    db.appts.set(id, {
+      id,
+      clinicId: "c1",
+      date,
+      status: "BOOKED",
+      priceFinal: null,
+      patientId: "p_1",
+      confirmedAt: null,
+      cancelReason: null,
+    });
+  }
+
+  function seedHandledRow(id: string, appointmentId: string, over: Partial<Row>) {
+    db.actions.set(id, {
+      id,
+      clinicId: "c1",
+      type: "UNCONFIRMED_24H",
+      severity: "medium",
+      status: "SNOOZED",
+      payload: { type: "UNCONFIRMED_24H", appointmentId, patientId: "p_1" },
+      dedupeKey: `UNCONFIRMED_24H:appointmentId=${appointmentId}`,
+      assigneeRole: "RECEPTIONIST",
+      snoozeUntil: new Date(NOW.getTime() - HOUR),
+      doneAt: null,
+      expiresAt: null,
+      outcome: "NO_ANSWER",
+      outcomeNote: null,
+      callbackAt: null,
+      resolvedById: "u_recept",
+      callAttempts: 1,
+      createdAt: new Date(NOW.getTime() - 2 * DAY),
+      surfacedAt: new Date(NOW.getTime() - DAY),
+      // The engine's refresh 10 minutes ago, as on every tick.
+      updatedAt: new Date(NOW.getTime() - 10 * 60_000),
+      ...over,
+    });
+  }
+
+  type Trail = {
+    handled: Array<{ appointmentId: string; outcome: string }>;
+    totals: { handledToday: number; total: number };
+  };
+
+  it("lists today's outcome, not a snoozed one on Monday's visit", async () => {
+    const { post, riskToday } = await routes();
+    seedVisit("ap_mon", MONDAY_AT);
+    // «Не дозвонился» recorded days ago on a visit since moved to Monday.
+    seedHandledRow("unconf_mon", "ap_mon", {});
+
+    await post(postOutcome({ outcome: "NO_ANSWER" }));
+    const trail = (await (await riskToday(new Request("https://x/r"))).json()) as Trail;
+    expect(trail.handled.map((h) => h.appointmentId)).toEqual(["ap_1"]);
+    expect(trail.totals.handledToday).toBe(1);
+  });
+
+  it("drops yesterday's closed outcome and keeps a visit moved off today", async () => {
+    const { riskToday } = await routes();
+    seedVisit("ap_moved", MONDAY_AT);
+    seedHandledRow("resched", "ap_moved", {
+      type: "NO_SHOW_RISK_HIGH",
+      dedupeKey: "NO_SHOW_RISK_HIGH:appointmentId=ap_moved",
+      status: "DONE",
+      outcome: "RESCHEDULED",
+      doneAt: new Date(NOW.getTime() - HOUR),
+      snoozeUntil: null,
+    });
+    seedVisit("ap_yday", new Date(APPT_AT.getTime() - DAY));
+    seedHandledRow("yday", "ap_yday", {
+      status: "DONE",
+      outcome: "CONFIRMED",
+      doneAt: new Date(NOW.getTime() - DAY),
+      snoozeUntil: null,
+    });
+
+    const trail = (await (await riskToday(new Request("https://x/r"))).json()) as Trail;
+    expect(trail.handled).toEqual([
+      expect.objectContaining({ appointmentId: "ap_moved", outcome: "RESCHEDULED" }),
+    ]);
   });
 });
 

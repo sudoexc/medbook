@@ -5797,7 +5797,7 @@
       },
       "OVERDUE_FOLLOW_UP": {
         "label": "Просроченный follow-up",
-        "title": "Follow-up не выполнен {daysSinceVisit} дней",
+        "title": "{patientName}: follow-up не выполнен {daysSinceVisit, plural, one {# день} few {# дня} other {# дней}}",
         "body": "Передайте задачу врачу или закройте, если контакт не нужен."
       },
       "DOCTOR_OVERLOAD": {

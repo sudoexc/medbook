@@ -124,6 +124,9 @@ function valuesFor(
       };
     case "OVERDUE_FOLLOW_UP":
       return {
+        // Rows written before audit AC-21 carry no name until the next
+        // engine pass refreshes or retires them.
+        patientName: payload.patientName ?? "",
         daysSinceVisit: payload.daysSinceVisit,
       };
     case "DOCTOR_OVERLOAD":

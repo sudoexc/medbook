@@ -97,6 +97,13 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
   // their own only (API enforces this — but we hide the tab anyway).
   const canSeePatients =
     role !== "RECEPTIONIST" && role !== "CALL_OPERATOR";
+  // Finances, case stats and schedule / time-off writes answer ADMIN and
+  // DOCTOR only (the API also checks it is the doctor's own row). Shown to
+  // reception and nurses, the cards turned the 403 into «0 сум», «0 случаев»
+  // and the save buttons into dead ends (audit DR-15).
+  const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+  const canSeeStats = isAdmin || role === "DOCTOR";
+  const canEditSchedule = isAdmin || role === "DOCTOR";
 
   const initial = searchParams?.get("tab");
   const active: TabId = initial && isTabId(initial) ? initial : "overview";
@@ -201,8 +208,12 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
 
         <TabsContent value="overview" className="flex flex-col gap-4">
           <DoctorHeatGrid doctorId={doctor.id} />
-          <DoctorFinances doctorId={doctor.id} usdRate={usdRate} />
-          <DoctorCases doctorId={doctor.id} />
+          {canSeeStats ? (
+            <>
+              <DoctorFinances doctorId={doctor.id} usdRate={usdRate} />
+              <DoctorCases doctorId={doctor.id} />
+            </>
+          ) : null}
         </TabsContent>
 
         {/* forceMount keeps unsaved schedule/service edits alive across tab switches. */}
@@ -211,8 +222,8 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
           forceMount
           className="flex flex-col gap-4 data-[state=inactive]:hidden"
         >
-          <ScheduleEditor doctor={doctor} />
-          <DoctorTimeOff doctor={doctor} />
+          <ScheduleEditor doctor={doctor} canEdit={canEditSchedule} />
+          <DoctorTimeOff doctor={doctor} canEdit={canEditSchedule} />
         </TabsContent>
 
         <TabsContent
@@ -220,14 +231,8 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
           forceMount
           className="flex flex-col gap-4 data-[state=inactive]:hidden"
         >
-          <DoctorServicesEditor
-            doctorId={doctor.id}
-            canEdit={role === "ADMIN" || role === "SUPER_ADMIN"}
-          />
-          <DoctorOnlineService
-            doctorId={doctor.id}
-            canEdit={role === "ADMIN" || role === "SUPER_ADMIN"}
-          />
+          <DoctorServicesEditor doctorId={doctor.id} canEdit={isAdmin} />
+          <DoctorOnlineService doctorId={doctor.id} canEdit={isAdmin} />
         </TabsContent>
 
         {canSeePatients ? (

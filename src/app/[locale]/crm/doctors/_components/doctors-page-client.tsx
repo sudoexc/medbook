@@ -8,6 +8,7 @@ import { PageContainer } from "@/components/molecules/page-container";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role";
 
 import {
   useDoctorsFilters,
@@ -65,6 +66,10 @@ export function DoctorsPageClient() {
   const t = useTranslations("crmDoctors");
   const tCommon = useTranslations("common");
   const { apiFilters, effectivePeriod, setFilter } = useDoctorsFilters();
+  // Creating a doctor is the admin's (POST answers 403 to anyone else), so
+  // the button is not offered as a dead end (audit DR-15).
+  const role = useCurrentRole();
+  const canCreate = role === "ADMIN" || role === "SUPER_ADMIN";
 
   const listQuery = useDoctorsList(apiFilters);
 
@@ -171,10 +176,12 @@ export function DoctorsPageClient() {
                 ) : null}
               </p>
             </div>
-            <Button onClick={() => setNewDoctorOpen(true)}>
-              <PlusIcon className="size-4" />
-              {t("new")}
-            </Button>
+            {canCreate ? (
+              <Button onClick={() => setNewDoctorOpen(true)}>
+                <PlusIcon className="size-4" />
+                {t("new")}
+              </Button>
+            ) : null}
           </div>
 
           {statsFailed ? (
@@ -231,10 +238,12 @@ export function DoctorsPageClient() {
               title={t("empty.title")}
               description={t("empty.description")}
               action={
-                <Button onClick={() => setNewDoctorOpen(true)}>
-                  <PlusIcon className="size-4" />
-                  {t("new")}
-                </Button>
+                canCreate ? (
+                  <Button onClick={() => setNewDoctorOpen(true)}>
+                    <PlusIcon className="size-4" />
+                    {t("new")}
+                  </Button>
+                ) : undefined
               }
             />
           ) : (

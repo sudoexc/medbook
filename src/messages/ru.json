@@ -2651,20 +2651,17 @@
     },
     "ai": {
       "title": "AI рекомендации",
-      "updated": "Обновлено 2 мин назад",
+      "updated": "По загрузке на сегодня",
       "emptyList": "Пока нет рекомендаций",
-      "redirectTitle": "Перенаправьте 3 пациента к {name} в 11:20",
-      "redirectDescription": "У неё есть свободное окно · От {from}",
+      "redirectTitle": "Перенаправьте пациентов к {name}",
+      "redirectDescription": "Есть свободные окна · От {from}",
       "redirectAction": "Сделать",
       "fillTitle": "У {name} простаивает",
-      "fillDescription": "с 12:00 до 14:00 · Постарайтесь заполнить эти окна",
+      "fillDescription": "Постарайтесь заполнить свободные окна",
       "fillAction": "Заполнить",
-      "specialistTitle": "{name} перегружена после 14:00",
+      "specialistTitle": "{name}: высокая загрузка сегодня",
       "specialistDescription": "Рекомендуем добавить ещё одного специалиста",
-      "specialistAction": "Подробнее",
-      "eveningTitle": "Добавьте вечерние слоты у {name}",
-      "eveningDescription": "Есть спрос после 18:00",
-      "eveningAction": "Настроить"
+      "specialistAction": "Подробнее"
     },
     "rail": {
       "title": "Сводка",
@@ -2827,7 +2824,8 @@
       "repeatRate": "% повторных визитов",
       "avgDuration": "Средняя длительность случая",
       "pct": "{value}%",
-      "days": "{value} дн."
+      "days": "{value} дн.",
+      "loadError": "Не удалось загрузить случаи."
     },
     "heatGrid": {
       "title": "Загрузка по часам",

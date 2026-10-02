@@ -18,15 +18,16 @@
  *   their services with zero remaining active doctors — services without a
  *   provider are forbidden by product rules.
  *
- * DOCTOR can PATCH only their own profile (own userId === session.user.id),
- * and never touches cabinet/services through this path (the schema accepts
- * those fields but admin-only operations should ignore them — we keep the
- * branch tight by stripping them from the payload for non-admin callers).
+ * PATCH is the admin's (audit DR-16). A doctor used to reach it for his own
+ * row with only a few fields stripped, so he could switch himself back on
+ * after the admin took him out of service, or rename his public slug. He
+ * edits his profile through /api/crm/doctors/me/profile, which takes the
+ * profile fields only; nothing in the CRM sends him here.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, err, notFound, forbidden, diff } from "@/server/http";
+import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
 import {
@@ -40,6 +41,7 @@ import {
   findServicesOrphanedByUnlinking,
 } from "@/server/doctors/deactivation";
 import { doctorAudience, doctorSelectFor } from "@/server/doctors/doctor-view";
+import { findForeignServiceIds } from "@/server/doctors/service-links";
 import { moveFutureAppointmentsToCabinet } from "@/server/doctors/cabinet-move";
 import { isSlotOverlapViolation } from "@/server/appointments/overlap-violation";
 import { publishEventSafe } from "@/server/realtime/publish";
@@ -89,7 +91,7 @@ export const GET = createApiListHandler(
 
 export const PATCH = createApiHandler(
   {
-    roles: ["ADMIN", "DOCTOR"],
+    roles: ["ADMIN"],
     bodySchema: UpdateDoctorSchema,
   },
   async ({ request, body, ctx }) => {
@@ -97,27 +99,7 @@ export const PATCH = createApiHandler(
     const before = await prisma.doctor.findUnique({ where: { id } });
     if (!before) return notFound();
 
-    const isDoctorSelfEdit =
-      ctx.kind === "TENANT" && ctx.role === "DOCTOR";
-
-    if (isDoctorSelfEdit && before.userId !== ctx.userId) {
-      return forbidden();
-    }
-
-    // Doctors can only edit their own profile fields, never cabinet/services
-    // (those are admin operations). Strip them silently rather than 422.
     const data: Record<string, unknown> = { ...body };
-    if (isDoctorSelfEdit) {
-      delete data.cabinetId;
-      delete data.services;
-      delete data.branchId;
-      delete data.userId;
-      delete data.salaryPercent;
-      delete data.pricePerVisit;
-      delete data.ticketPrefix;
-      // Whether the clinic shows him on its site is the clinic's call (LD-08).
-      delete data.listedOnSite;
-    }
 
     // Ticket letter (audit Q-12): unique within the clinic. The unique index
     // is the real guard; this pre-check answers with the doctor who holds the
@@ -196,6 +178,20 @@ export const PATCH = createApiHandler(
       | { serviceId: string; priceOverride?: number | null; durationMinOverride?: number | null }[]
       | undefined;
     delete data.services;
+
+    // Only this clinic's services may be linked (audit DR-12).
+    if (services) {
+      const foreignServiceIds = await findForeignServiceIds(
+        services.map((s) => s.serviceId),
+        before.clinicId,
+      );
+      if (foreignServiceIds.length > 0) {
+        return err("ServiceInvalid", 422, {
+          reason: "service_not_found",
+          serviceIds: foreignServiceIds,
+        });
+      }
+    }
 
     // Replacing the catalog must not strand a service either (DR-07). A
     // deactivation in the same call was already checked above.
@@ -331,7 +327,7 @@ export const DELETE = createApiHandler(
       }
 
       const userId = before.userId;
-      await prisma.$transaction(async (tx) => {
+      const userDeactivated = await prisma.$transaction(async (tx) => {
         // A website lead is marketing, not a medical record — detach it
         // instead of letting it block the delete.
         await tx.lead.updateMany({
@@ -343,20 +339,25 @@ export const DELETE = createApiHandler(
         await tx.doctor.delete({ where: { id } });
         // The login is useless without its doctor row (the cabinet bounces on
         // a missing profile). Deactivate rather than delete: audit rows and
-        // authored records still reference this user.
+        // authored records still reference this user. User is not
+        // tenant-scoped, so the clinic and role are spelled out (audit
+        // DR-13): a link pointed at an admin or at another clinic's login
+        // must never switch that login off.
         if (userId) {
-          await tx.user.update({
-            where: { id: userId },
+          const res = await tx.user.updateMany({
+            where: { id: userId, clinicId: before.clinicId, role: "DOCTOR" },
             data: { active: false },
           });
+          return res.count > 0;
         }
+        return false;
       });
 
       await audit(request, {
         action: "doctor.delete",
         entityType: "Doctor",
         entityId: id,
-        meta: { before, purged: true, userDeactivated: Boolean(userId) },
+        meta: { before, purged: true, userDeactivated },
       });
       return ok({ id, deleted: true });
     }

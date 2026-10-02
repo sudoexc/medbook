@@ -5,8 +5,9 @@
  *   POST  /api/crm/doctors       → the clinic's next free letter (or the
  *                                  admin's pick);
  *   PATCH /api/crm/doctors/[id]  → admin sets a letter; a letter another
- *                                  doctor holds answers 409, a doctor editing
- *                                  their own profile cannot change it.
+ *                                  doctor holds answers 409, a doctor cannot
+ *                                  change it (the route is the admin's,
+ *                                  audit DR-16).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -204,7 +205,7 @@ describe("PATCH /api/crm/doctors/[id] edits the ticket letter", () => {
     expect(state.updates).toHaveLength(0);
   });
 
-  it("a doctor editing their own profile cannot move their letter", async () => {
+  it("a doctor cannot move their letter: the route refuses him", async () => {
     state.role = "DOCTOR";
     const { PATCH } = await import("@/app/api/crm/doctors/[id]/route");
     const res = await PATCH(
@@ -213,8 +214,7 @@ describe("PATCH /api/crm/doctors/[id] edits the ticket letter", () => {
         bioRu: "Опыт 10 лет",
       }),
     );
-    expect(res.status).toBe(200);
-    expect(state.updates[0]).not.toHaveProperty("ticketPrefix");
-    expect(state.updates[0].bioRu).toBe("Опыт 10 лет");
+    expect(res.status).toBe(403);
+    expect(state.updates).toHaveLength(0);
   });
 });

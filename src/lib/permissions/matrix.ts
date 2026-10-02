@@ -159,7 +159,9 @@ export const PERMISSION_MATRIX: ResourcePermissions[] = [
   row("Doctor", {
     SUPER_ADMIN: FULL,
     ADMIN: FULL,
-    DOCTOR: { read: "all", write: false, update: "own", delete: false },
+    // PATCH /api/crm/doctors/[id] is the admin's (audit DR-16); the doctor
+    // edits his own profile fields in the cabinet (/doctors/me/profile).
+    DOCTOR: { read: "all", write: false, update: "none", delete: false },
     RECEPTIONIST: { read: "all", write: false, update: "none", delete: false },
     NURSE: { read: "all", write: false, update: "none", delete: false },
     CALL_OPERATOR: { read: "all", write: false, update: "none", delete: false },

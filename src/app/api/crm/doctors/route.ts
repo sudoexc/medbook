@@ -16,6 +16,7 @@ import { ok, err, parseQuery } from "@/server/http";
 import { CreateDoctorSchema, QueryDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
 import { doctorAudience, doctorSelectFor } from "@/server/doctors/doctor-view";
+import { findForeignServiceIds } from "@/server/doctors/service-links";
 import {
   isTicketPrefixConflict,
   nextFreeTicketPrefix,
@@ -30,19 +31,27 @@ export const GET = createApiListHandler(
 
     const where: Record<string, unknown> = {};
     if (typeof q.isActive === "boolean") where.isActive = q.isActive;
+    // Each filter is its own OR group joined by AND (audit DR-21): merged
+    // into one OR, «Иванов» within «Невролог» returned every neurologist
+    // plus every Иванов.
+    const and: Record<string, unknown>[] = [];
     if (q.specialization) {
-      where.OR = [
-        { specializationRu: { contains: q.specialization, mode: "insensitive" } },
-        { specializationUz: { contains: q.specialization, mode: "insensitive" } },
-      ];
+      and.push({
+        OR: [
+          { specializationRu: { contains: q.specialization, mode: "insensitive" } },
+          { specializationUz: { contains: q.specialization, mode: "insensitive" } },
+        ],
+      });
     }
     if (q.q) {
-      where.OR = [
-        ...(Array.isArray(where.OR) ? (where.OR as unknown[]) : []),
-        { nameRu: { contains: q.q, mode: "insensitive" } },
-        { nameUz: { contains: q.q, mode: "insensitive" } },
-      ];
+      and.push({
+        OR: [
+          { nameRu: { contains: q.q, mode: "insensitive" } },
+          { nameUz: { contains: q.q, mode: "insensitive" } },
+        ],
+      });
     }
+    if (and.length > 0) where.AND = and;
 
     // Salary percent, login id and TV token are for the admin only (DR-09).
     const select = doctorSelectFor(doctorAudience(ctx));
@@ -93,6 +102,18 @@ export const POST = createApiHandler(
         });
       }
 
+      // Only this clinic's services may be linked (audit DR-12).
+      const foreignServiceIds = await findForeignServiceIds(
+        (body.services ?? []).map((s) => s.serviceId),
+        ctx.kind === "TENANT" ? ctx.clinicId : null,
+      );
+      if (foreignServiceIds.length > 0) {
+        return err("ServiceInvalid", 422, {
+          reason: "service_not_found",
+          serviceIds: foreignServiceIds,
+        });
+      }
+
       const created = await prisma.$transaction(async (tx) => {
         // Ticket letter (audit Q-12): the admin's pick, else the clinic's
         // next free one, so a new doctor never shares tickets with another.
@@ -108,7 +129,8 @@ export const POST = createApiHandler(
             nameUz: body.nameUz,
             specializationRu: body.specializationRu,
             specializationUz: body.specializationUz,
-            userId: body.userId ?? null,
+            // No `userId` here (audit DR-13): the login is linked from
+            // /api/crm/users, which checks the user's clinic and role.
             photoUrl: body.photoUrl ?? null,
             bioRu: body.bioRu ?? null,
             bioUz: body.bioUz ?? null,

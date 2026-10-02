@@ -73,10 +73,12 @@ function defaultEnd(): string {
 
 export interface DoctorTimeOffProps {
   doctor: DoctorDetail;
+  /** False for roles the time-off API refuses (audit DR-15): list only. */
+  canEdit: boolean;
   className?: string;
 }
 
-export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
+export function DoctorTimeOff({ doctor, canEdit, className }: DoctorTimeOffProps) {
   const t = useTranslations("crmDoctors.timeOff");
   const locale = useLocale();
   const router = useRouter();
@@ -163,7 +165,7 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
             {t("subtitle")}
           </p>
         </div>
-        {!adding ? (
+        {canEdit && !adding ? (
           <Button size="sm" onClick={() => setAdding(true)}>
             <PlusIcon className="size-4" />
             {t("add")}
@@ -171,7 +173,7 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
         ) : null}
       </div>
 
-      {adding ? (
+      {canEdit && adding ? (
         <form
           onSubmit={onSubmit}
           className="mb-3 grid gap-2 rounded-md border border-border bg-background p-3"
@@ -262,15 +264,17 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
                   </div>
                 ) : null}
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("delete")}
-                onClick={() => setPendingDeleteId(row.id)}
-                disabled={deleteMut.isPending}
-              >
-                <Trash2Icon className="size-4" />
-              </Button>
+              {canEdit ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("delete")}
+                  onClick={() => setPendingDeleteId(row.id)}
+                  disabled={deleteMut.isPending}
+                >
+                  <Trash2Icon className="size-4" />
+                </Button>
+              ) : null}
             </li>
           ))}
         </ul>

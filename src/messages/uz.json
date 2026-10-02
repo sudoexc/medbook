@@ -2651,20 +2651,17 @@
     },
     "ai": {
       "title": "AI tavsiyalar",
-      "updated": "2 daqiqa oldin yangilandi",
+      "updated": "Bugungi yuklama bo'yicha",
       "emptyList": "Hozircha tavsiyalar yo'q",
-      "redirectTitle": "3 bemorni 11:20 da {name} ga yo'naltiring",
+      "redirectTitle": "Bemorlarni {name} ga yo'naltiring",
       "redirectDescription": "Uning bo'sh slot'i bor · {from} dan",
       "redirectAction": "Bajarish",
       "fillTitle": "{name} da bo'sh vaqt bor",
-      "fillDescription": "12:00 dan 14:00 gacha · Bu slotlarni to'ldirishga harakat qiling",
+      "fillDescription": "Bo'sh slotlarni to'ldirishga harakat qiling",
       "fillAction": "To'ldirish",
-      "specialistTitle": "{name} 14:00 dan keyin haddan tashqari yuklangan",
+      "specialistTitle": "{name}: bugun yuklama yuqori",
       "specialistDescription": "Yana bir mutaxassis qo'shishni tavsiya qilamiz",
-      "specialistAction": "Batafsil",
-      "eveningTitle": "{name} uchun kechki slotlarni qo'shing",
-      "eveningDescription": "18:00 dan keyin talab bor",
-      "eveningAction": "Sozlash"
+      "specialistAction": "Batafsil"
     },
     "rail": {
       "title": "Xulosa",
@@ -2827,7 +2824,8 @@
       "repeatRate": "% takroriy tashriflar",
       "avgDuration": "O‘rtacha holat davomiyligi",
       "pct": "{value}%",
-      "days": "{value} kun"
+      "days": "{value} kun",
+      "loadError": "Holatlarni yuklab bo'lmadi."
     },
     "heatGrid": {
       "title": "Soatlar bo'yicha yuklama",

@@ -234,7 +234,7 @@ export function DiagnosisPicker({
         <div
           role="radiogroup"
           aria-label={t("diagnosis.picker.addAs")}
-          className="inline-grid grid-cols-2 gap-1 rounded-xl bg-muted p-1"
+          className="grid w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 @min-[440px]:inline-grid @min-[440px]:w-auto"
         >
           {(["main", "additional"] as const).map((r) => (
             <button
@@ -251,7 +251,7 @@ export function DiagnosisPicker({
                 setRole(r);
               }}
               className={cn(
-                "h-10 rounded-lg px-4 text-[15px] font-semibold transition-colors disabled:opacity-50",
+                "h-10 min-w-0 truncate rounded-lg px-2 text-sm font-semibold transition-colors disabled:opacity-50 @min-[440px]:px-4 @min-[440px]:text-[15px]",
                 role === r
                   ? "bg-card text-primary shadow-sm"
                   : "text-muted-foreground hover:text-foreground",

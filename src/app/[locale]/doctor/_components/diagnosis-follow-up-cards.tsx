@@ -628,6 +628,12 @@ export function DiagnosisCard({
   React.useEffect(() => {
     setAdding(false);
   }, [note.id]);
+  // Reaching four unmounts the picker (and its «Свернуть»), so fold here:
+  // otherwise removing one later would reopen the columns unasked and move
+  // the caret into their search.
+  React.useEffect(() => {
+    if (full) setAdding(false);
+  }, [full]);
 
   // Kept observed while the card is on screen, so the list that opens on a
   // tap of «+ Диагноз» is already there.

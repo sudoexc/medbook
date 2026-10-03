@@ -31,6 +31,17 @@ export type NoteSectionsInput = {
   structuredRx: number;
 };
 
+export type EmptySectionsOptions = {
+  /**
+   * Whether an empty conclusion text is worth asking about. True where the
+   * doctor has a text editor to fill (the conclusion card). The visit
+   * screen lost its editor (clinic request 03.10.2026: nobody wrote in it),
+   * so a visit signed from there, or closed from My Day, never asks «sign
+   * without a conclusion?» about a field the doctor has nowhere to fill.
+   */
+  requireConclusion?: boolean;
+};
+
 /**
  * Sections worth a confirmation before signing: a conclusion may be signed
  * without them (clinic decision 23.09.2026), but never by accident. The
@@ -39,10 +50,11 @@ export type NoteSectionsInput = {
  */
 export function emptyConclusionSections(
   n: NoteSectionsInput,
+  { requireConclusion = true }: EmptySectionsOptions = {},
 ): ConclusionSection[] {
   const out: ConclusionSection[] = [];
   if (!n.diagnosisCode?.trim() && !n.diagnosisName?.trim()) out.push("diagnosis");
-  if (!n.bodyMarkdown?.trim()) out.push("conclusion");
+  if (requireConclusion && !n.bodyMarkdown?.trim()) out.push("conclusion");
   if (n.structuredRx === 0 && (n.prescriptions?.length ?? 0) === 0) {
     out.push("prescriptions");
   }
@@ -51,7 +63,9 @@ export function emptyConclusionSections(
 
 /**
  * Did the doctor write anything into this draft? A reception opened and left
- * blank has nothing to sign, and closing its visit loses nothing.
+ * blank has nothing to sign, and closing its visit loses nothing. Text in
+ * the conclusion counts whatever the screen it came from (an older note, a
+ * protocol template, the AI rail).
  */
 export function draftHasContent(n: NoteSectionsInput): boolean {
   const any = (xs?: readonly string[] | null) =>

@@ -26,28 +26,30 @@ type ReceptionContextValue = {
   visitNoteId: string | null;
   visitNoteLoading: boolean;
   /**
-   * Counter bumped whenever the AI rail overwrites `bodyMarkdown` directly.
-   * The notes editor watches this so it can re-hydrate from the server even
-   * when the note id hasn't changed.
+   * Counter bumped whenever the AI rail overwrites `bodyMarkdown` directly,
+   * for a view that keeps its own copy of the text and must re-read it even
+   * when the note id hasn't changed. The visit screen has none since its
+   * conclusion editor went (03.10.2026); the rail still bumps it.
    */
   bodyInjectVersion: number;
   bumpBodyInject: () => void;
   /**
-   * One-shot "append this text to the conclusion editor". Set by preset
-   * chips; consumed by NotesEditorPanel which appends to its local draft
-   * (preserving any unsaved typing) and lets the autosave persist.
+   * One-shot "append this text to the conclusion". Set by preset chips and
+   * by an applied protocol; consumed by ConclusionTemplateChannel, which
+   * saves it on the note (the visit screen has no conclusion editor since
+   * 03.10.2026).
    *
-   * `nonce` is the discriminator the editor watches — the same `text` value
-   * can be requested multiple times by re-bumping the nonce.
+   * `nonce` is the discriminator the channel watches — the same `text`
+   * value can be requested multiple times by re-bumping the nonce.
    */
   bodyAppendRequest: { text: string; nonce: number } | null;
   requestBodyAppend: (text: string) => void;
   /**
    * Inverse of append — when the doctor removes a structured chip whose
    * preset had a noteTemplate, we strip the corresponding snippet from the
-   * conclusion. The editor tries the "\n\n<text>" form first (the form the
-   * append channel writes) and falls back to a plain match if the doctor
-   * has edited around it.
+   * conclusion. The channel tries the "\n\n<text>" form first (the form
+   * the append writes) and falls back to a plain match if the doctor has
+   * edited around it on the conclusion card.
    */
   bodyRemoveRequest: { text: string; nonce: number } | null;
   requestBodyRemove: (text: string) => void;
@@ -63,7 +65,11 @@ type ReceptionContextValue = {
    * P0-2 — editors register a "push unsaved draft to the server now"
    * callback here; finalize awaits `flushDraftEdits()` before POSTing so a
    * debounced autosave tail is never dropped from the legally-final
-   * document. Returns an unregister function for effect cleanup.
+   * document. Returns an unregister function for effect cleanup. Nothing on
+   * the visit screen autosaves text on a debounce since the conclusion
+   * editor left it; the prescription constructor registers a check that
+   * rejects (PendingDosePickError) while a drug waits in its dose prompt,
+   * so the visit is not signed or previewed without it.
    */
   registerDraftFlush: (flush: () => Promise<void>) => () => void;
   flushDraftEdits: () => Promise<void>;

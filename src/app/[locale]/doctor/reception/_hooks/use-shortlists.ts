@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * «Мои частые» — what opens on tapping the diagnosis or drug field with
- * nothing typed (see /api/crm/doctors/me/{diagnosis,drug}-shortlist), plus
- * the one-tap «add this drug to the clinic's base» mutation.
+ * «Мои частые» — what opens on tapping the diagnosis field with nothing
+ * typed, and the prescription picker's columns (see
+ * /api/crm/doctors/me/{diagnosis,drug}-shortlist), plus the one-tap «add
+ * this drug to the clinic's base» mutation.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -29,9 +30,53 @@ export type DrugShortItem = {
    */
   lastForm?: string | null;
   lastStrength?: string | null;
+  /**
+   * The schedule written with that last dose (times of day, meal, days):
+   * a pick brings it back too. Optional for the same reason.
+   */
+  lastTimesOfDay?: string[];
+  lastMealRelation?: string | null;
+  lastDurationDays?: number | null;
   pinned: boolean;
   strengths: string[];
   drug: DrugSearchHit | null;
+};
+
+/** His last dose and schema of one catalog drug (no catalog data). */
+export type DrugUsual = Pick<
+  DrugShortItem,
+  | "label"
+  | "count"
+  | "lastDose"
+  | "lastForm"
+  | "lastStrength"
+  | "lastTimesOfDay"
+  | "lastMealRelation"
+  | "lastDurationDays"
+>;
+
+export type DrugShortlist = {
+  /** Stars, then his most written: the corrections-era shortlist. */
+  mine: DrugShortItem[];
+  /** The clinic's core list minus `mine`. */
+  clinic: DrugShortItem[];
+  /** The picker's «Частые»: his most written, starred or not. */
+  frequent: DrugShortItem[];
+  /** The picker's «Мои»: his stars, in his order. */
+  starred: DrugShortItem[];
+  /** The clinic's whole core list, with his own dose where he has one. */
+  core: DrugShortItem[];
+  /** His last dose and schema by drug id. */
+  usual: Record<string, DrugUsual>;
+};
+
+const EMPTY_SHORTLIST: DrugShortlist = {
+  mine: [],
+  clinic: [],
+  frequent: [],
+  starred: [],
+  core: [],
+  usual: {},
 };
 
 export const diagnosisShortlistKey = ["doctor", "reception", "dx-shortlist"] as const;
@@ -56,7 +101,7 @@ export function useDiagnosisShortlist(enabled = true) {
 }
 
 export function useDrugShortlist(enabled = true) {
-  return useQuery<{ mine: DrugShortItem[]; clinic: DrugShortItem[] }>({
+  return useQuery<DrugShortlist>({
     queryKey: drugShortlistKey,
     enabled,
     queryFn: async ({ signal }) => {
@@ -64,12 +109,18 @@ export function useDrugShortlist(enabled = true) {
         credentials: "include",
         signal,
       });
-      if (!res.ok) return { mine: [], clinic: [] };
-      const data = (await res.json()) as {
-        mine?: DrugShortItem[];
-        clinic?: DrugShortItem[];
+      if (!res.ok) return EMPTY_SHORTLIST;
+      const data = (await res.json()) as Partial<DrugShortlist>;
+      // Every list defaults: a server on the previous build sends only
+      // `mine` and `clinic`.
+      return {
+        mine: data.mine ?? [],
+        clinic: data.clinic ?? [],
+        frequent: data.frequent ?? [],
+        starred: data.starred ?? [],
+        core: data.core ?? [],
+        usual: data.usual ?? {},
       };
-      return { mine: data.mine ?? [], clinic: data.clinic ?? [] };
     },
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,

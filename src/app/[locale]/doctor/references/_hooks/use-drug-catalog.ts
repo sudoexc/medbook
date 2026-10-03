@@ -110,6 +110,11 @@ export async function fetchDrugById(
 export type DrugFacets = {
   total: number;
   byGroup: Record<string, number>;
+  /**
+   * Drugs per ATC subgroup («N03»): the visit screen's «Каталог» column.
+   * Optional: a server on the previous build omits it.
+   */
+  bySubgroup?: Record<string, number>;
   withoutAtc: number;
   rxCount: number;
   otcCount: number;

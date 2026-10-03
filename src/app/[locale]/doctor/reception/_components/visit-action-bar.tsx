@@ -10,10 +10,14 @@
  * exactly what is missing (the diagnosis gate).
  *
  * The finalize flow MOVED here from ActivePatientCard (not copied): flush
- * the editors' debounced tails, wait for every queued card save, confirm
- * empty sections explicitly (judged on the saved row), then finalize and pin
- * the appointment so the card survives the queue refetch. The ordering lives
- * in `signVisitNoteWhenSaved`, shared in spirit with the conclusion card.
+ * any debounced text tails, wait for every queued card save, confirm empty
+ * sections explicitly (judged on the saved row), then finalize and pin the
+ * appointment so the card survives the queue refetch. The ordering lives in
+ * `signVisitNoteWhenSaved`, shared in spirit with the conclusion card.
+ *
+ * «Предпросмотр» sits next to it since the conclusion editor, which carried
+ * it, left the visit screen (03.10.2026): the sheet is checked right before
+ * it is signed.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -21,6 +25,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangleIcon,
   CheckIcon,
+  EyeIcon,
   Loader2Icon,
   SquareCheckIcon,
 } from "lucide-react";
@@ -37,16 +42,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { isPendingDosePick } from "../_hooks/prescription-rows";
 import { useReceptionContext } from "../_hooks/reception-context";
 import { cdsDrugCheckPatientKey } from "../_hooks/use-cds-drug-check";
 import {
   isAppointmentNotActive,
   isFollowUpDateRefused,
   isVersionConflict,
+  settleVisitNotePatches,
   signVisitNoteWhenSaved,
   useFinalizeVisitNote,
   useVisitNote,
 } from "../_hooks/use-visit-note";
+import { ConclusionPreviewDialog } from "./conclusion-preview-dialog";
+
+/**
+ * How long «Предпросмотр» waits for queued saves before it opens anyway:
+ * the sheet redraws by itself when a late save lands (it is keyed by
+ * `updatedAt`), and a dead link must not leave the button spinning.
+ */
+const PREVIEW_SETTLE_MS = 3_000;
 
 const SECTION_LABEL: Record<ConclusionSection, string> = {
   diagnosis: "activePatient.emptyDiagnosis",
@@ -74,6 +89,8 @@ export function VisitActionBar() {
   // three; the ref stops a double click from starting it twice.
   const [signing, setSigning] = React.useState(false);
   const signingRef = React.useRef(false);
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+  const [previewPreparing, setPreviewPreparing] = React.useState(false);
 
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
@@ -124,6 +141,12 @@ export function VisitActionBar() {
         emptyConfirmed,
       });
       if (step.kind === "flushFailed") {
+        // A drug still waiting in the dose prompt: nothing was signed, the
+        // prompt is scrolled into view. Not an error of the connection.
+        if (isPendingDosePick(step.error)) {
+          toast.error(t("rx.pendingBlocksSign", { name: step.error.displayName }));
+          return;
+        }
         toast.error(
           isVersionConflict(step.error)
             ? t("editor.saveErrorConflict")
@@ -175,6 +198,36 @@ export function VisitActionBar() {
   };
   const signBusy = signing || finalize.isPending;
 
+  /**
+   * Open the sheet as the server will print it: a drug picked a second ago
+   * is still on the wire, and the first frame of the preview would miss it.
+   */
+  const openPreview = async () => {
+    if (!visitNoteId || previewPreparing) return;
+    setPreviewPreparing(true);
+    let open = true;
+    try {
+      await Promise.race([
+        (async () => {
+          await flushDraftEdits();
+          await settleVisitNotePatches(visitNoteId);
+        })(),
+        new Promise((resolve) => setTimeout(resolve, PREVIEW_SETTLE_MS)),
+      ]);
+    } catch (e) {
+      // A drug waiting in the dose prompt is not on the sheet: say so
+      // instead of showing a preview without it.
+      if (isPendingDosePick(e)) {
+        open = false;
+        toast.error(t("rx.pendingBlocksSign", { name: e.displayName }));
+      }
+      // A failed save has its own toast; the preview shows what is saved.
+    } finally {
+      setPreviewPreparing(false);
+      if (open) setPreviewOpen(true);
+    }
+  };
+
   // Nothing to sign: no visit, or already signed (the header card shows the
   // finished state and the print buttons).
   if (!activeAppointment || !note || isFinalized) return null;
@@ -198,20 +251,45 @@ export function VisitActionBar() {
           </span>
         )}
 
-        <Button
-          type="button"
-          size="lg"
-          disabled={signBusy}
-          onClick={() => void runFinalize(false)}
-        >
-          {signBusy ? (
-            <Loader2Icon className="size-4 animate-spin" />
-          ) : (
-            <SquareCheckIcon className="size-4" />
-          )}
-          {t("activePatient.finishVisit")}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="h-10 px-4 text-sm"
+            disabled={previewPreparing}
+            onClick={() => void openPreview()}
+          >
+            {previewPreparing ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <EyeIcon className="size-4" />
+            )}
+            {t("editor.viewPreview")}
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            className="h-10 px-4 text-sm"
+            disabled={signBusy}
+            onClick={() => void runFinalize(false)}
+          >
+            {signBusy ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <SquareCheckIcon className="size-4" />
+            )}
+            {t("activePatient.finishVisit")}
+          </Button>
+        </div>
       </div>
+
+      <ConclusionPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        noteId={note.id}
+        updatedAt={note.updatedAt}
+      />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

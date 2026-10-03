@@ -7149,7 +7149,34 @@
         "addToClinicError": "Klinika bazasiga qo‘shib bo‘lmadi. Dori faqat shu tashrifga yozildi.",
         "customSharedHint": "Dori klinika bazasiga tushadi va barcha shifokorlarda paydo bo‘ladi.",
         "hiddenByClinic": "«{name}» klinika administratori tomonidan yashirilgan. Dori faqat shu tashrifga yozildi.",
-        "addRateLimited": "Bir soatda juda ko‘p yangi dori qo‘shildi. Bu dori faqat shu tashrifga yozildi."
+        "addRateLimited": "Bir soatda juda ko‘p yangi dori qo‘shildi. Bu dori faqat shu tashrifga yozildi.",
+        "pendingBusy": "Avval «{name}» dorisining dozasini yozing yoki uni bekor qiling",
+        "pendingBlocksSign": "«{name}» dorisi doza kutmoqda: uni yozib «Qo‘shish» tugmasini bosing yoki dorini bekor qiling",
+        "picker": {
+          "col": {
+            "frequent": "Tez-tez",
+            "mine": "Mening",
+            "catalog": "Katalog"
+          },
+          "searchPlaceholder": "Ro‘yxatlarda yo‘q bo‘lsa, nomi bo‘yicha qidiring",
+          "searchClear": "Qidiruvni tozalash",
+          "results": "Katalogda topildi",
+          "searchEmpty": "Hech narsa topilmadi",
+          "frequentEmpty": "Bu yerda siz eng ko‘p yozadigan dorilar paydo bo‘ladi.",
+          "mineEmpty": "Dori yonidagi yulduzchani bosing, u shu yerda saqlanadi.",
+          "templates": "Mening shablonlarim",
+          "groupDiagnosis": "{code} da ko‘rsatilgan",
+          "groupEmpty": "Bu guruhda hozircha dori yo‘q.",
+          "showMore": "Yana ko‘rsatish",
+          "loadError": "Ro‘yxat yuklanmadi. Qayta urinish uchun bosing.",
+          "onVisit": "Allaqachon tayinlangan. Yana qo‘shish uchun bosing",
+          "starAdd": "«Mening» ro‘yxatiga qo‘shish",
+          "starRemove": "«Mening» ro‘yxatidan olib tashlash",
+          "usualHint": "Oxirgi marta qanday yozgan bo‘lsangiz",
+          "quickDose": "Bir bosishda doza",
+          "empty": "Yuqoridagi ro‘yxatlardan dori tanlang yoki «Qo‘lda kiritish» tugmasini bosing.",
+          "noVisit": "Tayinlovlar qabul boshlanganda paydo bo‘ladi."
+        }
       },
       "copyForward": {
         "title": "Oldingi qabul — {date}",
@@ -7203,7 +7230,9 @@
       "actionBar": {
         "ready": "Imzolashga tayyor",
         "needDiagnosis": "Tashxis ko'rsating, usiz qabulni yakunlab bo'lmaydi",
-        "noDiagnosisHint": "Tashxis ko'rsatilmagan — shundayam yakunlash mumkin"
+        "noDiagnosisHint": "Tashxis ko'rsatilmagan — shundayam yakunlash mumkin",
+        "previewTitle": "Xulosani oldindan ko‘rish",
+        "previewHint": "Varaq qabul maydonlaridan yig‘ilgan, shu ko‘rinishda chop etiladi."
       },
       "parsedRx": {
         "title": "Matnda topildi: {count}",
@@ -7325,7 +7354,8 @@
           "suppVag": "Vag. shamlar",
           "patch": "Plastir",
           "dropsNasal": "Burun tomchi"
-        }
+        },
+        "backToList": "Ro‘yxatga"
       },
       "dosageBuilder": {
         "title": "Tayinlov konstruktori",

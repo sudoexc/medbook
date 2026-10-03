@@ -16,10 +16,17 @@
  * and strengths to choose from (audit G4-07, see drug-forms.ts). A saved row
  * can switch its form too.
  *
- * Tapping the empty search field opens the doctor's shortlist — his own most
- * prescribed drugs, what is usual for the chosen diagnosis, the clinic's core
- * list and his templates. Nothing else is on the card: the rest of the
- * catalog is one search away (clinic request 25.09.2026, «лишнее скрыть»).
+ * On the visit screen the drugs are picked with the mouse (clinic request
+ * 03.10.2026): three columns always on screen, his frequent drugs, his
+ * stars and the catalog by clicks, each one click from the visit with his
+ * usual dose and schema (see prescription-picker.tsx). The search stays as
+ * an extra on top of them. The corrections screen keeps the plain search.
+ * A dose the catalog cannot give is answered with one click too: the
+ * prompt offers the doses that form is written in (quick-doses.ts), and a
+ * click on one adds the row, like the same chips in the row editor. While a
+ * pick waits in that prompt it holds the visit: a second such pick does not
+ * replace it, and signing or the preview are refused until it is added or
+ * cancelled (`registerDraftFlush`).
  *
  * Persistence is replace-all via PATCH {visitPrescriptions: [...]} — the
  * same autosave model as the chip fields. Legacy text lines
@@ -38,9 +45,7 @@ import {
   PillIcon,
   PlusIcon,
   SearchIcon,
-  StarIcon,
   Trash2Icon,
-  WandSparklesIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -48,7 +53,6 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useRevealOnOpen } from "@/hooks/use-reveal-on-open";
 import { matchedBrand } from "@/lib/catalogs/brand-match";
-import { foldCatalogText } from "@/lib/catalogs/search-fold";
 import {
   normalizeForms,
   withForm,
@@ -61,22 +65,18 @@ import {
   type PrescriptionLocale,
 } from "@/lib/catalogs/prescription-format";
 import { reminderStateOf } from "@/lib/catalogs/dosing-times";
+import { quickDoseOptions } from "@/lib/catalogs/quick-doses";
 
 import { useFormLabel } from "../../_components/drug-detail";
 
 import type { DoctorPresetRow } from "../_hooks/use-doctor-presets";
-import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
 import {
   AddClinicDrugError,
   useAddClinicDrug,
   useDrugShortlist,
   type DrugShortItem,
 } from "../_hooks/use-shortlists";
-import {
-  useDrugSearch,
-  useDrugSuggestions,
-  type DrugSearchHit,
-} from "../_hooks/use-drug-search";
+import { useDrugSearch, type DrugSearchHit } from "../_hooks/use-drug-search";
 import {
   visitNoteKey,
   type VisitNoteRow,
@@ -86,8 +86,12 @@ import {
   type VisitPrescriptionTimeOfDay,
 } from "../_hooks/use-visit-note";
 import {
+  admitPendingPick,
+  draftFromCatalogPick,
   draftFromDrug,
   draftFromShortItem,
+  PendingDosePickError,
+  shortItemKind,
   splitFreeLine,
   toggleTimeOfDay,
   toPrescriptionDrafts,
@@ -96,6 +100,7 @@ import {
   type DraftPick,
   type RowEdit,
 } from "../_hooks/prescription-rows";
+import { PrescriptionPicker } from "./prescription-picker";
 
 const TIMES: VisitPrescriptionTimeOfDay[] = [
   "MORNING",
@@ -129,9 +134,10 @@ type Props = {
    */
   onAddLegacyLine?: (line: string) => void;
   /**
-   * The tap-to-open shortlist (his frequent drugs, the clinic's core list,
-   * templates) and «add to the clinic's base». Off on the corrections
-   * screen: a correction is a targeted fix, not a new prescribing session.
+   * The mouse-first picker (his frequent drugs, his stars, the catalog by
+   * clicks, see prescription-picker.tsx) and «add to the clinic's base».
+   * Off on the corrections screen: a correction is a targeted fix, not a
+   * new prescribing session, and keeps the plain search.
    */
   shortlist?: boolean;
   onRemoveLegacyChip: (chip: string) => void;
@@ -144,16 +150,37 @@ type Props = {
   catalogPickRef?: React.MutableRefObject<
     ((drug: CatalogPickDrug, term: string) => void) | null
   >;
+  /**
+   * The reception's flush registry (the visit screen). A pick waiting in
+   * the dose prompt is local state the sign flow cannot see: the constructor
+   * registers a check that refuses «Завершить приём» and «Предпросмотр»
+   * with PendingDosePickError while one waits, instead of signing the
+   * visit without that drug.
+   */
+  registerDraftFlush?: (flush: () => Promise<void>) => () => void;
   /** Render as a top-level panel card instead of an inset sub-card. */
   standalone?: boolean;
   /** Shared save-in-flight flag for the header spinner (standalone hosts). */
   saving?: boolean;
+  /**
+   * Rendered inside the card above the picker's columns: the place for
+   * suggestions tied to the visit («Обычно при <диагноз>»), where the
+   * doctor's eye already is when he starts prescribing.
+   */
+  aboveColumns?: React.ReactNode;
   /**
    * Rendered inside the card under the rows: the visit screen puts the
    * interaction check there, so a warning sits with the drugs it is about.
    */
   footer?: React.ReactNode;
 };
+
+/**
+ * The visit screen's card is read by a doctor who asked for bigger type
+ * (03.10.2026); the corrections screen keeps its compact inset card. The row
+ * editor's chips and inputs read this instead of a prop through every level.
+ */
+const BigUi = React.createContext(false);
 
 export function PrescriptionConstructor({
   note,
@@ -166,13 +193,16 @@ export function PrescriptionConstructor({
   onRemoveLegacyChip,
   onOpenCatalog,
   catalogPickRef,
+  registerDraftFlush,
   standalone,
   saving,
+  aboveColumns,
   footer,
 }: Props) {
   const t = useTranslations("doctor.reception");
   const rawLocale = useLocale();
   const locale: PrescriptionLocale = rawLocale === "uz" ? "uz" : "ru";
+  const big = !!standalone;
 
   const rows = React.useMemo(
     () => note.visitPrescriptions ?? [],
@@ -191,50 +221,51 @@ export function PrescriptionConstructor({
   const [customOpen, setCustomOpen] = React.useState(false);
   // A pick waiting for its dose (audit G4-07): not saved until written.
   // Tied to its note: switching to the next patient must not carry it over.
-  const [pending, setPending] = React.useState<
+  const [pending, setPendingState] = React.useState<
     (DraftPick & { noteId: string }) | null
   >(null);
-
-  const searchQuery = useDrugSearch(query);
-  const suggestQuery = useDrugSuggestions(note.diagnosisCode);
-
-  const addedDrugIds = React.useMemo(
-    () => new Set(rows.map((r) => r.drugId).filter(Boolean) as string[]),
-    [rows],
+  // The same pick, readable at once by a click handler or the sign check
+  // (two picks in a row, «Завершить приём» right after a pick).
+  const pendingNow = React.useRef<(DraftPick & { noteId: string }) | null>(null);
+  const setPending = React.useCallback(
+    (
+      next:
+        | (DraftPick & { noteId: string })
+        | null
+        | ((
+            prev: (DraftPick & { noteId: string }) | null,
+          ) => (DraftPick & { noteId: string }) | null),
+    ) => {
+      const value = typeof next === "function" ? next(pendingNow.current) : next;
+      pendingNow.current = value;
+      setPendingState(value);
+    },
+    [],
   );
-  const suggestions = (suggestQuery.data ?? []).filter(
-    (d) => !addedDrugIds.has(d.id),
-  );
+  const pendingOpen = !!pending && pending.noteId === note.id && !disabled;
+  // Scrolled clear of the sticky «Завершить приём» bar when it opens.
+  const pendingRef = useRevealOnOpen<HTMLDivElement>(pendingOpen);
+  /** Bring the waiting pick back into view, its dose field focused. */
+  const revealPending = React.useCallback(() => {
+    const box = pendingRef.current;
+    if (!box) return;
+    box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    box.querySelector<HTMLInputElement>("input")?.focus({
+      preventScroll: true,
+    });
+  }, [pendingRef]);
+
+  // The plain search: only where the picker is off (corrections screen).
+  const searchQuery = useDrugSearch(shortlist ? "" : query);
   const hits = searchQuery.data ?? [];
-
-  // The shortlist: what he prescribes, then the clinic's core list. Anything
-  // already on this visit is left out — re-offering what is on screen is noise.
-  const shortlistQuery = useDrugShortlist(!disabled && shortlist);
-  const shortOpen = focused && shortlist && query.trim().length < 2;
-  const hitsOpen = focused && query.trim().length >= 2;
-  const shortListRef = useRevealOnOpen<HTMLDivElement>(shortOpen);
+  const hitsOpen = !shortlist && focused && query.trim().length >= 2;
   const hitsListRef = useRevealOnOpen<HTMLUListElement>(hitsOpen);
-  const { pinned: pinnedDrugs, toggle: togglePinnedDrug } =
-    useDoctorFavorites("DRUG");
-  // Compared by the catalog search's fold: «Магне® B6» on screen is the
-  // «Магне В6» (Cyrillic В) of his shortlist.
-  const onScreen = React.useMemo(
-    () =>
-      new Set(
-        [...rows.map((r) => r.displayName), ...legacy]
-          .map(foldCatalogText)
-          // A line of dashes folds to nothing: it names no drug to hide.
-          .filter(Boolean),
-      ),
-    [rows, legacy],
-  );
-  const notOnScreen = (i: DrugShortItem) =>
-    !(i.drugId && addedDrugIds.has(i.drugId)) &&
-    !onScreen.has(foldCatalogText(i.label)) &&
-    !onScreen.has(foldCatalogText(splitFreeLine(i.label).name));
-  const mine = (shortlistQuery.data?.mine ?? []).filter(notOnScreen);
-  const clinicList = (shortlistQuery.data?.clinic ?? []).filter(notOnScreen);
-  const [presetsOpen, setPresetsOpen] = React.useState(false);
+
+  // His usual dose and schema per drug: a pick from the search, the drawer
+  // or the catalog column comes back as he writes it. Shared with the
+  // picker (one query key, one request).
+  const shortlistQuery = useDrugShortlist(!disabled && shortlist);
+  const usual = shortlistQuery.data?.usual;
 
   // Saving is replace-all, so every action (add, edit, remove) is composed
   // on the rows as the doctor last left them, not on this render's snapshot
@@ -265,45 +296,84 @@ export function PrescriptionConstructor({
       // No dose the catalog can vouch for: the doctor writes it first. A
       // row is never saved with a concentration or a pack in «Доза».
       if (!draft.dose.trim()) {
-        setPending({ draft, forms, noteId });
+        const waiting = pendingNow.current;
+        const verdict = disabled ? "open" : admitPendingPick(waiting, draft, noteId);
+        if (verdict === "open") {
+          setPending({ draft, forms, noteId });
+        } else {
+          if (verdict === "busy" && waiting) {
+            toast.warning(
+              t("rx.pendingBusy", { name: waiting.draft.displayName }),
+            );
+          }
+          revealPending();
+        }
         return;
       }
       const current = liveDrafts();
       onSaveRows([...current, draft]);
-      setExpanded(current.length);
+      // Opened for its schedule; a row that came back with his usual one
+      // has nothing left to set and stays a single line.
+      setExpanded(draft.timesOfDay.length > 0 ? null : current.length);
     },
-    [onSaveRows, liveDrafts, noteId],
+    [onSaveRows, liveDrafts, noteId, disabled, setPending, revealPending, t],
+  );
+
+  // The sign check (see `registerDraftFlush`): refuses while a pick of this
+  // note waits for its dose. Read from refs when it runs, so it is
+  // registered once per screen and sees a pick made a moment before the
+  // click (`pendingNow` is written in the click handler itself).
+  const holdRef = React.useRef({ noteId, disabled });
+  React.useEffect(() => {
+    holdRef.current = { noteId, disabled };
+  }, [noteId, disabled]);
+  React.useEffect(() => {
+    if (!registerDraftFlush) return;
+    return registerDraftFlush(async () => {
+      const waiting = pendingNow.current;
+      const hold = holdRef.current;
+      if (!waiting || waiting.noteId !== hold.noteId || hold.disabled) return;
+      revealPending();
+      throw new PendingDosePickError(waiting.draft.displayName);
+    });
+  }, [registerDraftFlush, revealPending]);
+
+  /** A catalog drug (search hit, drawer, catalog column) with what was typed. */
+  const addFromCatalog = React.useCallback(
+    (drug: CatalogPickDrug, term: string) => {
+      const { draft, forms } = draftFromCatalogPick(drug, usual?.[drug.id], term);
+      addDraft(draft, forms);
+    },
+    [addDraft, usual],
   );
 
   const addFromDrug = React.useCallback(
     (d: DrugSearchHit) => {
       // Pass the live query so a brand search prescribes «Мидокалм
       // (толперизон)» — the name the patient will look for at the counter.
-      addDraft(draftFromDrug(d, query), normalizeForms(d.forms));
+      addFromCatalog(d, query);
       setQuery("");
       setFocused(false);
     },
-    [addDraft, query],
+    [addFromCatalog, query],
   );
 
   React.useEffect(() => {
     if (!catalogPickRef) return;
-    catalogPickRef.current = (drug, term) =>
-      addDraft(draftFromDrug(drug, term), normalizeForms(drug.forms));
+    catalogPickRef.current = addFromCatalog;
     return () => {
       catalogPickRef.current = null;
     };
-  }, [catalogPickRef, addDraft]);
+  }, [catalogPickRef, addFromCatalog]);
 
-  const addFromShort = (item: DrugShortItem, kind: "mine" | "clinic") => {
+  /** A picker item: his history, a star, the core list or a catalog drug. */
+  const addFromShort = (item: DrugShortItem) => {
     if (!item.drug && !splitFreeLine(item.label).dose && onAddLegacyLine) {
       onAddLegacyLine(item.label);
-    } else {
-      const { draft, forms } = draftFromShortItem(item, kind);
-      addDraft(draft, forms);
+      return;
     }
-    setQuery("");
-    setFocused(false);
+    const { draft, forms } = draftFromShortItem(item, shortItemKind(item));
+    addDraft(draft, forms);
   };
 
   // A drug the catalog lacks goes into the clinic's base, so every doctor
@@ -374,8 +444,38 @@ export function PrescriptionConstructor({
     [liveDrafts, onSaveRows],
   );
 
+  const picker = shortlist && !disabled;
+
+  const pendingForm = pendingOpen && pending ? (
+    <div ref={pendingRef} className="scroll-mb-28">
+      <PendingDoseForm
+        pick={pending}
+        locale={locale}
+        onChange={(draft) => setPending((p) => (p ? { ...p, draft } : p))}
+        onCancel={() => setPending(null)}
+        onAdd={(chosenDose) => {
+          // A quick-dose chip passes its dose: one click adds the row.
+          const { draft, forms } = pending;
+          const dose = (chosenDose ?? draft.dose).trim();
+          if (!dose) return;
+          setPending(null);
+          addDraft({ ...draft, dose }, forms);
+        }}
+      />
+    </div>
+  ) : null;
+
+  const customForm =
+    customOpen && !disabled ? (
+      <CustomRowForm
+        pending={addClinicDrug.isPending}
+        onCancel={() => setCustomOpen(false)}
+        onAdd={(displayName, dose) => void addToClinicBase(displayName, dose)}
+      />
+    ) : null;
 
   return (
+    <BigUi.Provider value={big}>
     <div
       className={cn(
         standalone
@@ -386,19 +486,19 @@ export function PrescriptionConstructor({
       {/* Wraps: when the card is narrow the buttons move to their own line
           instead of pushing «Свой препарат» out past the card's edge. */}
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-        <div className={cn("inline-flex items-center", standalone ? "gap-2" : "gap-1.5")}>
+        <div className={cn("inline-flex items-center", big ? "gap-2" : "gap-1.5")}>
           <span
             className={cn(
               "inline-flex items-center justify-center bg-muted text-muted-foreground",
-              standalone ? "size-7 rounded-lg" : "size-5 rounded-md",
+              big ? "size-8 rounded-lg" : "size-5 rounded-md",
             )}
           >
-            <PillIcon className={standalone ? "size-4" : "size-3"} />
+            <PillIcon className={big ? "size-4" : "size-3"} />
           </span>
           <span
             className={cn(
               "font-semibold text-foreground",
-              standalone ? "text-sm" : "text-xs",
+              big ? "text-base" : "text-xs",
             )}
           >
             {t("fields.prescriptions.label")}
@@ -407,7 +507,12 @@ export function PrescriptionConstructor({
             <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
           )}
           {rows.length + legacy.length > 0 && (
-            <span className="rounded-md bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
+            <span
+              className={cn(
+                "rounded-md bg-muted font-semibold tabular-nums text-muted-foreground",
+                big ? "px-1.5 text-xs" : "px-1 text-[10px]",
+              )}
+            >
               {rows.length + legacy.length}
             </span>
           )}
@@ -419,11 +524,11 @@ export function PrescriptionConstructor({
             onClick={onOpenCatalog}
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50",
-              standalone ? "h-7 px-2 text-xs" : "h-6 px-1.5 text-[11px]",
+              big ? "h-9 rounded-lg px-3 text-sm" : "h-6 px-1.5 text-[11px]",
             )}
             title={t("structured.catalogTitle")}
           >
-            <BookOpenIcon className="size-3" />
+            <BookOpenIcon className={big ? "size-4" : "size-3"} />
             {t("structured.catalog")}
           </button>
           <button
@@ -432,303 +537,145 @@ export function PrescriptionConstructor({
             onClick={() => setCustomOpen(true)}
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/30 bg-primary/5 font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50",
-              standalone ? "h-7 px-2 text-xs" : "h-6 px-1.5 text-[11px]",
+              big ? "h-9 rounded-lg px-3 text-sm" : "h-6 px-1.5 text-[11px]",
             )}
           >
-            <PlusIcon className="size-3" />
+            <PlusIcon className={big ? "size-4" : "size-3"} />
             {t("rx.custom")}
           </button>
         </div>
       </div>
 
-      {/* ── Catalog search ──
-          Empty field + focus → the doctor's shortlist. Typing → the whole
-          catalog, with «add to the clinic's base» as the last resort. */}
-      {!disabled && (
-        <div className={cn("relative", standalone ? "mt-3" : "mt-1.5")}>
-          <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setFocused(true);
-            }}
-            // A pick keeps the caret in the field (mousedown is prevented),
-            // so a second tap fires no focus event: reopen on click too.
-            onClick={() => setFocused(true)}
-            onFocus={() => {
-              setFocused(true);
-              if (shortlist && shortlistQuery.isStale) void shortlistQuery.refetch();
-            }}
-            onBlur={() => setTimeout(() => setFocused(false), 150)}
-            placeholder={
-              shortlist ? t("rx.searchPlaceholderTap") : t("rx.searchPlaceholder")
-            }
-            className={cn(
-              "w-full rounded-lg border border-border bg-card pl-8 pr-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
-              standalone ? "h-9 text-sm" : "h-8 text-xs",
-            )}
+      {picker ? (
+        <>
+          {/* The prescribing area: suggestions for this visit, a pick
+              waiting for its dose, the custom form, then the columns. The
+              rows come after it, so a new row never pushes the columns
+              down under the doctor's cursor. */}
+          {aboveColumns ? <div className="mt-3 empty:hidden">{aboveColumns}</div> : null}
+          {pendingForm}
+          {customForm}
+          <PrescriptionPicker
+            noteId={note.id}
+            diagnosisCode={note.diagnosisCode}
+            rows={rows}
+            legacy={legacy}
+            presets={presets}
+            onPresetClick={onPresetClick}
+            onPickItem={addFromShort}
+            onPickHit={addFromCatalog}
+            onAddToClinicBase={(name) => void addToClinicBase(name)}
+            addingToClinic={addClinicDrug.isPending}
           />
-          {/* z-40 and scroll-mb: above the sticky «Завершить приём» bar (z-30)
-              and scrolled clear of it (useRevealOnOpen). */}
-          {shortOpen && (
-            <div
-              ref={shortListRef}
-              className="absolute left-0 right-0 top-full z-40 mt-1 max-h-96 scroll-mb-28 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md"
-            >
-              {mine.length > 0 && (
-                <ShortSection title={t("rx.shortMine")}>
-                  {mine.map((item) => (
-                    <ShortRow
-                      key={`mine-${item.key}`}
-                      label={item.label}
-                      sub={item.lastDose}
-                      count={item.count}
-                      countTitle={t("rx.shortCount", { n: item.count })}
-                      pinned={item.drugId ? pinnedDrugs.has(item.drugId) : null}
-                      pinTitle={
-                        item.drugId && pinnedDrugs.has(item.drugId)
-                          ? t("diagnosis.favRemove")
-                          : t("diagnosis.favAdd")
-                      }
-                      onPin={
-                        item.drugId
-                          ? () => togglePinnedDrug(item.drugId!)
-                          : undefined
-                      }
-                      onPick={() => addFromShort(item, "mine")}
-                    />
-                  ))}
-                </ShortSection>
+        </>
+      ) : (
+        !disabled && (
+          // ── Plain catalog search (the corrections screen) ──
+          <div className={cn("relative", big ? "mt-3" : "mt-1.5")}>
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setFocused(true);
+              }}
+              // A pick keeps the caret in the field (mousedown is prevented),
+              // so a second tap fires no focus event: reopen on click too.
+              onClick={() => setFocused(true)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setTimeout(() => setFocused(false), 150)}
+              placeholder={t("rx.searchPlaceholder")}
+              className={cn(
+                "w-full rounded-lg border border-border bg-card pl-8 pr-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
+                big ? "h-9 text-sm" : "h-8 text-xs",
               )}
-              {note.diagnosisCode && suggestions.length > 0 && (
-                <ShortSection
-                  title={t("rx.suggestTitle", { code: note.diagnosisCode })}
-                >
-                  {suggestions.slice(0, 6).map((d) => (
-                    <ShortRow
-                      key={`sug-${d.id}`}
-                      label={d.nameRu}
-                      sub={
-                        normalizeForms(d.forms)[0]
-                          ?.strengths.slice(0, 3)
-                          .join(" / ") || null
-                      }
-                      onPick={() => addFromDrug(d)}
-                    />
-                  ))}
-                </ShortSection>
-              )}
-              {clinicList.length > 0 && (
-                <ShortSection title={t("rx.shortClinic")}>
-                  {clinicList.map((item) => (
-                    <ShortRow
-                      key={`clinic-${item.key}`}
-                      label={item.label}
-                      sub={
-                        [
-                          item.strengths.join(" / "),
-                          item.drug && !item.drug.rxOnly ? t("rx.otc") : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || null
-                      }
-                      pinned={item.drugId ? pinnedDrugs.has(item.drugId) : null}
-                      pinTitle={t("diagnosis.favAdd")}
-                      onPin={
-                        item.drugId
-                          ? () => togglePinnedDrug(item.drugId!)
-                          : undefined
-                      }
-                      onPick={() => addFromShort(item, "clinic")}
-                    />
-                  ))}
-                </ShortSection>
-              )}
-              {presets.length > 0 && (
-                <div className="border-t border-border/60 px-3 py-1.5">
-                  <button
-                    type="button"
-                    onMouseDown={(e) => {
-                      // Keep the list open while it expands.
-                      e.preventDefault();
-                      setPresetsOpen((v) => !v);
-                    }}
-                    className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
-                  >
-                    <ChevronDownIcon
-                      className={cn(
-                        "size-3 transition-transform",
-                        presetsOpen ? "" : "-rotate-90",
-                      )}
-                    />
-                    {t("rx.shortTemplates", { n: presets.length })}
-                  </button>
-                  {presetsOpen && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {presets.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            onPresetClick(p);
-                            setFocused(false);
-                          }}
-                          title={
-                            p.noteTemplate
-                              ? t("structured.presetTitleWithTemplate")
-                              : t("structured.presetTitle")
-                          }
-                          className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-                        >
-                          {p.noteTemplate && (
-                            <WandSparklesIcon className="size-2.5 text-primary/70" />
-                          )}
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {mine.length === 0 &&
-                clinicList.length === 0 &&
-                suggestions.length === 0 &&
-                presets.length === 0 && (
-                  <p className="px-3 py-2 text-[11px] text-muted-foreground">
-                    {shortlistQuery.isLoading ? "…" : t("rx.shortEmpty")}
-                  </p>
-                )}
-            </div>
-          )}
-          {hitsOpen && (
-            <ul
-              ref={hitsListRef}
-              className="absolute left-0 right-0 top-full z-40 mt-1 max-h-80 scroll-mb-28 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md"
-            >
-              {hits.map((d) => (
-                <li key={d.id}>
-                  <button
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      addFromDrug(d);
-                    }}
-                    className="flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted"
-                  >
-                    {/* The box itself — the doctor recognises a pack faster
-                        than a name, and can turn the screen to the patient. */}
-                    {d.photoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={d.photoUrl}
-                        alt=""
-                        className="mt-0.5 size-8 shrink-0 rounded-md border border-border bg-white object-contain"
-                      />
-                    ) : null}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-sm">
-                        {/* Lead with what the doctor typed: a brand query
-                            shows the brand, the substance moves below. */}
-                        <span className="font-medium text-foreground">
-                          {matchedBrand(
-                            { nameRu: d.nameRu, brands: d.brands },
-                            query,
-                          ) ?? d.nameRu}
-                        </span>
-                        {(normalizeForms(d.forms)[0]?.strengths.length ?? 0) > 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            {normalizeForms(d.forms)[0]!.strengths.join(" / ")}
+            />
+            {/* z-40 and scroll-mb: above the sticky «Завершить приём» bar (z-30)
+                and scrolled clear of it (useRevealOnOpen). */}
+            {hitsOpen && (
+              <ul
+                ref={hitsListRef}
+                className="absolute left-0 right-0 top-full z-40 mt-1 max-h-80 scroll-mb-28 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md"
+              >
+                {hits.map((d) => (
+                  <li key={d.id}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        addFromDrug(d);
+                      }}
+                      className="flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted"
+                    >
+                      {/* The box itself — the doctor recognises a pack faster
+                          than a name, and can turn the screen to the patient. */}
+                      {d.photoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={d.photoUrl}
+                          alt=""
+                          className="mt-0.5 size-8 shrink-0 rounded-md border border-border bg-white object-contain"
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 text-sm">
+                          {/* Lead with what the doctor typed: a brand query
+                              shows the brand, the substance moves below. */}
+                          <span className="font-medium text-foreground">
+                            {matchedBrand(
+                              { nameRu: d.nameRu, brands: d.brands },
+                              query,
+                            ) ?? d.nameRu}
                           </span>
-                        )}
+                          {(normalizeForms(d.forms)[0]?.strengths.length ?? 0) > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {normalizeForms(d.forms)[0]!.strengths.join(" / ")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {d.nameRu}
+                          {/* Register molecules carry up to 25 trade names —
+                              show the first few, count the rest. */}
+                          {d.brands.length > 0
+                            ? ` · ${d.brands
+                                .slice(0, 3)
+                                .map((b) => b.name)
+                                .join(", ")}${
+                                d.brands.length > 3
+                                  ? ` +${d.brands.length - 3}`
+                                  : ""
+                              }`
+                            : ""}
+                        </div>
                       </div>
-                      <div className="truncate text-[11px] text-muted-foreground">
-                        {d.nameRu}
-                        {/* Register molecules carry up to 25 trade names —
-                            show the first few, count the rest. */}
-                        {d.brands.length > 0
-                          ? ` · ${d.brands
-                              .slice(0, 3)
-                              .map((b) => b.name)
-                              .join(", ")}${
-                              d.brands.length > 3
-                                ? ` +${d.brands.length - 3}`
-                                : ""
-                            }`
-                          : ""}
-                      </div>
-                    </div>
-                    {d.rxOnly && (
-                      <span className="mt-0.5 shrink-0 rounded-md bg-blue-100 px-1 text-[9px] font-semibold uppercase text-blue-800">
-                        Rx
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-              {/* Not in the catalog under this name: add it for the whole
-                  clinic instead of a one-off line nobody else will find. */}
-              {shortlist && !searchQuery.isFetching && query.trim().length >= 3 && (
-                <li className={hits.length > 0 ? "border-t border-border/60" : ""}>
-                  <button
-                    type="button"
-                    disabled={addClinicDrug.isPending}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      void addToClinicBase(query);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted disabled:opacity-60"
-                  >
-                    {addClinicDrug.isPending ? (
-                      <Loader2Icon className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
-                    ) : (
-                      <PlusIcon className="size-3.5 shrink-0 text-primary" />
-                    )}
-                    <span className="text-foreground">
-                      {t("rx.addToClinic", { name: query.trim() })}
-                    </span>
-                  </button>
-                </li>
-              )}
-            </ul>
-          )}
-        </div>
+                      {d.rxOnly && (
+                        <span className="mt-0.5 shrink-0 rounded-md bg-blue-100 px-1 text-[9px] font-semibold uppercase text-blue-800">
+                          Rx
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )
       )}
 
-      {/* ── A pick waiting for its dose ── */}
-      {pending && pending.noteId === note.id && !disabled && (
-        <PendingDoseForm
-          pick={pending}
-          onChange={(draft) => setPending((p) => (p ? { ...p, draft } : p))}
-          onCancel={() => setPending(null)}
-          onAdd={() => {
-            const { draft, forms } = pending;
-            setPending(null);
-            addDraft({ ...draft, dose: draft.dose.trim() }, forms);
-          }}
-        />
-      )}
-
-      {/* ── Custom drug mini-form ── */}
-      {customOpen && !disabled && (
-        <CustomRowForm
-          pending={addClinicDrug.isPending}
-          onCancel={() => setCustomOpen(false)}
-          onAdd={(displayName, dose) => void addToClinicBase(displayName, dose)}
-        />
-      )}
+      {!picker && pendingForm}
+      {!picker && customForm}
 
       {/* ── Structured rows ── */}
       {rows.length > 0 && (
-        <ul className={cn("flex flex-col", standalone ? "mt-2 gap-1.5" : "mt-1.5 gap-1")}>
+        <ul className={cn("flex flex-col", big ? "mt-3 gap-1.5" : "mt-1.5 gap-1")}>
           {rows.map((row, i) => (
             <PrescriptionRowItem
               key={`${i}-${row.displayName}`}
               row={row}
               locale={locale}
-              large={!!standalone}
+              large={big}
               disabled={disabled}
               expanded={expanded === i}
               onToggle={() => setExpanded(expanded === i ? null : i)}
@@ -740,14 +687,19 @@ export function PrescriptionConstructor({
       )}
 
       {rows.length === 0 && legacy.length === 0 && !customOpen && (
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {disabled ? "—" : t("rx.empty")}
+        <p
+          className={cn(
+            "text-muted-foreground",
+            big ? "mt-3 text-sm" : "mt-1.5 text-[11px]",
+          )}
+        >
+          {disabled ? "—" : picker ? t("rx.picker.empty") : t("rx.empty")}
         </p>
       )}
 
       {/* ── Legacy text lines (old notes / protocol templates / presets) ── */}
       {legacy.length > 0 && (
-        <div className="mt-1.5">
+        <div className={big ? "mt-3" : "mt-1.5"}>
           {rows.length > 0 && (
             <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {t("rx.legacyTitle")}
@@ -757,7 +709,10 @@ export function PrescriptionConstructor({
             {legacy.map((chip) => (
               <span
                 key={chip}
-                className="inline-flex h-6 items-center gap-0.5 rounded-md border border-primary/20 bg-primary/10 px-1.5 text-[11px] font-medium text-primary"
+                className={cn(
+                  "inline-flex items-center gap-0.5 rounded-md border border-primary/20 bg-primary/10 font-medium text-primary",
+                  big ? "min-h-8 px-2 text-sm" : "h-6 px-1.5 text-[11px]",
+                )}
               >
                 {chip}
                 {!disabled && (
@@ -765,9 +720,12 @@ export function PrescriptionConstructor({
                     type="button"
                     aria-label={t("structured.remove")}
                     onClick={() => onRemoveLegacyChip(chip)}
-                    className="ml-0.5 inline-flex size-3.5 items-center justify-center rounded-sm text-primary/60 transition-colors hover:bg-primary/15 hover:text-primary"
+                    className={cn(
+                      "ml-0.5 inline-flex items-center justify-center rounded-sm text-primary/60 transition-colors hover:bg-primary/15 hover:text-primary",
+                      big ? "size-6" : "size-3.5",
+                    )}
                   >
-                    <XIcon className="size-2.5" />
+                    <XIcon className={big ? "size-3.5" : "size-2.5"} />
                   </button>
                 )}
               </span>
@@ -779,6 +737,7 @@ export function PrescriptionConstructor({
       {/* Empty when the check has nothing to say: then no gap either. */}
       {footer ? <div className="mt-3 empty:hidden">{footer}</div> : null}
     </div>
+    </BigUi.Provider>
   );
 }
 
@@ -794,6 +753,7 @@ function CustomRowForm({
   pending: boolean;
 }) {
   const t = useTranslations("doctor.reception");
+  const big = React.useContext(BigUi);
   const [name, setName] = React.useState("");
   const [dose, setDose] = React.useState("");
   const nameRef = React.useRef<HTMLInputElement | null>(null);
@@ -808,45 +768,55 @@ function CustomRowForm({
     if (!canAdd) return;
     onAdd(name.trim(), dose.trim());
   };
+  const keys = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    } else if (e.key === "Escape") {
+      onCancel();
+    }
+  };
+  const field = big ? "h-10 px-3 text-sm" : "h-7 px-2 text-[11px]";
 
   return (
-    <div className="mt-1.5 rounded-lg border border-dashed border-primary/40 bg-primary/[0.03] p-1.5">
-    <div className="flex items-center gap-1.5">
+    <div
+      className={cn(
+        "rounded-lg border border-dashed border-primary/40 bg-primary/[0.03]",
+        big ? "mt-3 p-2.5" : "mt-1.5 p-1.5",
+      )}
+    >
+    <div className={cn("flex flex-wrap items-center", big ? "gap-2" : "gap-1.5")}>
       <input
         ref={nameRef}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={t("rx.customName")}
         maxLength={120}
-        className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-          } else if (e.key === "Escape") {
-            onCancel();
-          }
-        }}
+        className={cn(
+          "min-w-40 flex-1 rounded-md border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/20",
+          field,
+        )}
+        onKeyDown={keys}
       />
       <input
         value={dose}
         onChange={(e) => setDose(e.target.value)}
         placeholder={t("rx.customDose")}
-        className="h-7 w-40 rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-          } else if (e.key === "Escape") {
-            onCancel();
-          }
-        }}
+        className={cn(
+          "w-40 rounded-md border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/20",
+          field,
+          big && "w-56",
+        )}
+        onKeyDown={keys}
       />
       <button
         type="button"
         disabled={!canAdd}
         onClick={submit}
-        className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2 text-[11px] font-medium text-primary-foreground transition-opacity disabled:opacity-50"
+        className={cn(
+          "inline-flex items-center gap-1 rounded-md bg-primary font-medium text-primary-foreground transition-opacity disabled:opacity-50",
+          big ? "h-10 px-4 text-sm" : "h-7 px-2 text-[11px]",
+        )}
       >
         {pending && <Loader2Icon className="size-3 animate-spin" />}
         {t("rx.add")}
@@ -855,106 +825,23 @@ function CustomRowForm({
         type="button"
         onClick={onCancel}
         aria-label={t("cds.cancel")}
-        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        className={cn(
+          "inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
+          big ? "size-10" : "size-7",
+        )}
       >
-        <XIcon className="size-3.5" />
+        <XIcon className={big ? "size-4" : "size-3.5"} />
       </button>
     </div>
-    <p className="mt-1 px-0.5 text-[10px] leading-snug text-muted-foreground">
+    <p
+      className={cn(
+        "mt-1 px-0.5 leading-snug text-muted-foreground",
+        big ? "text-xs" : "text-[10px]",
+      )}
+    >
       {t("rx.customSharedHint")}
     </p>
     </div>
-  );
-}
-
-// ── Shortlist pieces ──────────────────────────────────────────────────
-
-function ShortSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="py-0.5 [&+&]:border-t [&+&]:border-border/60">
-      <p className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </p>
-      <ul>{children}</ul>
-    </div>
-  );
-}
-
-function ShortRow({
-  label,
-  sub,
-  count,
-  countTitle,
-  pinned,
-  pinTitle,
-  onPin,
-  onPick,
-}: {
-  label: string;
-  sub?: string | null;
-  count?: number;
-  countTitle?: string;
-  /** null = this row cannot be starred (free-typed history line). */
-  pinned?: boolean | null;
-  pinTitle?: string;
-  onPin?: () => void;
-  onPick: () => void;
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onPick();
-        }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted"
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm text-foreground">{label}</span>
-          {sub ? (
-            <span className="block truncate text-[11px] text-muted-foreground">
-              {sub}
-            </span>
-          ) : null}
-        </span>
-        {count && count > 0 ? (
-          <span
-            title={countTitle}
-            className="shrink-0 rounded bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground"
-          >
-            {count}
-          </span>
-        ) : null}
-        {onPin && pinned !== null && pinned !== undefined ? (
-          <span
-            role="button"
-            tabIndex={-1}
-            title={pinTitle}
-            onMouseDown={(e) => {
-              // Star, don't pick: keep the list open.
-              e.preventDefault();
-              e.stopPropagation();
-              onPin();
-            }}
-            className={cn(
-              "shrink-0 rounded p-0.5 transition-colors",
-              pinned
-                ? "text-amber-500"
-                : "text-muted-foreground/40 hover:text-amber-500",
-            )}
-          >
-            <StarIcon className={cn("size-3.5", pinned ? "fill-amber-400" : "")} />
-          </span>
-        ) : null}
-      </button>
-    </li>
   );
 }
 
@@ -1004,7 +891,7 @@ function PrescriptionRowItem({
         expanded ? "border-primary/40" : "border-border",
       )}
     >
-      <div className={cn("flex items-center gap-1.5 px-2", large ? "py-2" : "py-1.5")}>
+      <div className={cn("flex items-center gap-1.5", large ? "px-2.5 py-2.5" : "px-2 py-1.5")}>
         <button
           type="button"
           onClick={onToggle}
@@ -1031,7 +918,7 @@ function PrescriptionRowItem({
           <span
             className={cn(
               "min-w-0 break-words font-medium leading-snug text-foreground",
-              large ? "text-sm" : "text-xs",
+              large ? "text-[15px]" : "text-xs",
             )}
           >
             {line}
@@ -1064,7 +951,8 @@ function PrescriptionRowItem({
                     : t("rx.remindOff")
               }
               className={cn(
-                "inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+                "inline-flex shrink-0 items-center justify-center rounded-md transition-colors",
+                large ? "size-9" : "size-6",
                 reminder === "on"
                   ? "text-primary hover:bg-primary/10"
                   : reminder === "noTimes"
@@ -1073,25 +961,34 @@ function PrescriptionRowItem({
               )}
             >
               {row.remindPatient ? (
-                <BellIcon className="size-3.5" />
+                <BellIcon className={large ? "size-4" : "size-3.5"} />
               ) : (
-                <BellOffIcon className="size-3.5" />
+                <BellOffIcon className={large ? "size-4" : "size-3.5"} />
               )}
             </button>
             <button
               type="button"
               onClick={onRemove}
               aria-label={t("rx.deleteRow")}
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive"
+              title={t("rx.deleteRow")}
+              className={cn(
+                "inline-flex shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive",
+                large ? "size-9" : "size-6",
+              )}
             >
-              <Trash2Icon className="size-3.5" />
+              <Trash2Icon className={large ? "size-4" : "size-3.5"} />
             </button>
           </>
         )}
       </div>
 
       {expanded && !disabled && (
-        <div className="flex flex-col gap-2 border-t border-border/70 px-2 py-2">
+        <div
+          className={cn(
+            "flex flex-col border-t border-border/70",
+            large ? "gap-3 px-3 py-3" : "gap-2 px-2 py-2",
+          )}
+        >
           {/* Form and strength (audit G4-07): citicoline may be drops, not
               only the injection listed first. A saved row keeps a dose: when
               the new form has no default, the doctor's current one stays. */}
@@ -1118,14 +1015,30 @@ function PrescriptionRowItem({
             </LabeledRow>
           ) : null}
 
-          {/* Dose */}
+          {/* Dose: typed, or one click on the doses this form is written in */}
           <LabeledRow label={t("rx.dose")}>
-            <CommitInput
-              value={row.dose}
-              required
-              onCommit={(v) => onChange({ dose: v })}
-              className="h-7 w-44"
-            />
+            <div className="flex flex-wrap items-center gap-1">
+              <CommitInput
+                value={row.dose}
+                required
+                onCommit={(v) => onChange({ dose: v })}
+                className={large ? "w-52" : "w-44"}
+              />
+              {large &&
+                quickDoseOptions(
+                  row.form,
+                  rowForms.find((f) => f.form === row.form)?.strengths ?? [],
+                  locale,
+                ).map((dose) => (
+                  <SegChip
+                    key={dose}
+                    active={row.dose.trim() === dose}
+                    onClick={() => onChange({ dose })}
+                  >
+                    {dose}
+                  </SegChip>
+                ))}
+            </div>
           </LabeledRow>
 
           {/* Times of day */}
@@ -1196,7 +1109,7 @@ function PrescriptionRowItem({
                       Number.isFinite(n) && n >= 1 && n <= 365 ? n : null,
                   });
                 }}
-                className="h-7 w-16 text-center"
+                className="w-16 text-center"
               />
             </div>
           </LabeledRow>
@@ -1215,7 +1128,7 @@ function PrescriptionRowItem({
                     : { instructionRu: v || null },
                 )
               }
-              className="h-7 w-full"
+              className="w-full"
             />
           </LabeledRow>
         </div>
@@ -1234,26 +1147,49 @@ function PrescriptionRowItem({
  */
 function PendingDoseForm({
   pick,
+  locale,
   onChange,
   onAdd,
   onCancel,
 }: {
   pick: DraftPick;
+  locale: PrescriptionLocale;
   onChange: (draft: VisitPrescriptionDraft) => void;
-  onAdd: () => void;
+  /** With a dose: a quick-dose chip, which adds the row at once. */
+  onAdd: (dose?: string) => void;
   onCancel: () => void;
 }) {
   const t = useTranslations("doctor.reception");
+  const big = React.useContext(BigUi);
   const { draft, forms } = pick;
   const canAdd = draft.dose.trim().length > 0;
   const submit = () => {
     if (canAdd) onAdd();
   };
+  // A mouse answer to «how much?»: the doses this form is written in. One
+  // click adds the row, as the same chips do in the row editor: a chip that
+  // only filled the field looked done, and the drug was signed off without
+  // ever reaching the visit.
+  const quick = quickDoseOptions(
+    draft.form,
+    forms.find((f) => f.form === draft.form)?.strengths ?? [],
+    locale,
+  );
 
   return (
-    <div className="mt-1.5 flex flex-col gap-1.5 rounded-lg border border-dashed border-primary/40 bg-primary/[0.03] p-1.5">
-      <div className="flex items-center gap-1.5 px-0.5 text-xs font-medium text-foreground">
-        <PillIcon className="size-3 shrink-0 text-muted-foreground" />
+    <div
+      className={cn(
+        "flex flex-col rounded-lg border border-dashed border-primary/40 bg-primary/[0.03]",
+        big ? "mt-3 gap-2.5 p-3" : "mt-1.5 gap-1.5 p-1.5",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-1.5 px-0.5 font-medium text-foreground",
+          big ? "text-[15px]" : "text-xs",
+        )}
+      >
+        <PillIcon className={cn("shrink-0 text-muted-foreground", big ? "size-4" : "size-3")} />
         <span className="truncate">
           {formatPrescriptionHead({ ...draft, dose: "" })}
         </span>
@@ -1270,6 +1206,19 @@ function PendingDoseForm({
           }
         />
       ) : null}
+      {quick.length > 0 && (
+        <div className="flex flex-wrap gap-1" aria-label={t("rx.picker.quickDose")}>
+          {quick.map((dose) => (
+            <SegChip
+              key={dose}
+              active={draft.dose.trim() === dose}
+              onClick={() => onAdd(dose)}
+            >
+              {dose}
+            </SegChip>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-1.5">
         <input
           value={draft.dose}
@@ -1288,7 +1237,8 @@ function PendingDoseForm({
           aria-label={t("rx.dose")}
           maxLength={160}
           className={cn(
-            "h-7 flex-1 rounded-md border bg-background px-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-primary/20",
+            "flex-1 rounded-md border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/20",
+            big ? "h-10 px-3 text-sm" : "h-7 px-2 text-[11px]",
             canAdd ? "border-border" : "border-destructive/60",
           )}
         />
@@ -1296,7 +1246,10 @@ function PendingDoseForm({
           type="button"
           disabled={!canAdd}
           onClick={submit}
-          className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2 text-[11px] font-medium text-primary-foreground transition-opacity disabled:opacity-50"
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md bg-primary font-medium text-primary-foreground transition-opacity disabled:opacity-50",
+            big ? "h-10 px-4 text-sm" : "h-7 px-2 text-[11px]",
+          )}
         >
           {t("rx.add")}
         </button>
@@ -1304,12 +1257,20 @@ function PendingDoseForm({
           type="button"
           onClick={onCancel}
           aria-label={t("cds.cancel")}
-          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          className={cn(
+            "inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
+            big ? "size-10" : "size-7",
+          )}
         >
-          <XIcon className="size-3.5" />
+          <XIcon className={big ? "size-4" : "size-3.5"} />
         </button>
       </div>
-      <p className="px-0.5 text-[10px] leading-snug text-muted-foreground">
+      <p
+        className={cn(
+          "px-0.5 leading-snug text-muted-foreground",
+          big ? "text-xs" : "text-[10px]",
+        )}
+      >
         {t("rx.doseNeeded")}
       </p>
     </div>
@@ -1373,9 +1334,15 @@ function LabeledRow({
   label: string;
   children: React.ReactNode;
 }) {
+  const big = React.useContext(BigUi);
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className={cn("flex flex-col", big ? "gap-1.5" : "gap-1")}>
+      <span
+        className={cn(
+          "font-semibold uppercase tracking-wide text-muted-foreground",
+          big ? "text-xs" : "text-[10px]",
+        )}
+      >
         {label}
       </span>
       {children}
@@ -1392,12 +1359,14 @@ function SegChip({
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const big = React.useContext(BigUi);
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-medium transition-colors",
+        "inline-flex items-center rounded-md border font-medium transition-colors",
+        big ? "h-9 px-3 text-sm" : "h-6 px-2 text-[11px]",
         active
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-background text-foreground hover:bg-muted",
@@ -1422,6 +1391,7 @@ function CommitInput({
   placeholder?: string;
   className?: string;
 }) {
+  const big = React.useContext(BigUi);
   const [draft, setDraft] = React.useState(value);
 
   React.useEffect(() => {
@@ -1454,7 +1424,8 @@ function CommitInput({
       }}
       placeholder={placeholder}
       className={cn(
-        "rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-primary/20",
+        "rounded-md border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/20",
+        big ? "h-9 px-3 text-sm" : "h-7 px-2 text-[11px]",
         className,
       )}
     />

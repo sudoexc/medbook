@@ -66,13 +66,21 @@ export const GET = createApiListHandler(
     // Group in memory: Prisma cannot group by a computed substring, and the
     // column is short enough that 2.7k strings cost nothing.
     const byGroup: Record<string, number> = {};
+    const bySubgroup: Record<string, number> = {};
     let withoutAtc = 0;
     for (const r of rows) {
-      const letter = r.atcCode?.trim().charAt(0).toUpperCase();
+      const code = r.atcCode?.trim().toUpperCase() ?? "";
+      const letter = code.charAt(0);
       // The register carries a handful of typos (Cyrillic «А», lowercase) —
       // only A-Z counts as a real group, the rest falls into "no ATC".
       if (letter && letter >= "A" && letter <= "Z") {
         byGroup[letter] = (byGroup[letter] ?? 0) + 1;
+        // The list route filters with a case-insensitive `startsWith`, so
+        // what is counted here is exactly what the subgroup will list.
+        if (/^[A-Z]\d\d/.test(code)) {
+          const sub = code.slice(0, 3);
+          bySubgroup[sub] = (bySubgroup[sub] ?? 0) + 1;
+        }
       } else {
         withoutAtc += 1;
       }
@@ -81,6 +89,7 @@ export const GET = createApiListHandler(
     return ok({
       total,
       byGroup,
+      bySubgroup,
       withoutAtc,
       rxCount,
       otcCount: total - rxCount,

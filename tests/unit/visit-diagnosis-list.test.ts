@@ -345,19 +345,20 @@ describe("the visit screen layout", () => {
   const session = read("reception/_components/session-tab-content.tsx");
   const panels = read("reception/_components/structured-fields-panel.tsx");
 
-  it("left: diagnosis and control visit; middle: conclusion, then prescriptions; right: advice", () => {
+  it("left: diagnosis and control visit; middle: prescriptions; right: advice", () => {
     const order = [
       "<DiagnosisFollowUpPanel />",
-      "<NotesEditorPanel />",
       "<PrescriptionsPanel />",
       "<AdvicePanel />",
     ].map((tag) => session.indexOf(tag));
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    // The conclusion and the prescriptions share the middle column.
+    // «Назначения» alone in the middle column: the conclusion editor left
+    // the visit screen (03.10.2026).
     expect(session).toMatch(
-      /lg:row-span-2[^>]*>\s*<NotesEditorPanel \/>\s*<PrescriptionsPanel \/>\s*<\/div>/,
+      /lg:row-span-2[^>]*>\s*<PrescriptionsPanel \/>\s*<\/div>/,
     );
+    expect(session).not.toContain("NotesEditorPanel");
   });
 
   it("the left panel holds only the diagnosis and control visit cards", () => {
@@ -405,11 +406,6 @@ describe("the visit screen layout", () => {
     expect(rx.match(/inline-flex items-center gap-1 whitespace-nowrap rounded-md/g)).toHaveLength(2);
   });
 
-  it("the editor leaves room for «Назначения» on a 1080p screen", () => {
-    const editor = read("reception/_components/notes-editor-panel.tsx");
-    expect(editor).not.toContain("min-h-[640px]");
-    expect(editor).toContain("min-h-[460px]");
-  });
 
   it("a prescription line wraps, it is never cut", () => {
     const rx = read("reception/_components/prescription-constructor.tsx");

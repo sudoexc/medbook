@@ -94,6 +94,7 @@ import {
   type DraftPick,
   type RowEdit,
 } from "../_hooks/prescription-rows";
+import { onVisitChecker } from "../_hooks/prescription-columns";
 import { PrescriptionPicker } from "./prescription-picker";
 
 const TIMES: VisitPrescriptionTimeOfDay[] = [
@@ -115,6 +116,18 @@ const DURATION_PICKS = [5, 7, 10, 14, 30];
 
 /** What a catalog pick carries: enough to build a row draft. */
 export type CatalogPickDrug = Parameters<typeof draftFromDrug>[0];
+
+/**
+ * What the card above the picker's columns can do with the rows: the same
+ * add path as a click in the columns (dose first, his own text lines as
+ * they are), and the same «already on the visit» rule as their marks.
+ */
+export type PrescriptionPickApi = {
+  addItem: (item: DrugShortItem) => void;
+  /** Several at once, in one save («Добавить всё»). */
+  addItems: (items: readonly DrugShortItem[]) => void;
+  isOnVisit: (item: { drugId: string | null; label: string }) => boolean;
+};
 
 type Props = {
   note: VisitNoteRow;
@@ -151,9 +164,10 @@ type Props = {
   /**
    * Rendered inside the card above the picker's columns: the place for
    * suggestions tied to the visit («Обычно при <диагноз>»), where the
-   * doctor's eye already is when he starts prescribing.
+   * doctor's eye already is when he starts prescribing. It gets the
+   * constructor's add path, so a suggestion lands exactly like a pick.
    */
-  aboveColumns?: React.ReactNode;
+  aboveColumns?: (api: PrescriptionPickApi) => React.ReactNode;
   /**
    * Rendered inside the card under the rows: the visit screen puts the
    * interaction check there, so a warning sits with the drugs it is about.
@@ -294,14 +308,56 @@ export function PrescriptionConstructor({
     };
   }, [catalogPickRef, addFromCatalog]);
 
+  /**
+   * His own text line with nothing to structure («Мексидол 5,0 в/м №10»):
+   * it goes in exactly as he wrote it. A manual row of his with a dose of
+   * its own is a row again, dose and schema included.
+   */
+  const isPlainLine = (item: DrugShortItem) =>
+    !item.drug &&
+    !splitFreeLine(item.label).dose &&
+    !item.lastDose?.trim() &&
+    !!onAddLegacyLine;
+
   /** A picker item: his history, a star, the core list or a catalog drug. */
   const addFromShort = (item: DrugShortItem) => {
-    if (!item.drug && !splitFreeLine(item.label).dose && onAddLegacyLine) {
-      onAddLegacyLine(item.label);
+    if (isPlainLine(item)) {
+      onAddLegacyLine?.(item.label);
       return;
     }
     const { draft, forms } = draftFromShortItem(item, shortItemKind(item));
     addDraft(draft, forms);
+  };
+
+  /**
+   * Several items in one go («Добавить всё»): the rows in ONE replace-all
+   * save, his text lines one by one (each composes on the live cache). A
+   * row the catalog cannot give a dose for still asks for it first: the
+   * first such row opens the dose prompt, and the others wait for another
+   * click, since the prompt holds one pick at a time.
+   */
+  const addItems = (items: readonly DrugShortItem[]) => {
+    const drafts: VisitPrescriptionDraft[] = [];
+    const lines: string[] = [];
+    let needsDose: DraftPick | null = null;
+    for (const item of items) {
+      if (isPlainLine(item)) {
+        lines.push(item.label);
+        continue;
+      }
+      const pick = draftFromShortItem(item, shortItemKind(item));
+      if (!pick.draft.dose.trim()) {
+        needsDose ??= pick;
+        continue;
+      }
+      drafts.push(pick.draft);
+    }
+    if (drafts.length > 0) {
+      onSaveRows([...liveDrafts(), ...drafts]);
+      setExpanded(null);
+    }
+    for (const line of lines) onAddLegacyLine?.(line);
+    if (needsDose) setPending({ ...needsDose, noteId });
   };
 
   // A drug the catalog lacks goes into the clinic's base, so every doctor
@@ -373,6 +429,8 @@ export function PrescriptionConstructor({
   );
 
   const picker = shortlist && !disabled;
+  // The picker marks with the same rule (prescription-columns.ts).
+  const onVisit = React.useMemo(() => onVisitChecker(rows, legacy), [rows, legacy]);
 
   const pendingForm = pendingOpen && pending ? (
     <div ref={pendingRef} className="scroll-mb-28">
@@ -477,7 +535,15 @@ export function PrescriptionConstructor({
               waiting for its dose, the custom form, then the columns. The
               rows come after it, so a new row never pushes the columns
               down under the doctor's cursor. */}
-          {aboveColumns ? <div className="mt-3 empty:hidden">{aboveColumns}</div> : null}
+          {aboveColumns ? (
+            <div className="mt-3 empty:hidden">
+              {aboveColumns({
+                addItem: addFromShort,
+                addItems,
+                isOnVisit: onVisit,
+              })}
+            </div>
+          ) : null}
           {pendingForm}
           {customForm}
           <PrescriptionPicker

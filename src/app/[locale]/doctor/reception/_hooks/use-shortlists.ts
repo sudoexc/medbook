@@ -2,11 +2,17 @@
 
 /**
  * «Мои частые» — what opens on tapping the diagnosis field with nothing
- * typed, and the prescription picker's columns (see
- * /api/crm/doctors/me/{diagnosis,drug}-shortlist), plus the one-tap «add
- * this drug to the clinic's base» mutation.
+ * typed, the diagnosis and prescription pickers' columns (see
+ * /api/crm/doctors/me/{diagnosis,drug}-shortlist), «Обычно при <диагноз>»
+ * (/api/crm/doctors/me/diagnosis-memory), plus the one-tap «add this drug
+ * to the clinic's base» mutation.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import type { DrugSearchHit } from "./use-drug-search";
 
@@ -79,24 +85,139 @@ const EMPTY_SHORTLIST: DrugShortlist = {
   usual: {},
 };
 
+/** The diagnosis endpoint's lists (see diagnosis-shortlist/route.ts). */
+export type DiagnosisShortlist = {
+  /** Stars, then his most written: what the plain search field opens. */
+  rows: DiagnosisShortItem[];
+  /** The picker's «Частые»: his most written, starred or not. */
+  frequent: DiagnosisShortItem[];
+  /** The picker's «Мои»: his stars, in his order, named. */
+  starred: DiagnosisShortItem[];
+};
+
+const EMPTY_DIAGNOSIS_SHORTLIST: DiagnosisShortlist = {
+  rows: [],
+  frequent: [],
+  starred: [],
+};
+
 export const diagnosisShortlistKey = ["doctor", "reception", "dx-shortlist"] as const;
 export const drugShortlistKey = ["doctor", "reception", "rx-shortlist"] as const;
 
+const diagnosisShortlistQuery = (enabled: boolean) => ({
+  queryKey: diagnosisShortlistKey,
+  enabled,
+  queryFn: async ({ signal }: { signal: AbortSignal }): Promise<DiagnosisShortlist> => {
+    const res = await fetch("/api/crm/doctors/me/diagnosis-shortlist", {
+      credentials: "include",
+      signal,
+    });
+    if (!res.ok) return EMPTY_DIAGNOSIS_SHORTLIST;
+    const data = (await res.json()) as Partial<DiagnosisShortlist>;
+    // Every list defaults: a server on the previous build sends only `rows`.
+    return {
+      rows: data.rows ?? [],
+      frequent: data.frequent ?? [],
+      starred: data.starred ?? [],
+    };
+  },
+  staleTime: 5 * 60_000,
+  refetchOnWindowFocus: false,
+});
+
+/** The plain search field's list. One request with the picker's columns. */
 export function useDiagnosisShortlist(enabled = true) {
-  return useQuery<DiagnosisShortItem[]>({
-    queryKey: diagnosisShortlistKey,
-    enabled,
-    queryFn: async ({ signal }) => {
-      const res = await fetch("/api/crm/doctors/me/diagnosis-shortlist", {
-        credentials: "include",
-        signal,
-      });
-      if (!res.ok) return [];
-      const data = (await res.json()) as { rows?: DiagnosisShortItem[] };
-      return data.rows ?? [];
-    },
-    staleTime: 5 * 60_000,
-    refetchOnWindowFocus: false,
+  return useQuery({
+    ...diagnosisShortlistQuery(enabled),
+    select: (data: DiagnosisShortlist) => data.rows,
+  });
+}
+
+/** The diagnosis picker's «Частые» and «Мои» columns. */
+export function useDiagnosisColumns(enabled = true) {
+  return useQuery(diagnosisShortlistQuery(enabled));
+}
+
+// ── «Обычно при <диагноз>» ─────────────────────────────────────────────
+
+export type DiagnosisMemoryAdvice = { line: string; count: number };
+
+/** What this doctor usually prescribes and recommends with one diagnosis. */
+export type DiagnosisMemory = {
+  /** His visits with it as the main diagnosis that held anything. */
+  visits: number;
+  /** Most often first; the `last*` fields carry his usual dose and schema. */
+  prescriptions: DrugShortItem[];
+  advice: DiagnosisMemoryAdvice[];
+};
+
+const EMPTY_MEMORY: DiagnosisMemory = { visits: 0, prescriptions: [], advice: [] };
+
+/**
+ * One diagnosis as the memory knows it: its code, or the words of one
+ * written without a code. Null for an empty one.
+ */
+export function diagnosisMemoryTarget(d: {
+  code?: string | null;
+  name?: string | null;
+}): { code: string } | { name: string } | null {
+  const code = d.code?.trim().toUpperCase();
+  if (code) return { code };
+  const name = d.name?.trim().replace(/\s+/g, " ");
+  return name ? { name } : null;
+}
+
+export function diagnosisMemoryKey(
+  target: { code: string } | { name: string },
+  excludeNoteId: string | null,
+) {
+  return [
+    "doctor",
+    "reception",
+    "dx-memory",
+    "code" in target ? `code:${target.code}` : `text:${target.name.toLowerCase()}`,
+    excludeNoteId ?? "",
+  ] as const;
+}
+
+/**
+ * The memory of each visit diagnosis, in the visit's order. One query per
+ * diagnosis: adding a second diagnosis does not reload the first one's.
+ */
+export function useDiagnosisMemories(
+  diagnoses: readonly { code: string | null; name: string | null }[],
+  excludeNoteId: string | null,
+  enabled = true,
+) {
+  const targets = diagnoses.map(diagnosisMemoryTarget);
+  return useQueries({
+    queries: targets.map((target) => ({
+      queryKey: target
+        ? diagnosisMemoryKey(target, excludeNoteId)
+        : (["doctor", "reception", "dx-memory", "none"] as const),
+      enabled: enabled && !!target,
+      queryFn: async ({ signal }: { signal: AbortSignal }): Promise<DiagnosisMemory> => {
+        if (!target) return EMPTY_MEMORY;
+        const params = new URLSearchParams(
+          "code" in target ? { code: target.code } : { name: target.name },
+        );
+        if (excludeNoteId) params.set("exclude", excludeNoteId);
+        const res = await fetch(
+          `/api/crm/doctors/me/diagnosis-memory?${params.toString()}`,
+          { credentials: "include", signal },
+        );
+        // A suggestion, never a blocker: a failed read shows nothing.
+        if (!res.ok) return EMPTY_MEMORY;
+        const data = (await res.json()) as Partial<DiagnosisMemory>;
+        return {
+          visits: data.visits ?? 0,
+          prescriptions: data.prescriptions ?? [],
+          advice: data.advice ?? [],
+        };
+      },
+      staleTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+    })),
   });
 }
 

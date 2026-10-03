@@ -94,6 +94,39 @@ export function withDiagnosisPicked(
   return changed(note, setOf([...list, { code, name }]));
 }
 
+/** The role a picked diagnosis takes on the visit. */
+export type DiagnosisRole = "main" | "additional";
+
+/** What a pick does by default: the main one while the visit has none. */
+export function defaultDiagnosisRole(note: NoteLike): DiagnosisRole {
+  return diagnosisListOf(note).length === 0 ? "main" : "additional";
+}
+
+/**
+ * A pick from the visit screen's diagnosis picker, where the doctor says
+ * with one click whether it is the main diagnosis or an additional one
+ * (clinic request 03.10.2026). «Основной» puts it first and the former main
+ * one becomes the first of the others; «Сопутствующий» is the plain pick.
+ * A diagnosis already on the visit only moves to the front for «Основной».
+ * Null when nothing changes or the visit already holds four.
+ */
+export function withDiagnosisPickedAs(
+  note: NoteLike,
+  d: DiagnosisItem,
+  role: DiagnosisRole,
+): NoteDiagnoses | null {
+  if (role === "additional") return withDiagnosisPicked(note, d);
+  const code = d.code?.trim() || null;
+  const name = d.name?.trim() || null;
+  if (!code && !name) return null;
+  if (hasDiagnosis(note, { code, name })) {
+    return withDiagnosisMadeMain(note, { code, name });
+  }
+  const list = diagnosisListOf(note);
+  if (list.length >= MAX_VISIT_DIAGNOSES) return null;
+  return changed(note, setOf([{ code, name }, ...list]));
+}
+
 /**
  * Where a diagnosis sits in the live list. Found by what it is, not by the
  * position it had on screen: a pending edit may have reordered the list

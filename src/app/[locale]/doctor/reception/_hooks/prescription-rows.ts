@@ -186,7 +186,8 @@ export function draftFromShortItem(
     return { forms, draft: { ...base, displayName } };
   }
   // A free-typed line from his history: «Магне B6 — по 2 таб 2 раза…».
-  // The part after the dash is the dose as he wrote it.
+  // The part after the dash is the dose as he wrote it. A manual row of
+  // his comes back with its dose and schema, like a catalog one.
   const { name, dose } = splitFreeLine(item.label);
   return {
     forms: [],
@@ -196,9 +197,7 @@ export function draftFromShortItem(
       form: null,
       strength: null,
       dose: dose ?? item.lastDose ?? "",
-      timesOfDay: [],
-      mealRelation: "NO_MATTER",
-      durationDays: null,
+      ...scheduleOf(item),
       instructionRu: null,
       instructionUz: null,
       remindPatient: true,

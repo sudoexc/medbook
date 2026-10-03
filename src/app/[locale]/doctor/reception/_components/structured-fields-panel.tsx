@@ -14,10 +14,14 @@
  * They used to be one left-column stack, where a drug row was cut to
  * «Грандаксин 50 мг — по…». Both panels save through the same loud-patch
  * hook, so the failure behaviour cannot drift between them.
+ *
+ * The doctor of this screen works with the mouse (03.10.2026): a diagnosis
+ * is picked in a wide three-column window (diagnosis-picker-dialog.tsx),
+ * and once the visit has one, «Назначения» offers what he usually
+ * prescribes and recommends with it (diagnosis-memory-card.tsx).
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { toast } from "sonner";
 
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
 import { visitDiagnosesOf } from "@/lib/visit-diagnoses";
@@ -40,7 +44,7 @@ import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
 import { useQueryClient } from "@tanstack/react-query";
 import { visitNoteKey, type VisitNoteRow } from "../_hooks/use-visit-note";
 import { toPrescriptionDrafts } from "../_hooks/prescription-rows";
-import { hasDiagnosis, withDiagnosisPicked } from "../_hooks/diagnosis-list";
+import { adviceKey } from "../_hooks/diagnosis-columns";
 // Diagnosis + follow-up cards are shared with the conclusions screen (the
 // 24h in-window correction flow) — see ../../_components.
 import {
@@ -49,7 +53,8 @@ import {
 } from "../../_components/diagnosis-follow-up-cards";
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
-import { IcdCatalogDrawer } from "./icd-catalog-drawer";
+import { DiagnosisMemoryCard } from "./diagnosis-memory-card";
+import { DiagnosisPickerDialog } from "./diagnosis-picker-dialog";
 import { CdsWarningsCard } from "./cds-warnings-card";
 import { ParsedFromTextCard } from "./parsed-from-text-card";
 import {
@@ -66,6 +71,10 @@ const RX_FIELD: FieldDef = {
   key: "prescriptions",
   presetField: "PRESCRIPTIONS",
 };
+
+// The advice column's limits (the server's ChipArray, see advice-panel.tsx).
+const MAX_ADVICE_LINE_LEN = 500;
+const MAX_ADVICE_LINES = 40;
 
 /** A drug a doctor quick-added to the clinic's base: a name, no substance. */
 function isBareClinicDrug(id: string | null | undefined): boolean {
@@ -97,7 +106,7 @@ export function DiagnosisFollowUpPanel() {
   const { note, isFinalized, applyPatch, patch } =
     useLoudVisitNotePatch(visitNoteId);
   const liveNote = useLiveNote(note);
-  const [icdCatalogOpen, setIcdCatalogOpen] = React.useState(false);
+  const [pickerOpen, setPickerOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
 
@@ -192,7 +201,7 @@ export function DiagnosisFollowUpPanel() {
             saving={patch.isPending}
             onChange={applyPatch}
             onRequestApplyProtocol={(p) => setProtocolToApply(p)}
-            onOpenCatalog={() => setIcdCatalogOpen(true)}
+            onOpenPicker={() => setPickerOpen(true)}
           />
           {(!isFinalized ||
             note.followUpDays != null ||
@@ -207,21 +216,15 @@ export function DiagnosisFollowUpPanel() {
         </>
       )}
 
-      <IcdCatalogDrawer
-        open={icdCatalogOpen}
-        onOpenChange={setIcdCatalogOpen}
-        onPick={(code, name) => {
-          // Same rule as a pick in the card's search: the main diagnosis
-          // while the visit has none, one more after that.
-          const live = liveNote();
-          const next = live ? withDiagnosisPicked(live, { code, name }) : null;
-          if (next) applyPatch(next);
-          else if (live && hasDiagnosis(live, { code, name })) {
-            toast.info(t("diagnosis.alreadyAdded"));
-          }
-          setIcdCatalogOpen(false);
-        }}
-      />
+      {note && !isFinalized && (
+        <DiagnosisPickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          note={note}
+          liveNote={() => liveNote() ?? note}
+          onChange={applyPatch}
+        />
+      )}
 
       <ApplyProtocolDialog
         open={!!protocolToApply}
@@ -319,10 +322,14 @@ export function PrescriptionsPanel() {
    * Legacy chip arrays are saved replace-all, so building the payload from
    * the render snapshot loses the first of two quick clicks. Read the
    * CURRENT cache row and fold the result back synchronously — same guard
-   * the advice column and the parsed-prescription adopt path use.
+   * the advice column and the parsed-prescription adopt path use. Advice
+   * goes through here too when «Обычно при <диагноз>» adds a recommendation.
    */
   const mutateChips = React.useCallback(
-    (key: FieldDef["key"], updater: (cur: string[]) => string[]): boolean => {
+    (
+      key: FieldDef["key"] | "advice",
+      updater: (cur: string[]) => string[],
+    ): boolean => {
       if (!note || isFinalized) return false;
       const cacheKey = visitNoteKey(note.id);
       const cur = qc.getQueryData<VisitNoteRow>(cacheKey)?.[key] ?? note[key] ?? [];
@@ -337,6 +344,26 @@ export function PrescriptionsPanel() {
       return true;
     },
     [note, isFinalized, qc, applyPatch],
+  );
+
+  /**
+   * Recommendations from «Обычно при <диагноз>», added to the advice column
+   * with its rules: no line twice (case aside), at most MAX_ADVICE_LINES.
+   */
+  const addAdviceLines = React.useCallback(
+    (lines: readonly string[]) => {
+      mutateChips("advice", (cur) => {
+        const next = [...cur];
+        for (const raw of lines) {
+          const line = raw.trim().slice(0, MAX_ADVICE_LINE_LEN);
+          if (!line || next.length >= MAX_ADVICE_LINES) continue;
+          if (next.some((l) => adviceKey(l) === adviceKey(line))) continue;
+          next.push(line);
+        }
+        return next;
+      });
+    },
+    [mutateChips],
   );
 
   const handlePresetClick = React.useCallback(
@@ -392,9 +419,15 @@ export function PrescriptionsPanel() {
         disabled={isFinalized}
         standalone
         saving={patch.isPending}
-        // `aboveColumns` is the place for «Обычно при <диагноз>»: what this
-        // doctor usually prescribes with the visit's diagnosis, above the
-        // picker's columns.
+        // «Обычно при <диагноз>»: what this doctor usually prescribes and
+        // recommends with the visit's diagnoses, above the picker's columns.
+        aboveColumns={(pickApi) => (
+          <DiagnosisMemoryCard
+            note={note}
+            pickApi={pickApi}
+            onAddAdvice={addAdviceLines}
+          />
+        )}
         presets={presetsByField[RX_FIELD.presetField] ?? []}
         onSaveRows={saveRxRows}
         onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}

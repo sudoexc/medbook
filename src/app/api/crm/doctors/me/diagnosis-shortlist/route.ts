@@ -6,7 +6,16 @@
  * Everything else in the ICD catalog and the clinic's learned list stays
  * behind search.
  *
- * Ranking lives in `buildDiagnosisShortlist` (unit-tested).
+ * The visit screen's diagnosis picker (clinic request 03.10.2026: the
+ * diagnosis picked with the mouse) reads two more lists from the same
+ * history: `frequent`, what he writes most, starred or not (column
+ * «Частые»), and `starred`, his stars in his order with their names (column
+ * «Мои»). The third column, «Каталог МКБ», is /api/crm/icd10/tree.
+ *
+ * Everything is this doctor's, in the caller's clinic (the tenant extension
+ * scopes the notes), over a bounded window: the last `days` (365), at most
+ * 3000 notes. Ranking lives in `buildDiagnosisShortlist` /
+ * `buildDiagnosisColumns` (unit-tested).
  */
 import { z } from "zod";
 
@@ -15,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { err, ok, parseQuery } from "@/server/http";
 import { ICD10_ENTRIES } from "@/server/icd10/data";
 import {
+  buildDiagnosisColumns,
   buildDiagnosisShortlist,
   noteDiagnosisUses,
 } from "@/server/catalog/shortlist";
@@ -23,6 +33,9 @@ const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(30).default(12),
   days: z.coerce.number().int().min(7).max(1095).default(365),
 });
+
+/** Rows of the «Частые» column. */
+const FREQUENT_LIMIT = 30;
 
 let icdNames: Map<string, string> | null = null;
 function staticName(code: string): string | null {
@@ -85,13 +98,18 @@ export const GET = createApiListHandler(
         .map((l) => [l.code.toUpperCase(), l.nameRu]),
     );
 
-    const rows = buildDiagnosisShortlist({
-      pinnedCodes: favorites.map((f) => f.entityCode),
-      uses: notes.flatMap(noteDiagnosisUses),
-      nameForCode: (code) => staticName(code) ?? learnedNames.get(code) ?? null,
-      limit,
+    const pinnedCodes = favorites.map((f) => f.entityCode);
+    const uses = notes.flatMap(noteDiagnosisUses);
+    const nameForCode = (code: string) =>
+      staticName(code) ?? learnedNames.get(code) ?? null;
+    const rows = buildDiagnosisShortlist({ pinnedCodes, uses, nameForCode, limit });
+    const { frequent, starred } = buildDiagnosisColumns({
+      pinnedCodes,
+      uses,
+      nameForCode,
+      frequentLimit: FREQUENT_LIMIT,
     });
 
-    return ok({ rows, windowDays: days });
+    return ok({ rows, frequent, starred, windowDays: days });
   },
 );

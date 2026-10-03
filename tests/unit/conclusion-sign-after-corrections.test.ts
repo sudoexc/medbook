@@ -720,6 +720,18 @@ describe("signing on the visit screen without the conclusion editor", () => {
     );
     for (const file of readdirSync(dir)) {
       const src = readFileSync(path.join(dir, file), "utf8");
+      if (file === "prescription-constructor.tsx") {
+        // Its entry is the check for a drug still waiting in the dose
+        // prompt (review fix 03.10.2026): it refuses the signature and
+        // never sends anything itself.
+        const entry = src.slice(
+          src.indexOf("return registerDraftFlush("),
+          src.indexOf("}, [registerDraftFlush"),
+        );
+        expect(entry).toContain("throw new PendingDosePickError");
+        expect(entry).not.toMatch(/mutate|onSaveRows|applyPatch|fetch\(/);
+        continue;
+      }
       expect(src, file).not.toContain("registerDraftFlush(");
     }
     expect(existsSync(path.join(dir, "notes-editor-panel.tsx"))).toBe(false);

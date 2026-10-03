@@ -528,7 +528,9 @@ export type VisitFinalizeStep =
  *
  *   1. push any registered debounced text tails (they join the same
  *      queue); since the conclusion editor left the visit screen
- *      (03.10.2026) nothing registers there, and the step is a no-op;
+ *      (03.10.2026) no text registers there. The prescription constructor
+ *      registers a check instead: a drug still waiting in its dose prompt
+ *      fails this step (PendingDosePickError), and nothing is signed;
  *   2. wait for every queued PATCH and stop if one still pending at the
  *      click did not land, including one refused while step 1 waited;
  *   3. judge empty sections on the row read back from the server: the

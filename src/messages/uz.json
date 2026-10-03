@@ -6960,6 +6960,8 @@
         "customSharedHint": "Dori klinika bazasiga tushadi va barcha shifokorlarda paydo bo‘ladi.",
         "hiddenByClinic": "«{name}» klinika administratori tomonidan yashirilgan. Dori faqat shu tashrifga yozildi.",
         "addRateLimited": "Bir soatda juda ko‘p yangi dori qo‘shildi. Bu dori faqat shu tashrifga yozildi.",
+        "pendingBusy": "Avval «{name}» dorisining dozasini yozing yoki uni bekor qiling",
+        "pendingBlocksSign": "«{name}» dorisi doza kutmoqda: uni yozib «Qo‘shish» tugmasini bosing yoki dorini bekor qiling",
         "picker": {
           "col": {
             "frequent": "Tez-tez",
@@ -6977,7 +6979,7 @@
           "groupEmpty": "Bu guruhda hozircha dori yo‘q.",
           "showMore": "Yana ko‘rsatish",
           "loadError": "Ro‘yxat yuklanmadi. Qayta urinish uchun bosing.",
-          "onVisit": "Allaqachon tayinlangan",
+          "onVisit": "Allaqachon tayinlangan. Yana qo‘shish uchun bosing",
           "starAdd": "«Mening» ro‘yxatiga qo‘shish",
           "starRemove": "«Mening» ro‘yxatidan olib tashlash",
           "usualHint": "Oxirgi marta qanday yozgan bo‘lsangiz",

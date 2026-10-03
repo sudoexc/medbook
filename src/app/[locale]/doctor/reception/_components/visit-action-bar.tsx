@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { isPendingDosePick } from "../_hooks/prescription-rows";
 import { useReceptionContext } from "../_hooks/reception-context";
 import { cdsDrugCheckPatientKey } from "../_hooks/use-cds-drug-check";
 import {
@@ -140,6 +141,12 @@ export function VisitActionBar() {
         emptyConfirmed,
       });
       if (step.kind === "flushFailed") {
+        // A drug still waiting in the dose prompt: nothing was signed, the
+        // prompt is scrolled into view. Not an error of the connection.
+        if (isPendingDosePick(step.error)) {
+          toast.error(t("rx.pendingBlocksSign", { name: step.error.displayName }));
+          return;
+        }
         toast.error(
           isVersionConflict(step.error)
             ? t("editor.saveErrorConflict")
@@ -198,6 +205,7 @@ export function VisitActionBar() {
   const openPreview = async () => {
     if (!visitNoteId || previewPreparing) return;
     setPreviewPreparing(true);
+    let open = true;
     try {
       await Promise.race([
         (async () => {
@@ -206,11 +214,17 @@ export function VisitActionBar() {
         })(),
         new Promise((resolve) => setTimeout(resolve, PREVIEW_SETTLE_MS)),
       ]);
-    } catch {
+    } catch (e) {
+      // A drug waiting in the dose prompt is not on the sheet: say so
+      // instead of showing a preview without it.
+      if (isPendingDosePick(e)) {
+        open = false;
+        toast.error(t("rx.pendingBlocksSign", { name: e.displayName }));
+      }
       // A failed save has its own toast; the preview shows what is saved.
     } finally {
       setPreviewPreparing(false);
-      setPreviewOpen(true);
+      if (open) setPreviewOpen(true);
     }
   };
 

@@ -246,8 +246,13 @@ export function DiagnosisFollowUpPanel() {
  */
 export function PrescriptionsPanel() {
   const t = useTranslations("doctor.reception");
-  const { visitNoteId, requestBodyAppend, requestBodyRemove, activeAppointment } =
-    useReceptionContext();
+  const {
+    visitNoteId,
+    requestBodyAppend,
+    requestBodyRemove,
+    activeAppointment,
+    registerDraftFlush,
+  } = useReceptionContext();
   // Prescription rows are replace-all: see use-loud-patch.ts for the
   // conflict/rollback contract every column shares.
   const { note, isFinalized, applyPatch, patch } =
@@ -406,6 +411,9 @@ export function PrescriptionsPanel() {
         onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
         onOpenCatalog={() => setCatalogOpen(true)}
         catalogPickRef={catalogPickRef}
+        // A drug waiting in the dose prompt holds «Завершить приём» and
+        // «Предпросмотр» until it is added or cancelled.
+        registerDraftFlush={registerDraftFlush}
         footer={
           // The check reads every diagnosis of the visit, not only the main
           // one: a comorbidity is where a contraindication usually hides.

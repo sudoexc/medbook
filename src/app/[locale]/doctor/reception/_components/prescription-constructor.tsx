@@ -22,7 +22,11 @@
  * usual dose and schema (see prescription-picker.tsx). The search stays as
  * an extra on top of them. The corrections screen keeps the plain search.
  * A dose the catalog cannot give is answered with one click too: the
- * prompt offers the doses that form is written in (quick-doses.ts).
+ * prompt offers the doses that form is written in (quick-doses.ts), and a
+ * click on one adds the row, like the same chips in the row editor. While a
+ * pick waits in that prompt it holds the visit: a second such pick does not
+ * replace it, and signing or the preview are refused until it is added or
+ * cancelled (`registerDraftFlush`).
  *
  * Persistence is replace-all via PATCH {visitPrescriptions: [...]} — the
  * same autosave model as the chip fields. Legacy text lines
@@ -82,9 +86,11 @@ import {
   type VisitPrescriptionTimeOfDay,
 } from "../_hooks/use-visit-note";
 import {
+  admitPendingPick,
   draftFromCatalogPick,
   draftFromDrug,
   draftFromShortItem,
+  PendingDosePickError,
   shortItemKind,
   splitFreeLine,
   toggleTimeOfDay,
@@ -144,6 +150,14 @@ type Props = {
   catalogPickRef?: React.MutableRefObject<
     ((drug: CatalogPickDrug, term: string) => void) | null
   >;
+  /**
+   * The reception's flush registry (the visit screen). A pick waiting in
+   * the dose prompt is local state the sign flow cannot see: the constructor
+   * registers a check that refuses «Завершить приём» and «Предпросмотр»
+   * with PendingDosePickError while one waits, instead of signing the
+   * visit without that drug.
+   */
+  registerDraftFlush?: (flush: () => Promise<void>) => () => void;
   /** Render as a top-level panel card instead of an inset sub-card. */
   standalone?: boolean;
   /** Shared save-in-flight flag for the header spinner (standalone hosts). */
@@ -179,6 +193,7 @@ export function PrescriptionConstructor({
   onRemoveLegacyChip,
   onOpenCatalog,
   catalogPickRef,
+  registerDraftFlush,
   standalone,
   saving,
   aboveColumns,
@@ -206,12 +221,39 @@ export function PrescriptionConstructor({
   const [customOpen, setCustomOpen] = React.useState(false);
   // A pick waiting for its dose (audit G4-07): not saved until written.
   // Tied to its note: switching to the next patient must not carry it over.
-  const [pending, setPending] = React.useState<
+  const [pending, setPendingState] = React.useState<
     (DraftPick & { noteId: string }) | null
   >(null);
+  // The same pick, readable at once by a click handler or the sign check
+  // (two picks in a row, «Завершить приём» right after a pick).
+  const pendingNow = React.useRef<(DraftPick & { noteId: string }) | null>(null);
+  const setPending = React.useCallback(
+    (
+      next:
+        | (DraftPick & { noteId: string })
+        | null
+        | ((
+            prev: (DraftPick & { noteId: string }) | null,
+          ) => (DraftPick & { noteId: string }) | null),
+    ) => {
+      const value = typeof next === "function" ? next(pendingNow.current) : next;
+      pendingNow.current = value;
+      setPendingState(value);
+    },
+    [],
+  );
   const pendingOpen = !!pending && pending.noteId === note.id && !disabled;
   // Scrolled clear of the sticky «Завершить приём» bar when it opens.
   const pendingRef = useRevealOnOpen<HTMLDivElement>(pendingOpen);
+  /** Bring the waiting pick back into view, its dose field focused. */
+  const revealPending = React.useCallback(() => {
+    const box = pendingRef.current;
+    if (!box) return;
+    box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    box.querySelector<HTMLInputElement>("input")?.focus({
+      preventScroll: true,
+    });
+  }, [pendingRef]);
 
   // The plain search: only where the picker is off (corrections screen).
   const searchQuery = useDrugSearch(shortlist ? "" : query);
@@ -254,7 +296,18 @@ export function PrescriptionConstructor({
       // No dose the catalog can vouch for: the doctor writes it first. A
       // row is never saved with a concentration or a pack in «Доза».
       if (!draft.dose.trim()) {
-        setPending({ draft, forms, noteId });
+        const waiting = pendingNow.current;
+        const verdict = disabled ? "open" : admitPendingPick(waiting, draft, noteId);
+        if (verdict === "open") {
+          setPending({ draft, forms, noteId });
+        } else {
+          if (verdict === "busy" && waiting) {
+            toast.warning(
+              t("rx.pendingBusy", { name: waiting.draft.displayName }),
+            );
+          }
+          revealPending();
+        }
         return;
       }
       const current = liveDrafts();
@@ -263,8 +316,25 @@ export function PrescriptionConstructor({
       // has nothing left to set and stays a single line.
       setExpanded(draft.timesOfDay.length > 0 ? null : current.length);
     },
-    [onSaveRows, liveDrafts, noteId],
+    [onSaveRows, liveDrafts, noteId, disabled, setPending, revealPending, t],
   );
+
+  // The sign check (see `registerDraftFlush`): refuses while a pick of this
+  // note waits for its dose. Read from refs when it runs, so it is
+  // registered once per screen and never misses the latest pick.
+  const pendingOpenRef = React.useRef(pendingOpen);
+  React.useEffect(() => {
+    pendingOpenRef.current = pendingOpen;
+  }, [pendingOpen]);
+  React.useEffect(() => {
+    if (!registerDraftFlush) return;
+    return registerDraftFlush(async () => {
+      const waiting = pendingNow.current;
+      if (!pendingOpenRef.current || !waiting) return;
+      revealPending();
+      throw new PendingDosePickError(waiting.draft.displayName);
+    });
+  }, [registerDraftFlush, revealPending]);
 
   /** A catalog drug (search hit, drawer, catalog column) with what was typed. */
   const addFromCatalog = React.useCallback(
@@ -381,10 +451,13 @@ export function PrescriptionConstructor({
         locale={locale}
         onChange={(draft) => setPending((p) => (p ? { ...p, draft } : p))}
         onCancel={() => setPending(null)}
-        onAdd={() => {
+        onAdd={(chosenDose) => {
+          // A quick-dose chip passes its dose: one click adds the row.
           const { draft, forms } = pending;
+          const dose = (chosenDose ?? draft.dose).trim();
+          if (!dose) return;
           setPending(null);
-          addDraft({ ...draft, dose: draft.dose.trim() }, forms);
+          addDraft({ ...draft, dose }, forms);
         }}
       />
     </div>
@@ -1080,7 +1153,8 @@ function PendingDoseForm({
   pick: DraftPick;
   locale: PrescriptionLocale;
   onChange: (draft: VisitPrescriptionDraft) => void;
-  onAdd: () => void;
+  /** With a dose: a quick-dose chip, which adds the row at once. */
+  onAdd: (dose?: string) => void;
   onCancel: () => void;
 }) {
   const t = useTranslations("doctor.reception");
@@ -1090,7 +1164,10 @@ function PendingDoseForm({
   const submit = () => {
     if (canAdd) onAdd();
   };
-  // A mouse answer to «how much?»: the doses this form is written in.
+  // A mouse answer to «how much?»: the doses this form is written in. One
+  // click adds the row, as the same chips do in the row editor: a chip that
+  // only filled the field looked done, and the drug was signed off without
+  // ever reaching the visit.
   const quick = quickDoseOptions(
     draft.form,
     forms.find((f) => f.form === draft.form)?.strengths ?? [],
@@ -1133,7 +1210,7 @@ function PendingDoseForm({
             <SegChip
               key={dose}
               active={draft.dose.trim() === dose}
-              onClick={() => onChange({ ...draft, dose })}
+              onClick={() => onAdd(dose)}
             >
               {dose}
             </SegChip>

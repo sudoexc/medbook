@@ -23,7 +23,10 @@
  * Nothing here saves: a click hands the item to the constructor, which runs
  * it through the same «dose first» step as every other pick. Items already
  * on the visit stay in place, marked, so a list never moves under the
- * cursor between two clicks.
+ * cursor between two clicks. They stay clickable too: in neurology a course
+ * is often written in two forms («Мексидол 5,0 в/м №10», then «Мексидол
+ * 125 мг таб»), and a second click adds the drug again. Only the second
+ * click of a double click is ignored, so one gesture never adds two rows.
  */
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -58,6 +61,7 @@ import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
 import {
   atcSubgroups,
   catalogRootGroups,
+  isRepeatClick,
   onVisitChecker,
   starredColumn,
 } from "../_hooks/prescription-columns";
@@ -454,8 +458,10 @@ function PickerItemRow({
     <li className="relative">
       <button
         type="button"
-        disabled={added}
-        onClick={onPick}
+        onClick={(e) => {
+          if (isRepeatClick(e.detail)) return;
+          onPick();
+        }}
         title={
           added
             ? t("rx.picker.onVisit")
@@ -466,7 +472,7 @@ function PickerItemRow({
         className={cn(
           "block min-h-12 w-full rounded-lg px-2 py-1.5 text-left transition-colors",
           added
-            ? "cursor-default bg-success/5"
+            ? "bg-success/5 hover:bg-success/10 active:bg-success/15"
             : "hover:bg-primary/5 active:bg-primary/10",
         )}
       >

@@ -67,8 +67,9 @@ type ReceptionContextValue = {
    * debounced autosave tail is never dropped from the legally-final
    * document. Returns an unregister function for effect cleanup. Nothing on
    * the visit screen autosaves text on a debounce since the conclusion
-   * editor left it, so the registry is usually empty and the flush a no-op;
-   * it stays for any future debounced field.
+   * editor left it; the prescription constructor registers a check that
+   * rejects (PendingDosePickError) while a drug waits in its dose prompt,
+   * so the visit is not signed or previewed without it.
    */
   registerDraftFlush: (flush: () => Promise<void>) => () => void;
   flushDraftEdits: () => Promise<void>;

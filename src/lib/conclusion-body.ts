@@ -10,11 +10,43 @@
  * share them.
  */
 
-/** `body` with `text` appended as its own paragraph. */
+/**
+ * `body` with `text` appended as its own paragraph, unless the body already
+ * holds it as a paragraph. A protocol applied a second time (the button
+ * stays on the diagnosis row) used to write its conclusion template twice:
+ * the editor that let the doctor delete the copy has left the visit screen,
+ * so the note was signed and printed with it twice, under a dialog that
+ * promises «дубликаты не добавляются».
+ */
 export function appendSnippet(body: string, text: string): string {
   const snippet = text.trim();
   if (!snippet) return body;
+  if (hasSnippetParagraph(body, snippet)) return body;
   return body.trim() ? `${body}\n\n${snippet}` : snippet;
+}
+
+/**
+ * Whether `snippet` stands in `body` as whole lines: starts at the body's
+ * start or after a line break, ends at its end or before one. A short
+ * template that merely occurs inside a sentence of the doctor's own text
+ * does not count, so it is still added. Line endings and the spaces at the
+ * ends of lines are not compared.
+ */
+export function hasSnippetParagraph(body: string, snippet: string): boolean {
+  const b = normalizeLines(body);
+  const s = normalizeLines(snippet).trim();
+  if (!s) return false;
+  for (let i = b.indexOf(s); i >= 0; i = b.indexOf(s, i + 1)) {
+    const end = i + s.length;
+    const startsLine = i === 0 || b[i - 1] === "\n";
+    const endsLine = end === b.length || b[end] === "\n";
+    if (startsLine && endsLine) return true;
+  }
+  return false;
+}
+
+function normalizeLines(text: string): string {
+  return text.replace(/\r\n?/g, "\n").replace(/^[ \t]+|[ \t]+$/gm, "");
 }
 
 /**

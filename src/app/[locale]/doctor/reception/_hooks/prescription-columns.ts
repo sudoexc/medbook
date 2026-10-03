@@ -22,7 +22,7 @@ import type { DrugShortItem, DrugUsual } from "./use-shortlists";
  * under the catalog search's fold («Магне® B6» on screen is the «Магне В6»
  * of his list). Items on the visit stay where they are, marked: hiding them
  * moved the list under the doctor's cursor, and his next click landed on
- * the drug below.
+ * the drug below. The mark is only a mark: the item still adds on a click.
  */
 export function onVisitChecker(
   rows: ReadonlyArray<{ drugId: string | null; displayName: string }>,
@@ -39,6 +39,17 @@ export function onVisitChecker(
     (!!item.drugId && ids.has(item.drugId)) ||
     names.has(foldCatalogText(item.label)) ||
     names.has(foldCatalogText(splitFreeLine(item.label).name));
+}
+
+/**
+ * The second (third…) click of one double click. A picker item stays
+ * clickable once it is on the visit (a second row of the same drug in
+ * another form), so nothing else stops a double click from adding the drug
+ * twice. `detail` is the click count of the DOM event: 0 from the keyboard,
+ * 1 for a single click, and a deliberate click a moment later is 1 again.
+ */
+export function isRepeatClick(detail: number): boolean {
+  return detail > 1;
 }
 
 /**

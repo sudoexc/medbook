@@ -125,6 +125,52 @@ export function draftFromDrug(
 export type DraftPick = { draft: VisitPrescriptionDraft; forms: DrugFormOption[] };
 
 /**
+ * What to do with a pick that needs its dose written first, given the pick
+ * already waiting in the dose prompt (if any):
+ *
+ *   "open" — nothing waits on this note: the prompt opens for it;
+ *   "same" — it is the drug already waiting (a second click on it): show
+ *            the prompt again, nothing changes;
+ *   "busy" — another drug waits: keep it and say so. Replacing it silently
+ *            dropped the first drug from the visit while the doctor
+ *            believed he had prescribed both.
+ *
+ * A pick left behind on another patient's note does not count.
+ */
+export function admitPendingPick(
+  waiting: { draft: Pick<VisitPrescriptionDraft, "drugId" | "displayName">; noteId: string } | null,
+  incoming: Pick<VisitPrescriptionDraft, "drugId" | "displayName">,
+  noteId: string,
+): "open" | "same" | "busy" {
+  if (!waiting || waiting.noteId !== noteId) return "open";
+  const a = waiting.draft;
+  const same = a.drugId || incoming.drugId
+    ? a.drugId === incoming.drugId
+    : a.displayName.trim() === incoming.displayName.trim();
+  return same ? "same" : "busy";
+}
+
+/**
+ * A pick still waiting in the dose prompt when the doctor signs the visit
+ * or opens its preview. It is the constructor's local state, outside the
+ * PATCH queue the sign flow waits for, so without this refusal the visit
+ * was signed (and its handout and reminders sent) without that drug.
+ * Thrown from the constructor's entry in the reception's flush registry.
+ */
+export class PendingDosePickError extends Error {
+  readonly displayName: string;
+  constructor(displayName: string) {
+    super(`a prescription waits for its dose: ${displayName}`);
+    this.name = "PendingDosePickError";
+    this.displayName = displayName;
+  }
+}
+
+export function isPendingDosePick(e: unknown): e is PendingDosePickError {
+  return e instanceof PendingDosePickError;
+}
+
+/**
  * A shortlist pick as a row draft. His own items come back as he wrote them
  * last time: wording, form, strength and dose (audit G4-07). The clinic's
  * core-list items are labelled with the clinic's name («Анаприлин

@@ -107,6 +107,22 @@ describe("texts", () => {
     expect(ruTexts["detail.actions.IN_PROGRESS"]).toBe("Взять в работу");
     expect(ruTexts["detail.actions.NEW"]).toBe("Вернуть");
   });
+
+  it("phone tabs carry short labels that fit four abreast at 360 px", () => {
+    // Four tabs at 360 px leave about 52 px of 12 px text each: eight
+    // letters at most. «Bekor qilinganlar» used to run over its neighbours.
+    for (const s of ["NEW", "IN_PROGRESS", "DONE", "CANCELLED"]) {
+      expect(ruTexts[`tabs.${s}`], s).toBeTruthy();
+      expect(uzTexts[`tabs.${s}`], s).toBeTruthy();
+      expect(ruTexts[`tabs.${s}`].length, `ru ${s}`).toBeLessThanOrEqual(8);
+      expect(uzTexts[`tabs.${s}`].length, `uz ${s}`).toBeLessThanOrEqual(8);
+    }
+    const board = read("src/components/dev-tasks/dev-task-board.tsx");
+    expect(board).toContain("t(`tabs.${s}`)");
+    // The label clips inside its tab instead of spilling over the border.
+    expect(board).toMatch(/className="block max-w-full truncate">\{t\(`tabs\.\$\{s\}`\)\}/);
+    expect(board).toMatch(/"flex h-12 min-w-0 flex-col[^"]*overflow-hidden/);
+  });
 });
 
 describe("developer tooling and schema", () => {

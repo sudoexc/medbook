@@ -6,13 +6,15 @@
  *
  * Every write is optimistic (the page is worked with the mouse, and a list
  * that lags a click behind invites a second click) and runs in one queue
- * per arsenal, so «add, then drag it up» reaches the server in that order.
- * A failed write puts the server's list back and says why.
+ * per arsenal, so «add, then drag it up» reaches the server in that order;
+ * the list reloads once the queue is empty. A failed write puts the
+ * server's list back and says why.
  */
 import {
   useMutation,
   useQuery,
   useQueryClient,
+  type MutationOptions,
   type QueryClient,
 } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -120,10 +122,16 @@ export function useArsenal<K extends ArsenalKind>(kind: K, doctorId?: string | n
   });
 }
 
+/** The key every write of one arsenal carries, to count the queue. */
+export function arsenalWriteKey(kind: ArsenalKind, doctorId: string | null | undefined) {
+  return [...arsenalKey(kind, doctorId), "write"] as const;
+}
+
 /**
- * After a write: the page reloads its lists; the doctor's own visit screen
- * (his stars, his «Частые» switch) reloads when he is the one editing. An
- * ADMIN's own favourites are not this doctor's, so they stay as they are.
+ * After the last queued write: the page reloads its lists; the doctor's own
+ * visit screen (his stars, his «Частые» switch) reloads when he is the one
+ * editing. An ADMIN's own favourites are not this doctor's, so they stay as
+ * they are.
  */
 function settle(qc: QueryClient, kind: ArsenalKind, doctorId: string | null | undefined) {
   void qc.invalidateQueries({ queryKey: arsenalKey(kind, doctorId) });
@@ -137,19 +145,97 @@ function settle(qc: QueryClient, kind: ArsenalKind, doctorId: string | null | un
 
 type Snapshot = { before: unknown };
 
+/**
+ * The arsenal's writes, apart from React so the tests can drive them.
+ *
+ * All writes of one arsenal share a scope, so the requests run one after
+ * another in click order, while each optimistic edit applies at once.
+ * Only the last write of a burst to settle reloads the list (review of
+ * 03.10.2026): a reload after the first one brought back the server's list
+ * without the moves still queued, the rows snapped back under the mouse,
+ * and a drag made then sent a whole order without the earlier move, which
+ * the server accepted (same codes), so that move was lost.
+ */
+export function arsenalWriteOptions(
+  qc: QueryClient,
+  kind: ArsenalKind,
+  doctorId: string | null | undefined,
+  onFailed?: (error: unknown) => void,
+) {
+  const key = arsenalKey(kind, doctorId);
+  const mutationKey = arsenalWriteKey(kind, doctorId);
+  const scope = { id: `doctor-arsenal:${kind}:${doctorId ?? "me"}` };
+  const target = doctorId ? { doctorId } : {};
+  // Counted from inside onSettled/onError, where this write still pends.
+  const isLast = () => qc.isMutating({ mutationKey }) <= 1;
+
+  function write<V>(
+    request: (v: V) => Promise<unknown>,
+    optimistic: (cur: unknown, v: V) => unknown,
+    after?: () => void,
+  ): MutationOptions<unknown, unknown, V, Snapshot> {
+    return {
+      mutationKey,
+      scope,
+      mutationFn: request,
+      onMutate: async (v) => {
+        await qc.cancelQueries({ queryKey: key });
+        const before = qc.getQueryData(key);
+        qc.setQueryData(key, (cur: unknown) => optimistic(cur, v));
+        return { before };
+      },
+      onError: (e, _v, ctx) => {
+        // The list as it was before this click, only when nothing is queued
+        // after it: restoring it under later writes would undo their edits
+        // too. Otherwise the last one's reload brings the server's list,
+        // without this write.
+        if (isLast() && ctx?.before !== undefined) qc.setQueryData(key, ctx.before);
+        onFailed?.(e);
+      },
+      onSettled: () => {
+        if (isLast()) settle(qc, kind, doctorId);
+        after?.();
+      },
+    };
+  }
+
+  return {
+    add: write<{ code: string; item: unknown }>(
+      ({ code }) => send("POST", { ...target, kind, code }),
+      (cur, { code, item }) => withAdded(kind, cur, code, item),
+    ),
+    remove: write<{ code: string }>(
+      ({ code }) => send("DELETE", { ...target, kind, code }),
+      (cur, { code }) => withRemoved(cur, code),
+    ),
+    reorder: write<{ codes: string[] }>(
+      ({ codes }) => send("PATCH", { ...target, op: "reorder", kind, codes }),
+      (cur, { codes }) => withOrder(cur, codes),
+    ),
+    setSchema: write<{ code: string; schema: DrugArsenalSchema | null }>(
+      ({ code, schema }) => send("PATCH", { ...target, op: "schema", code, schema }),
+      (cur, { code, schema }) => withSchema(cur, code, schema),
+    ),
+    setLimit: write<FrequentLimit>(
+      (limit) => send("PATCH", { ...target, op: "limit", kind, limit }),
+      (cur, limit) =>
+        cur && typeof cur === "object" ? { ...cur, frequentLimit: limit } : cur,
+      () => {
+        // His own visit screen follows the choice made here.
+        if (!doctorId) {
+          void qc.invalidateQueries({
+            queryKey: kind === "DRUG" ? drugShortlistKey : diagnosisShortlistKey,
+          });
+        }
+      },
+    ),
+  };
+}
+
 export function useArsenalMutations(kind: ArsenalKind, doctorId?: string | null) {
   const qc = useQueryClient();
   const t = useTranslations("doctor.arsenal");
-  const key = arsenalKey(kind, doctorId);
-  const scope = { id: `doctor-arsenal:${kind}:${doctorId ?? "me"}` };
-  const target = doctorId ? { doctorId } : {};
-
-  const snapshot = async (): Promise<Snapshot> => {
-    await qc.cancelQueries({ queryKey: key });
-    return { before: qc.getQueryData(key) };
-  };
-  const failed = (e: unknown, ctx: Snapshot | undefined) => {
-    if (ctx?.before !== undefined) qc.setQueryData(key, ctx.before);
+  const opts = arsenalWriteOptions(qc, kind, doctorId, (e) => {
     const reason = e instanceof ArsenalError ? e.reason : null;
     toast.error(
       reason === "arsenal_full"
@@ -159,83 +245,12 @@ export function useArsenalMutations(kind: ArsenalKind, doctorId?: string | null)
           : t("toast.saveFailed"),
       { id: "doctor-arsenal-save" },
     );
-  };
-  const done = () => settle(qc, kind, doctorId);
-
-  const add = useMutation<unknown, unknown, { code: string; item: unknown }, Snapshot>({
-    scope,
-    mutationFn: ({ code }) => send("POST", { ...target, kind, code }),
-    onMutate: async ({ code, item }) => {
-      const ctx = await snapshot();
-      qc.setQueryData(key, (cur: unknown) => withAdded(kind, cur, code, item));
-      return ctx;
-    },
-    onError: (e, _v, ctx) => failed(e, ctx),
-    onSettled: done,
   });
-
-  const remove = useMutation<unknown, unknown, { code: string }, Snapshot>({
-    scope,
-    mutationFn: ({ code }) => send("DELETE", { ...target, kind, code }),
-    onMutate: async ({ code }) => {
-      const ctx = await snapshot();
-      qc.setQueryData(key, (cur: unknown) => withRemoved(cur, code));
-      return ctx;
-    },
-    onError: (e, _v, ctx) => failed(e, ctx),
-    onSettled: done,
-  });
-
-  const reorder = useMutation<unknown, unknown, { codes: string[] }, Snapshot>({
-    scope,
-    mutationFn: ({ codes }) => send("PATCH", { ...target, op: "reorder", kind, codes }),
-    onMutate: async ({ codes }) => {
-      const ctx = await snapshot();
-      qc.setQueryData(key, (cur: unknown) => withOrder(cur, codes));
-      return ctx;
-    },
-    onError: (e, _v, ctx) => failed(e, ctx),
-    onSettled: done,
-  });
-
-  const setSchema = useMutation<
-    unknown,
-    unknown,
-    { code: string; schema: DrugArsenalSchema | null },
-    Snapshot
-  >({
-    scope,
-    mutationFn: ({ code, schema }) => send("PATCH", { ...target, op: "schema", code, schema }),
-    onMutate: async ({ code, schema }) => {
-      const ctx = await snapshot();
-      qc.setQueryData(key, (cur: unknown) => withSchema(cur, code, schema));
-      return ctx;
-    },
-    onError: (e, _v, ctx) => failed(e, ctx),
-    onSettled: done,
-  });
-
-  const setLimit = useMutation<unknown, unknown, FrequentLimit, Snapshot>({
-    scope,
-    mutationFn: (limit) => send("PATCH", { ...target, op: "limit", kind, limit }),
-    onMutate: async (limit) => {
-      const ctx = await snapshot();
-      qc.setQueryData(key, (cur: unknown) =>
-        cur && typeof cur === "object" ? { ...cur, frequentLimit: limit } : cur,
-      );
-      return ctx;
-    },
-    onError: (e, _v, ctx) => failed(e, ctx),
-    onSettled: () => {
-      done();
-      if (!doctorId) {
-        void qc.invalidateQueries({
-          queryKey: kind === "DRUG" ? drugShortlistKey : diagnosisShortlistKey,
-        });
-      }
-    },
-  });
-
+  const add = useMutation(opts.add);
+  const remove = useMutation(opts.remove);
+  const reorder = useMutation(opts.reorder);
+  const setSchema = useMutation(opts.setSchema);
+  const setLimit = useMutation(opts.setLimit);
   return { add, remove, reorder, setSchema, setLimit };
 }
 

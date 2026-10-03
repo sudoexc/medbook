@@ -13,6 +13,7 @@
  * Pure and shared: the API validates with it, the visit screen and the
  * arsenal page render with it, the tests drive it.
  */
+import { isConcentrationOrPack, normalizeStrength } from "@/lib/catalogs/drug-forms";
 import type {
   PrescriptionMealRelation,
   PrescriptionTimeOfDay,
@@ -94,6 +95,26 @@ export const EMPTY_DRUG_SCHEMA: DrugArsenalSchema = {
   instructionUz: null,
 };
 
+const strengthKey = (s: string) => normalizeStrength(s).toLowerCase().replace(/\s+/g, "");
+
+/**
+ * A «dose» that is only a strength copied over: a concentration or a pack
+ * («500 мг/4 мл», «1 флакон») equal to one of the given strengths. The old
+ * constructor wrote the strength into the dose untouched, and that was
+ * never his dose (audit G4-07; the visit's «Частые» path drops it the same
+ * way, prescription-rows.ts). A dose he wrote («1000 мг», «2 мл», «1 таб.»)
+ * is not one.
+ */
+export function isStrengthCopiedAsDose(
+  dose: string | null | undefined,
+  strengths: readonly (string | null | undefined)[],
+): boolean {
+  const d = dose?.trim();
+  if (!d || !isConcentrationOrPack(d)) return false;
+  const key = strengthKey(d);
+  return strengths.some((s) => !!s?.trim() && strengthKey(s) === key);
+}
+
 function text(raw: unknown, max: number): string | null {
   if (typeof raw !== "string") return null;
   const v = raw.replace(/\s+/g, " ").trim();
@@ -122,12 +143,16 @@ export function parseDrugArsenalSchema(raw: unknown): DrugArsenalSchema | null {
       ? o.durationDays
       : null;
   const form = text(o.form, SCHEMA_LIMITS.form);
+  const strength = text(o.strength, SCHEMA_LIMITS.strength);
+  const dose = text(o.dose, SCHEMA_LIMITS.dose);
   const schema: DrugArsenalSchema = {
     form,
     // A strength belongs to a form; without one it is still the doctor's
     // («10 мг» of whatever form the catalog starts with).
-    strength: text(o.strength, SCHEMA_LIMITS.strength),
-    dose: text(o.dose, SCHEMA_LIMITS.dose),
+    strength,
+    // Its own strength as the dose is no dose: kept, one click from «Мои»
+    // would add the row with «500 мг/4 мл» as «Доза» and skip the prompt.
+    dose: isStrengthCopiedAsDose(dose, [strength]) ? null : dose,
     timesOfDay: TIME_ORDER.filter((t) => times.includes(t)),
     mealRelation:
       typeof o.mealRelation === "string" && MEAL_RELATIONS.has(o.mealRelation)
@@ -138,6 +163,36 @@ export function parseDrugArsenalSchema(raw: unknown): DrugArsenalSchema | null {
     instructionUz: text(o.instructionUz, SCHEMA_LIMITS.instruction),
   };
   return isEmptyDrugSchema(schema) ? null : schema;
+}
+
+/** What he wrote last time of one drug (the shortlist's `last*` fields). */
+export type DrugUsualFields = {
+  lastForm?: string | null;
+  lastStrength?: string | null;
+  lastDose?: string | null;
+  lastTimesOfDay?: readonly string[];
+  lastMealRelation?: string | null;
+  lastDurationDays?: number | null;
+};
+
+/**
+ * What he wrote last time, as the starting point of a schema he never set
+ * on «Мой арсенал». A last dose that is that row's strength copied over is
+ * left out, as on the visit's «Частые» path (review of 03.10.2026): saved
+ * into the schema, it reached the handout as the dose with no prompt.
+ */
+export function schemaFromUsual(u: DrugUsualFields): DrugArsenalSchema {
+  const dose = isStrengthCopiedAsDose(u.lastDose, [u.lastStrength]) ? null : u.lastDose;
+  return (
+    parseDrugArsenalSchema({
+      form: u.lastForm,
+      strength: u.lastStrength,
+      dose,
+      timesOfDay: u.lastTimesOfDay,
+      mealRelation: u.lastMealRelation,
+      durationDays: u.lastDurationDays,
+    }) ?? EMPTY_DRUG_SCHEMA
+  );
 }
 
 /** Nothing in it that a pick could use. */

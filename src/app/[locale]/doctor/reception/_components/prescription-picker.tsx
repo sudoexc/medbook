@@ -309,7 +309,11 @@ export function PrescriptionPicker({
               title={t("rx.picker.col.frequent")}
               visible={tab === "frequent"}
               tools={
-                <TopSwitch value={limit} onChange={(n) => setLimit.mutate(n)} />
+                <TopSwitch
+                  value={limit}
+                  onChange={(n) => setLimit.mutate(n)}
+                  disabled={!shortlist}
+                />
               }
             >
               {shortlistQuery.isLoading ? (

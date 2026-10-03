@@ -19,21 +19,30 @@ import { isRepeatClick } from "../_hooks/prescription-columns";
 /**
  * Three small radio buttons. Small on purpose: it is set once and then
  * left, the rows under it are the targets.
+ *
+ * `disabled` while the column's list loads: the value shown then is only
+ * the default, not his choice, and the list it would cut is not there yet.
  */
 export function TopSwitch({
   value,
   onChange,
+  disabled = false,
 }: {
   value: FrequentLimit;
   onChange: (next: FrequentLimit) => void;
+  disabled?: boolean;
 }) {
   const t = useTranslations("doctor.reception.topSwitch");
   return (
     <div
       role="radiogroup"
       aria-label={t("label")}
+      aria-disabled={disabled || undefined}
       title={t("label")}
-      className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5"
+      className={cn(
+        "inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5",
+        disabled && "opacity-50",
+      )}
     >
       {FREQUENT_LIMITS.map((n) => (
         <button
@@ -42,17 +51,18 @@ export function TopSwitch({
           role="radio"
           aria-checked={value === n}
           aria-label={t("option", { n })}
+          disabled={disabled}
           onClick={(e) => {
             // The columns can move under the cursor (a diagnosis folds
             // them): one gesture, one choice.
             if (isRepeatClick(e.detail)) return;
-            if (n !== value) onChange(n);
+            if (!disabled && n !== value) onChange(n);
           }}
           className={cn(
             "inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-semibold tabular-nums transition-colors",
             value === n
               ? "bg-card text-primary shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
+              : "text-muted-foreground enabled:hover:text-foreground",
           )}
         >
           {n}

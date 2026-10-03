@@ -362,7 +362,11 @@ export function DiagnosisPicker({
               title={t("diagnosis.picker.col.frequent")}
               visible={tab === "frequent"}
               tools={
-                <TopSwitch value={limit} onChange={(n) => setLimit.mutate(n)} />
+                <TopSwitch
+                  value={limit}
+                  onChange={(n) => setLimit.mutate(n)}
+                  disabled={!columns.data}
+                />
               }
             >
               {columns.isLoading ? (

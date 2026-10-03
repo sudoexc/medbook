@@ -52,10 +52,10 @@ import {
 
 import { cn } from "@/lib/utils";
 import {
-  EMPTY_DRUG_SCHEMA,
   FREQUENT_LIMITS,
   isEmptyDrugSchema,
   parseDrugArsenalSchema,
+  schemaFromUsual,
   type ArsenalKind,
   type DrugArsenalSchema,
   type FrequentLimit,
@@ -646,20 +646,6 @@ function DrugPinRow({
         />
       ) : null}
     </div>
-  );
-}
-
-/** What he wrote last time, as a starting point for a schema he never set. */
-function schemaFromUsual(entry: DrugShortItem): DrugArsenalSchema {
-  return (
-    parseDrugArsenalSchema({
-      form: entry.lastForm,
-      strength: entry.lastStrength,
-      dose: entry.lastDose,
-      timesOfDay: entry.lastTimesOfDay,
-      mealRelation: entry.lastMealRelation,
-      durationDays: entry.lastDurationDays,
-    }) ?? EMPTY_DRUG_SCHEMA
   );
 }
 

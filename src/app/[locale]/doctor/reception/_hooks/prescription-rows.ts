@@ -10,7 +10,11 @@
  * which `usePatchVisitNote` updates the moment an edit is made) and get
  * back the array to send.
  */
-import { isEmptyDrugSchema, type DrugArsenalSchema } from "@/lib/arsenal";
+import {
+  isEmptyDrugSchema,
+  isStrengthCopiedAsDose,
+  type DrugArsenalSchema,
+} from "@/lib/arsenal";
 import { prescriptionLabel } from "@/lib/catalogs/brand-match";
 import {
   defaultDose,
@@ -208,6 +212,16 @@ export function draftFromArsenalSchema(
     lastMealRelation: schema.mealRelation,
     lastDurationDays: schema.durationDays,
   });
+  // A schema dose that is one of the drug's strengths copied over («500
+  // мг/4 мл» from the old constructor) is no dose: the row goes through the
+  // catalog's default or the dose prompt, as the «Частые» path does, never
+  // straight onto the handout as «Доза» (review of 03.10.2026).
+  const ownDose = schema.dose?.trim() ?? "";
+  const copied = isStrengthCopiedAsDose(ownDose, [
+    schema.strength,
+    strength,
+    ...forms.flatMap((f) => f.strengths),
+  ]);
   return {
     forms,
     draft: {
@@ -215,7 +229,7 @@ export function draftFromArsenalSchema(
       displayName: item.label || base.displayName,
       form: formForStrength,
       strength,
-      dose: schema.dose?.trim() || defaultDose(formForStrength, strength),
+      dose: ownDose && !copied ? ownDose : defaultDose(formForStrength, strength),
       ...sched,
       instructionRu: schema.instructionRu,
       instructionUz: schema.instructionUz,

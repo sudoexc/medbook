@@ -12,6 +12,8 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type MutationOptions,
+  type QueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -342,12 +344,16 @@ export function useAddClinicDrug() {
  * column follows at once from the cached list, which already holds his top
  * 30; the request only remembers the choice, and a failed one puts the old
  * choice back with a toast.
+ *
+ * Apart from React so the tests can drive it.
  */
-export function useSetFrequentLimit(kind: ArsenalKind) {
-  const qc = useQueryClient();
-  const t = useTranslations("doctor.reception.topSwitch");
+export function frequentLimitOptions(
+  qc: QueryClient,
+  kind: ArsenalKind,
+  onFailed?: (error: unknown) => void,
+): MutationOptions<unknown, unknown, FrequentLimit, FrequentLimitContext> {
   const key = kind === "DRUG" ? drugShortlistKey : diagnosisShortlistKey;
-  return useMutation<unknown, Error, FrequentLimit, { before: FrequentLimit | null }>({
+  return {
     mutationKey: ["doctor", "reception", "frequent-limit", kind],
     scope: { id: `frequent-limit:${kind}` },
     mutationFn: async (limit) => {
@@ -361,6 +367,12 @@ export function useSetFrequentLimit(kind: ArsenalKind) {
       return res.json();
     },
     onMutate: async (limit) => {
+      // A click while the list is still loading must not cancel that load
+      // (review of 03.10.2026): cancelled, the query went back to having no
+      // data, nothing fetched it again and the column read «empty» until
+      // the five minute staleTime ran out. With no list there is nothing to
+      // set either; onSettled reloads it with the saved choice.
+      if (qc.getQueryData(key) === undefined) return { before: null, applied: false };
       await qc.cancelQueries({ queryKey: key });
       let before: FrequentLimit | null = null;
       qc.setQueryData<{ frequentLimit: FrequentLimit } | undefined>(key, (cur) => {
@@ -368,16 +380,40 @@ export function useSetFrequentLimit(kind: ArsenalKind) {
         before = cur.frequentLimit;
         return { ...cur, frequentLimit: limit };
       });
-      return { before };
+      return { before, applied: true };
     },
-    onError: (_e, _limit, context) => {
+    onError: (e, _limit, context) => {
       const before = context?.before;
       if (before) {
         qc.setQueryData<{ frequentLimit: FrequentLimit } | undefined>(key, (cur) =>
           cur ? { ...cur, frequentLimit: before } : cur,
         );
       }
-      toast.error(t("saveFailed"), { id: `frequent-limit-${kind}` });
+      onFailed?.(e);
     },
-  });
+    onSettled: (_data, error, limit, context) => {
+      if (context?.applied !== false) return;
+      // The load still in flight (or a new one) lands, then shows the
+      // choice: that load may have been answered before the choice was
+      // saved.
+      void qc.invalidateQueries({ queryKey: key }).then(() => {
+        if (error) return;
+        qc.setQueryData<{ frequentLimit: FrequentLimit } | undefined>(key, (cur) =>
+          cur ? { ...cur, frequentLimit: limit } : cur,
+        );
+      });
+    },
+  };
+}
+
+type FrequentLimitContext = { before: FrequentLimit | null; applied: boolean };
+
+export function useSetFrequentLimit(kind: ArsenalKind) {
+  const qc = useQueryClient();
+  const t = useTranslations("doctor.reception.topSwitch");
+  return useMutation(
+    frequentLimitOptions(qc, kind, () =>
+      toast.error(t("saveFailed"), { id: `frequent-limit-${kind}` }),
+    ),
+  );
 }

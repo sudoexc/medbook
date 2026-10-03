@@ -1260,10 +1260,18 @@ export const GET = createApiListHandler(
         : ""
     }
 
-    <section class="block">
+    ${
+      // The visit screen has no conclusion editor any more (clinic request
+      // 03.10.2026): a note without text of its own printed «Текст
+      // заключения» over a lone dash. The heading comes only with text;
+      // a protocol's template or an older note's text prints as before.
+      note.bodyMarkdown?.trim()
+        ? `<section class="block">
       <h3>${escapeHtml(labels.bodySection)}</h3>
       ${renderBody(note.bodyMarkdown)}
-    </section>
+    </section>`
+        : ""
+    }
 
     ${amendmentsSection}
 

@@ -263,7 +263,14 @@ describe("the constructor", () => {
   );
 
   it("never saves a row without a dose: it asks first", () => {
-    expect(src).toMatch(/if \(!draft\.dose\.trim\(\)\) \{\s+setPending\(\{ draft, forms, noteId \}\);\s+return;/);
+    // The no-dose branch opens the prompt (or keeps the pick already
+    // waiting there, review fix 03.10.2026) and returns before any save.
+    const start = src.indexOf("if (!draft.dose.trim()) {");
+    const branch = src.slice(start, src.indexOf("const current = liveDrafts();", start));
+    expect(start).toBeGreaterThan(0);
+    expect(branch).toContain("setPending({ draft, forms, noteId });");
+    expect(branch).toMatch(/return;\s+\}\s*$/);
+    expect(branch).not.toContain("onSaveRows");
     // Never onto the next patient's note.
     expect(src).toContain("pending.noteId === note.id");
     expect(src).toContain("<PendingDoseForm");

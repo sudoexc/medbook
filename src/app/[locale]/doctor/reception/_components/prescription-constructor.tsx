@@ -321,16 +321,18 @@ export function PrescriptionConstructor({
 
   // The sign check (see `registerDraftFlush`): refuses while a pick of this
   // note waits for its dose. Read from refs when it runs, so it is
-  // registered once per screen and never misses the latest pick.
-  const pendingOpenRef = React.useRef(pendingOpen);
+  // registered once per screen and sees a pick made a moment before the
+  // click (`pendingNow` is written in the click handler itself).
+  const holdRef = React.useRef({ noteId, disabled });
   React.useEffect(() => {
-    pendingOpenRef.current = pendingOpen;
-  }, [pendingOpen]);
+    holdRef.current = { noteId, disabled };
+  }, [noteId, disabled]);
   React.useEffect(() => {
     if (!registerDraftFlush) return;
     return registerDraftFlush(async () => {
       const waiting = pendingNow.current;
-      if (!pendingOpenRef.current || !waiting) return;
+      const hold = holdRef.current;
+      if (!waiting || waiting.noteId !== hold.noteId || hold.disabled) return;
       revealPending();
       throw new PendingDosePickError(waiting.draft.displayName);
     });

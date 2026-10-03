@@ -345,48 +345,64 @@ describe("the visit screen layout", () => {
   const session = read("reception/_components/session-tab-content.tsx");
   const panels = read("reception/_components/structured-fields-panel.tsx");
 
-  it("left: diagnosis and control visit; middle: prescriptions; right: advice", () => {
+  it("middle: diagnosis over prescriptions; left: control visit; right: advice", () => {
     const order = [
-      "<DiagnosisFollowUpPanel />",
+      "<FollowUpPanel />",
+      "<DiagnosisPanel />",
       "<PrescriptionsPanel />",
       "<AdvicePanel />",
     ].map((tag) => session.indexOf(tag));
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    // «Назначения» alone in the middle column: the conclusion editor left
-    // the visit screen (03.10.2026).
+    // «Диагноз» on top of the middle column, «Назначения» right under it
+    // (owner request 03.10.2026); the conclusion editor left the screen.
     expect(session).toMatch(
-      /lg:row-span-2[^>]*>\s*<PrescriptionsPanel \/>\s*<\/div>/,
+      /lg:row-span-2[^>]*>\s*<DiagnosisPanel \/>\s*<PrescriptionsPanel \/>\s*<\/div>/,
     );
     expect(session).not.toContain("NotesEditorPanel");
+    expect(session).not.toContain("DiagnosisFollowUpPanel");
+    // On one column the middle comes first: diagnosis, prescriptions,
+    // control visit, advice.
+    expect(session).toMatch(/className="order-first [^"]*lg:order-none[^"]*lg:row-span-2/);
   });
 
-  it("the left panel holds only the diagnosis and control visit cards", () => {
+  it("the left panel keeps only the control visit; the diagnosis panel holds the card and its protocols", () => {
     const left = panels.slice(
-      panels.indexOf("export function DiagnosisFollowUpPanel"),
+      panels.indexOf("export function FollowUpPanel"),
       panels.indexOf("export function PrescriptionsPanel"),
     );
-    expect(left).toContain("<DiagnosisCard");
     expect(left).toContain("<FollowUpCard");
+    expect(left).not.toContain("<DiagnosisCard");
     expect(left).not.toContain("<PrescriptionConstructor");
     expect(left).not.toContain("<CdsWarningsCard");
+    // Always one grid cell, even on a signed note without a control visit.
+    expect(left).toMatch(/return \(\s*<div className="flex min-w-0 flex-col gap-4">/);
+    const dx = panels.slice(
+      panels.indexOf("export function DiagnosisPanel"),
+      panels.indexOf("export function FollowUpPanel"),
+    );
+    expect(dx).toContain("<DiagnosisCard");
+    expect(dx).toContain("<ApplyProtocolDialog");
+    expect(dx).toContain("useTemplatesFollowDiagnoses({");
+    expect(dx).not.toContain("<FollowUpCard");
     const middle = panels.slice(panels.indexOf("export function PrescriptionsPanel"));
     expect(middle).toContain("<PrescriptionConstructor");
     // The interaction check still reads every diagnosis of the visit.
     expect(middle).toContain("diagnoses={visitDiagnosesOf(note)}");
   });
 
-  it("three columns only from 2xl, so «Назначения» is never narrower than the old left column", () => {
+  it("three columns only from 2xl, and the left track gives its room back to the middle", () => {
     // Fixed side tracks fill before the middle one; with the 240px sidebar
-    // three columns at xl left the middle about 300px on a 1366 laptop.
+    // three columns at xl leave the middle too narrow for the pickers.
     const grid = session.match(/<div className="(grid grid-cols-1[^"]*)">/)![1]!;
     const threeTracks = grid
       .split(/\s+/)
       .filter((c) => /grid-cols-\[[^\]]*_[^\]]*_[^\]]*\]/.test(c));
     expect(threeTracks).toEqual([
-      "2xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)_minmax(0,300px)]",
+      "2xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)_minmax(0,300px)]",
     ]);
-    expect(grid).toContain("xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]");
+    expect(grid).toContain("lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]");
+    expect(grid).toContain("xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]");
     // The middle keeps spanning both rows until the third column exists.
     expect(session).toMatch(/lg:row-span-2[^"]*2xl:row-span-1/);
     expect(grid).toContain("2xl:grid-rows-none");

@@ -7020,9 +7020,6 @@
         "alreadyAdded": "Bu tashxis qabulda allaqachon bor",
         "full": "Bir qabulda {max} tadan ortiq tashxis bo‘lmaydi",
         "picker": {
-          "title": "Qabul tashxisi",
-          "description": "Tashxisni sichqoncha bilan tanlang: tez-tez, mening yoki MKB katalogi. Oyna «Tayyor» tugmasini bosguningizcha ochiq turadi.",
-          "close": "Yopish",
           "addAs": "Qanday qo‘shish",
           "mainSwapHint": "Hozirgi asosiy tashxis yondoshga aylanadi",
           "col": {
@@ -7040,10 +7037,8 @@
           "onVisit": "Qabulda allaqachon bor",
           "starAdd": "«Mening» ro‘yxatiga qo‘shish",
           "starRemove": "«Mening» ro‘yxatidan olib tashlash",
-          "done": "Tayyor",
-          "footerHint": "Bir bosish tashxisni qabulga qo‘shadi, jami {max} tagacha.",
-          "choose": "Tashxis tanlash",
-          "chooseHint": "Tez-tez, mening va MKB katalogi"
+          "collapse": "Yig‘ish",
+          "noVisit": "Tashxisni qabul boshlanganda tanlash mumkin bo‘ladi."
         }
       },
       "guide": {

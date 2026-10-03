@@ -40,16 +40,49 @@ export function appendSnippet(body: string, text: string): string {
  * ends of lines are not compared.
  */
 export function hasSnippetParagraph(body: string, snippet: string): boolean {
-  const b = normalizeLines(body);
-  const s = normalizeLines(snippet).trim();
-  if (!s) return false;
-  for (let i = b.indexOf(s); i >= 0; i = b.indexOf(s, i + 1)) {
-    const end = i + s.length;
-    const startsLine = i === 0 || b[i - 1] === "\n";
-    const endsLine = end === b.length || b[end] === "\n";
-    if (startsLine && endsLine) return true;
+  return findSnippetLines(linesOf(body), snippet) !== null;
+}
+
+/** One line of a text as it is stored, with the break that ends it. */
+type Line = { text: string; end: string };
+
+function linesOf(text: string): Line[] {
+  const out: Line[] = [];
+  const breaks = /\r\n|\r|\n/g;
+  let start = 0;
+  for (let m = breaks.exec(text); m; m = breaks.exec(text)) {
+    out.push({ text: text.slice(start, m.index), end: m[0] });
+    start = m.index + m[0].length;
   }
-  return false;
+  out.push({ text: text.slice(start), end: "" });
+  return out;
+}
+
+/** A line as the comparison reads it: without the spaces at its ends. */
+function bareLine(line: string): string {
+  return line.replace(/^[ \t]+|[ \t]+$/g, "");
+}
+
+/**
+ * The first place `snippet` stands in the body as whole lines: the index of
+ * its first line and how many lines it takes, or null. The one rule every
+ * helper here shares (adding, finding, removing), so a template the
+ * preview names is the one a removal takes out, and a template inside a
+ * sentence of the doctor's own text is neither found nor cut out of it.
+ */
+function findSnippetLines(
+  lines: readonly Line[],
+  snippet: string,
+): { at: number; count: number } | null {
+  const trimmed = normalizeLines(snippet).trim();
+  if (!trimmed) return null;
+  const want = trimmed.split("\n");
+  for (let at = 0; at + want.length <= lines.length; at++) {
+    if (want.every((w, k) => bareLine(lines[at + k]!.text) === w)) {
+      return { at, count: want.length };
+    }
+  }
+  return null;
 }
 
 function normalizeLines(text: string): string {
@@ -57,45 +90,65 @@ function normalizeLines(text: string): string {
 }
 
 /**
- * Strip the first occurrence of `snippet` from `body`, preferring the
- * "\n\n<snippet>" form that `appendSnippet` writes. If neither form is
- * present (the doctor edited around it on the conclusion card), returns the
- * body unchanged. Trimmed first, as `appendSnippet` trims what it writes: a
- * template stored with a trailing newline was never found again.
+ * Take the first whole-line occurrence of `snippet` out of `body`, with the
+ * blank line that set it apart, so no gap is left where it stood (the
+ * "\n\n<snippet>" that `appendSnippet` writes leaves no trace). By the same
+ * rule as `appendSnippet` (review of 03.10.2026): the template text inside a
+ * sentence of the doctor's own words is his text and stays, so removing
+ * «МРТ» never turns «Назначено: МРТ, ЭЭГ.» into «Назначено: , ЭЭГ.». A body
+ * that holds the template only that way (or not at all, the doctor edited
+ * around it on the conclusion card) comes back unchanged. The snippet is
+ * trimmed first, as `appendSnippet` trims what it writes: a template stored
+ * with a trailing newline is still found.
  */
 export function removeSnippet(body: string, raw: string): string {
-  const snippet = raw.trim();
-  if (!snippet) return body;
-  const withSep = "\n\n" + snippet;
-  const idxSep = body.indexOf(withSep);
-  if (idxSep >= 0) return body.slice(0, idxSep) + body.slice(idxSep + withSep.length);
-  // Snippet at the very start (no leading separator) — strip a trailing
-  // separator instead so we don't leave a blank line.
-  if (body.startsWith(snippet)) {
-    const after = body.slice(snippet.length);
-    return after.startsWith("\n\n") ? after.slice(2) : after;
+  const lines = linesOf(body);
+  const found = findSnippetLines(lines, raw);
+  if (!found) return body;
+  const blank = (i: number) =>
+    i >= 0 && i < lines.length && bareLine(lines[i]!.text) === "";
+  let from = found.at;
+  let to = found.at + found.count;
+  if (from === 0) {
+    // At the start: the blank line under it goes too.
+    if (blank(to)) to += 1;
+  } else if (to === lines.length) {
+    // At the end: the blank line above it goes too.
+    if (blank(from - 1)) from -= 1;
+  } else if (blank(from - 1) && blank(to)) {
+    // Between two paragraphs: they keep one blank line, not two.
+    to += 1;
   }
-  const idx = body.indexOf(snippet);
-  if (idx >= 0) return body.slice(0, idx) + body.slice(idx + snippet.length);
-  return body;
+  const kept = [...lines.slice(0, from), ...lines.slice(to)];
+  const last = kept.at(-1);
+  if (last && to === lines.length) {
+    // The removed lines ended the body: the line now last ends it.
+    kept[kept.length - 1] = { ...last, end: "" };
+  }
+  return kept.map((l) => l.text + l.end).join("");
 }
 
 /** A template whose text may sit in the conclusion, with the name it goes by. */
 export type BodyTemplate = { name: string; text: string };
 
 /**
- * The templates whose text the body holds, each text once, in the given
- * order: what «Предпросмотр» offers to take out again.
+ * The templates whose text the body holds as whole lines, each text once,
+ * in the given order: what «Предпросмотр» offers to take out again, and
+ * what a removed diagnosis takes with it. Found by the rule `removeSnippet`
+ * removes by: a template that only occurred inside a sentence of the
+ * doctor's text was offered as «Убрать текст шаблона», and the removal then
+ * cut it out of that sentence (review of 03.10.2026).
  */
 export function templatesInBody(
   body: string,
   templates: readonly BodyTemplate[],
 ): BodyTemplate[] {
+  const lines = linesOf(body);
   const out: BodyTemplate[] = [];
   const seen = new Set<string>();
   for (const t of templates) {
     const text = t.text.trim();
-    if (!text || seen.has(text) || !body.includes(text)) continue;
+    if (!text || seen.has(text) || !findSnippetLines(lines, text)) continue;
     seen.add(text);
     out.push({ name: t.name, text });
   }

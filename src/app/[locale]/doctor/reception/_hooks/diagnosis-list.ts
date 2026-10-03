@@ -167,3 +167,32 @@ export function withDiagnosisMadeMain(
     setOf([list[index]!, ...list.filter((_, i) => i !== index)]),
   );
 }
+
+/**
+ * What «Диагноз» shows under the visit's diagnoses for adding one more:
+ *
+ *   "pick" — the way to pick: the visit screen's three columns, the
+ *            conclusion page's search. Open while the visit has none, and
+ *            once the doctor asks for it with «+ Диагноз»;
+ *   "bar"  — «+ Диагноз», folded. On the visit screen the columns sit
+ *            above «Назначения» (owner request 03.10.2026), and once the
+ *            visit has a diagnosis they fold, so «Назначения» is not pushed
+ *            far down; the first pick folds them, a pick after «+ Диагноз»
+ *            does not, so two or three diagnoses stay a click each;
+ *   "full" — the visit holds four: the note that says so;
+ *   "none" — a note that cannot change.
+ */
+export type DiagnosisAddView = "pick" | "bar" | "full" | "none";
+
+export function diagnosisAddView(args: {
+  /** How many diagnoses the visit holds. */
+  count: number;
+  /** The doctor opened the way to pick with «+ Диагноз». */
+  opened: boolean;
+  disabled: boolean;
+}): DiagnosisAddView {
+  if (args.disabled) return "none";
+  if (args.count >= MAX_VISIT_DIAGNOSES) return "full";
+  if (args.count === 0 || args.opened) return "pick";
+  return "bar";
+}

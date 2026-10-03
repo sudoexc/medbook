@@ -1,22 +1,25 @@
 "use client";
 
 /**
- * The structured half of the visit screen, as two panels in two columns
- * (clinic request 29.09.2026, «хаммаси бирлашиб ковоти»):
+ * The structured half of the visit screen, as three panels in two columns
+ * (clinic request 29.09.2026, «хаммаси бирлашиб ковоти», reworked
+ * 03.10.2026):
  *
- *   - DiagnosisFollowUpPanel: «Диагноз» and «Контрольный визит», alone in the
- *     left column so up to four diagnoses have room;
- *   - PrescriptionsPanel: «Назначения» with its interaction check, the
- *     whole middle column since the conclusion editor left it (03.10.2026),
- *     wide enough for a whole prescription line and the picker's three
- *     columns.
+ *   - DiagnosisPanel: «Диагноз», at the top of the middle column, as big as
+ *     «Назначения» under it and split in three the same way (owner request
+ *     03.10.2026, «как назначения сделал сверху, так же диагноз сделай,
+ *     таким же большим и на три разделённый»);
+ *   - PrescriptionsPanel: «Назначения» with its interaction check, under
+ *     the diagnosis in the middle column, wide enough for a whole
+ *     prescription line and the picker's three columns;
+ *   - FollowUpPanel: «Контрольный визит», what stays in the left column.
  *
  * They used to be one left-column stack, where a drug row was cut to
- * «Грандаксин 50 мг — по…». Both panels save through the same loud-patch
+ * «Грандаксин 50 мг — по…». Every panel saves through the same loud-patch
  * hook, so the failure behaviour cannot drift between them.
  *
  * The doctor of this screen works with the mouse (03.10.2026): a diagnosis
- * is picked in a wide three-column window (diagnosis-picker-dialog.tsx),
+ * is one click in the three columns of «Диагноз» (diagnosis-picker.tsx),
  * and once the visit has one, «Назначения» offers what he usually
  * prescribes and recommends with it (diagnosis-memory-card.tsx).
  */
@@ -57,7 +60,7 @@ import {
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
 import { DiagnosisMemoryCard } from "./diagnosis-memory-card";
-import { DiagnosisPickerDialog } from "./diagnosis-picker-dialog";
+import { DiagnosisPicker, type CatalogTrailStep } from "./diagnosis-picker";
 import { CdsWarningsCard } from "./cds-warnings-card";
 import { ParsedFromTextCard } from "./parsed-from-text-card";
 import {
@@ -100,8 +103,11 @@ function useLiveNote(note: VisitNoteRow | null) {
   );
 }
 
-/** Left column: «Диагноз» (one to four) and «Контрольный визит». */
-export function DiagnosisFollowUpPanel() {
+/**
+ * Top of the middle column: «Диагноз», one to four, picked in its three
+ * columns, with the protocols of the main one («Применить стандарт»).
+ */
+export function DiagnosisPanel() {
   const t = useTranslations("doctor.reception");
   const locale = useLocale();
   const { visitNoteId, requestBodyAppend, requestBodyRemove } =
@@ -130,7 +136,9 @@ export function DiagnosisFollowUpPanel() {
     removeTexts: requestBodyRemove,
     onRemoved: announceTemplatesRemoved,
   });
-  const [pickerOpen, setPickerOpen] = React.useState(false);
+  // The catalog column's place outlives the folded columns and the patient:
+  // a neurologist goes back to the same block visit after visit.
+  const [trail, setTrail] = React.useState<CatalogTrailStep[]>([]);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
 
@@ -205,8 +213,71 @@ export function DiagnosisFollowUpPanel() {
     [liveNote, isFinalized, applyPatch, requestBodyAppend],
   );
 
+  // No visit yet: the block keeps its place with a quiet card, so the page
+  // does not reflow when the visit starts.
+  if (!note) {
+    return (
+      <section className="rounded-2xl border border-border bg-card p-4">
+        <h2 className="text-base font-semibold text-foreground">
+          {t("diagnosis.title")}
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("diagnosis.picker.noVisit")}
+        </p>
+      </section>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-4">
+    <>
+      <DiagnosisCard
+        note={note}
+        disabled={isFinalized}
+        standalone
+        saving={patch.isPending}
+        onChange={applyPatch}
+        onRequestApplyProtocol={(p) => setProtocolToApply(p)}
+        picker={({ collapse, opened }) => (
+          <DiagnosisPicker
+            note={note}
+            liveNote={() => liveNote() ?? note}
+            onChange={applyPatch}
+            trail={trail}
+            onTrail={setTrail}
+            onCollapse={collapse}
+            focusSearch={opened}
+          />
+        )}
+      />
+
+      <ApplyProtocolDialog
+        open={!!protocolToApply}
+        onOpenChange={(next) => {
+          if (!next) setProtocolToApply(null);
+        }}
+        protocol={protocolToApply}
+        onApply={handleApplyProtocol}
+        followUpSet={note.followUpDays != null || note.followUpDate != null}
+      />
+    </>
+  );
+}
+
+/**
+ * Left column: «Контрольный визит», alone there since «Диагноз» moved to
+ * the top of the middle column (03.10.2026). Advice drops under it until
+ * the third column exists (session-tab-content.tsx).
+ */
+export function FollowUpPanel() {
+  const t = useTranslations("doctor.reception");
+  const { visitNoteId } = useReceptionContext();
+  const { note, isFinalized, applyPatch } = useLoudVisitNotePatch(visitNoteId);
+
+  // Always one element, even with nothing in it: the session grid places
+  // its items in order, and without this cell «Назначения» would take the
+  // left column of a signed note that has no control visit.
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
       {!note ? (
         <section className="rounded-2xl border border-border bg-card p-4">
           <h2 className="text-base font-semibold text-foreground">
@@ -216,51 +287,16 @@ export function DiagnosisFollowUpPanel() {
             {t("structured.empty")}
           </p>
         </section>
-      ) : (
-        <>
-          <DiagnosisCard
-            note={note}
-            disabled={isFinalized}
-            standalone
-            saving={patch.isPending}
-            onChange={applyPatch}
-            onRequestApplyProtocol={(p) => setProtocolToApply(p)}
-            onOpenPicker={() => setPickerOpen(true)}
-          />
-          {(!isFinalized ||
-            note.followUpDays != null ||
-            note.followUpDate != null) && (
-            <FollowUpCard
-              note={note}
-              disabled={isFinalized}
-              standalone
-              onChange={applyPatch}
-            />
-          )}
-        </>
-      )}
-
-      {note && !isFinalized && (
-        <DiagnosisPickerDialog
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
+      ) : (!isFinalized ||
+          note.followUpDays != null ||
+          note.followUpDate != null) ? (
+        <FollowUpCard
           note={note}
-          liveNote={() => liveNote() ?? note}
+          disabled={isFinalized}
+          standalone
           onChange={applyPatch}
         />
-      )}
-
-      <ApplyProtocolDialog
-        open={!!protocolToApply}
-        onOpenChange={(next) => {
-          if (!next) setProtocolToApply(null);
-        }}
-        protocol={protocolToApply}
-        onApply={handleApplyProtocol}
-        followUpSet={
-          note != null && (note.followUpDays != null || note.followUpDate != null)
-        }
-      />
+      ) : null}
     </div>
   );
 }

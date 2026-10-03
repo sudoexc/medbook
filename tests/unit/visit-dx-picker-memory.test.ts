@@ -2,10 +2,11 @@
  * The visit screen's mouse-first diagnosis and the per-diagnosis memory
  * (clinic request 03.10.2026).
  *
- * The doctor works with the mouse: the diagnosis is picked in a wide window
- * of three columns («Частые», «Мои», «Каталог МКБ» walked chapter → block →
- * code), each one click from the visit as the main or an additional one, at
- * most four; and once the visit has a diagnosis, «Назначения» offers what he
+ * The doctor works with the mouse: the diagnosis is picked in three columns
+ * («Частые», «Мои», «Каталог МКБ» walked chapter → block → code), since the
+ * same day inline at the top of the middle column, each one click from the
+ * visit as the main or an additional one, at most four; and once the visit
+ * has a diagnosis, «Назначения» offers what he
  * usually prescribes and recommends with it («Обычно при <диагноз>»),
  * learned from his own past visits, one click each or «Добавить всё».
  *
@@ -727,35 +728,41 @@ const read = (rel: string) =>
   readFileSync(path.join(process.cwd(), "src/app/[locale]/doctor", rel), "utf8");
 
 describe("the visit screen wiring", () => {
-  it("the left panel opens the picker; the conclusion page keeps the search", () => {
+  it("the diagnosis panel shows the picker inside the card; the conclusion page keeps the search", () => {
     const panels = read("reception/_components/structured-fields-panel.tsx");
-    const left = panels.slice(
-      panels.indexOf("export function DiagnosisFollowUpPanel"),
-      panels.indexOf("export function PrescriptionsPanel"),
+    const dx = panels.slice(
+      panels.indexOf("export function DiagnosisPanel"),
+      panels.indexOf("export function FollowUpPanel"),
     );
-    expect(left).toContain("onOpenPicker={() => setPickerOpen(true)}");
-    expect(left).toContain("<DiagnosisPickerDialog");
-    expect(left).not.toContain("IcdCatalogDrawer");
+    expect(dx).toMatch(/picker=\{\(\{ collapse, opened \}\) => \(\s*<DiagnosisPicker/);
+    expect(dx).toContain("onCollapse={collapse}");
+    expect(dx).not.toContain("IcdCatalogDrawer");
+    expect(panels).not.toContain("DiagnosisPickerDialog");
     const card = read("_components/diagnosis-follow-up-cards.tsx");
-    expect(card).toContain("const showSearch = !onOpenPicker && !disabled");
-    expect(card).toContain("onClick={() => (onOpenPicker ? onOpenPicker() : setAdding(true))}");
+    expect(card).not.toContain("onOpenPicker");
+    expect(card).toContain("picker?: DiagnosisPickerSlot;");
     const detail = read("conclusions/[id]/_components/conclusion-detail.tsx");
-    expect(detail).not.toContain("onOpenPicker");
+    expect(detail).not.toContain("picker=");
   });
 
-  it("the picker has three columns, tabs on a phone, and a way out that is never hidden", () => {
-    const dialog = read("reception/_components/diagnosis-picker-dialog.tsx");
-    expect(dialog).toContain(
-      "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]",
+  it("the picker has three columns, tabs on a narrow card, and no window", () => {
+    const picker = read("reception/_components/diagnosis-picker.tsx");
+    expect(picker).toContain("@container");
+    expect(picker).toContain(
+      "@min-[440px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]",
     );
-    expect(dialog).toContain('t(`diagnosis.picker.col.${key}`)');
-    expect(dialog).toContain("md:hidden");
-    expect(dialog).toContain("withDiagnosisPickedAs(live, d, role)");
-    expect(dialog).toContain("w-[calc(100vw-2rem)] max-w-6xl flex-col");
-    expect(dialog).toContain('t("diagnosis.picker.done")');
-    // Rows are big targets and the star is its own button.
-    expect(dialog).toContain("min-h-14");
-    expect(dialog).not.toMatch(/role="button"/);
+    expect(picker).toContain("@min-[440px]:hidden");
+    expect(picker).toContain('t(`diagnosis.picker.col.${key}`)');
+    expect(picker).toContain("withDiagnosisPickedAs(live, d, role)");
+    // Same fixed list height as the prescription picker's columns.
+    expect(picker).toContain('className="h-[22rem] overflow-y-auto p-1"');
+    expect(picker).not.toContain("@/components/ui/dialog");
+    // Rows are big targets, the star is its own button, and one gesture
+    // adds once.
+    expect(picker).toContain("min-h-12");
+    expect(picker).not.toMatch(/role="button"/);
+    const row = picker.slice(picker.indexOf("function DxRow"));
+    expect(row).toContain("if (isRepeatClick(e.detail)) return;");
   });
 
   it("«Назначения» carries «Обычно при <диагноз>» above the columns", () => {

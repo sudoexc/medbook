@@ -19,15 +19,19 @@
  * reception/_hooks/diagnosis-list.ts), so two quick clicks never undo each
  * other.
  *
- * `standalone` is the visit screen, where these two cards own the left
- * column: larger type and controls there. The conclusions screen keeps the
- * compact inset form in its narrow side column.
+ * `standalone` is the visit screen, where both are top-level cards («Диагноз»
+ * at the top of the middle column, «Контрольный визит» in the left one):
+ * larger type and controls there. The conclusions screen keeps the compact
+ * inset form in its narrow side column.
  *
  * On the visit screen the diagnosis is picked with the mouse (clinic request
- * 03.10.2026): the empty field and «+ Диагноз» open the wide three-column
- * picker (`onOpenPicker`, the reception's diagnosis-picker-dialog.tsx)
- * instead of the search under the list. The conclusions screen passes no
- * picker and keeps the search.
+ * 03.10.2026), in three columns inside this card instead of the search
+ * under the list (`picker`, the reception's diagnosis-picker.tsx): the card
+ * sits at the top of the middle column, as big as «Назначения» under it
+ * (owner request of the same day). The columns are open while the visit has
+ * no diagnosis and fold into «+ Диагноз» once it has one (see
+ * diagnosisAddView). The conclusions screen passes no picker and keeps the
+ * search.
  */
 import * as React from "react";
 import { useFormatter, useTranslations } from "next-intl";
@@ -77,6 +81,7 @@ import {
   type VisitNoteRow,
 } from "../reception/_hooks/use-visit-note";
 import {
+  diagnosisAddView,
   diagnosisListOf,
   hasDiagnosis,
   MAX_VISIT_DIAGNOSES,
@@ -85,6 +90,7 @@ import {
   withDiagnosisRemoved,
   type DiagnosisItem,
 } from "../reception/_hooks/diagnosis-list";
+import { isRepeatClick } from "../reception/_hooks/prescription-columns";
 import { useAddChronicCondition } from "../reception/_hooks/use-patient-history";
 import { useDoctorFavorites } from "../reception/_hooks/use-doctor-favorites";
 import { useDiagnosisShortlist } from "../reception/_hooks/use-shortlists";
@@ -535,6 +541,17 @@ export function FollowUpCard({
   );
 }
 
+/**
+ * The visit screen's way to pick a diagnosis, rendered by the card where the
+ * search would be (see DiagnosisCard's `picker`).
+ */
+export type DiagnosisPickerSlot = (api: {
+  /** Folds the columns into «+ Диагноз»; null while the visit has none. */
+  collapse: (() => void) | null;
+  /** The doctor opened them himself with «+ Диагноз». */
+  opened: boolean;
+}) => React.ReactNode;
+
 /** The small buttons under a diagnosis row, in the two card sizes. */
 function rowActionClass(big: boolean, tone: "plain" | "primary"): string {
   return cn(
@@ -552,7 +569,7 @@ export function DiagnosisCard({
   onChange,
   onRequestApplyProtocol,
   onOpenCatalog,
-  onOpenPicker,
+  picker,
   standalone,
   saving,
 }: {
@@ -571,10 +588,11 @@ export function DiagnosisCard({
   /** Opens the ICD catalog drawer; hosts without one just omit it. */
   onOpenCatalog?: () => void;
   /**
-   * Opens the mouse-first picker (the visit screen). With it, the empty
-   * field and «+ Диагноз» open the picker instead of the search.
+   * The mouse-first picker (the visit screen), shown in place of the
+   * search: open while the visit has no diagnosis, then folded into
+   * «+ Диагноз», which opens it again.
    */
-  onOpenPicker?: () => void;
+  picker?: DiagnosisPickerSlot;
   /** Render as a top-level panel card instead of an inset sub-card. */
   standalone?: boolean;
   /** Shared save-in-flight flag for the header spinner (standalone hosts). */
@@ -604,8 +622,8 @@ export function DiagnosisCard({
   );
   const full = list.length >= MAX_VISIT_DIAGNOSES;
 
-  // «+ Диагноз» opens a second search under the list; the next patient's
-  // note starts with it closed.
+  // «+ Диагноз» opens a second search under the list, or the picker's
+  // columns again; the next patient's note starts with them closed.
   const [adding, setAdding] = React.useState(false);
   React.useEffect(() => {
     setAdding(false);
@@ -668,7 +686,9 @@ export function DiagnosisCard({
       return;
     }
     onChange(next);
-    setAdding(false);
+    // The search closes after its pick; the picker's columns, opened for
+    // two or three diagnoses, stay as they are on a take from «Было раньше».
+    if (!picker) setAdding(false);
   };
 
   const remove = (d: DiagnosisItem) => {
@@ -681,7 +701,20 @@ export function DiagnosisCard({
     if (next) onChange(next);
   };
 
-  const showSearch = !onOpenPicker && !disabled && (list.length === 0 || adding);
+  const addView = diagnosisAddView({
+    count: list.length,
+    opened: adding,
+    disabled,
+  });
+
+  const past = (
+    <PastDiagnosesBlock
+      note={note}
+      onVisit={onVisit}
+      canTake={!disabled && !full}
+      onTake={pick}
+    />
+  );
 
   return (
     <div
@@ -805,57 +838,38 @@ export function DiagnosisCard({
           </ul>
         )}
 
-        {/* The visit screen: one big target instead of a search box, for a
-            doctor who picks with the mouse. */}
-        {onOpenPicker && !disabled && list.length === 0 && (
-          <button
-            type="button"
-            onClick={onOpenPicker}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-xl border border-dashed border-primary/40 bg-primary/[0.03] text-left transition-colors hover:border-primary/60 hover:bg-primary/5",
-              big ? "min-h-16 px-4 py-3" : "min-h-12 px-3 py-2",
-            )}
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <PlusIcon className="size-5" />
-            </span>
-            <span className="min-w-0">
-              <span
-                className={cn(
-                  "block font-semibold text-primary",
-                  big ? "text-base" : "text-sm",
-                )}
-              >
-                {t("diagnosis.picker.choose")}
-              </span>
-              <span className="block text-sm leading-snug text-muted-foreground">
-                {t("diagnosis.picker.chooseHint")}
-              </span>
-            </span>
-          </button>
-        )}
+        {/* The visit screen: the patient's earlier diagnoses right under
+            this visit's, above the columns, so a repeat visit is one
+            «взять» before any list. */}
+        {picker ? past : null}
 
-        {showSearch && (
-          <DiagnosisSearch
-            big={big}
-            // Opened by «+ Диагноз»: the doctor already asked for it, so
-            // the caret and the list of his frequent ones are there at once.
-            autoFocus={list.length > 0}
-            placeholder={
-              list.length === 0
-                ? t("diagnosis.searchPlaceholderTap")
-                : t("diagnosis.addPlaceholder")
-            }
-            exclude={onVisit}
-            onPick={pick}
-            onCancel={list.length > 0 ? () => setAdding(false) : undefined}
-          />
-        )}
+        {addView === "pick" &&
+          (picker ? (
+            picker({
+              collapse: list.length > 0 ? () => setAdding(false) : null,
+              opened: adding,
+            })
+          ) : (
+            <DiagnosisSearch
+              big={big}
+              // Opened by «+ Диагноз»: the doctor already asked for it, so
+              // the caret and the list of his frequent ones are there at once.
+              autoFocus={list.length > 0}
+              placeholder={
+                list.length === 0
+                  ? t("diagnosis.searchPlaceholderTap")
+                  : t("diagnosis.addPlaceholder")
+              }
+              exclude={onVisit}
+              onPick={pick}
+              onCancel={list.length > 0 ? () => setAdding(false) : undefined}
+            />
+          ))}
 
         {/* The doctor's first complaint about this screen was "нигде не
             указано" — the field looked like a search box with no hint that
             typing your own wording is allowed. */}
-        {!disabled && !onOpenPicker && list.length === 0 && (
+        {!disabled && !picker && list.length === 0 && (
           <p
             className={cn(
               "leading-snug text-muted-foreground",
@@ -866,54 +880,55 @@ export function DiagnosisCard({
           </p>
         )}
 
-        {!disabled && list.length > 0 && !adding && (
-          full ? (
-            <p
-              className={cn(
-                "leading-snug text-muted-foreground",
-                big ? "text-xs" : "text-[11px]",
-              )}
-            >
-              {t("diagnosis.full", { max: MAX_VISIT_DIAGNOSES })}
-            </p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => (onOpenPicker ? onOpenPicker() : setAdding(true))}
-              title={t("diagnosis.addTitle", { max: MAX_VISIT_DIAGNOSES })}
-              className={cn(
-                "inline-flex w-full items-center justify-between gap-2 rounded-lg border border-dashed border-border font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary",
-                onOpenPicker
-                  ? "h-12 px-3 text-[15px]"
-                  : big
-                    ? "h-10 px-3 text-sm"
-                    : "h-8 px-2.5 text-xs",
-              )}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <PlusIcon className={big ? "size-4" : "size-3.5"} />
-                {t("diagnosis.add")}
-              </span>
-              <span className="text-xs font-normal tabular-nums">
-                {t("diagnosis.count", {
-                  n: list.length,
-                  max: MAX_VISIT_DIAGNOSES,
-                })}
-              </span>
-            </button>
-          )
+        {addView === "full" && (
+          <p
+            className={cn(
+              "leading-snug text-muted-foreground",
+              picker ? "text-sm" : big ? "text-xs" : "text-[11px]",
+            )}
+          >
+            {t("diagnosis.full", { max: MAX_VISIT_DIAGNOSES })}
+          </p>
+        )}
+
+        {addView === "bar" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              // The first pick folds the picker's columns, and this bar may
+              // then sit under the cursor: the second click of a double
+              // click on a diagnosis must not open them again.
+              if (isRepeatClick(e.detail)) return;
+              setAdding(true);
+            }}
+            title={t("diagnosis.addTitle", { max: MAX_VISIT_DIAGNOSES })}
+            className={cn(
+              "inline-flex w-full items-center justify-between gap-2 rounded-lg border border-dashed border-border font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary",
+              picker
+                ? "h-12 px-3 text-[15px]"
+                : big
+                  ? "h-10 px-3 text-sm"
+                  : "h-8 px-2.5 text-xs",
+            )}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <PlusIcon className={big ? "size-4" : "size-3.5"} />
+              {t("diagnosis.add")}
+            </span>
+            <span className="text-xs font-normal tabular-nums">
+              {t("diagnosis.count", {
+                n: list.length,
+                max: MAX_VISIT_DIAGNOSES,
+              })}
+            </span>
+          </button>
         )}
 
         {disabled && list.length === 0 && (
           <p className="text-sm text-muted-foreground">—</p>
         )}
 
-        <PastDiagnosesBlock
-          note={note}
-          onVisit={onVisit}
-          canTake={!disabled && !full}
-          onTake={pick}
-        />
+        {picker ? null : past}
       </div>
     </div>
   );

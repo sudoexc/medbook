@@ -9,7 +9,12 @@
  * Shares the allocation path (`registerWalkin`) with the kiosk so the board,
  * kiosk, and patient ticket never disagree.
  *
- * Body: { doctorId, patientId? , newPatient?: { fullName, phone, phoneOwner?, gender?, source? }, durationMin? }
+ * Body: { doctorId, patientId? , newPatient?: { fullName, phone, phoneOwner?, gender?, source? }, serviceId?, durationMin? }
+ *
+ * `serviceId` is the reception tablet's optional «Услуга»: an active service
+ * the doctor offers, which then prices and sizes the visit the way the
+ * kiosk's choice does (`registerWalkin`). Anything else is refused with 409
+ * `service_not_offered`; without it the visit is a consultation, as before.
  *
  * A new patient whose number already belongs to a card with a different
  * name is not silently merged into that card (audit Q-03): the route answers
@@ -42,6 +47,7 @@ const Body = z
         source: LeadSourceEnum.optional(),
       })
       .optional(),
+    serviceId: z.string().min(1).optional(),
     durationMin: z.number().int().min(5).max(480).optional(),
   })
   .refine((b) => Boolean(b.patientId) || Boolean(b.newPatient), {
@@ -97,6 +103,7 @@ export const POST = createApiHandler(
           },
       createdById: ctx.userId,
       durationMin: body.durationMin,
+      serviceId: body.serviceId ?? null,
     });
 
     if (!result.ok) {
@@ -112,8 +119,7 @@ export const POST = createApiHandler(
         case "bad_phone":
           return err("bad_phone", 400);
         case "service_not_offered":
-          // The front desk sends no service yet; kept for the exhaustive
-          // switch, like doctor_off_duty.
+          // The tablet's service was switched off, or is not this doctor's.
           return conflict("service_not_offered");
         case "phone_owner_mismatch":
           // Staff are authenticated and see full cards anyway: the owner's
@@ -130,6 +136,7 @@ export const POST = createApiHandler(
         doctorId,
         patientId: result.patient.id,
         queueOrder: result.queueOrder,
+        ...(body.serviceId ? { serviceId: body.serviceId } : {}),
       },
     });
 

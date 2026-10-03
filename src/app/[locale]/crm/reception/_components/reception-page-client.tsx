@@ -8,11 +8,13 @@ import {
   ListIcon,
   SettingsIcon,
   CalendarPlusIcon,
+  TabletIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Link } from "@/i18n/navigation";
 import { useClinicToday } from "@/hooks/use-clinic-today";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusDot } from "@/components/atoms/status-dot";
 
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
@@ -255,18 +257,28 @@ export function ReceptionPageClient() {
             {t("autoRefresh")}
           </span>
         </div>
-        {/* Swapped with the topbar: issuing a ticket is the frequent action at
-            the desk, so it took the primary slot up top and booking a slot
-            moved down here as the secondary one. */}
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-2"
-          onClick={() => setDialogOpen(true)}
-        >
-          <CalendarPlusIcon className="size-4" />
-          {t("newAppointment")}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* The same desk on the clinic's iPad (/crm/reception/tablet). */}
+          <Link
+            href="/crm/reception/tablet"
+            className={cn(buttonVariants({ size: "sm", variant: "outline" }), "gap-2")}
+          >
+            <TabletIcon className="size-4" />
+            {t("tabletMode")}
+          </Link>
+          {/* Swapped with the topbar: issuing a ticket is the frequent action at
+              the desk, so it took the primary slot up top and booking a slot
+              moved down here as the secondary one. */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() => setDialogOpen(true)}
+          >
+            <CalendarPlusIcon className="size-4" />
+            {t("newAppointment")}
+          </Button>
+        </div>
       </div>
 
       <KpiStrip

@@ -19,6 +19,7 @@ import {
   SendIcon,
   SettingsIcon,
   StethoscopeIcon,
+  TabletIcon,
   UsersIcon,
   ZapIcon,
   type LucideIcon,
@@ -93,6 +94,14 @@ export const CRM_NAV: NavGroup[] = [
   {
     items: [
       { href: "reception", labelKey: "reception", icon: LayoutDashboardIcon },
+      // The desk on the clinic's iPad: queue and book patients by touch.
+      // Same audience as the page itself (lib/reception-tablet/access).
+      {
+        href: "reception/tablet",
+        labelKey: "receptionTablet",
+        icon: TabletIcon,
+        roles: ["ADMIN", "RECEPTIONIST"],
+      },
       { href: "action-center", labelKey: "actionCenter", icon: ZapIcon },
       // Site booking requests (audit LD-01). The badge counts requests
       // nobody has called back yet; the API gates the page by role.

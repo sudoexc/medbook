@@ -764,8 +764,10 @@ export function NewAppointmentDialog({
  *   - Otherwise → defer to UI by calling `openSelector`.
  *
  * Errors are surfaced to the caller's catch — never block the appointment.
+ * Exported for the reception tablet's booking, which files its visits the
+ * same way (it leaves the ambiguous case for the appointment card).
  */
-async function resolveCaseForNewAppointment(args: {
+export async function resolveCaseForNewAppointment(args: {
   appointmentId: string;
   patientId: string;
   doctorId: string;

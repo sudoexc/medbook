@@ -21,10 +21,12 @@
  * prescribes and recommends with it (diagnosis-memory-card.tsx).
  */
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { toast } from "sonner";
 
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
-import { visitDiagnosesOf } from "@/lib/visit-diagnoses";
+import type { BodyTemplate } from "@/lib/conclusion-body";
+import { visitDiagnosesOf, visitDiagnosisCodes } from "@/lib/visit-diagnoses";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
@@ -41,6 +43,7 @@ import type {
   VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
 import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
+import { useTemplatesFollowDiagnoses } from "../_hooks/use-templates-follow-diagnoses";
 import { useQueryClient } from "@tanstack/react-query";
 import { visitNoteKey, type VisitNoteRow } from "../_hooks/use-visit-note";
 import { toPrescriptionDrafts } from "../_hooks/prescription-rows";
@@ -100,12 +103,33 @@ function useLiveNote(note: VisitNoteRow | null) {
 /** Left column: «Диагноз» (one to four) and «Контрольный визит». */
 export function DiagnosisFollowUpPanel() {
   const t = useTranslations("doctor.reception");
-  const { visitNoteId, requestBodyAppend } = useReceptionContext();
+  const locale = useLocale();
+  const { visitNoteId, requestBodyAppend, requestBodyRemove } =
+    useReceptionContext();
   // Every card saves through the shared loud-patch hook — see
   // use-loud-patch.ts for the conflict/rollback contract.
   const { note, isFinalized, applyPatch, patch } =
     useLoudVisitNotePatch(visitNoteId);
   const liveNote = useLiveNote(note);
+
+  // A protocol's conclusion template leaves with its diagnosis: with no
+  // editor on this screen, the doctor could neither see nor delete it.
+  const announceTemplatesRemoved = React.useCallback(
+    (templates: readonly BodyTemplate[]) => {
+      for (const tpl of templates) {
+        toast.info(t("structured.templateTextRemoved", { name: tpl.name }));
+      }
+    },
+    [t],
+  );
+  useTemplatesFollowDiagnoses({
+    noteId: note?.id ?? null,
+    codes: note ? visitDiagnosisCodes(note) : [],
+    disabled: isFinalized,
+    locale,
+    removeTexts: requestBodyRemove,
+    onRemoved: announceTemplatesRemoved,
+  });
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);

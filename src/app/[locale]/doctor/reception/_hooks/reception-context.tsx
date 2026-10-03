@@ -50,9 +50,13 @@ type ReceptionContextValue = {
    * conclusion. The channel tries the "\n\n<text>" form first (the form
    * the append writes) and falls back to a plain match if the doctor has
    * edited around it on the conclusion card.
+   *
+   * Several texts go as one request: a diagnosis that leaves the visit
+   * takes every template of its protocols with it (review of 03.10.2026),
+   * and two requests set in one tick would leave only the last one.
    */
-  bodyRemoveRequest: { text: string; nonce: number } | null;
-  requestBodyRemove: (text: string) => void;
+  bodyRemoveRequest: { texts: string[]; nonce: number } | null;
+  requestBodyRemove: (text: string | readonly string[]) => void;
   /**
    * P0-3 — right after a successful finalize the queue refetch flips the
    * appointment to COMPLETED, `activeAppointment` collapses to null and the
@@ -208,13 +212,18 @@ export function ReceptionProvider({
   }, []);
 
   const [bodyRemoveRequest, setBodyRemoveRequest] = React.useState<
-    { text: string; nonce: number } | null
+    { texts: string[]; nonce: number } | null
   >(null);
-  const requestBodyRemove = React.useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setBodyRemoveRequest({ text: trimmed, nonce: Date.now() });
-  }, []);
+  const requestBodyRemove = React.useCallback(
+    (text: string | readonly string[]) => {
+      const texts = (typeof text === "string" ? [text] : [...text])
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (texts.length === 0) return;
+      setBodyRemoveRequest({ texts, nonce: Date.now() });
+    },
+    [],
+  );
 
   // P0-2 — flush registry. A Set rather than a single slot: any editor that
   // autosaves on a debounce registers here, and finalize drains them all

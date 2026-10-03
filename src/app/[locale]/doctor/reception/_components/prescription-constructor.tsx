@@ -215,6 +215,12 @@ export function PrescriptionConstructor({
   );
 
   const [expanded, setExpanded] = React.useState<number | null>(null);
+  // The row a pick has just added and opened for its schedule. On the visit
+  // screen the rows sit under the picker's 22rem columns, so on a laptop
+  // that row opened out of sight or under the sticky «Завершить приём» bar,
+  // and all the doctor saw was a check on the item he clicked (review of
+  // 03.10.2026). It is scrolled into view once, when it appears.
+  const [revealRow, setRevealRow] = React.useState<number | null>(null);
   const [query, setQuery] = React.useState("");
   const [focused, setFocused] = React.useState(false);
   const [customOpen, setCustomOpen] = React.useState(false);
@@ -275,7 +281,9 @@ export function PrescriptionConstructor({
       onSaveRows([...current, draft]);
       // Opened for its schedule; a row that came back with his usual one
       // has nothing left to set and stays a single line.
-      setExpanded(draft.timesOfDay.length > 0 ? null : current.length);
+      const opened = draft.timesOfDay.length > 0 ? null : current.length;
+      setExpanded(opened);
+      setRevealRow(opened);
     },
     [onSaveRows, liveDrafts, noteId],
   );
@@ -355,6 +363,7 @@ export function PrescriptionConstructor({
     if (drafts.length > 0) {
       onSaveRows([...liveDrafts(), ...drafts]);
       setExpanded(null);
+      setRevealRow(null);
     }
     for (const line of lines) onAddLegacyLine?.(line);
     if (needsDose) setPending({ ...needsDose, noteId });
@@ -424,6 +433,7 @@ export function PrescriptionConstructor({
       const next = withRowRemoved(liveDrafts(), index);
       if (next) onSaveRows(next);
       setExpanded(null);
+      setRevealRow(null);
     },
     [liveDrafts, onSaveRows],
   );
@@ -534,7 +544,8 @@ export function PrescriptionConstructor({
           {/* The prescribing area: suggestions for this visit, a pick
               waiting for its dose, the custom form, then the columns. The
               rows come after it, so a new row never pushes the columns
-              down under the doctor's cursor. */}
+              down under the doctor's cursor; a row opened for its schedule
+              is scrolled into view instead (revealRow). */}
           {aboveColumns ? (
             <div className="mt-3 empty:hidden">
               {aboveColumns({
@@ -669,7 +680,11 @@ export function PrescriptionConstructor({
               large={big}
               disabled={disabled}
               expanded={expanded === i}
-              onToggle={() => setExpanded(expanded === i ? null : i)}
+              reveal={revealRow === i && expanded === i}
+              onToggle={() => {
+                setRevealRow(null);
+                setExpanded(expanded === i ? null : i);
+              }}
               onChange={(patch) => updateRow(i, patch)}
               onRemove={() => removeRow(i)}
             />
@@ -844,6 +859,7 @@ function PrescriptionRowItem({
   large,
   disabled,
   expanded,
+  reveal,
   onToggle,
   onChange,
   onRemove,
@@ -854,6 +870,8 @@ function PrescriptionRowItem({
   large: boolean;
   disabled: boolean;
   expanded: boolean;
+  /** Just added and opened: scroll it into view, clear of the sticky bar. */
+  reveal: boolean;
   onToggle: () => void;
   /**
    * Toggles pass a function of the row's LIVE state: a chip computed from
@@ -874,11 +892,13 @@ function PrescriptionRowItem({
   // row with a time of day. A blue bell on a row without one promised
   // reminders the patient never got.
   const reminder = reminderStateOf(row);
+  const liRef = useRevealOnOpen<HTMLLIElement>(reveal);
 
   return (
     <li
+      ref={liRef}
       className={cn(
-        "rounded-lg border bg-card",
+        "scroll-mb-28 rounded-lg border bg-card",
         expanded ? "border-primary/40" : "border-border",
       )}
     >

@@ -17,7 +17,8 @@ import {
 } from "@/lib/catalogs/prescription-format";
 import { visitDiagnosisKey } from "@/lib/visit-diagnoses";
 
-import { draftFromShortItem } from "./prescription-rows";
+import { onVisitChecker } from "./prescription-columns";
+import { draftFromShortItem, splitFreeLine } from "./prescription-rows";
 import type { DiagnosisMemory, DiagnosisShortItem, DrugShortItem } from "./use-shortlists";
 
 /**
@@ -119,14 +120,32 @@ export function adviceChecker(lines: readonly string[]): (line: string) => boole
 /**
  * What «Добавить всё» adds: every usual prescription and recommendation of
  * the memory that the visit does not hold yet, in the memory's order.
+ *
+ * Each drug once (review of 03.10.2026): the memory may still hold one drug
+ * twice (a catalog row and the line «Мексидол 5,0 в/м №10» from a preset),
+ * and both used to land, one as a row and one as a line. Within the batch
+ * an item is skipped when one already taken is the same drug, by the rule
+ * that marks it on the visit. Catalog drugs are taken first, so the one
+ * that stays is the row with his dose and schema, not the bare line.
  */
 export function memoryToAdd(
   memory: Pick<DiagnosisMemory, "prescriptions" | "advice">,
   rxOnVisit: (item: { drugId: string | null; label: string }) => boolean,
   adviceOnVisit: (line: string) => boolean,
 ): { items: DrugShortItem[]; lines: string[] } {
+  const fresh = memory.prescriptions.filter((p) => !rxOnVisit(p));
+  const taken: DrugShortItem[] = [];
+  const byKind = [...fresh].sort((a, b) => Number(!!b.drugId) - Number(!!a.drugId));
+  for (const item of byKind) {
+    const sameDrug = onVisitChecker(
+      taken.map((t) => ({ drugId: t.drugId, displayName: splitFreeLine(t.label).name })),
+      taken.filter((t) => !t.drugId).map((t) => t.label),
+    );
+    if (!sameDrug(item)) taken.push(item);
+  }
+  const kept = new Set(taken);
   return {
-    items: memory.prescriptions.filter((p) => !rxOnVisit(p)),
+    items: fresh.filter((p) => kept.has(p)),
     lines: memory.advice.map((a) => a.line).filter((l) => !adviceOnVisit(l)),
   };
 }

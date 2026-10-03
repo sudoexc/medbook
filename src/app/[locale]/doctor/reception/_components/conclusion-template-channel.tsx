@@ -11,7 +11,9 @@
  * draft. This headless component takes the same requests from the
  * reception context and saves them on the note itself, so a protocol
  * applied on the visit screen still reaches the signed document, its print
- * and the preview.
+ * and the preview. A template is written once however often it is applied,
+ * and it goes again with the diagnosis it came from or from «Предпросмотр»
+ * (review of 03.10.2026, see conclusion-body.ts).
  *
  * Each edit is composed on the body this channel last sent while that
  * request is in flight, not on the cache: `bodyMarkdown` is not written
@@ -119,8 +121,9 @@ export function ConclusionTemplateChannel() {
       return;
     }
     lastRemove.current = bodyRemoveRequest.nonce;
-    const text = bodyRemoveRequest.text;
-    edit((body) => removeSnippet(body, text));
+    const texts = bodyRemoveRequest.texts;
+    // One save for all of them, each composed on the body the last left.
+    edit((body) => texts.reduce((cur, text) => removeSnippet(cur, text), body));
   }, [bodyRemoveRequest, edit]);
 
   return null;

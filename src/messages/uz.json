@@ -6771,6 +6771,7 @@
         "saveErrorGeneric": "O‘zgarish saqlanmadi — aloqani tekshirib, qayta urining",
         "saveErrorConflict": "Saqlanmadi: xulosa boshqa oynada o‘zgartirilgan. Ma’lumotlarni yo‘qotmaslik uchun sahifani yangilang.",
         "saveErrorLocked": "Saqlanmadi: tahrirlash vaqti (24 soat) tugadi",
+        "templateTextRemoved": "Tashxis olib tashlandi, «{name}» shablon matni xulosadan olib tashlandi",
         "labOrder": "Tahlillar",
         "labOrderTitle": "Tahlillarni tayinlash",
         "rx": "Retsept",
@@ -7066,7 +7067,9 @@
         "needDiagnosis": "Tashxis ko'rsating, usiz qabulni yakunlab bo'lmaydi",
         "noDiagnosisHint": "Tashxis ko'rsatilmagan — shundayam yakunlash mumkin",
         "previewTitle": "Xulosani oldindan ko‘rish",
-        "previewHint": "Varaq qabul maydonlaridan yig‘ilgan, shu ko‘rinishda chop etiladi."
+        "previewHint": "Varaq qabul maydonlaridan yig‘ilgan, shu ko‘rinishda chop etiladi.",
+        "templateInText": "Xulosa matnida «{name}» shabloni bor",
+        "removeTemplateText": "Shablon matnini olib tashlash"
       },
       "parsedRx": {
         "title": "Matnda topildi: {count}",

@@ -25,9 +25,22 @@
  * it with this diagnosis, ties going to the most recent: his usual, not
  * whatever he wrote last for an unusual patient.
  *
+ * One drug, one entry (review of 03.10.2026): on some visits he picked
+ * Мексидол from the catalog, on others a preset or a protocol put it on as
+ * the line «Мексидол 5,0 в/м №10». Counted apart they made two chips, and
+ * «Добавить всё» put the drug on the sheet twice. A line that names a drug
+ * he also wrote as a row (line-names-drug.ts), and a hand-typed row that
+ * names a catalog drug, count for that drug: their visits join its visits.
+ * A line says nothing about a dose, so the dose and schema stay the rows'.
+ *
  * Pure: the route feeds it rows, the tests feed it arrays.
  */
 import { foldCatalogText } from "@/lib/catalogs/search-fold";
+import {
+  drugNameForms,
+  lineWords,
+  wordsNameDrug,
+} from "@/lib/catalogs/line-names-drug";
 
 import type { DrugShortItem, StructuredDrugUse } from "./shortlist";
 
@@ -97,12 +110,66 @@ type RxAcc = {
   drugId: string | null;
   /** His newest wording. */
   label: string;
-  count: number;
-  /** Index of the newest visit it is on (0 = the most recent visit). */
+  /** The visits it is on, by index (0 = the most recent visit). */
+  visits: Set<number>;
+  /** Index of the newest visit it is on. */
   newest: number;
-  /** Ways he wrote it: how often, how recently, and the values. */
+  /** The wordings of its rows; empty when he only ever had it as a line. */
+  rowNames: Set<string>;
+  /** Ways he wrote it as a row: how often, how recently, and the values. */
   schedules: Map<string, { count: number; newest: number; schedule: Schedule }>;
 };
+
+/**
+ * Fold what names a drug into that drug's entry: a hand-typed row or a text
+ * line («Мексидол 5,0 в/м №10») joins the catalog drug it names, and a line
+ * with no catalog drug to join joins a hand-typed row it names. Visits join
+ * as sets, so a visit that has both counts once. A row's ways of writing the
+ * dose come along; a line has none to give.
+ */
+function joinNamedDrugs(rx: Map<string, RxAcc>): void {
+  const targets = [...rx.values()]
+    .filter((e) => e.rowNames.size > 0)
+    // A catalog drug first: that is the row a chip should make.
+    .sort((a, b) => Number(!!b.drugId) - Number(!!a.drugId))
+    .map((entry) => ({ entry, forms: [...entry.rowNames].flatMap(drugNameForms) }));
+  // Hand-typed rows before lines: a line that names a hand-typed row of a
+  // catalog drug then finds the catalog drug that row has joined.
+  const sources = [...rx.values()]
+    .filter((e) => !e.drugId)
+    .sort((a, b) => b.rowNames.size - a.rowNames.size);
+  for (const source of sources) {
+    const isRow = source.rowNames.size > 0;
+    const words = lineWords(source.label);
+    const target = targets.find(
+      ({ entry, forms }) =>
+        entry !== source &&
+        rx.has(entry.key) &&
+        // A hand-typed row joins a catalog drug only: two names he typed
+        // himself are two drugs to him.
+        (!isRow || !!entry.drugId) &&
+        wordsNameDrug(words, forms),
+    );
+    if (!target) continue;
+    const into = target.entry;
+    for (const v of source.visits) into.visits.add(v);
+    into.newest = Math.min(into.newest, source.newest);
+    for (const name of source.rowNames) {
+      into.rowNames.add(name);
+      target.forms.push(...drugNameForms(name));
+    }
+    for (const [sk, way] of source.schedules) {
+      const known = into.schedules.get(sk);
+      if (known) {
+        known.count += way.count;
+        known.newest = Math.min(known.newest, way.newest);
+      } else {
+        into.schedules.set(sk, { ...way });
+      }
+    }
+    rx.delete(source.key);
+  }
+}
 
 type AdviceAcc = { line: string; count: number; newest: number };
 
@@ -127,16 +194,32 @@ export function buildDiagnosisMemory(args: {
     // One use per visit: a drug written on two rows of one visit (two
     // forms, two strengths) is still one visit he gave it on.
     const onThisVisit = new Set<string>();
-    const take = (key: string, drugId: string | null, label: string, schedule: Schedule) => {
+    /** `schedule` is null for a text line: it names a drug, not a dose. */
+    const take = (
+      key: string,
+      drugId: string | null,
+      label: string,
+      schedule: Schedule | null,
+    ) => {
       if (onThisVisit.has(key)) return;
       onThisVisit.add(key);
       let acc = rx.get(key);
       if (!acc) {
         // Newest visits come first: the first wording seen is his current one.
-        acc = { key, drugId, label, count: 0, newest: index, schedules: new Map() };
+        acc = {
+          key,
+          drugId,
+          label,
+          visits: new Set(),
+          newest: index,
+          rowNames: new Set(),
+          schedules: new Map(),
+        };
         rx.set(key, acc);
       }
-      acc.count += 1;
+      acc.visits.add(index);
+      if (!schedule) return;
+      acc.rowNames.add(label);
       const sk = scheduleKey(schedule);
       const known = acc.schedules.get(sk);
       if (known) known.count += 1;
@@ -150,7 +233,7 @@ export function buildDiagnosisMemory(args: {
     for (const raw of note.freeText) {
       const label = raw.trim();
       if (label.length < 2) continue;
-      take(textKey(label), null, label, { dose: null });
+      take(textKey(label), null, label, null);
     }
 
     const adviceOnVisit = new Set<string>();
@@ -165,16 +248,22 @@ export function buildDiagnosisMemory(args: {
     }
   });
 
+  joinNamedDrugs(rx);
+
   const min = memoryThreshold(notes.length);
   const byUse = <T extends { count: number; newest: number }>(a: T, b: T) =>
     b.count - a.count || a.newest - b.newest;
 
   const prescriptions = [...rx.values()]
+    .map((r) => ({ ...r, count: r.visits.size }))
     .filter((r) => r.count >= min)
     .sort(byUse)
     .slice(0, args.prescriptionLimit ?? MEMORY_PRESCRIPTION_LIMIT)
     .map((r): DrugShortItem => {
-      const usual = [...r.schedules.values()].sort(byUse)[0]!.schedule;
+      // Only ever a line: no dose of his to offer.
+      const usual: Schedule = [...r.schedules.values()].sort(byUse)[0]?.schedule ?? {
+        dose: null,
+      };
       return {
         key: r.key,
         drugId: r.drugId,

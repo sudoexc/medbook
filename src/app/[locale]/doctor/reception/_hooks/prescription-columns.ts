@@ -12,6 +12,11 @@
  */
 import { ATC_GROUPS, ATC_SUBGROUPS } from "@/lib/catalogs/atc-groups";
 import { foldCatalogText } from "@/lib/catalogs/search-fold";
+import {
+  drugNameForms,
+  lineWords,
+  wordsNameDrug,
+} from "@/lib/catalogs/line-names-drug";
 
 import { shortItemFromDrug, splitFreeLine } from "./prescription-rows";
 import type { DrugSearchHit } from "./use-drug-search";
@@ -23,6 +28,13 @@ import type { DrugShortItem, DrugUsual } from "./use-shortlists";
  * of his list). Items on the visit stay where they are, marked: hiding them
  * moved the list under the doctor's cursor, and his next click landed on
  * the drug below.
+ *
+ * A text line and a row of one drug are one drug too (review of
+ * 03.10.2026): an item that is a line («Мексидол 5,0 в/м №10», from his
+ * history or «Обычно при») is on the visit once a row of the drug it names
+ * is, and a drug is on it once a text line names it (line-names-drug.ts).
+ * Before, only whole lines compared, so «Добавить всё» put a drug on the
+ * sheet as a row and again as a line.
  */
 export function onVisitChecker(
   rows: ReadonlyArray<{ drugId: string | null; displayName: string }>,
@@ -35,10 +47,22 @@ export function onVisitChecker(
       // A line of dashes folds to nothing: it names no drug.
       .filter(Boolean),
   );
-  return (item) =>
-    (!!item.drugId && ids.has(item.drugId)) ||
-    names.has(foldCatalogText(item.label)) ||
-    names.has(foldCatalogText(splitFreeLine(item.label).name));
+  // Folded once here: the picker asks about every item of three columns.
+  const rowForms = rows.flatMap((r) => drugNameForms(r.displayName));
+  const legacyWords = legacy.map(lineWords).filter((w) => w.length > 0);
+  return (item) => {
+    if (item.drugId && ids.has(item.drugId)) return true;
+    const name = splitFreeLine(item.label).name;
+    if (names.has(foldCatalogText(item.label)) || names.has(foldCatalogText(name))) {
+      return true;
+    }
+    if (rowForms.length > 0 && wordsNameDrug(lineWords(item.label), rowForms)) {
+      return true;
+    }
+    if (legacyWords.length === 0) return false;
+    const forms = drugNameForms(name);
+    return legacyWords.some((words) => wordsNameDrug(words, forms));
+  };
 }
 
 /**
@@ -49,7 +73,9 @@ export function onVisitChecker(
  * `starred` list stands in. A drug starred a moment ago is not in the
  * shortlist the server sent: it is found among the drugs the picker has
  * shown (`seen`), with his usual dose when he has one. A star with nothing
- * to show yet waits for the next shortlist.
+ * to show yet (starred in the «Каталог» window) waits for the next
+ * shortlist, which the star itself asks for once it is saved
+ * (use-doctor-favorites.ts).
  */
 export function starredColumn(args: {
   favorites: readonly string[] | null;

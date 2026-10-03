@@ -33,6 +33,13 @@
  * page moves up by some 400px, so the second click of a double click on a
  * diagnosis lands on whatever is now under the cursor, here a template, a
  * star or a catalog group just as likely as a drug.
+ *
+ * «Мой арсенал» (owner request 03.10.2026, «самые частые 10-20-30»):
+ * «Частые» shows his top 10, 20 or 30 (the switch in its header, saved on
+ * his card), each with how often he wrote it, the first ones as the biggest
+ * targets; while he has fewer, the clinic's core list continues the column
+ * under «Основные препараты клиники». «Мои» is his arsenal in its order,
+ * and a drug with a schema set there adds as that schema says.
  */
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -50,6 +57,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { parseDrugArsenalSchema, type DrugArsenalSchema } from "@/lib/arsenal";
 import {
   atcGroupLabel,
   atcSubgroupLabel,
@@ -67,6 +75,7 @@ import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
 import {
   atcSubgroups,
   catalogRootGroups,
+  frequentColumn,
   isRepeatClick,
   onVisitChecker,
   starredColumn,
@@ -80,10 +89,12 @@ import {
 } from "../_hooks/use-drug-search";
 import {
   useDrugShortlist,
+  useSetFrequentLimit,
   type DrugShortItem,
   type DrugUsual,
 } from "../_hooks/use-shortlists";
 import type { VisitPrescriptionRow } from "../_hooks/use-visit-note";
+import { ArsenalLink, BIG_ROWS, CountPill, TopSwitch } from "./top-switch";
 
 type ColumnKey = "frequent" | "mine" | "catalog";
 
@@ -165,6 +176,29 @@ export function PrescriptionPicker({
 
   const frequent = shortlist?.frequent ?? NO_ITEMS;
   const core = shortlist?.core ?? NO_ITEMS;
+  const limit = shortlist?.frequentLimit ?? 20;
+  const setLimit = useSetFrequentLimit("DRUG");
+  // His top `limit`, then the clinic's core list while he has fewer.
+  const frequentView = React.useMemo(
+    () =>
+      frequentColumn({
+        frequent,
+        core,
+        coreRank: shortlist?.coreRank ?? NO_IDS,
+        limit,
+      }),
+    [frequent, core, shortlist?.coreRank, limit],
+  );
+  // The schema he set per drug on «Мой арсенал», from the favourites rows
+  // themselves: a schema saved there applies here once that list reloads.
+  const schemas = React.useMemo(
+    () =>
+      new Map<string, DrugArsenalSchema | null>(
+        favorites.map((f) => [f.entityCode, parseDrugArsenalSchema(f.schema)]),
+      ),
+    [favorites],
+  );
+  const favoritesCarrySchema = favorites.some((f) => "schema" in f);
   const mine = React.useMemo(
     () =>
       starredColumn({
@@ -173,8 +207,21 @@ export function PrescriptionPicker({
         known: [...frequent, ...core],
         seen,
         usual,
+        // An older server sends favourites without schemas: keep the
+        // shortlist's own then.
+        schemas: favoritesCarrySchema ? schemas : undefined,
       }),
-    [favoritesLoading, favorites, shortlist?.starred, frequent, core, seen, usual],
+    [
+      favoritesLoading,
+      favorites,
+      shortlist?.starred,
+      frequent,
+      core,
+      seen,
+      usual,
+      schemas,
+      favoritesCarrySchema,
+    ],
   );
 
   const searching = query.trim().length >= 2;
@@ -260,26 +307,56 @@ export function PrescriptionPicker({
           <div className="grid grid-cols-1 gap-2 @min-[440px]:grid-cols-3">
             <PickerColumn
               title={t("rx.picker.col.frequent")}
-              count={frequent.length}
               visible={tab === "frequent"}
+              tools={
+                <TopSwitch value={limit} onChange={(n) => setLimit.mutate(n)} />
+              }
             >
               {shortlistQuery.isLoading ? (
                 <ColumnNote loading />
-              ) : frequent.length === 0 ? (
+              ) : frequentView.own.length + frequentView.core.length === 0 ? (
                 <ColumnNote>{t("rx.picker.frequentEmpty")}</ColumnNote>
               ) : (
-                <ul className="flex flex-col gap-0.5">
-                  {frequent.map((item) => (
-                    <PickerItemRow key={`f-${item.key}`} {...itemProps(item)} />
-                  ))}
-                </ul>
+                <>
+                  {frequentView.own.length > 0 ? (
+                    <ul className="flex flex-col gap-0.5">
+                      {frequentView.own.map((item, i) => (
+                        <PickerItemRow
+                          key={`f-${item.key}`}
+                          {...itemProps(item)}
+                          count={item.count}
+                          big={i < BIG_ROWS}
+                        />
+                      ))}
+                    </ul>
+                  ) : null}
+                  {frequentView.core.length > 0 ? (
+                    // His own are fewer than he chose to see: the clinic's
+                    // core list carries on, so the column is useful from
+                    // his first day in the CRM.
+                    <div
+                      className={cn(
+                        frequentView.own.length > 0 && "mt-1.5 border-t border-border/70 pt-1.5",
+                      )}
+                    >
+                      <p className="px-2 pb-1 text-[13px] font-semibold leading-snug text-muted-foreground">
+                        {t("rx.shortClinic")}
+                      </p>
+                      <ul className="flex flex-col gap-0.5">
+                        {frequentView.core.map((item) => (
+                          <PickerItemRow key={`fc-${item.key}`} {...itemProps(item)} />
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </>
               )}
             </PickerColumn>
 
             <PickerColumn
               title={t("rx.picker.col.mine")}
-              count={mine.length}
               visible={tab === "mine"}
+              tools={<ArsenalLink count={mine.length} />}
             >
               {shortlistQuery.isLoading && mine.length === 0 ? (
                 <ColumnNote loading />
@@ -353,6 +430,7 @@ export function PrescriptionPicker({
 
 // Stable empties so the memos above do not recompute while loading.
 const NO_ITEMS: DrugShortItem[] = [];
+const NO_IDS: string[] = [];
 const NO_USUAL: Record<string, DrugUsual> = {};
 
 // ── Columns ───────────────────────────────────────────────────────────
@@ -366,6 +444,7 @@ function PickerColumn({
   count,
   visible,
   header,
+  tools,
   scrollKey,
   children,
 }: {
@@ -375,6 +454,8 @@ function PickerColumn({
   visible: boolean;
   /** Replaces the plain title (the catalog's back button). */
   header?: React.ReactNode;
+  /** Beside the title in place of the count (the «10 · 20 · 30» switch). */
+  tools?: React.ReactNode;
   /** A new value scrolls the list back to its top (a new catalog level). */
   scrollKey?: string;
   children: React.ReactNode;
@@ -391,17 +472,19 @@ function PickerColumn({
         "@min-[440px]:flex",
       )}
     >
-      <div className="flex min-h-11 items-center gap-2 border-b border-border/70 px-3 py-1.5">
+      {/* Wraps on the narrowest column, the switch under the title. */}
+      <div className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/70 px-3 py-1.5">
         {header ?? (
           <>
-            <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
+            <h3 className="min-w-[4rem] flex-1 truncate text-[15px] font-semibold text-foreground">
               {title}
             </h3>
-            {count ? (
-              <span className="shrink-0 rounded-md bg-muted px-1.5 text-xs font-semibold tabular-nums text-muted-foreground">
-                {count}
-              </span>
-            ) : null}
+            {tools ??
+              (count ? (
+                <span className="shrink-0 rounded-md bg-muted px-1.5 text-xs font-semibold tabular-nums text-muted-foreground">
+                  {count}
+                </span>
+              ) : null)}
           </>
         )}
       </div>
@@ -451,6 +534,8 @@ function PickerItemRow({
   added,
   onPick,
   onStar,
+  count,
+  big = false,
 }: {
   item: DrugShortItem;
   locale: PrescriptionLocale;
@@ -459,6 +544,10 @@ function PickerItemRow({
   added: boolean;
   onPick: () => void;
   onStar: () => void;
+  /** «Частые»: how often he wrote it, shown as a pill before the name. */
+  count?: number;
+  /** One of the first rows of «Частые»: a bigger target. */
+  big?: boolean;
 }) {
   const t = useTranslations("doctor.reception");
   const usual = usualLine(item, locale);
@@ -482,7 +571,8 @@ function PickerItemRow({
               : undefined
         }
         className={cn(
-          "block min-h-12 w-full rounded-lg px-2 py-1.5 text-left transition-colors",
+          "block w-full rounded-lg px-2 text-left transition-colors",
+          big ? "min-h-14 py-2" : "min-h-12 py-1.5",
           added
             ? "bg-success/5 hover:bg-success/10 active:bg-success/15"
             : "hover:bg-primary/5 active:bg-primary/10",
@@ -490,10 +580,19 @@ function PickerItemRow({
       >
         <span
           className={cn(
-            "block break-words text-[15px] font-medium leading-snug",
+            "block break-words",
+            // The line height after the size: tailwind-merge drops a
+            // leading-* that comes before a text-* size.
+            big ? "text-base font-semibold" : "text-[15px] font-medium",
+            "leading-snug",
             added ? "text-muted-foreground" : "text-foreground",
           )}
         >
+          {count && count > 0 ? (
+            <span className="mr-1.5 inline-flex -translate-y-px align-middle">
+              <CountPill n={count} big={big} title={t("rx.shortCount", { n: count })} />
+            </span>
+          ) : null}
           {added ? (
             <CheckIcon className="mr-1 inline size-4 -translate-y-px text-success" />
           ) : null}
@@ -505,7 +604,13 @@ function PickerItemRow({
             "mt-0.5 line-clamp-2 min-h-[1.125rem] break-words text-[13px] leading-snug text-muted-foreground",
             starred !== null && "pr-8",
           )}
-          title={usual ? t("rx.picker.usualHint") : undefined}
+          title={
+            usual
+              ? item.arsenalSchema
+                ? t("rx.picker.arsenalHint")
+                : t("rx.picker.usualHint")
+              : undefined
+          }
         >
           {sub}
         </span>
@@ -536,8 +641,23 @@ function PickerItemRow({
   );
 }
 
-/** His usual dose and schema as one line, empty when he has none. */
+/**
+ * His usual dose and schema as one line, empty when he has none: the
+ * schema he set on «Мой арсенал» for a «Мои» item, else what he wrote last.
+ */
 function usualLine(item: DrugShortItem, locale: PrescriptionLocale): string {
+  const schema = item.arsenalSchema;
+  if (schema) {
+    return formatPrescriptionSchedule(
+      {
+        dose: schema.dose || schema.strength || "",
+        timesOfDay: schema.timesOfDay,
+        mealRelation: schema.mealRelation ?? "NO_MATTER",
+        durationDays: schema.durationDays,
+      },
+      locale,
+    );
+  }
   if (item.count <= 0 || !item.lastDose) return "";
   return formatPrescriptionSchedule(
     {

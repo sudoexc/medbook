@@ -904,6 +904,12 @@ model Doctor {
   // offers at most this many; the rest of the day is the live walk-in queue.
   // Doctors raise it in their own settings when they want more appointments.
   maxBookableSlotsPerDay Int      @default(3)
+  // How many of his most frequent drugs / diagnoses the visit screen's
+  // «Частые» columns show: 10, 20 or 30 (owner request 03.10.2026, «самые
+  // частые 10-20-30»). Per doctor and on the server, not in the browser: a
+  // cabinet PC is shared between shifts, and the doctor moves between them.
+  frequentDrugLimit      Int      @default(20)
+  frequentDiagnosisLimit Int      @default(20)
   isActive               Boolean  @default(true)
   // Shown on the public site (audit LD-08): «Наши специалисты», the booking
   // form, /doctors/<id> and the sitemap. Separate from isActive on purpose:
@@ -1398,9 +1404,16 @@ model DoctorFavorite {
   user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   entityType CatalogEntityType
   entityCode String
-  // Lower = pinned higher in the drawer list. Defaults to insertion order
-  // by epoch ms; reorder UI can update this in batch later.
+  // The arsenal position: lower = higher in «Мои» and in «Мой арсенал».
+  // A new pin goes after the others (epoch seconds, or the last position
+  // plus one); the arsenal page's drag writes 0..n-1 in one batch.
   sortOrder  Int               @default(0)
+  // The doctor's usual schema for a DRUG pin («Мой арсенал», 03.10.2026):
+  // form, strength, dose, times of day, meal relation, days, instruction,
+  // applied by one click from «Мои». Null = none set: the pick then takes
+  // what he wrote last time, as before. Shape: src/lib/arsenal.ts, read
+  // tolerantly (unknown values dropped), never trusted as stored.
+  schema     Json?
   createdAt  DateTime          @default(now())
 
   @@unique([userId, entityType, entityCode])
@@ -2327,6 +2340,10 @@ model VisitNote {
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
+  // A doctor's last year, newest first: his «Частые» diagnoses and drugs.
+  @@index([clinicId, doctorId, createdAt])
+  // The clinic's last notes: the fallback «Частые» of a doctor with none.
+  @@index([clinicId, createdAt])
 }
 
 // Ф2 (TZ-smart-constructor) — structured prescriptions.

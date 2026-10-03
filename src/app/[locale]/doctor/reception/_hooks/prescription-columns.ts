@@ -10,6 +10,10 @@
  *
  * Pure: the picker renders these, the tests drive them.
  */
+import {
+  frequentWithCore,
+  type DrugArsenalSchema,
+} from "@/lib/arsenal";
 import { ATC_GROUPS, ATC_SUBGROUPS } from "@/lib/catalogs/atc-groups";
 import { foldCatalogText } from "@/lib/catalogs/search-fold";
 import {
@@ -77,6 +81,33 @@ export function isRepeatClick(detail: number): boolean {
 }
 
 /**
+ * «Частые» as the column shows it (owner request 03.10.2026, «самые частые
+ * 10-20-30»): his own top `limit`, and while he has fewer, the clinic's
+ * core list after them in clinic-wide use order (`coreRank`), each drug
+ * once. The core items keep his own dose where he has one (the server's
+ * `core`), so they add exactly like a «Каталог» pick of the same drug.
+ */
+export function frequentColumn(args: {
+  frequent: readonly DrugShortItem[];
+  core: readonly DrugShortItem[];
+  coreRank: readonly string[];
+  limit: number;
+}): { own: DrugShortItem[]; core: DrugShortItem[] } {
+  const byId = new Map(args.core.map((c) => [c.drugId, c]));
+  const ranked: DrugShortItem[] = [];
+  for (const id of args.coreRank) {
+    const item = byId.get(id);
+    if (item) {
+      ranked.push(item);
+      byId.delete(id);
+    }
+  }
+  // An older server sends no rank: the clinic's own order then.
+  for (const item of byId.values()) ranked.push(item);
+  return frequentWithCore(args.frequent, ranked, args.limit);
+}
+
+/**
  * «Мои»: his stars in his order, each with the data a click needs.
  *
  * `favorites` is the starred list as the favourites hook holds it, which a
@@ -87,6 +118,12 @@ export function isRepeatClick(detail: number): boolean {
  * to show yet (starred in the «Каталог» window) waits for the next
  * shortlist, which the star itself asks for once it is saved
  * (use-doctor-favorites.ts).
+ *
+ * «Мой арсенал»: the order is the arsenal's (the favourites' position) and
+ * each item carries the schema he set there (`schemas`, from the same
+ * favourites rows, so a schema saved a moment ago on the arsenal page
+ * applies here as soon as that list reloads). A click then adds the drug
+ * as the schema says.
  */
 export function starredColumn(args: {
   favorites: readonly string[] | null;
@@ -95,10 +132,19 @@ export function starredColumn(args: {
   known: readonly DrugShortItem[];
   seen: ReadonlyMap<string, DrugSearchHit>;
   usual: Readonly<Record<string, DrugUsual>>;
+  /** His arsenal schema per drug id; absent or null for none. */
+  schemas?: ReadonlyMap<string, DrugArsenalSchema | null>;
 }): DrugShortItem[] {
   if (args.favorites === null) {
     return args.starred.map((i) => ({ ...i, pinned: true }));
   }
+  const schemaOf = (id: string) =>
+    args.schemas ? (args.schemas.get(id) ?? null) : undefined;
+  const withSchema = (item: DrugShortItem, id: string): DrugShortItem => {
+    const schema = schemaOf(id);
+    // No favourites rows to read a schema from: the server's stays.
+    return schema === undefined ? item : { ...item, arsenalSchema: schema };
+  };
   const byId = new Map<string, DrugShortItem>();
   for (const item of [...args.known, ...args.starred]) {
     if (item.drugId && item.drug) byId.set(item.drugId, item);
@@ -110,11 +156,13 @@ export function starredColumn(args: {
     seenIds.add(id);
     const item = byId.get(id);
     if (item) {
-      out.push({ ...item, pinned: true });
+      out.push(withSchema({ ...item, pinned: true }, id));
       continue;
     }
     const drug = args.seen.get(id);
-    if (drug) out.push(shortItemFromDrug(drug, args.usual[id], { pinned: true }));
+    if (drug) {
+      out.push(withSchema(shortItemFromDrug(drug, args.usual[id], { pinned: true }), id));
+    }
   }
   return out;
 }

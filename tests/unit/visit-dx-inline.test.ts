@@ -247,6 +247,8 @@ const SHORTLIST: DiagnosisShortlist = {
     { code: null, name: "Тиннитус", count: 3, pinned: false },
   ],
   starred: [{ code: TENSION.code, name: TENSION.name, count: 0, pinned: true }],
+  frequentSource: "own",
+  frequentLimit: 20,
 };
 
 function withLists(qc: QueryClient) {

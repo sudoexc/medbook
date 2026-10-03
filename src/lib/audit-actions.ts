@@ -639,6 +639,15 @@ export const AUDIT_ACTION = {
   DOCTOR_FAVORITE_ADDED: "DOCTOR_FAVORITE_ADDED",
   DOCTOR_FAVORITE_REMOVED: "DOCTOR_FAVORITE_REMOVED",
 
+  // «Мой арсенал» (03.10.2026): the doctor, or the clinic's ADMIN preparing
+  // it for him, reordered his pins, set a drug's usual schema, or chose how
+  // many «Частые» the visit screen shows. Adding and removing a pin there
+  // log DOCTOR_FAVORITE_ADDED / _REMOVED like a star does, with `doctorId`
+  // in `meta`. `entityType: "Doctor"`, `entityId: <doctor.id>` here.
+  DOCTOR_ARSENAL_REORDERED: "DOCTOR_ARSENAL_REORDERED",
+  DOCTOR_ARSENAL_SCHEMA_SET: "DOCTOR_ARSENAL_SCHEMA_SET",
+  DOCTOR_FREQUENT_LIMIT_SET: "DOCTOR_FREQUENT_LIMIT_SET",
+
   // Phase G7 — E-recipe + sick leave forms.
   //
   // EPRESCRIPTION_* — `entityType: "EPrescription"`, `entityId: <rx.id>`.

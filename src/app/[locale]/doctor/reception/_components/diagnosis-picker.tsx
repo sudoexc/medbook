@@ -38,6 +38,12 @@
  * double click on «+ Диагноз» opens the columns and its second click lands
  * on the role switch or «Свернуть» that took the bar's place; a pick adds a
  * row above the columns and moves them down by one.
+ *
+ * «Мой арсенал» (owner request 03.10.2026, «самые частые 10-20-30»):
+ * «Частые» shows his top 10, 20 or 30 (the switch in its header, saved on
+ * his card), each with how often he wrote it, the first ones as the biggest
+ * targets; a doctor with no diagnosis of his own yet sees the clinic's most
+ * common ones under «Частые в клинике». «Мои» follows his arsenal's order.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -78,9 +84,11 @@ import { useIcd10Search } from "../_hooks/use-icd10";
 import { useIcd10Node } from "../_hooks/use-icd10-tree";
 import {
   useDiagnosisColumns,
+  useSetFrequentLimit,
   type DiagnosisShortItem,
 } from "../_hooks/use-shortlists";
 import type { VisitNotePatch, VisitNoteRow } from "../_hooks/use-visit-note";
+import { ArsenalLink, BIG_ROWS, CountPill, TopSwitch } from "./top-switch";
 
 type ColumnKey = "frequent" | "mine" | "catalog";
 
@@ -182,6 +190,10 @@ export function DiagnosisPicker({
   );
 
   const frequent = columns.data?.frequent ?? NO_ROWS;
+  const limit = columns.data?.frequentLimit ?? 20;
+  const setLimit = useSetFrequentLimit("ICD10");
+  const frequentShown = React.useMemo(() => frequent.slice(0, limit), [frequent, limit]);
+  const clinicFrequent = columns.data?.frequentSource === "clinic";
   const mine = React.useMemo(
     () =>
       starredDiagnosisColumn({
@@ -348,34 +360,51 @@ export function DiagnosisPicker({
           <div className="grid grid-cols-1 gap-2 @min-[440px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]">
             <Column
               title={t("diagnosis.picker.col.frequent")}
-              count={frequent.length}
               visible={tab === "frequent"}
+              tools={
+                <TopSwitch value={limit} onChange={(n) => setLimit.mutate(n)} />
+              }
             >
               {columns.isLoading ? (
                 <ColumnNote loading />
-              ) : frequent.length === 0 ? (
+              ) : frequentShown.length === 0 ? (
                 <ColumnNote>{t("diagnosis.picker.frequentEmpty")}</ColumnNote>
               ) : (
-                <ul className="flex flex-col gap-0.5">
-                  {frequent.map((d) => (
-                    <DxRow
-                      key={`f-${d.code ?? ""}|${d.name}`}
-                      {...rowProps(d)}
-                      meta={
-                        d.count > 0
-                          ? t("diagnosis.shortCount", { n: d.count })
-                          : null
-                      }
-                    />
-                  ))}
-                </ul>
+                <>
+                  {clinicFrequent ? (
+                    // He has written no diagnosis yet: the clinic's most
+                    // common ones stand in, named as such.
+                    <p className="px-2 pb-1 pt-0.5 text-[13px] font-semibold leading-snug text-muted-foreground">
+                      {t("diagnosis.picker.clinicFrequent")}
+                    </p>
+                  ) : null}
+                  <ul className="flex flex-col gap-0.5">
+                    {frequentShown.map((d, i) => (
+                      <DxRow
+                        key={`f-${d.code ?? ""}|${d.name}`}
+                        {...rowProps(d)}
+                        count={
+                          d.count > 0
+                            ? {
+                                n: d.count,
+                                title: clinicFrequent
+                                  ? t("diagnosis.picker.clinicCount", { n: d.count })
+                                  : t("diagnosis.shortCount", { n: d.count }),
+                              }
+                            : null
+                        }
+                        big={i < BIG_ROWS}
+                      />
+                    ))}
+                  </ul>
+                </>
               )}
             </Column>
 
             <Column
               title={t("diagnosis.picker.col.mine")}
-              count={mine.length}
               visible={tab === "mine"}
+              tools={<ArsenalLink count={mine.length} />}
             >
               {columns.isLoading && mine.length === 0 ? (
                 <ColumnNote loading />
@@ -430,6 +459,7 @@ function Column({
   count,
   visible,
   header,
+  tools,
   scrollKey,
   children,
 }: {
@@ -439,6 +469,8 @@ function Column({
   visible: boolean;
   /** Replaces the plain title (the catalog's way back). */
   header?: React.ReactNode;
+  /** Beside the title in place of the count (the «10 · 20 · 30» switch). */
+  tools?: React.ReactNode;
   /** A new value scrolls the list back to its top (a new catalog level). */
   scrollKey?: string;
   children: React.ReactNode;
@@ -455,17 +487,19 @@ function Column({
         "@min-[440px]:flex",
       )}
     >
-      <div className="flex min-h-11 items-center gap-2 border-b border-border/70 px-3 py-1.5">
+      {/* Wraps on the narrowest column, the switch under the title. */}
+      <div className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/70 px-3 py-1.5">
         {header ?? (
           <>
-            <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
+            <h3 className="min-w-[4rem] flex-1 truncate text-[15px] font-semibold text-foreground">
               {title}
             </h3>
-            {count ? (
-              <span className="shrink-0 rounded-md bg-muted px-1.5 text-xs font-semibold tabular-nums text-muted-foreground">
-                {count}
-              </span>
-            ) : null}
+            {tools ??
+              (count ? (
+                <span className="shrink-0 rounded-md bg-muted px-1.5 text-xs font-semibold tabular-nums text-muted-foreground">
+                  {count}
+                </span>
+              ) : null)}
           </>
         )}
       </div>
@@ -509,7 +543,15 @@ function DxRow({
   onPick,
   onStar,
   meta,
-}: RowProps & { meta?: string | null }) {
+  count,
+  big = false,
+}: RowProps & {
+  meta?: string | null;
+  /** «Частые»: how often, as a pill on the code line, the words on hover. */
+  count?: { n: number; title: string } | null;
+  /** One of the first rows of «Частые»: a bigger target. */
+  big?: boolean;
+}) {
   const t = useTranslations("doctor.reception");
   const words = name && name !== code ? name : null;
   const disabled = added || blocked;
@@ -530,7 +572,8 @@ function DxRow({
         }}
         title={added ? t("diagnosis.picker.onVisit") : undefined}
         className={cn(
-          "block min-h-12 w-full rounded-lg px-2 py-1.5 text-left transition-colors",
+          "block w-full rounded-lg px-2 text-left transition-colors",
+          big ? "min-h-14 py-2" : "min-h-12 py-1.5",
           added
             ? "cursor-default bg-success/5"
             : blocked
@@ -538,22 +581,30 @@ function DxRow({
               : "hover:bg-primary/5 active:bg-primary/10",
         )}
       >
-        {code ? (
+        {code || count ? (
           <span
             className={cn(
-              "flex min-h-7 items-center font-mono text-sm font-semibold",
+              "flex min-h-7 items-center gap-1.5 font-mono font-semibold",
+              big ? "text-[15px]" : "text-sm",
               starred !== null && "pr-8",
               added ? "text-muted-foreground" : "text-primary",
             )}
           >
-            {check}
-            {code}
+            {count ? <CountPill n={count.n} title={count.title} big={big} /> : null}
+            {code ? (
+              <span className="inline-flex items-center">
+                {check}
+                {code}
+              </span>
+            ) : null}
           </span>
         ) : null}
         {words ? (
           <span
             className={cn(
-              "block break-words text-[15px] leading-snug",
+              "block break-words",
+              big ? "text-base font-medium" : "text-[15px]",
+              "leading-snug",
               added ? "text-muted-foreground" : "text-foreground",
             )}
           >

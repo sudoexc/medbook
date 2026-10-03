@@ -2973,7 +2973,8 @@
       "optimal": "Maqbul",
       "overloaded": "Yuklangan",
       "has-slots": "Slotlar bor",
-      "configureView": "Sozlash"
+      "configureView": "Sozlash",
+      "arsenal": "Arsenal"
     },
     "profile": {
       "notFoundTitle": "Shifokor topilmadi",
@@ -3183,7 +3184,8 @@
       "fri": "Juma",
       "sat": "Shanba",
       "sun": "Yakshanba"
-    }
+    },
+    "arsenalHint": "Shifokor arsenali: qabuldagi «Mening» ustuni. Dorilarni sxemalari bilan va tashxislarni tayyorlang, shifokor ularni shu tartibda ko‘radi."
   },
   "notifications": {
     "title": "Bildirishnomalar",
@@ -7038,7 +7040,9 @@
           "starAdd": "«Mening» ro‘yxatiga qo‘shish",
           "starRemove": "«Mening» ro‘yxatidan olib tashlash",
           "collapse": "Yig‘ish",
-          "noVisit": "Tashxisni qabul boshlanganda tanlash mumkin bo‘ladi."
+          "noVisit": "Tashxisni qabul boshlanganda tanlash mumkin bo‘ladi.",
+          "clinicFrequent": "Klinikada tez-tez",
+          "clinicCount": "Klinikada bir yilda {n} marta qo‘yilgan"
         }
       },
       "guide": {
@@ -7197,7 +7201,8 @@
           "usualHint": "Oxirgi marta qanday yozgan bo‘lsangiz",
           "quickDose": "Bir bosishda doza",
           "empty": "Yuqoridagi ro‘yxatlardan dori tanlang yoki «Qo‘lda kiritish» tugmasini bosing.",
-          "noVisit": "Tayinlovlar qabul boshlanganda paydo bo‘ladi."
+          "noVisit": "Tayinlovlar qabul boshlanganda paydo bo‘ladi.",
+          "arsenalHint": "«Mening arsenalim» dagi sxemangiz"
         }
       },
       "copyForward": {
@@ -7275,6 +7280,12 @@
         "onVisit": "Qabulda allaqachon bor",
         "usedTimes": "{n} ta qabulda bo‘lgan",
         "switch": "Tashxis"
+      },
+      "topSwitch": {
+        "label": "Nechta tez-tez ko‘rsatilsin",
+        "option": "{n} tasini ko‘rsatish",
+        "saveFailed": "Tanlovni saqlab bo‘lmadi. Qayta urinib ko‘ring",
+        "arsenal": "«Mening arsenalim»ni sozlash"
       }
     },
     "receptionDialogs": {
@@ -7293,7 +7304,8 @@
         "add": "Sevimlilarga",
         "remove": "Sevimlilardan olib tashlash",
         "loadFailed": "Sevimlilarni yuklab bo‘lmadi. Yulduzchalar oxirgi ma’lumotlar bo‘yicha ko‘rsatilgan.",
-        "saveFailed": "Sevimlilarni saqlab bo‘lmadi, qayta urinib ko‘ring"
+        "saveFailed": "Sevimlilarni saqlab bo‘lmadi, qayta urinib ko‘ring",
+        "arsenalFull": "«Mening» ro‘yxatida allaqachon {max} ta. Ortiqchasini «Mening arsenalim» da olib tashlang"
       },
       "applyProtocol": {
         "fallbackSummary": "Qabulga protokoldagi tayinlovlar, tavsiyalar, nazorat tashrifi va xulosa matni qo‘shiladi.",
@@ -8815,7 +8827,8 @@
         "notifications": "Bildirishnomalar",
         "references": "Ma’lumotnomalar",
         "settings": "Sozlamalar",
-        "tasks": "Topshiriqlar"
+        "tasks": "Topshiriqlar",
+        "arsenal": "Mening arsenalim"
       },
       "footer": {
         "todayRecords": "bugungi yozuvlar"
@@ -8869,6 +8882,72 @@
       "copyFailed": "Nusxalab boʻlmadi",
       "inviteFailed": "Havola yaratib boʻlmadi",
       "waiting": "Bemor Start bosishini kutmoqdamiz…"
+    },
+    "arsenal": {
+      "page": {
+        "title": "Mening arsenalim",
+        "subtitle": "Doimo ishlaydigan dorilar va tashxislaringiz. Qabulda ular «Mening» ustunida shu tartibda turadi, dori esa sxemangiz bo‘yicha bir bosishda qo‘shiladi."
+      },
+      "tabs": {
+        "label": "Nimani sozlash",
+        "drugs": "Dorilar",
+        "diagnoses": "Tashxislar"
+      },
+      "mine": {
+        "title": "Arsenal",
+        "counter": "{max} tadan {n}",
+        "hintDrugs": "Tartibni o‘zgartirish uchun qatorni chapdagi tutqichdan sudrang. «Sxema» bir bosishda qo‘yiladigan doza va qabulni belgilaydi.",
+        "hintDiagnoses": "Tartibni o‘zgartirish uchun qatorni chapdagi tutqichdan sudrang.",
+        "emptyDrugs": "Arsenal bo‘sh. Dorilarni o‘ngdan qo‘shing: tez-tez yoziladiganlardan, klinikaning asosiy dorilaridan yoki qidiruv orqali.",
+        "emptyDiagnoses": "Arsenal bo‘sh. Tashxislarni o‘ngdan qo‘shing: tez-tez qo‘yiladiganlardan yoki MKB-10 qidiruvi orqali.",
+        "drag": "Sudrash",
+        "remove": "Arsenaldan olib tashlash",
+        "unnamed": "Nomsiz kod",
+        "unavailable": "Dori klinikada endi mavjud emas. Uni olib tashlash mumkin.",
+        "noSchema": "Sxema berilmagan: oxirgi doza qo‘yiladi"
+      },
+      "schema": {
+        "button": "Sxema",
+        "save": "Sxemani saqlash",
+        "clear": "Sxemani olib tashlash",
+        "cancel": "Bekor qilish",
+        "otherDays": "Boshqa",
+        "hint": "«Mening» ro‘yxatida bir bosishda dori shunday qo‘shiladi.",
+        "emptyHint": "Bo‘sh sxema: oxirgi doza qo‘yiladi."
+      },
+      "limit": {
+        "label": "Qabulda «Tez-tez» ustunida ko‘rsatish"
+      },
+      "add": {
+        "title": "Qo‘shish",
+        "full": "Arsenalda allaqachon {max} ta. Yangisini qo‘shish uchun chapdan birortasini olib tashlang.",
+        "yourTop": "Bir yildagi tez-tez",
+        "clinicTop": "Klinikada tez-tez",
+        "clinicCore": "Klinikaning asosiy dorilari",
+        "yourTopEmptyDrugs": "Hozircha tez-tez tayinlovlar yo‘q.",
+        "yourTopEmptyDiagnoses": "Hozircha tez-tez tashxislar yo‘q.",
+        "button": "Arsenalga",
+        "added": "Arsenalda",
+        "searchDrugs": "Katalogdan dori topish",
+        "searchDiagnoses": "MKB-10 bo‘yicha tashxis topish",
+        "searchEmpty": "Hech narsa topilmadi",
+        "searchClear": "Qidiruvni tozalash",
+        "catalog": "Guruhlar bo‘yicha katalog",
+        "catalogIcd": "MKB-10 katalogi",
+        "back": "Orqaga",
+        "more": "Yana ko‘rsatish"
+      },
+      "countDrugs": "Bir yilda {n} marta tayinlangan",
+      "countDiagnoses": "Bir yilda {n} marta qo‘yilgan",
+      "countClinicDiagnoses": "Klinikada bir yilda {n} marta qo‘yilgan",
+      "noLogin": "Shifokorning logini yo‘q. Arsenal uning kartasi «Sozlamalar → Foydalanuvchilar» bo‘limida foydalanuvchiga bog‘langanda paydo bo‘ladi.",
+      "forbidden": "Bu shifokor arsenaliga ruxsat yo‘q.",
+      "loadFailed": "Arsenal yuklanmadi. Sahifani yangilang.",
+      "toast": {
+        "full": "Arsenal to‘la. Qo‘shish uchun birortasini olib tashlang.",
+        "stale": "Ro‘yxat boshqa oynada o‘zgardi. Yangi tartib ko‘rsatildi.",
+        "saveFailed": "Saqlab bo‘lmadi. Qayta urinib ko‘ring"
+      }
     }
   },
   "visit": {

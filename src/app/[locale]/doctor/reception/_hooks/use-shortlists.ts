@@ -13,6 +13,16 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useTranslations } from "next-intl";
+
+import {
+  DEFAULT_FREQUENT_LIMIT,
+  normalizeFrequentLimit,
+  type ArsenalKind,
+  type DrugArsenalSchema,
+  type FrequentLimit,
+} from "@/lib/arsenal";
 
 import type { DrugSearchHit } from "./use-drug-search";
 
@@ -46,6 +56,17 @@ export type DrugShortItem = {
   pinned: boolean;
   strengths: string[];
   drug: DrugSearchHit | null;
+  /**
+   * His only ever text line for a catalog drug (shortlist.ts): `label` is
+   * the line, `drugId` the drug it names, `drug` null so a click puts the
+   * line back as he wrote it.
+   */
+  lineOnly?: true;
+  /**
+   * «Мои» only: the schema he set on «Мой арсенал». A click applies it in
+   * place of his last dose (prescription-rows.ts, draftFromShortItem).
+   */
+  arsenalSchema?: DrugArsenalSchema | null;
 };
 
 /** His last dose and schema of one catalog drug (no catalog data). */
@@ -72,8 +93,12 @@ export type DrugShortlist = {
   starred: DrugShortItem[];
   /** The clinic's whole core list, with his own dose where he has one. */
   core: DrugShortItem[];
+  /** The core list's drug ids in clinic-wide use order. */
+  coreRank: string[];
   /** His last dose and schema by drug id. */
   usual: Record<string, DrugUsual>;
+  /** How many «Частые» he chose to see: 10, 20 or 30. */
+  frequentLimit: FrequentLimit;
 };
 
 const EMPTY_SHORTLIST: DrugShortlist = {
@@ -82,7 +107,9 @@ const EMPTY_SHORTLIST: DrugShortlist = {
   frequent: [],
   starred: [],
   core: [],
+  coreRank: [],
   usual: {},
+  frequentLimit: DEFAULT_FREQUENT_LIMIT,
 };
 
 /** The diagnosis endpoint's lists (see diagnosis-shortlist/route.ts). */
@@ -93,12 +120,18 @@ export type DiagnosisShortlist = {
   frequent: DiagnosisShortItem[];
   /** The picker's «Мои»: his stars, in his order, named. */
   starred: DiagnosisShortItem[];
+  /** `frequent` is his own, or the clinic's while he has written none. */
+  frequentSource: "own" | "clinic";
+  /** How many «Частые» he chose to see: 10, 20 or 30. */
+  frequentLimit: FrequentLimit;
 };
 
 const EMPTY_DIAGNOSIS_SHORTLIST: DiagnosisShortlist = {
   rows: [],
   frequent: [],
   starred: [],
+  frequentSource: "own",
+  frequentLimit: DEFAULT_FREQUENT_LIMIT,
 };
 
 export const diagnosisShortlistKey = ["doctor", "reception", "dx-shortlist"] as const;
@@ -119,6 +152,8 @@ const diagnosisShortlistQuery = (enabled: boolean) => ({
       rows: data.rows ?? [],
       frequent: data.frequent ?? [],
       starred: data.starred ?? [],
+      frequentSource: data.frequentSource === "clinic" ? "clinic" : "own",
+      frequentLimit: normalizeFrequentLimit(data.frequentLimit),
     };
   },
   staleTime: 5 * 60_000,
@@ -240,7 +275,9 @@ export function useDrugShortlist(enabled = true) {
         frequent: data.frequent ?? [],
         starred: data.starred ?? [],
         core: data.core ?? [],
+        coreRank: data.coreRank ?? [],
         usual: data.usual ?? {},
+        frequentLimit: normalizeFrequentLimit(data.frequentLimit),
       };
     },
     staleTime: 5 * 60_000,
@@ -293,6 +330,54 @@ export function useAddClinicDrug() {
       // The new name must be findable at once, here and in the reference.
       qc.invalidateQueries({ queryKey: ["doctor", "reception", "drug-search"] });
       qc.invalidateQueries({ queryKey: ["doctor", "references"] });
+    },
+  });
+}
+
+// ── «10 · 20 · 30» ─────────────────────────────────────────────────────
+
+/**
+ * His choice on a «Частые» column's «10 · 20 · 30» switch, saved on his
+ * doctor card (per doctor, not per browser: cabinet PCs are shared). The
+ * column follows at once from the cached list, which already holds his top
+ * 30; the request only remembers the choice, and a failed one puts the old
+ * choice back with a toast.
+ */
+export function useSetFrequentLimit(kind: ArsenalKind) {
+  const qc = useQueryClient();
+  const t = useTranslations("doctor.reception.topSwitch");
+  const key = kind === "DRUG" ? drugShortlistKey : diagnosisShortlistKey;
+  return useMutation<unknown, Error, FrequentLimit, { before: FrequentLimit | null }>({
+    mutationKey: ["doctor", "reception", "frequent-limit", kind],
+    scope: { id: `frequent-limit:${kind}` },
+    mutationFn: async (limit) => {
+      const res = await fetch("/api/crm/doctor-arsenal", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op: "limit", kind, limit }),
+      });
+      if (!res.ok) throw new Error(`frequent-limit ${res.status}`);
+      return res.json();
+    },
+    onMutate: async (limit) => {
+      await qc.cancelQueries({ queryKey: key });
+      let before: FrequentLimit | null = null;
+      qc.setQueryData<{ frequentLimit: FrequentLimit } | undefined>(key, (cur) => {
+        if (!cur) return cur;
+        before = cur.frequentLimit;
+        return { ...cur, frequentLimit: limit };
+      });
+      return { before };
+    },
+    onError: (_e, _limit, context) => {
+      const before = context?.before;
+      if (before) {
+        qc.setQueryData<{ frequentLimit: FrequentLimit } | undefined>(key, (cur) =>
+          cur ? { ...cur, frequentLimit: before } : cur,
+        );
+      }
+      toast.error(t("saveFailed"), { id: `frequent-limit-${kind}` });
     },
   });
 }

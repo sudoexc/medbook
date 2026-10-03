@@ -10,6 +10,7 @@
  * which `usePatchVisitNote` updates the moment an edit is made) and get
  * back the array to send.
  */
+import { isEmptyDrugSchema, type DrugArsenalSchema } from "@/lib/arsenal";
 import { prescriptionLabel } from "@/lib/catalogs/brand-match";
 import {
   defaultDose,
@@ -171,16 +172,76 @@ export function isPendingDosePick(e: unknown): e is PendingDosePickError {
 }
 
 /**
+ * A «Мои» item with the schema he set on «Мой арсенал», as a row draft:
+ * his wording, then each field of the schema over the catalog's default
+ * (the form and strength he chose, his dose, times, meal, days and the
+ * instruction he wants on the handout). A field he left empty takes the
+ * catalog's default, never an older visit's value: the schema is what he
+ * decided, and mixing a remembered dose into it would prescribe something
+ * he did not write.
+ *
+ * WHY its own path and not `last*`: the schema can hold an instruction and
+ * a schedule without a dose, which the «last time» path cannot express.
+ */
+export function draftFromArsenalSchema(
+  item: DrugShortItem & { drug: NonNullable<DrugShortItem["drug"]> },
+  schema: DrugArsenalSchema,
+): DraftPick {
+  const forms = normalizeForms(item.drug.forms);
+  const base = draftFromDrug(item.drug, item.label);
+  const form = schema.form ?? base.form;
+  // A strength names a form: one he chose goes with it; with no form of
+  // his, a strength he wrote is placed on the form it belongs to.
+  const strength = schema.form
+    ? (schema.strength ??
+      forms.find((f) => f.form === schema.form)?.strengths[0] ??
+      null)
+    : schema.strength
+      ? normalizeStrength(schema.strength)
+      : base.strength;
+  const formForStrength =
+    !schema.form && schema.strength
+      ? (formOfStrength(forms, normalizeStrength(schema.strength)) ?? form)
+      : form;
+  const sched = scheduleOf({
+    lastTimesOfDay: schema.timesOfDay,
+    lastMealRelation: schema.mealRelation,
+    lastDurationDays: schema.durationDays,
+  });
+  return {
+    forms,
+    draft: {
+      ...base,
+      displayName: item.label || base.displayName,
+      form: formForStrength,
+      strength,
+      dose: schema.dose?.trim() || defaultDose(formForStrength, strength),
+      ...sched,
+      instructionRu: schema.instructionRu,
+      instructionUz: schema.instructionUz,
+    },
+  };
+}
+
+/**
  * A shortlist pick as a row draft. His own items come back as he wrote them
  * last time: wording, form, strength and dose (audit G4-07). The clinic's
  * core-list items are labelled with the clinic's name («Анаприлин
  * (пропранолол)») and its usual strength, in the form that strength belongs
  * to; their dose is filled only when that strength is one tablet's amount.
+ *
+ * An item of «Мои» with an arsenal schema comes back as the schema says
+ * (`draftFromArsenalSchema`), whatever `kind`: his set schema outranks
+ * what he wrote last time. Only «Мои» items carry one; «Частые» keep the
+ * learned «last time» path.
  */
 export function draftFromShortItem(
   item: DrugShortItem,
   kind: "mine" | "clinic",
 ): DraftPick {
+  if (item.drug && item.arsenalSchema && !isEmptyDrugSchema(item.arsenalSchema)) {
+    return draftFromArsenalSchema({ ...item, drug: item.drug }, item.arsenalSchema);
+  }
   if (item.drug) {
     const forms = normalizeForms(item.drug.forms);
     const base = draftFromDrug(item.drug, item.label);
@@ -251,9 +312,15 @@ export function draftFromShortItem(
   };
 }
 
-/** How a picker item is turned into a row: his own wording, or the clinic's. */
-export function shortItemKind(item: Pick<DrugShortItem, "count">): "mine" | "clinic" {
-  return item.count > 0 ? "mine" : "clinic";
+/**
+ * How a picker item is turned into a row: his own wording, or the clinic's.
+ * An arsenal pin is his even before he ever wrote it: its label is the one
+ * he pinned, not the clinic's.
+ */
+export function shortItemKind(
+  item: Pick<DrugShortItem, "count"> & { arsenalSchema?: DrugArsenalSchema | null },
+): "mine" | "clinic" {
+  return item.count > 0 || !isEmptyDrugSchema(item.arsenalSchema) ? "mine" : "clinic";
 }
 
 /**

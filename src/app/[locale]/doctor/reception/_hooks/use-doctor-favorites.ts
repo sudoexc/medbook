@@ -26,6 +26,8 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { ARSENAL_MAX } from "@/lib/arsenal";
+
 export type CatalogEntityType =
   | "DRUG"
   | "PROTOCOL"
@@ -39,9 +41,25 @@ export type DoctorFavoriteRow = {
   userId: string;
   entityType: CatalogEntityType;
   entityCode: string;
+  /** The arsenal position («Мой арсенал»): the list comes sorted by it. */
   sortOrder: number;
   createdAt: string;
+  /**
+   * A drug pin's usual schema, as stored (read it with
+   * `parseDrugArsenalSchema`). Optional: an older server omits it.
+   */
+  schema?: unknown;
 };
+
+/** A refused write, with the server's reason (e.g. `arsenal_full`). */
+export class FavoriteWriteError extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: string | null,
+  ) {
+    super(`doctor-favorites ${status}${reason ? ` (${reason})` : ""}`);
+  }
+}
 
 export function doctorFavoritesKey(entityType: CatalogEntityType) {
   return ["doctor-favorites", entityType] as const;
@@ -72,7 +90,15 @@ async function writeFavorite(
     body: JSON.stringify({ entityType, entityCode }),
   });
   // Without this a 4xx/5xx resolved, and onError (the rollback) never ran.
-  if (!res.ok) throw new Error(`doctor-favorites ${method} ${res.status}`);
+  if (!res.ok) {
+    let reason: string | null = null;
+    try {
+      reason = ((await res.json()) as { reason?: string }).reason ?? null;
+    } catch {
+      reason = null;
+    }
+    throw new FavoriteWriteError(res.status, reason);
+  }
 }
 
 /** One star click: which code, and whether it is being pinned or unpinned. */
@@ -97,6 +123,7 @@ function withFavorite(
       entityCode,
       sortOrder: Math.floor(Date.now() / 1000),
       createdAt: new Date().toISOString(),
+      schema: null,
     },
   ];
 }
@@ -113,7 +140,7 @@ function withFavorite(
 export function favoriteToggleOptions(
   queryClient: QueryClient,
   entityType: CatalogEntityType,
-  onFailed?: () => void,
+  onFailed?: (error: unknown) => void,
 ) {
   const queryKey = doctorFavoritesKey(entityType);
   const mutationKey = [...queryKey, "toggle"] as const;
@@ -132,11 +159,11 @@ export function favoriteToggleOptions(
     },
     // Undo this click only, on the list as it is now: restoring a snapshot
     // taken at click time would also undo a star clicked since.
-    onError: (_err: unknown, { entityCode, pin }: FavoriteToggle) => {
+    onError: (err: unknown, { entityCode, pin }: FavoriteToggle) => {
       queryClient.setQueryData<DoctorFavoriteRow[]>(queryKey, (cur) =>
         withFavorite(cur ?? [], entityType, entityCode, !pin),
       );
-      onFailed?.();
+      onFailed?.(err);
     },
     onSettled: () => {
       // A refetch while another toggle of this list is still in flight would
@@ -166,6 +193,13 @@ export function favoriteToggleOptions(
         void queryClient.invalidateQueries({
           queryKey: ["doctor", "reception", "rx-shortlist"],
           refetchType: last ? "active" : "none",
+        });
+      }
+      // A star is an arsenal pin: «Мой арсенал» shows it next time it opens.
+      if (entityType === "DRUG" || entityType === "ICD10") {
+        void queryClient.invalidateQueries({
+          queryKey: ["doctor-arsenal"],
+          refetchType: "none",
         });
       }
     },
@@ -213,8 +247,13 @@ export function useDoctorFavorites(entityType: CatalogEntityType) {
   );
 
   const mutation = useMutation(
-    favoriteToggleOptions(queryClient, entityType, () =>
-      toast.error(t("favorites.saveFailed"), { id: "doctor-favorites-save" }),
+    favoriteToggleOptions(queryClient, entityType, (error) =>
+      // The arsenal holds 30 per kind: say so, rather than «try again».
+      error instanceof FavoriteWriteError && error.reason === "arsenal_full"
+        ? toast.error(t("favorites.arsenalFull", { max: ARSENAL_MAX }), {
+            id: "doctor-favorites-save",
+          })
+        : toast.error(t("favorites.saveFailed"), { id: "doctor-favorites-save" }),
     ),
   );
 

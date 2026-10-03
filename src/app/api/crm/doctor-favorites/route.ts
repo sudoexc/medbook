@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
+import { ARSENAL_MAX } from "@/lib/arsenal";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
@@ -72,6 +73,18 @@ export const POST = createApiHandler(
       },
     });
     if (existing) return ok({ favorite: existing, created: false });
+
+    // «Мой арсенал» (03.10.2026): drug and diagnosis stars ARE the arsenal,
+    // which holds 30 per kind. A star past that is refused with a reason the
+    // visit screen names, instead of growing a list he can no longer scan.
+    if (body.entityType === "DRUG" || body.entityType === "ICD10") {
+      const pinned = await prisma.doctorFavorite.count({
+        where: { userId: ctx.userId, entityType: body.entityType },
+      });
+      if (pinned >= ARSENAL_MAX) {
+        return err("ArsenalFull", 409, { reason: "arsenal_full", max: ARSENAL_MAX });
+      }
+    }
 
     const created = await prisma.doctorFavorite.create({
       data: {

@@ -14,6 +14,12 @@
  *   2. what he actually wrote, most often first, ties to the most recent.
  * Counted over drafts too: in this clinic most visits are never signed, and
  * a list built from signed notes alone would be empty for the busiest doctor.
+ *
+ * «Мой арсенал» (owner request 03.10.2026, «самые частые 10-20-30»): a
+ * free-text line the catalog matcher places on a drug (resolveLineDrugIds)
+ * counts for that drug, together with its structured rows, so «Мексидол 5,0
+ * в/м №10» from an old preset and a Мексидол row are one drug with one count
+ * in «Частые», not two half-counted entries.
  */
 import { prescriptionLabel } from "@/lib/catalogs/brand-match";
 import { foldCatalogText } from "@/lib/catalogs/search-fold";
@@ -266,9 +272,29 @@ export type DrugShortItem = {
   lastMealRelation: string | null;
   lastDurationDays: number | null;
   pinned: boolean;
+  /**
+   * Only ever written as a text line, which the catalog matcher placed on
+   * `drugId`. `label` is then his newest line, as he wrote it: one click
+   * puts that line back (it carries his dose: «5,0 в/м №10»), while the id
+   * lets the star, the arsenal and «уже в приёме» treat it as the drug.
+   * Absent on every other item.
+   */
+  lineOnly?: true;
 };
 
-type DrugAcc = DrugShortItem & { lastAt: number };
+/** A free-text prescription line (VisitNote.prescriptions). */
+export type FreeTextDrugUse = {
+  line: string;
+  at: Date;
+  /** The catalog drug the line names, when the matcher placed it. */
+  drugId?: string | null;
+};
+
+type DrugAcc = DrugShortItem & {
+  lastAt: number;
+  /** How many of its uses are structured rows; 0 = text lines only. */
+  rows: number;
+};
 
 /**
  * One entry per drug he wrote: structured rows by drug id, free-typed ones
@@ -277,7 +303,7 @@ type DrugAcc = DrugShortItem & { lastAt: number };
  */
 function accumulateDrugUses(
   structured: readonly StructuredDrugUse[],
-  freeText: readonly { line: string; at: Date }[],
+  freeText: readonly FreeTextDrugUse[],
 ): Map<string, DrugAcc> {
   const acc = new Map<string, DrugAcc>();
 
@@ -302,6 +328,7 @@ function accumulateDrugUses(
     const cur = acc.get(key);
     if (cur) {
       cur.count += 1;
+      cur.rows += 1;
       if (use.at.getTime() > cur.lastAt) {
         // The newest spelling and dose win.
         cur.lastAt = use.at.getTime();
@@ -325,9 +352,45 @@ function accumulateDrugUses(
       lastDurationDays: null,
       pinned: false,
       lastAt: use.at.getTime(),
+      rows: 1,
     };
     if (dose) takeDose(fresh);
     acc.set(key, fresh);
+  };
+
+  /**
+   * A line the matcher placed on a catalog drug. Joined to that drug's rows
+   * it adds to the count and to the recency, never to the dose or schema: a
+   * line names a drug, the rows say how he writes it. Alone, it is that
+   * drug's entry with his newest line as the label.
+   */
+  const bumpLine = (drugId: string, line: string, at: Date) => {
+    const cur = acc.get(drugId);
+    const t = at.getTime();
+    if (cur) {
+      cur.count += 1;
+      if (t > cur.lastAt) {
+        cur.lastAt = t;
+        if (cur.rows === 0) cur.label = line;
+      }
+      return;
+    }
+    acc.set(drugId, {
+      key: drugId,
+      drugId,
+      label: line,
+      count: 1,
+      lastDose: null,
+      lastForm: null,
+      lastStrength: null,
+      lastTimesOfDay: [],
+      lastMealRelation: null,
+      lastDurationDays: null,
+      pinned: false,
+      lineOnly: true,
+      lastAt: t,
+      rows: 0,
+    });
   };
 
   // Free-typed drugs group by the search's fold: «Магне B6» and «Магне®
@@ -338,10 +401,20 @@ function accumulateDrugUses(
     if (label.length < 2) continue;
     bump(s.drugId ?? textKey(label), s.drugId, label, s);
   }
+  // Rows first, so a line always finds the rows of its drug already there.
   for (const f of freeText) {
     const label = f.line.trim();
     if (label.length < 2) continue;
+    if (f.drugId) {
+      bumpLine(f.drugId, label, f.at);
+      continue;
+    }
     bump(textKey(label), null, label, { dose: null, at: f.at });
+  }
+  for (const a of acc.values()) {
+    // A text entry is a line only; a catalog entry is a line only while no
+    // row of the drug joined it.
+    if (a.rows > 0 || !a.drugId) delete a.lineOnly;
   }
   return acc;
 }
@@ -351,6 +424,18 @@ function rankedHistory(acc: ReadonlyMap<string, DrugAcc>): DrugShortItem[] {
   return [...acc.values()]
     .sort((a, b) => b.count - a.count || b.lastAt - a.lastAt)
     .map(toDrugItem);
+}
+
+/**
+ * A star as an item: his entry when he wrote it as a row; else the bare
+ * star (the route names it from the catalog), carrying his count when he
+ * wrote it as a text line only. WHY not the line: a star is the drug, and
+ * «Мои» must add the drug with his schema, not replay an old line.
+ */
+function starOf(id: string, acc: ReadonlyMap<string, DrugAcc>): DrugShortItem {
+  const used = acc.get(id);
+  if (used && !used.lineOnly) return { ...toDrugItem(used), pinned: true };
+  return used ? { ...unusedStar(id), count: used.count } : unusedStar(id);
 }
 
 /** A starred drug he never wrote: the route fills its label from the catalog. */
@@ -375,20 +460,15 @@ export function buildDrugShortlist(args: {
   pinnedIds: string[];
   structured: StructuredDrugUse[];
   /** Free-text quick-entry lines (VisitNote.prescriptions). */
-  freeText: { line: string; at: Date }[];
+  freeText: FreeTextDrugUse[];
   limit: number;
 }): DrugShortItem[] {
   const acc = accumulateDrugUses(args.structured, args.freeText);
 
   const pinned: DrugShortItem[] = [];
   for (const id of args.pinnedIds) {
-    const used = acc.get(id);
-    if (used) {
-      acc.delete(id);
-      pinned.push({ ...toDrugItem(used), pinned: true });
-    } else {
-      pinned.push(unusedStar(id));
-    }
+    pinned.push(starOf(id, acc));
+    acc.delete(id);
   }
 
   return withHistory(pinned, rankedHistory(acc), args.limit);
@@ -419,7 +499,7 @@ export type DrugColumns = {
 export function buildDrugColumns(args: {
   pinnedIds: string[];
   structured: StructuredDrugUse[];
-  freeText: { line: string; at: Date }[];
+  freeText: FreeTextDrugUse[];
   frequentLimit: number;
   /** Upper bound on `usual`, so the payload stays small for a busy doctor. */
   usualLimit: number;
@@ -432,15 +512,14 @@ export function buildDrugColumns(args: {
     pinned: !!i.drugId && pinnedSet.has(i.drugId),
   }));
 
-  const starred = pinnedIds.map((id) => {
-    const used = acc.get(id);
-    return used ? { ...toDrugItem(used), pinned: true } : unusedStar(id);
-  });
+  const starred = pinnedIds.map((id) => starOf(id, acc));
 
   const usual = new Map<string, DrugShortItem>();
   for (const item of history) {
     if (usual.size >= args.usualLimit) break;
-    if (item.drugId) usual.set(item.drugId, item);
+    // A line-only entry has no dose or schema to give, and its label is a
+    // whole line: as a «usual» it would rename a catalog pick to that line.
+    if (item.drugId && !item.lineOnly) usual.set(item.drugId, item);
   }
 
   return {
@@ -555,5 +634,6 @@ function toDrugItem(a: DrugShortItem): DrugShortItem {
     lastMealRelation: a.lastMealRelation,
     lastDurationDays: a.lastDurationDays,
     pinned: a.pinned,
+    ...(a.lineOnly ? { lineOnly: true as const } : {}),
   };
 }

@@ -25,6 +25,12 @@ const HEAD_LETTERS = 5;
 
 export async function resolveLineDrugIds(
   lines: readonly string[],
+  /**
+   * Restrict to the rows this clinic may see (global and its own). The
+   * doctor's «Частые» pass it: a line placed on another clinic's own drug
+   * would give him a star and an arsenal pin he can never prescribe.
+   */
+  opts: { clinicId?: string | null } = {},
 ): Promise<(string | null)[]> {
   if (lines.length === 0) return [];
   // The line's first word as typed, in each spelling the catalog may use
@@ -50,6 +56,18 @@ export async function resolveLineDrugIds(
       // Bare clinic quick-adds would shadow the real substance, as in the
       // drug check.
       NOT: { inn: { startsWith: "clinic:" } },
+      ...(opts.clinicId !== undefined
+        ? {
+            AND: [
+              {
+                OR: [
+                  { clinicId: null },
+                  ...(opts.clinicId ? [{ clinicId: opts.clinicId }] : []),
+                ],
+              },
+            ],
+          }
+        : {}),
       OR: [
         ...heads.flatMap((h) => [
           { nameRu: { startsWith: h, mode: "insensitive" as const } },

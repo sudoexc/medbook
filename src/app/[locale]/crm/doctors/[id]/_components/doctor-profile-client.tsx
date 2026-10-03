@@ -31,9 +31,10 @@ import { DoctorPatientsList } from "./doctor-patients-list";
 import { DoctorReviews } from "./doctor-reviews";
 import { DoctorServicesEditor } from "./doctor-services";
 import { DoctorOnlineService } from "./doctor-online-service";
+import { ArsenalEditor } from "@/components/arsenal/arsenal-editor";
 import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role";
 
-type TabId = "overview" | "schedule" | "services" | "patients" | "reviews";
+type TabId = "overview" | "schedule" | "services" | "patients" | "reviews" | "arsenal";
 
 const TAB_ORDER: TabId[] = [
   "overview",
@@ -41,6 +42,7 @@ const TAB_ORDER: TabId[] = [
   "services",
   "patients",
   "reviews",
+  "arsenal",
 ];
 
 function isTabId(v: string): v is TabId {
@@ -204,6 +206,9 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
             <TabsTrigger value="patients">{tTabs("patients")}</TabsTrigger>
           ) : null}
           <TabsTrigger value="reviews">{tTabs("reviews")}</TabsTrigger>
+          {isAdmin ? (
+            <TabsTrigger value="arsenal">{tTabs("arsenal")}</TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent value="overview" className="flex flex-col gap-4">
@@ -244,6 +249,17 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
         <TabsContent value="reviews" className="flex flex-col gap-4">
           <DoctorReviews doctorId={doctor.id} />
         </TabsContent>
+
+        {/* «Арсенал» (03.10.2026): the owner prepares a doctor's «Мои» and
+            schemas for him. ADMIN only; the API checks the clinic again. */}
+        {isAdmin ? (
+          <TabsContent value="arsenal" className="flex flex-col gap-4">
+            <p className="text-sm leading-snug text-muted-foreground">
+              {t("arsenalHint")}
+            </p>
+            <ArsenalEditor doctorId={doctor.id} />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <NewAppointmentDialog

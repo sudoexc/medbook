@@ -8,6 +8,7 @@ import {
   BarChart3Icon,
   BookOpenIcon,
   BrainIcon,
+  BriefcaseMedicalIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
   ClipboardCheckIcon,
@@ -45,6 +46,9 @@ const DOCTOR_NAV: NavGroup[] = [
     items: [
       { href: "my-day", labelKey: "sidebar.myDay", icon: SunIcon },
       { href: "reception", labelKey: "sidebar.reception", icon: ClipboardCheckIcon },
+      // «Мой арсенал»: his constant drugs and diagnoses for «Мои» on the
+      // visit screen, next to the screen it serves (03.10.2026).
+      { href: "arsenal", labelKey: "sidebar.arsenal", icon: BriefcaseMedicalIcon },
       { href: "patients", labelKey: "sidebar.patients", icon: UsersIcon },
       // «История визитов» hidden from the cabinet nav per doctor feedback —
       // every patient card already carries its own visit history. The

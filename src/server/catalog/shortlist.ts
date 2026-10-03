@@ -170,6 +170,13 @@ export type StructuredDrugUse = {
   /** The row's form and strength: the dose was written for them. */
   form?: string | null;
   strength?: string | null;
+  /**
+   * The schedule written with that dose: times of day, meal relation and
+   * days. Optional: callers that only rank (the CT-03 repin) leave it out.
+   */
+  timesOfDay?: readonly string[] | null;
+  mealRelation?: string | null;
+  durationDays?: number | null;
   at: Date;
 };
 
@@ -187,8 +194,119 @@ export type DrugShortItem = {
    */
   lastForm: string | null;
   lastStrength: string | null;
+  /**
+   * The schedule of that same row (clinic request 03.10.2026: one click
+   * must bring the drug back with his usual dose AND schema, so a doctor
+   * who works with the mouse does not set «утро, вечер, 10 дней» again on
+   * every visit). Empty / null when that row had none.
+   */
+  lastTimesOfDay: string[];
+  lastMealRelation: string | null;
+  lastDurationDays: number | null;
   pinned: boolean;
 };
+
+type DrugAcc = DrugShortItem & { lastAt: number };
+
+/**
+ * One entry per drug he wrote: structured rows by drug id, free-typed ones
+ * by the search's fold of their wording. Shared by the shortlist and the
+ * picker columns so the two can never count differently.
+ */
+function accumulateDrugUses(
+  structured: readonly StructuredDrugUse[],
+  freeText: readonly { line: string; at: Date }[],
+): Map<string, DrugAcc> {
+  const acc = new Map<string, DrugAcc>();
+
+  const bump = (
+    key: string,
+    drugId: string | null,
+    label: string,
+    use: Omit<StructuredDrugUse, "drugId" | "displayName">,
+  ) => {
+    const dose = use.dose?.trim() || null;
+    // The form, strength and schedule travel with the dose they were
+    // written for: a dose from one visit with the times of another is a
+    // prescription he never wrote.
+    const takeDose = (cur: DrugAcc) => {
+      cur.lastDose = dose;
+      cur.lastForm = use.form ?? null;
+      cur.lastStrength = use.strength ?? null;
+      cur.lastTimesOfDay = [...(use.timesOfDay ?? [])];
+      cur.lastMealRelation = use.mealRelation ?? null;
+      cur.lastDurationDays = use.durationDays ?? null;
+    };
+    const cur = acc.get(key);
+    if (cur) {
+      cur.count += 1;
+      if (use.at.getTime() > cur.lastAt) {
+        // The newest spelling and dose win.
+        cur.lastAt = use.at.getTime();
+        cur.label = label;
+        if (dose) takeDose(cur);
+      } else if (!cur.lastDose && dose) {
+        takeDose(cur);
+      }
+      return;
+    }
+    const fresh: DrugAcc = {
+      key,
+      drugId,
+      label,
+      count: 1,
+      lastDose: null,
+      lastForm: null,
+      lastStrength: null,
+      lastTimesOfDay: [],
+      lastMealRelation: null,
+      lastDurationDays: null,
+      pinned: false,
+      lastAt: use.at.getTime(),
+    };
+    if (dose) takeDose(fresh);
+    acc.set(key, fresh);
+  };
+
+  // Free-typed drugs group by the search's fold: «Магне B6» and «Магне®
+  // В6» (Cyrillic В) are one drug he writes, not two half-counted ones.
+  const textKey = (label: string) => `text:${foldCatalogText(label)}`;
+  for (const s of structured) {
+    const label = s.displayName.trim();
+    if (label.length < 2) continue;
+    bump(s.drugId ?? textKey(label), s.drugId, label, s);
+  }
+  for (const f of freeText) {
+    const label = f.line.trim();
+    if (label.length < 2) continue;
+    bump(textKey(label), null, label, { dose: null, at: f.at });
+  }
+  return acc;
+}
+
+/** Most often first, ties to the most recent. */
+function rankedHistory(acc: ReadonlyMap<string, DrugAcc>): DrugShortItem[] {
+  return [...acc.values()]
+    .sort((a, b) => b.count - a.count || b.lastAt - a.lastAt)
+    .map(toDrugItem);
+}
+
+/** A starred drug he never wrote: the route fills its label from the catalog. */
+function unusedStar(id: string): DrugShortItem {
+  return {
+    key: id,
+    drugId: id,
+    label: "",
+    count: 0,
+    lastDose: null,
+    lastForm: null,
+    lastStrength: null,
+    lastTimesOfDay: [],
+    lastMealRelation: null,
+    lastDurationDays: null,
+    pinned: true,
+  };
+}
 
 export function buildDrugShortlist(args: {
   /** Starred drug ids, in the doctor's order. */
@@ -198,72 +316,7 @@ export function buildDrugShortlist(args: {
   freeText: { line: string; at: Date }[];
   limit: number;
 }): DrugShortItem[] {
-  type Acc = DrugShortItem & { lastAt: number };
-  const acc = new Map<string, Acc>();
-
-  const bump = (
-    key: string,
-    drugId: string | null,
-    label: string,
-    dose: string | null,
-    at: Date,
-    form: string | null = null,
-    strength: string | null = null,
-  ) => {
-    // The form and strength travel with the dose they were written for.
-    const takeDose = (cur: Acc) => {
-      cur.lastDose = dose;
-      cur.lastForm = form;
-      cur.lastStrength = strength;
-    };
-    const cur = acc.get(key);
-    if (cur) {
-      cur.count += 1;
-      if (at.getTime() > cur.lastAt) {
-        // The newest spelling and dose win.
-        cur.lastAt = at.getTime();
-        cur.label = label;
-        if (dose) takeDose(cur);
-      } else if (!cur.lastDose && dose) {
-        takeDose(cur);
-      }
-      return;
-    }
-    acc.set(key, {
-      key,
-      drugId,
-      label,
-      count: 1,
-      lastDose: dose,
-      lastForm: dose ? form : null,
-      lastStrength: dose ? strength : null,
-      pinned: false,
-      lastAt: at.getTime(),
-    });
-  };
-
-  // Free-typed drugs group by the search's fold: «Магне B6» and «Магне®
-  // В6» (Cyrillic В) are one drug he writes, not two half-counted ones.
-  const textKey = (label: string) => `text:${foldCatalogText(label)}`;
-  for (const s of args.structured) {
-    const label = s.displayName.trim();
-    if (label.length < 2) continue;
-    const key = s.drugId ?? textKey(label);
-    bump(
-      key,
-      s.drugId,
-      label,
-      s.dose?.trim() || null,
-      s.at,
-      s.form ?? null,
-      s.strength ?? null,
-    );
-  }
-  for (const f of args.freeText) {
-    const label = f.line.trim();
-    if (label.length < 2) continue;
-    bump(textKey(label), null, label, null, f.at);
-  }
+  const acc = accumulateDrugUses(args.structured, args.freeText);
 
   const pinned: DrugShortItem[] = [];
   for (const id of args.pinnedIds) {
@@ -272,25 +325,67 @@ export function buildDrugShortlist(args: {
       acc.delete(id);
       pinned.push({ ...toDrugItem(used), pinned: true });
     } else {
-      // Label filled from the catalog row by the route.
-      pinned.push({
-        key: id,
-        drugId: id,
-        label: "",
-        count: 0,
-        lastDose: null,
-        lastForm: null,
-        lastStrength: null,
-        pinned: true,
-      });
+      pinned.push(unusedStar(id));
     }
   }
 
-  const rest = [...acc.values()]
-    .sort((a, b) => b.count - a.count || b.lastAt - a.lastAt)
-    .map(toDrugItem);
+  return withHistory(pinned, rankedHistory(acc), args.limit);
+}
 
-  return withHistory(pinned, rest, args.limit);
+export type DrugColumns = {
+  /**
+   * «Частые»: what he actually writes, most often first, starred or not.
+   * A star does not push history out of this column the way it does in
+   * the shortlist: the two columns answer different questions.
+   */
+  frequent: DrugShortItem[];
+  /** «Мои»: his stars in his order, with his last dose where he has one. */
+  starred: DrugShortItem[];
+  /**
+   * His last dose and schema of every catalog drug he wrote, by drug id,
+   * for a pick from the catalog column, the search or the drawer: the drug
+   * comes back as he writes it even when it is not among his top ones.
+   */
+  usual: Map<string, DrugShortItem>;
+};
+
+/**
+ * The picker's «Частые» and «Мои» columns and his usual dose per drug
+ * (clinic request 03.10.2026: prescribing with the mouse only). Same
+ * counting as the shortlist (drafts included, newest dose wins).
+ */
+export function buildDrugColumns(args: {
+  pinnedIds: string[];
+  structured: StructuredDrugUse[];
+  freeText: { line: string; at: Date }[];
+  frequentLimit: number;
+  /** Upper bound on `usual`, so the payload stays small for a busy doctor. */
+  usualLimit: number;
+}): DrugColumns {
+  const acc = accumulateDrugUses(args.structured, args.freeText);
+  const pinnedIds = [...new Set(args.pinnedIds)];
+  const pinnedSet = new Set(pinnedIds);
+  const history = rankedHistory(acc).map((i) => ({
+    ...i,
+    pinned: !!i.drugId && pinnedSet.has(i.drugId),
+  }));
+
+  const starred = pinnedIds.map((id) => {
+    const used = acc.get(id);
+    return used ? { ...toDrugItem(used), pinned: true } : unusedStar(id);
+  });
+
+  const usual = new Map<string, DrugShortItem>();
+  for (const item of history) {
+    if (usual.size >= args.usualLimit) break;
+    if (item.drugId) usual.set(item.drugId, item);
+  }
+
+  return {
+    frequent: history.slice(0, args.frequentLimit),
+    starred,
+    usual,
+  };
 }
 
 // ─────────────── Drugs whose brand moved to another row ───────────────
@@ -390,6 +485,9 @@ function toDrugItem(a: DrugShortItem): DrugShortItem {
     lastDose: a.lastDose,
     lastForm: a.lastForm,
     lastStrength: a.lastStrength,
+    lastTimesOfDay: [...a.lastTimesOfDay],
+    lastMealRelation: a.lastMealRelation,
+    lastDurationDays: a.lastDurationDays,
     pinned: a.pinned,
   };
 }

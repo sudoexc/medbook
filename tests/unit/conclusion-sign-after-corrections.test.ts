@@ -17,6 +17,8 @@
  * server. These tests drive the real queue against a slow fake server that
  * applies requests in arrival order with the optimistic lock.
  */
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 
@@ -627,5 +629,99 @@ describe("VW-04: «Завершить приём» on the visit screen waits for
 
     expect(step).toEqual({ kind: "flushFailed", error: boom });
     expect(server.log).toEqual([]);
+  });
+});
+
+/**
+ * 03.10.2026: the conclusion editor left the visit screen. Nothing registers
+ * a text flush there any more, and the screen has no field for the text, so
+ * «Завершить приём» must sign a visit with a diagnosis and prescriptions
+ * without asking «sign without a conclusion?». The conclusion card, which
+ * still has its editor, keeps asking (its page is unchanged).
+ */
+describe("signing on the visit screen without the conclusion editor", () => {
+  it("an empty conclusion text is not asked about: the visit is signed", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup(
+      [draft("Карбамазепин")],
+      { bodyMarkdown: null },
+    );
+
+    // A drug picked right before the click, as the picker does.
+    const pending = act((cur) => [...cur, draft("Конкор", { dose: "5 мг" })]);
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      // What the reception context's flush is with no editor registered.
+      flushDraftEdits: async () => undefined,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "finalized" });
+    expect(server.log.map((e) => `${e.kind} ${e.status}`)).toEqual([
+      "PATCH 200",
+      "GET 200",
+      "FINALIZE 200",
+    ]);
+    expect(server.signed?.bodyMarkdown).toBeNull();
+    expect(
+      server.signed?.visitPrescriptions?.map((r) => r.displayName),
+    ).toEqual(["Карбамазепин", "Конкор"]);
+  });
+
+  it("a missing diagnosis is still asked about, and only it", async () => {
+    const { noteId, server, readSavedRow, finalize } = setup(
+      [draft("Карбамазепин")],
+      { bodyMarkdown: "", diagnosisCode: null, diagnosisName: null },
+    );
+
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: async () => undefined,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+
+    expect(step).toEqual({ kind: "confirm", missing: ["diagnosis"] });
+    expect(server.log.some((e) => e.kind === "FINALIZE")).toBe(false);
+  });
+
+  it("text an older note or a protocol template carries is signed as it is", async () => {
+    const { noteId, server, readSavedRow, finalize } = setup([draft("A")], {
+      bodyMarkdown: "Шаблон протокола",
+    });
+
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: async () => undefined,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+
+    expect(step).toEqual({ kind: "finalized" });
+    expect(server.signed?.bodyMarkdown).toBe("Шаблон протокола");
+  });
+
+  it("the conclusion card still asks about an empty text", async () => {
+    const { noteId, readSavedRow } = setup([draft("A")], { bodyMarkdown: null });
+
+    const ready = await prepareVisitNoteSignature(noteId, readSavedRow);
+
+    expect(ready).toMatchObject({ kind: "ready", missing: ["conclusion"] });
+  });
+
+  it("the reception never registers a text flush on the visit screen", () => {
+    const dir = path.join(
+      process.cwd(),
+      "src/app/[locale]/doctor/reception/_components",
+    );
+    for (const file of readdirSync(dir)) {
+      const src = readFileSync(path.join(dir, file), "utf8");
+      expect(src, file).not.toContain("registerDraftFlush(");
+    }
+    expect(existsSync(path.join(dir, "notes-editor-panel.tsx"))).toBe(false);
   });
 });

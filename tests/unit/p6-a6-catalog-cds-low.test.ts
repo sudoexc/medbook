@@ -364,6 +364,9 @@ describe("CT-19: the photo worklist shrinks and the counts match the list", () =
     expect(f.total).toBe(4);
     expect(f.total).toBe(listed);
     expect(f.byGroup).toEqual({ N: 2, C: 1 });
+    // The visit screen's «Каталог» column walks the subgroups: the same
+    // visible rows, by their first three characters.
+    expect(f.bySubgroup).toEqual({ N02: 1, N03: 1, C07: 1 });
     expect(f.withoutAtc).toBe(1);
     expect(f.dosingCount).toBe(1);
     expect(f.noPhotoCount).toBe(2);

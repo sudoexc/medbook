@@ -103,23 +103,36 @@ export function formatDurationDays(
   return locale === "uz" ? `${durationDays} kun` : `${durationDays} дн.`;
 }
 
-export function formatPrescriptionLine(
-  row: PrescriptionLikeRow,
+/**
+ * The part of the line after the name: «1 таб., утром и вечером, после еды,
+ * 10 дн.». Empty when the row has none of it. The visit screen's picker
+ * shows it under a drug as the doctor's usual way of writing it.
+ */
+export function formatPrescriptionSchedule(
+  row: Pick<
+    PrescriptionLikeRow,
+    "dose" | "timesOfDay" | "mealRelation" | "durationDays"
+  >,
   locale: PrescriptionLocale,
-  opts?: { withInstruction?: boolean },
 ): string {
   const dose = row.dose.trim();
-  const head = formatPrescriptionHead(row);
-
   const times = TIME_ORDER.filter((t) => row.timesOfDay.includes(t)).map(
     (t) => TIME_LABELS[locale][t],
   );
   const meal = formatMealLabel(row.mealRelation, locale);
   const duration = formatDurationDays(row.durationDays, locale);
-
-  const schedule = [dose, joinHuman(times, locale), meal, duration]
+  return [dose, joinHuman(times, locale), meal, duration]
     .filter(Boolean)
     .join(", ");
+}
+
+export function formatPrescriptionLine(
+  row: PrescriptionLikeRow,
+  locale: PrescriptionLocale,
+  opts?: { withInstruction?: boolean },
+): string {
+  const head = formatPrescriptionHead(row);
+  const schedule = formatPrescriptionSchedule(row, locale);
 
   let line = schedule ? `${head} — ${schedule}` : head;
 

@@ -51,6 +51,8 @@ export async function findUnsignedDraft(
   if (!draftHasContent(sections)) return null;
   return {
     visitNoteId: draft.id,
-    emptySections: emptyConclusionSections(sections),
+    // A visit is run on the visit screen, which has no conclusion editor:
+    // an empty text is not something the doctor left out.
+    emptySections: emptyConclusionSections(sections, { requireConclusion: false }),
   };
 }

@@ -6,8 +6,8 @@ import { VisitsSection } from "../../patients/[id]/_components/visits-section";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import { AdvicePanel } from "./advice-panel";
+import { ConclusionTemplateChannel } from "./conclusion-template-channel";
 import { DiagnosisHistoryCard } from "./diagnosis-history-card";
-import { NotesEditorPanel } from "./notes-editor-panel";
 import {
   DiagnosisFollowUpPanel,
   PrescriptionsPanel,
@@ -17,8 +17,9 @@ import {
  * Tab-driven body of the reception page.
  *
  * - `session` (default) — the live consultation: diagnosis and control
- *   visit on the left, the conclusion editor with «Назначения» under it in
- *   the middle, advice on the right (under the left column below 2xl).
+ *   visit on the left, «Назначения» on top of the middle column, advice on
+ *   the right (under the left column below 2xl). The conclusion text has
+ *   no editor here any more; its preview opens from the sign bar.
  * - `history` / `documents` / `prescriptions` — read-only views of the
  *   active patient's chart, reusing the same doctor-scoped infinite queries
  *   from `/doctor/patients/[id]` so we don't fork two implementations.
@@ -35,9 +36,11 @@ export function SessionTabContent({ locale }: { locale: string }) {
   if (activeTab === "session") {
     // Clinic-requested three-column flow, reworked 29.09.2026 («хаммаси
     // бирлашиб ковоти»): the left column holds only «Диагноз» (up to four)
-    // and «Контрольный визит», larger; «Назначения» left it for a card of
-    // its own under the conclusion in the middle, where a prescription line
-    // fits whole; advice stays on the right.
+    // and «Контрольный визит», larger; advice stays on the right.
+    //
+    // The middle column is «Назначения» alone since 03.10.2026: the
+    // conclusion editor above it went unused, and the doctor, who works
+    // with the mouse, needed the room for three picker columns.
     //
     // The third column waits for 2xl. The side tracks are fixed and fill
     // before the middle one, which on this page also loses the 240px
@@ -46,16 +49,18 @@ export function SessionTabContent({ locale }: { locale: string }) {
     // it was moved out of. Until 2xl the middle spans two rows so advice
     // drops under the short left column instead of under the tall middle
     // one. On one column the order is the working order: diagnosis,
-    // control visit, conclusion, prescriptions, advice.
+    // control visit, prescriptions, advice.
     return (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] xl:gap-5 2xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)_minmax(0,300px)] 2xl:grid-rows-none">
-        <DiagnosisFollowUpPanel />
-        <div className="flex min-w-0 flex-col gap-4 lg:row-span-2 xl:gap-5 2xl:row-span-1">
-          <NotesEditorPanel />
-          <PrescriptionsPanel />
+      <>
+        <ConclusionTemplateChannel />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] xl:gap-5 2xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)_minmax(0,300px)] 2xl:grid-rows-none">
+          <DiagnosisFollowUpPanel />
+          <div className="flex min-w-0 flex-col gap-4 lg:row-span-2 xl:gap-5 2xl:row-span-1">
+            <PrescriptionsPanel />
+          </div>
+          <AdvicePanel />
         </div>
-        <AdvicePanel />
-      </div>
+      </>
     );
   }
 

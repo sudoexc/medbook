@@ -7,6 +7,7 @@ import { FOLLOW_UP_DATE_REFUSED } from "@/lib/visit-follow-up";
 import {
   emptyConclusionSections,
   type ConclusionSection,
+  type EmptySectionsOptions,
 } from "@/lib/visit-note-sections";
 
 export type VisitPrescriptionTimeOfDay =
@@ -486,21 +487,26 @@ export type SignReadiness =
  * flight, or is about to fail, would count as prescribed. "unsaved" means a
  * queued correction did not land and nothing should be signed until the
  * doctor has seen the card snap back. `failedBefore` is passed through to
- * `settleVisitNotePatches`.
+ * `settleVisitNotePatches`; `sections` to `emptyConclusionSections` (the
+ * conclusion card keeps the default and asks about an empty text).
  */
 export async function prepareVisitNoteSignature(
   noteId: string,
   readSavedRow: () => Promise<VisitNoteRow>,
   failedBefore: number = visitNotePatchFailureCount(noteId),
+  sections: EmptySectionsOptions = {},
 ): Promise<SignReadiness> {
   if (!(await settleVisitNotePatches(noteId, failedBefore))) {
     return { kind: "unsaved" };
   }
   const row = await readSavedRow();
-  const missing = emptyConclusionSections({
-    ...row,
-    structuredRx: row.visitPrescriptions?.length ?? 0,
-  });
+  const missing = emptyConclusionSections(
+    {
+      ...row,
+      structuredRx: row.visitPrescriptions?.length ?? 0,
+    },
+    sections,
+  );
   return { kind: "ready", row, missing };
 }
 
@@ -520,10 +526,14 @@ export type VisitFinalizeStep =
  * read an optimistic cache and asked «sign without a diagnosis?» about a
  * diagnosis already on screen.
  *
- *   1. push the editors' debounced text tails (they join the same queue);
+ *   1. push any registered debounced text tails (they join the same
+ *      queue); since the conclusion editor left the visit screen
+ *      (03.10.2026) nothing registers there, and the step is a no-op;
  *   2. wait for every queued PATCH and stop if one still pending at the
  *      click did not land, including one refused while step 1 waited;
- *   3. judge empty sections on the row read back from the server;
+ *   3. judge empty sections on the row read back from the server: the
+ *      diagnosis and the prescriptions, never the conclusion text, which
+ *      this screen has no field for;
  *   4. only then finalize.
  *
  * `emptyConfirmed` is the second pass from the empty-sections dialog: the
@@ -558,6 +568,7 @@ export async function signVisitNoteWhenSaved(args: {
       args.noteId,
       args.readSavedRow,
       failedBefore,
+      { requireConclusion: false },
     );
     if (ready.kind === "unsaved") return ready;
     if (ready.missing.length > 0) {

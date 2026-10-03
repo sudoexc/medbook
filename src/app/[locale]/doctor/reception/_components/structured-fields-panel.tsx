@@ -6,9 +6,10 @@
  *
  *   - DiagnosisFollowUpPanel: «Диагноз» and «Контрольный визит», alone in the
  *     left column so up to four diagnoses have room;
- *   - PrescriptionsPanel: «Назначения» with its interaction check, a card of
- *     its own under the conclusion editor in the middle column, wide enough
- *     for a whole prescription line.
+ *   - PrescriptionsPanel: «Назначения» with its interaction check, the
+ *     whole middle column since the conclusion editor left it (03.10.2026),
+ *     wide enough for a whole prescription line and the picker's three
+ *     columns.
  *
  * They used to be one left-column stack, where a drug row was cut to
  * «Грандаксин 50 мг — по…». Both panels save through the same loud-patch
@@ -238,11 +239,13 @@ export function DiagnosisFollowUpPanel() {
 }
 
 /**
- * Middle column, under the conclusion: «Назначения» as its own card, with
+ * Middle column: «Назначения» as its own card, with the mouse-first picker,
  * the interaction check and «Записать аллергию» inside it, and the lines
- * recognised in the conclusion text offered right below.
+ * recognised in the conclusion text (older notes, the AI rail) offered
+ * right below.
  */
 export function PrescriptionsPanel() {
+  const t = useTranslations("doctor.reception");
   const { visitNoteId, requestBodyAppend, requestBodyRemove, activeAppointment } =
     useReceptionContext();
   // Prescription rows are replace-all: see use-loud-patch.ts for the
@@ -367,9 +370,20 @@ export function PrescriptionsPanel() {
     [mutateChips, presetsByField, requestBodyRemove],
   );
 
-  // No visit yet: the editor above already says so, a second empty card
-  // would only repeat it.
-  if (!note) return null;
+  // No visit yet: the column keeps its place with a quiet card, so the page
+  // does not reflow when the visit starts.
+  if (!note) {
+    return (
+      <section className="rounded-2xl border border-border bg-card p-4">
+        <h2 className="text-base font-semibold text-foreground">
+          {t("fields.prescriptions.label")}
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("rx.picker.noVisit")}
+        </p>
+      </section>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -378,6 +392,9 @@ export function PrescriptionsPanel() {
         disabled={isFinalized}
         standalone
         saving={patch.isPending}
+        // `aboveColumns` is the place for «Обычно при <диагноз>»: what this
+        // doctor usually prescribes with the visit's diagnosis, above the
+        // picker's columns.
         presets={presetsByField[RX_FIELD.presetField] ?? []}
         onSaveRows={saveRxRows}
         onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}

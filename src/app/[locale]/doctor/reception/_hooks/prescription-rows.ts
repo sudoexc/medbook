@@ -22,9 +22,10 @@ import {
 } from "@/lib/catalogs/drug-forms";
 
 import type { DrugSearchHit } from "./use-drug-search";
-import type { DrugShortItem } from "./use-shortlists";
+import type { DrugShortItem, DrugUsual } from "./use-shortlists";
 import type {
   VisitPrescriptionDraft,
+  VisitPrescriptionMealRelation,
   VisitPrescriptionRow,
   VisitPrescriptionTimeOfDay,
 } from "./use-visit-note";
@@ -40,6 +41,38 @@ const TIME_ORDER: VisitPrescriptionTimeOfDay[] = [
   "EVENING",
   "NIGHT",
 ];
+
+const MEAL_RELATIONS: ReadonlySet<string> = new Set<VisitPrescriptionMealRelation>([
+  "BEFORE_MEAL",
+  "WITH_MEAL",
+  "AFTER_MEAL",
+  "EMPTY_STOMACH",
+  "NO_MATTER",
+]);
+
+/**
+ * His last schedule as row fields, in canonical order, unknown values
+ * dropped: the history is read back from the server and a value a later
+ * build no longer knows must not reach the replace-all save.
+ */
+function scheduleOf(
+  item: Pick<DrugShortItem, "lastTimesOfDay" | "lastMealRelation" | "lastDurationDays">,
+): Pick<VisitPrescriptionDraft, "timesOfDay" | "mealRelation" | "durationDays"> {
+  const times = item.lastTimesOfDay ?? [];
+  const meal = item.lastMealRelation;
+  const days = item.lastDurationDays;
+  return {
+    timesOfDay: TIME_ORDER.filter((t) => times.includes(t)),
+    mealRelation:
+      meal && MEAL_RELATIONS.has(meal)
+        ? (meal as VisitPrescriptionMealRelation)
+        : "NO_MATTER",
+    durationDays:
+      typeof days === "number" && Number.isInteger(days) && days >= 1 && days <= 365
+        ? days
+        : null,
+  };
+}
 
 /**
  * Build a structured row draft from a catalog drug (search hit, drawer pick
@@ -130,6 +163,9 @@ export function draftFromShortItem(
           form,
           strength,
           dose: last && !untouchedDefault ? last : defaultDose(form, strength),
+          // The schema he wrote with that dose: one click brings back the
+          // whole prescription (clinic request 03.10.2026).
+          ...scheduleOf(item),
         },
       };
     }
@@ -167,6 +203,78 @@ export function draftFromShortItem(
       instructionUz: null,
       remindPatient: true,
     },
+  };
+}
+
+/** How a picker item is turned into a row: his own wording, or the clinic's. */
+export function shortItemKind(item: Pick<DrugShortItem, "count">): "mine" | "clinic" {
+  return item.count > 0 ? "mine" : "clinic";
+}
+
+/**
+ * A catalog drug as a picker item, carrying his history with it when he has
+ * one (the «Каталог» column, «При <код>», search hits, the drawer): a pick
+ * then comes back with his usual dose and schema like a «Частые» one.
+ */
+export function shortItemFromDrug(
+  drug: DrugSearchHit,
+  usual: DrugUsual | null | undefined,
+  opts: { label?: string; strengths?: string[]; pinned?: boolean } = {},
+): DrugShortItem {
+  return {
+    key: drug.id,
+    drugId: drug.id,
+    label: usual?.label || opts.label || drug.nameRu,
+    count: usual?.count ?? 0,
+    lastDose: usual?.lastDose ?? null,
+    lastForm: usual?.lastForm ?? null,
+    lastStrength: usual?.lastStrength ?? null,
+    lastTimesOfDay: usual?.lastTimesOfDay ?? [],
+    lastMealRelation: usual?.lastMealRelation ?? null,
+    lastDurationDays: usual?.lastDurationDays ?? null,
+    pinned: opts.pinned ?? false,
+    strengths: opts.strengths ?? [],
+    drug,
+  };
+}
+
+/**
+ * A drug picked from the catalog (column, search, drawer) as a row draft.
+ * With his history: his dose and schema; the wording is his too unless he
+ * searched by a name (`term`), which then leads as in any search pick.
+ * Without it: the catalog's default, exactly as before.
+ */
+export function draftFromCatalogPick(
+  drug: Parameters<typeof draftFromDrug>[0],
+  usual: DrugUsual | null | undefined,
+  term = "",
+): DraftPick {
+  const forms = normalizeForms(drug.forms);
+  const base = draftFromDrug(drug, term);
+  if (!usual || usual.count <= 0 || (!usual.lastDose && !usual.lastForm)) {
+    return { draft: base, forms };
+  }
+  // Only what `draftFromShortItem` reads: the id, the names and the forms.
+  const hit: DrugSearchHit = {
+    id: drug.id,
+    nameRu: drug.nameRu,
+    inn: "",
+    nameUz: null,
+    atcCode: null,
+    category: "",
+    defaultDosing: null,
+    rxOnly: false,
+    forms,
+    brands: (drug.brands ?? []).map((b, i) => ({
+      id: `brand-${i}`,
+      name: b.name,
+      manufacturer: null,
+    })),
+  };
+  const { draft } = draftFromShortItem(shortItemFromDrug(hit, usual), "mine");
+  return {
+    forms,
+    draft: term.trim() ? { ...draft, displayName: base.displayName } : draft,
   };
 }
 

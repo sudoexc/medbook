@@ -197,15 +197,21 @@ export function DevTaskBoard() {
                     type="button"
                     role="tab"
                     aria-selected={active}
+                    aria-label={`${t(`columns.${s}`)} ${counts?.[s] ?? 0}`}
                     onClick={() => setTab(s)}
                     className={cn(
-                      "flex h-12 flex-col items-center justify-center rounded-lg border px-1 text-xs font-medium leading-tight transition-colors",
+                      "flex h-12 min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg border px-1 text-xs font-medium leading-tight transition-colors",
                       active
                         ? "border-primary/40 bg-primary/10 text-primary"
                         : "border-border bg-card text-muted-foreground",
                     )}
                   >
-                    <span className="truncate">{t(`columns.${s}`)}</span>
+                    {/* WHY: with «Отменённые» on, four tabs leave about 52 px of
+                        text each at 360 px, so the tabs carry short labels and
+                        the full column name (with the count) goes to
+                        aria-label. max-w-full lets truncate actually clip
+                        inside the flex-col button. */}
+                    <span className="block max-w-full truncate">{t(`tabs.${s}`)}</span>
                     <span className="text-[11px] font-semibold tabular-nums">{counts?.[s] ?? 0}</span>
                   </button>
                 );

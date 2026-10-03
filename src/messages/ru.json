@@ -8864,6 +8864,12 @@
       "DONE": "Готово",
       "CANCELLED": "Отменённые"
     },
+    "tabs": {
+      "NEW": "Новые",
+      "IN_PROGRESS": "В работе",
+      "DONE": "Готово",
+      "CANCELLED": "Отмена"
+    },
     "status": {
       "NEW": "Новая",
       "IN_PROGRESS": "В работе",

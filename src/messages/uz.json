@@ -8864,6 +8864,12 @@
       "DONE": "Tayyor",
       "CANCELLED": "Bekor qilinganlar"
     },
+    "tabs": {
+      "NEW": "Yangi",
+      "IN_PROGRESS": "Ishda",
+      "DONE": "Tayyor",
+      "CANCELLED": "Bekor"
+    },
     "status": {
       "NEW": "Yangi",
       "IN_PROGRESS": "Ishda",

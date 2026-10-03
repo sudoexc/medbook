@@ -276,7 +276,11 @@ describe("the columns on screen", () => {
     expect(onVisit({ drugId: "tolperisone", label: "Толперизон" })).toBe(true);
     // Cyrillic В, no ®: the same drug he wrote as a text line.
     expect(onVisit({ drugId: null, label: "Магне В6 — по 2 таб" })).toBe(true);
-    expect(onVisit({ drugId: null, label: "Магне В6" })).toBe(false);
+    // The line names the drug «Магне В6»: one drug, so it is on the visit
+    // (review of 03.10.2026: a row and a line of one drug went on the
+    // sheet twice). A longer name is another drug.
+    expect(onVisit({ drugId: null, label: "Магне В6" })).toBe(true);
+    expect(onVisit({ drugId: null, label: "Магне В6 форте" })).toBe(false);
     expect(onVisit({ drugId: "nimesulide", label: "Найз" })).toBe(false);
     // A line of dashes names nothing and hides nothing.
     expect(onVisit({ drugId: null, label: "—" })).toBe(false);
@@ -454,7 +458,8 @@ describe("the screen", () => {
     expect(session).toContain("<ConclusionTemplateChannel />");
     const channel = read("_components/conclusion-template-channel.tsx");
     expect(channel).toContain("appendSnippet(body, text)");
-    expect(channel).toContain("removeSnippet(body, text)");
+    // Several texts in one request, one save (review of 03.10.2026).
+    expect(channel).toContain("texts.reduce((cur, text) => removeSnippet(cur, text), body)");
     // A request left in the context by an earlier mount is not applied again.
     expect(channel).toContain("React.useRef(bodyAppendRequest?.nonce ?? 0)");
   });

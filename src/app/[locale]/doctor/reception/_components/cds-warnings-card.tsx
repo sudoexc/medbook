@@ -111,6 +111,30 @@ function warningKey(w: CdsWarning): string {
   return cdsWarningKey(w);
 }
 
+/** The warnings one answer of the check showed, for one visit. */
+export type ShownWarnings = {
+  noteId: string | null | undefined;
+  keys: ReadonlySet<string>;
+};
+
+/**
+ * Whether an answer brings a warning worth scrolling to: one the previous
+ * answer for the same visit did not show, not acknowledged already. The
+ * visit's first answer (`before` null, or another visit's) is no news: the
+ * warnings it holds were there when the doctor opened the visit.
+ */
+export function bringsNewWarning(
+  before: ShownWarnings | null,
+  now: ShownWarnings,
+  isAcknowledged: (key: string) => boolean,
+): boolean {
+  if (!before || before.noteId !== now.noteId) return false;
+  for (const key of now.keys) {
+    if (!before.keys.has(key) && !isAcknowledged(key)) return true;
+  }
+  return false;
+}
+
 export function CdsWarningsCard({
   patientId,
   prescriptions,
@@ -145,6 +169,39 @@ export function CdsWarningsCard({
       return next;
     });
   }, []);
+
+  // A warning that appears while the doctor prescribes is brought into view
+  // (review of 03.10.2026). The card sits under the rows, which sit under
+  // the picker's columns: a drug clicked in «Частые» on a laptop put its
+  // interaction or allergy warning below the fold or under the sticky
+  // «Завершить приём» bar, where it could be missed before signing. Only a
+  // warning new since the last answer moves the page: what the visit held
+  // when it opened is no news, nor is one already acknowledged.
+  const revealRef = React.useRef<HTMLDivElement>(null);
+  const shownRef = React.useRef<ShownWarnings | null>(null);
+  const checking = !!patientId && (prescriptions.length > 0 || drugRows.length > 0);
+  const answer = query.data;
+  const recordedKeys = recorded.data;
+  React.useEffect(() => {
+    // Waiting for the first answer about these drugs: nothing to compare.
+    if (checking && !answer) return;
+    const now = {
+      noteId: visitNoteId,
+      keys: new Set(checking && answer ? answer.warnings.map(warningKey) : []),
+    };
+    const before = shownRef.current;
+    shownRef.current = now;
+    const news = bringsNewWarning(
+      before,
+      now,
+      (k) => acknowledged.has(k) || (recordedKeys?.has(k) ?? false),
+    );
+    if (!news) return;
+    // After paint, so the card has its final height.
+    requestAnimationFrame(() => {
+      revealRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }, [checking, answer, visitNoteId, acknowledged, recordedKeys]);
 
   if (!patientId || (prescriptions.length === 0 && drugRows.length === 0)) {
     return null;
@@ -267,7 +324,8 @@ export function CdsWarningsCard({
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    // scroll-mb: revealed clear of the sticky «Завершить приём» bar.
+    <div ref={revealRef} className="flex scroll-mb-28 flex-col gap-1.5">
       <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground">
         <ShieldAlertIcon className="size-3 text-destructive" />
         {t("cds.warningsTitle")}

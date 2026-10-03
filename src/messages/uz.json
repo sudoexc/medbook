@@ -6961,6 +6961,7 @@
         "saveErrorGeneric": "O‘zgarish saqlanmadi — aloqani tekshirib, qayta urining",
         "saveErrorConflict": "Saqlanmadi: xulosa boshqa oynada o‘zgartirilgan. Ma’lumotlarni yo‘qotmaslik uchun sahifani yangilang.",
         "saveErrorLocked": "Saqlanmadi: tahrirlash vaqti (24 soat) tugadi",
+        "templateTextRemoved": "Tashxis olib tashlandi, «{name}» shablon matni xulosadan olib tashlandi",
         "labOrder": "Tahlillar",
         "labOrderTitle": "Tahlillarni tayinlash",
         "rx": "Retsept",
@@ -7017,7 +7018,33 @@
         "makeMain": "Asosiy qilish",
         "remove": "Tashxisni olib tashlash",
         "alreadyAdded": "Bu tashxis qabulda allaqachon bor",
-        "full": "Bir qabulda {max} tadan ortiq tashxis bo‘lmaydi"
+        "full": "Bir qabulda {max} tadan ortiq tashxis bo‘lmaydi",
+        "picker": {
+          "title": "Qabul tashxisi",
+          "description": "Tashxisni sichqoncha bilan tanlang: tez-tez, mening yoki MKB katalogi. Oyna «Tayyor» tugmasini bosguningizcha ochiq turadi.",
+          "close": "Yopish",
+          "addAs": "Qanday qo‘shish",
+          "mainSwapHint": "Hozirgi asosiy tashxis yondoshga aylanadi",
+          "col": {
+            "frequent": "Tez-tez",
+            "mine": "Mening",
+            "catalog": "MKB katalogi"
+          },
+          "frequentEmpty": "Bu yerda siz eng ko‘p qo‘yadigan tashxislar paydo bo‘ladi.",
+          "mineEmpty": "Tashxis yonidagi yulduzchani bosing, u shu yerda saqlanadi.",
+          "searchPlaceholder": "Ro‘yxatlarda yo‘q bo‘lsa, MKB-10 bo‘yicha yoki o‘z so‘zlaringiz bilan qidiring",
+          "searchClear": "Qidiruvni tozalash",
+          "results": "MKB-10 da topildi",
+          "searchEmpty": "MKB-10 da hech narsa topilmadi. O‘z so‘zlaringiz bilan yozish mumkin.",
+          "chapters": "MKB-10 bo‘limlari",
+          "onVisit": "Qabulda allaqachon bor",
+          "starAdd": "«Mening» ro‘yxatiga qo‘shish",
+          "starRemove": "«Mening» ro‘yxatidan olib tashlash",
+          "done": "Tayyor",
+          "footerHint": "Bir bosish tashxisni qabulga qo‘shadi, jami {max} tagacha.",
+          "choose": "Tashxis tanlash",
+          "chooseHint": "Tez-tez, mening va MKB katalogi"
+        }
       },
       "guide": {
         "title": "Bilimlar bazasi",
@@ -7232,7 +7259,9 @@
         "needDiagnosis": "Tashxis ko'rsating, usiz qabulni yakunlab bo'lmaydi",
         "noDiagnosisHint": "Tashxis ko'rsatilmagan — shundayam yakunlash mumkin",
         "previewTitle": "Xulosani oldindan ko‘rish",
-        "previewHint": "Varaq qabul maydonlaridan yig‘ilgan, shu ko‘rinishda chop etiladi."
+        "previewHint": "Varaq qabul maydonlaridan yig‘ilgan, shu ko‘rinishda chop etiladi.",
+        "templateInText": "Xulosa matnida «{name}» shabloni bor",
+        "removeTemplateText": "Shablon matnini olib tashlash"
       },
       "parsedRx": {
         "title": "Matnda topildi: {count}",
@@ -7240,6 +7269,17 @@
         "addOne": "Tayinlovlarga qo'shish",
         "dismiss": "Yashirish",
         "hint": "Xulosa matnidagi dorilar. O'zaro ta'sir tekshiruvi va bemor eslatmalari ishlashi uchun ularni tayinlovlarga qo'shing."
+      },
+      "memory": {
+        "title": "{diagnosis} bo‘lganda odatda",
+        "basis": "O‘tgan qabullaringiz bo‘yicha: {n} ta qabul",
+        "addAll": "Hammasini qo‘shish",
+        "allAdded": "Hammasi qabulda bor",
+        "prescriptions": "Tayinlovlar",
+        "advice": "Tavsiyalar",
+        "onVisit": "Qabulda allaqachon bor",
+        "usedTimes": "{n} ta qabulda bo‘lgan",
+        "switch": "Tashxis"
       }
     },
     "receptionDialogs": {

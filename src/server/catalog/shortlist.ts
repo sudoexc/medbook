@@ -104,23 +104,21 @@ function currentWording(
   return full.length > own.length && full.endsWith(` ${own}`) ? current : stored;
 }
 
-export function buildDiagnosisShortlist(args: {
-  /** Starred ICD codes, in the doctor's order. */
-  pinnedCodes: string[];
-  uses: DiagnosisUse[];
-  /**
-   * The catalog's wording for a code: for a starred code he never used yet,
-   * and to replace a stored fragment of it (see `currentWording`).
-   */
-  nameForCode: (code: string) => string | null;
-  limit: number;
-}): DiagnosisShortItem[] {
-  type Acc = DiagnosisShortItem & { lastAt: number };
-  const acc = new Map<string, Acc>();
+type DiagnosisAcc = DiagnosisShortItem & { lastAt: number };
 
+/**
+ * One entry per diagnosis he wrote, with how often and his newest wording.
+ * Shared by the shortlist and the picker's columns so the two can never
+ * count differently.
+ */
+function accumulateDiagnosisUses(
+  uses: readonly DiagnosisUse[],
+  nameForCode: (code: string) => string | null,
+): Map<string, DiagnosisAcc> {
+  const acc = new Map<string, DiagnosisAcc>();
   // Newest first, so the first wording seen for a code is the current one.
-  const uses = [...args.uses].sort((a, b) => b.at.getTime() - a.at.getTime());
-  for (const u of uses) {
+  const sorted = [...uses].sort((a, b) => b.at.getTime() - a.at.getTime());
+  for (const u of sorted) {
     const name = u.name?.trim();
     if (!name) continue;
     const code = u.code?.trim() || null;
@@ -132,33 +130,97 @@ export function buildDiagnosisShortlist(args: {
     }
     acc.set(key, {
       code: code ? code.toUpperCase() : null,
-      name: currentWording(code, name, args.nameForCode),
+      name: currentWording(code, name, nameForCode),
       count: 1,
       pinned: false,
       lastAt: u.at.getTime(),
     });
   }
+  return acc;
+}
+
+/** Most often first, ties to the most recent. */
+function rankedDiagnoses(acc: ReadonlyMap<string, DiagnosisAcc>): DiagnosisShortItem[] {
+  return [...acc.values()]
+    .sort((a, b) => b.count - a.count || b.lastAt - a.lastAt)
+    .map((a) => ({ code: a.code, name: a.name, count: a.count, pinned: a.pinned }));
+}
+
+/** A starred code with his count and wording, or the catalog's; null if nobody can name it. */
+function starredDiagnosis(
+  raw: string,
+  acc: ReadonlyMap<string, DiagnosisAcc>,
+  nameForCode: (code: string) => string | null,
+): DiagnosisShortItem | null {
+  const code = raw.trim().toUpperCase();
+  if (!code) return null;
+  const used = acc.get(`code:${code}`);
+  if (used) return { code, name: used.name, count: used.count, pinned: true };
+  const name = nameForCode(code);
+  return name ? { code, name, count: 0, pinned: true } : null;
+}
+
+export function buildDiagnosisShortlist(args: {
+  /** Starred ICD codes, in the doctor's order. */
+  pinnedCodes: string[];
+  uses: DiagnosisUse[];
+  /**
+   * The catalog's wording for a code: for a starred code he never used yet,
+   * and to replace a stored fragment of it (see `currentWording`).
+   */
+  nameForCode: (code: string) => string | null;
+  limit: number;
+}): DiagnosisShortItem[] {
+  const acc = accumulateDiagnosisUses(args.uses, args.nameForCode);
 
   const pinned: DiagnosisShortItem[] = [];
   for (const raw of args.pinnedCodes) {
-    const code = raw.trim().toUpperCase();
-    if (!code) continue;
-    const key = `code:${code}`;
-    const used = acc.get(key);
-    if (used) {
-      acc.delete(key);
-      pinned.push({ code, name: used.name, count: used.count, pinned: true });
-      continue;
-    }
-    const name = args.nameForCode(code);
-    if (name) pinned.push({ code, name, count: 0, pinned: true });
+    const item = starredDiagnosis(raw, acc, args.nameForCode);
+    if (!item) continue;
+    acc.delete(`code:${item.code}`);
+    pinned.push(item);
   }
 
-  const rest = [...acc.values()]
-    .sort((a, b) => b.count - a.count || b.lastAt - a.lastAt)
-    .map((a) => ({ code: a.code, name: a.name, count: a.count, pinned: a.pinned }));
+  return withHistory(pinned, rankedDiagnoses(acc), args.limit);
+}
 
-  return withHistory(pinned, rest, args.limit);
+export type DiagnosisColumns = {
+  /**
+   * «Частые»: what he actually writes, most often first, starred or not
+   * (`pinned` marks the stars). Unlike the shortlist, a star never pushes
+   * history out of this column: the two columns answer different questions.
+   */
+  frequent: DiagnosisShortItem[];
+  /** «Мои»: his starred codes in his order, each named. */
+  starred: DiagnosisShortItem[];
+};
+
+/**
+ * The diagnosis picker's «Частые» and «Мои» columns (clinic request
+ * 03.10.2026: the diagnosis picked with the mouse, three columns side by
+ * side). Same counting as the shortlist: drafts included, every diagnosis of
+ * a note (the main one and the others), newest wording wins.
+ */
+export function buildDiagnosisColumns(args: {
+  pinnedCodes: string[];
+  uses: DiagnosisUse[];
+  nameForCode: (code: string) => string | null;
+  frequentLimit: number;
+}): DiagnosisColumns {
+  const acc = accumulateDiagnosisUses(args.uses, args.nameForCode);
+  const pinnedSet = new Set(args.pinnedCodes.map((c) => c.trim().toUpperCase()));
+  const frequent = rankedDiagnoses(acc)
+    .slice(0, args.frequentLimit)
+    .map((d) => ({ ...d, pinned: !!d.code && pinnedSet.has(d.code) }));
+  const starred: DiagnosisShortItem[] = [];
+  const seen = new Set<string>();
+  for (const raw of args.pinnedCodes) {
+    const item = starredDiagnosis(raw, acc, args.nameForCode);
+    if (!item?.code || seen.has(item.code)) continue;
+    seen.add(item.code);
+    starred.push(item);
+  }
+  return { frequent, starred };
 }
 
 // ───────────────────────── Drugs ─────────────────────────
@@ -449,12 +511,16 @@ export function hasStaleDrugUse<D extends TextMatchDrug>(
  * the route shows the item without catalog data, and the constructor adds it
  * as a text line that the CDS check resolves by name, again to that row.
  */
-export function repinDrugUses<D extends TextMatchDrug>(args: {
-  uses: readonly StructuredDrugUse[];
+export function repinDrugUses<
+  D extends TextMatchDrug,
+  U extends StructuredDrugUse = StructuredDrugUse,
+>(args: {
+  /** Extra fields a caller carries on a use (its note) pass through. */
+  uses: readonly U[];
   current: ReadonlyMap<string, D>;
   /** The clinic's catalog with its own names as brands. */
   catalog: DrugTextIndex<D>;
-}): StructuredDrugUse[] {
+}): U[] {
   const isStale = makeStaleCheck(args.current);
   const moved = new Map<string, { drugId: string; displayName: string } | null>();
   return args.uses.map((u) => {

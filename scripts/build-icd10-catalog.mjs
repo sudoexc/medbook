@@ -33,8 +33,10 @@
  *     https://raw.githubusercontent.com/lensws/mkb10/master/sql/mkb_data.sql
  *   node scripts/build-icd10-catalog.mjs /tmp/mkb_data.sql
  *
- * Writes src/server/icd10/data.json and data.ts. Review the diff before
- * committing — this is clinical reference data, not config.
+ * Writes src/server/icd10/data.json and data.ts, and blocks.json: the
+ * chapter and category headings kept apart for browsing (see «The tree, for
+ * browsing» below). Review the diff before committing — this is clinical
+ * reference data, not config.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -471,6 +473,65 @@ if (dashed.length > 0) {
 
 entries.sort((a, b) => a.code.localeCompare(b.code, "en"));
 
+// ───────────────────────── The tree, for browsing ─────────────────────────
+
+/**
+ * The headings dropped above, kept apart for the visit screen's «Каталог МКБ»
+ * column (clinic request 03.10.2026: the doctor picks a diagnosis with the
+ * mouse, chapter → block → code, without typing). Nothing here is ever
+ * written into a conclusion; it only names the levels he clicks through.
+ *
+ *   - blocks: «G40-G47 Эпизодические и пароксизмальные расстройства», each
+ *     with its parent (a chapter, or a block: C00-C97 holds C00-C14 …);
+ *   - headings: the categories that have subcategories («G43 Мигрень»), to
+ *     title their codes in a block's list. A category that is itself a code
+ *     (G20) is in data.json already.
+ */
+const OUT_BLOCKS = join(ROOT, "src", "server", "icd10", "blocks.json");
+const RANGE_SHAPE = /^[A-Z]\d{2}-[A-Z]\d{2}$/;
+
+/**
+ * A heading as the column shows it. `repairName` has already sentence-cased
+ * the ones typed in capitals; what that lowercased too much, a typo of the
+ * book and a range printed into one heading are put right here.
+ */
+const HEADING_FIXES = [
+  ["железыи ", "железы и "],
+  ["[вич]", "[ВИЧ]"],
+  [/\s+[a-z]\d{2}-[a-z]\d{2}$/i, ""],
+];
+
+function headingName(name) {
+  let out = name;
+  for (const [bad, good] of HEADING_FIXES) out = out.replace(bad, good);
+  return out.trim();
+}
+
+const blocks = [];
+for (const r of rows) {
+  if (!RANGE_SHAPE.test(r.code) || r.parentId == null) continue;
+  const parent = byId.get(r.parentId);
+  if (!parent || !RANGE_SHAPE.test(parent.code)) continue;
+  blocks.push({ range: r.code, nameRu: headingName(r.name), parent: parent.code });
+}
+const categoryHeadings = [];
+const headingSeen = new Set();
+for (const r of rows) {
+  if (!/^[A-Z]\d{2}$/.test(r.code) || headingSeen.has(r.code)) continue;
+  // A category with rows under it, or one whose subcategories come from
+  // its block's note (E10-E14, see `expanded`).
+  if (r.leaf && !expanded.has(r.id)) continue;
+  headingSeen.add(r.code);
+  categoryHeadings.push({ code: r.code, nameRu: headingName(r.name) });
+}
+blocks.sort((a, b) => a.range.localeCompare(b.range, "en") || a.parent.localeCompare(b.parent, "en"));
+categoryHeadings.sort((a, b) => a.code.localeCompare(b.code, "en"));
+const dashedHeadings = [...blocks, ...categoryHeadings].filter((h) => /[—–]/.test(h.nameRu));
+if (dashedHeadings.length > 0) {
+  console.error(`Headings with a dash: ${dashedHeadings.map((h) => h.range ?? h.code).join(", ")}`);
+  process.exit(1);
+}
+
 const byChapter = {};
 for (const e of entries) {
   const ch = e.code[0];
@@ -486,6 +547,8 @@ writeFileSync(
   )}\n`,
   "utf8",
 );
+
+writeFileSync(OUT_BLOCKS, `${JSON.stringify({ blocks, headings: categoryHeadings }, null, 0)}\n`, "utf8");
 
 writeFileSync(
   OUT_TS,
@@ -539,5 +602,8 @@ console.log(
     .map(([k, v]) => `${k}:${v}`)
     .join(" ")}`,
 );
+console.log(`блоков:             ${blocks.length}`);
+console.log(`рубрик с подрубриками: ${categoryHeadings.length}`);
 console.log(`→ ${OUT_JSON}`);
 console.log(`→ ${OUT_TS}`);
+console.log(`→ ${OUT_BLOCKS}`);

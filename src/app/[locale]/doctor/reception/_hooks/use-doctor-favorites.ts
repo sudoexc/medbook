@@ -142,20 +142,30 @@ export function favoriteToggleOptions(
       // A refetch while another toggle of this list is still in flight would
       // overwrite its optimistic star with the server's older answer: only
       // the last one settling reloads the list.
-      if (queryClient.isMutating({ mutationKey }) <= 1) {
+      const last = queryClient.isMutating({ mutationKey }) <= 1;
+      if (last) {
         void queryClient.invalidateQueries({ queryKey });
       }
-      // A star reorders «мои частые» (starred first) — but not under the
-      // doctor's cursor while the list is open: mark it stale only, and the
-      // field refetches it the next time it opens.
-      if (entityType === "DRUG" || entityType === "ICD10") {
+      // The diagnosis field's «мои частые» puts stars first, so a star
+      // reorders it: never under the doctor's cursor while the list is
+      // open. Marked stale only, the field refetches it when it opens next.
+      if (entityType === "ICD10") {
         void queryClient.invalidateQueries({
-          queryKey: [
-            "doctor",
-            "reception",
-            entityType === "DRUG" ? "rx-shortlist" : "dx-shortlist",
-          ],
+          queryKey: ["doctor", "reception", "dx-shortlist"],
           refetchType: "none",
+        });
+      }
+      // The prescription picker's «Мои» shows a star only with the drug's
+      // data, and a drug starred in the «Каталог» window is in none of the
+      // picker's lists: it stayed out of «Мои» until a reload, because the
+      // always mounted picker never refetched a list only marked stale
+      // (review of 03.10.2026). Its columns do not reorder on a star
+      // («Частые» counts visits, «Мои» follows the stars' order), so the
+      // open picker refetches at once, after the last star of a burst.
+      if (entityType === "DRUG") {
+        void queryClient.invalidateQueries({
+          queryKey: ["doctor", "reception", "rx-shortlist"],
+          refetchType: last ? "active" : "none",
         });
       }
     },

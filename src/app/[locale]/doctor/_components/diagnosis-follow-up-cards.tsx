@@ -22,6 +22,12 @@
  * `standalone` is the visit screen, where these two cards own the left
  * column: larger type and controls there. The conclusions screen keeps the
  * compact inset form in its narrow side column.
+ *
+ * On the visit screen the diagnosis is picked with the mouse (clinic request
+ * 03.10.2026): the empty field and «+ Диагноз» open the wide three-column
+ * picker (`onOpenPicker`, the reception's diagnosis-picker-dialog.tsx)
+ * instead of the search under the list. The conclusions screen passes no
+ * picker and keeps the search.
  */
 import * as React from "react";
 import { useFormatter, useTranslations } from "next-intl";
@@ -546,6 +552,7 @@ export function DiagnosisCard({
   onChange,
   onRequestApplyProtocol,
   onOpenCatalog,
+  onOpenPicker,
   standalone,
   saving,
 }: {
@@ -563,6 +570,11 @@ export function DiagnosisCard({
   onRequestApplyProtocol?: (protocol: ClinicalProtocolRow) => void;
   /** Opens the ICD catalog drawer; hosts without one just omit it. */
   onOpenCatalog?: () => void;
+  /**
+   * Opens the mouse-first picker (the visit screen). With it, the empty
+   * field and «+ Диагноз» open the picker instead of the search.
+   */
+  onOpenPicker?: () => void;
   /** Render as a top-level panel card instead of an inset sub-card. */
   standalone?: boolean;
   /** Shared save-in-flight flag for the header spinner (standalone hosts). */
@@ -669,7 +681,7 @@ export function DiagnosisCard({
     if (next) onChange(next);
   };
 
-  const showSearch = !disabled && (list.length === 0 || adding);
+  const showSearch = !onOpenPicker && !disabled && (list.length === 0 || adding);
 
   return (
     <div
@@ -793,6 +805,36 @@ export function DiagnosisCard({
           </ul>
         )}
 
+        {/* The visit screen: one big target instead of a search box, for a
+            doctor who picks with the mouse. */}
+        {onOpenPicker && !disabled && list.length === 0 && (
+          <button
+            type="button"
+            onClick={onOpenPicker}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-xl border border-dashed border-primary/40 bg-primary/[0.03] text-left transition-colors hover:border-primary/60 hover:bg-primary/5",
+              big ? "min-h-16 px-4 py-3" : "min-h-12 px-3 py-2",
+            )}
+          >
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <PlusIcon className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span
+                className={cn(
+                  "block font-semibold text-primary",
+                  big ? "text-base" : "text-sm",
+                )}
+              >
+                {t("diagnosis.picker.choose")}
+              </span>
+              <span className="block text-sm leading-snug text-muted-foreground">
+                {t("diagnosis.picker.chooseHint")}
+              </span>
+            </span>
+          </button>
+        )}
+
         {showSearch && (
           <DiagnosisSearch
             big={big}
@@ -813,7 +855,7 @@ export function DiagnosisCard({
         {/* The doctor's first complaint about this screen was "нигде не
             указано" — the field looked like a search box with no hint that
             typing your own wording is allowed. */}
-        {!disabled && list.length === 0 && (
+        {!disabled && !onOpenPicker && list.length === 0 && (
           <p
             className={cn(
               "leading-snug text-muted-foreground",
@@ -837,11 +879,15 @@ export function DiagnosisCard({
           ) : (
             <button
               type="button"
-              onClick={() => setAdding(true)}
+              onClick={() => (onOpenPicker ? onOpenPicker() : setAdding(true))}
               title={t("diagnosis.addTitle", { max: MAX_VISIT_DIAGNOSES })}
               className={cn(
                 "inline-flex w-full items-center justify-between gap-2 rounded-lg border border-dashed border-border font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary",
-                big ? "h-10 px-3 text-sm" : "h-8 px-2.5 text-xs",
+                onOpenPicker
+                  ? "h-12 px-3 text-[15px]"
+                  : big
+                    ? "h-10 px-3 text-sm"
+                    : "h-8 px-2.5 text-xs",
               )}
             >
               <span className="inline-flex items-center gap-1.5">

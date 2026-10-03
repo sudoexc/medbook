@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import type { VisitPrescriptionDraft } from "./use-visit-note";
 
@@ -59,12 +64,51 @@ async function fetchProtocols(code: string): Promise<ClinicalProtocolRow[]> {
   return data.rows ?? [];
 }
 
-export function useClinicalProtocols(diagnosisCode: string | null | undefined) {
-  return useQuery({
-    queryKey: ["clinical-protocols", diagnosisCode ?? ""],
+/**
+ * The protocols of one ICD code, as one query: the diagnosis card's offer,
+ * the template that leaves with its diagnosis and the preview's «Убрать
+ * текст шаблона» read the same cache entry.
+ */
+export function clinicalProtocolsQuery(diagnosisCode: string | null | undefined) {
+  return {
+    queryKey: ["clinical-protocols", diagnosisCode ?? ""] as const,
     queryFn: () => fetchProtocols(diagnosisCode ?? ""),
     enabled: !!diagnosisCode,
     staleTime: 5 * 60_000,
+  };
+}
+
+export function useClinicalProtocols(diagnosisCode: string | null | undefined) {
+  return useQuery(clinicalProtocolsQuery(diagnosisCode));
+}
+
+/** Every list's protocols, each once, in the lists' order. */
+function flattenProtocols(
+  results: readonly { data?: ClinicalProtocolRow[] }[],
+): ClinicalProtocolRow[] {
+  const out: ClinicalProtocolRow[] = [];
+  const seen = new Set<string>();
+  for (const r of results) {
+    for (const p of r.data ?? []) {
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+/**
+ * The protocols of every diagnosis on the visit, main first, each once.
+ * Read for each code, not only the main one: a diagnosis leaving the visit
+ * takes its protocol's template with it, and that protocol must be at hand
+ * when it goes. (`combine` is module level, so it re-runs only when an
+ * answer changes.)
+ */
+export function useVisitProtocols(codes: readonly string[]): ClinicalProtocolRow[] {
+  return useQueries({
+    queries: codes.map((code) => clinicalProtocolsQuery(code)),
+    combine: flattenProtocols,
   });
 }
 

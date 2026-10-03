@@ -77,7 +77,8 @@
       "analyticsScheduleHeatmap": "Jadval Heatmap",
       "analyticsReports": "Hisobotlar",
       "settings": "Sozlamalar",
-      "onlineRequests": "Arizalar"
+      "onlineRequests": "Arizalar",
+      "tasks": "Topshiriqlar"
     },
     "footer": {
       "todayCount": "Bugungi yozuvlar",
@@ -186,6 +187,10 @@
         "account": {
           "title": "Mening hisobim",
           "subtitle": "Parol va kirish xavfsizligi"
+        },
+        "tasks": {
+          "title": "Topshiriqlar",
+          "subtitle": "CRM dasturchilari uchun so‘rov va eslatmalar"
         }
       },
       "issueTicket": "Talon berish"
@@ -8554,7 +8559,8 @@
         "analytics": "Mening statistikam",
         "notifications": "Bildirishnomalar",
         "references": "Ma’lumotnomalar",
-        "settings": "Sozlamalar"
+        "settings": "Sozlamalar",
+        "tasks": "Topshiriqlar"
       },
       "footer": {
         "todayRecords": "bugungi yozuvlar"
@@ -8815,5 +8821,115 @@
     "booked": "Yozilgan qabul:",
     "scan": "Navbatni kuzatish uchun skanerlang",
     "thanks": "Tashrifingiz uchun rahmat!"
+  },
+  "devTasks": {
+    "title": "Topshiriqlar",
+    "subtitle": "CRM dasturchilari uchun so‘rov va eslatmalar",
+    "add": "Topshiriq",
+    "addAria": "Yangi topshiriq",
+    "showCancelled": "Bekor qilinganlar",
+    "columns": {
+      "NEW": "Yangi",
+      "IN_PROGRESS": "Ishda",
+      "DONE": "Tayyor",
+      "CANCELLED": "Bekor qilinganlar"
+    },
+    "status": {
+      "NEW": "Yangi",
+      "IN_PROGRESS": "Ishda",
+      "DONE": "Tayyor",
+      "CANCELLED": "Bekor qilingan"
+    },
+    "priority": {
+      "NORMAL": "Oddiy",
+      "HIGH": "Muhim",
+      "URGENT": "Shoshilinch"
+    },
+    "age": {
+      "now": "hozirgina",
+      "minutes": "{value} daqiqa oldin",
+      "hours": "{value} soat oldin",
+      "days": "{value, plural, other {# kun}} oldin"
+    },
+    "empty": {
+      "NEW": "Yangi topshiriqlar yo‘q",
+      "IN_PROGRESS": "Hozir hech narsa ishda emas",
+      "DONE": "Tayyor topshiriqlar hali yo‘q",
+      "CANCELLED": "Bekor qilingan topshiriqlar yo‘q"
+    },
+    "emptyBoard": "Bu yerda dasturchilarga so‘rovlaringiz bo‘ladi. «Topshiriq» tugmasini bosing va nima qilish yoki tuzatish kerakligini yozing.",
+    "loadError": "Topshiriqlarni yuklab bo‘lmadi. Aloqani tekshiring va qaytadan urinib ko‘ring.",
+    "retry": "Qaytadan",
+    "forbidden": "Topshiriqlar doskasi administrator, qabulxona va shifokorlar uchun ochiq.",
+    "commentsCount": "{count, plural, other {# ta izoh}}",
+    "screenshotsCount": "{count, plural, other {# ta skrinshot}}",
+    "openTask": "{number} topshiriqni ochish",
+    "create": {
+      "title": "Yangi topshiriq",
+      "description": "Nima qilish yoki tuzatish kerakligini yozing. Skrinshot juda yordam beradi.",
+      "titleLabel": "Qisqacha, nima kerak",
+      "titlePlaceholder": "Masalan: xulosa chop etilmayapti",
+      "descriptionLabel": "Batafsil",
+      "descriptionPlaceholder": "Bu qayerda bo‘ladi, nimani bosdingiz, nimani ko‘rishni kutgandingiz",
+      "priorityLabel": "Shoshilinchlik",
+      "screenshotsLabel": "Skrinshotlar",
+      "addScreenshots": "Skrinshot qo‘shish",
+      "pasteHint": "Skrinshotni buferdan qo‘yish mumkin: Ctrl+V",
+      "removeScreenshot": "Skrinshotni olib tashlash",
+      "submit": "Yuborish",
+      "submitting": "Yuborilmoqda…",
+      "uploading": "Skrinshotlar yuklanmoqda: {done} / {total}",
+      "cancel": "Bekor qilish",
+      "created": "{number} topshiriq yaratildi",
+      "createError": "Topshiriqni yaratib bo‘lmadi. Qaytadan urinib ko‘ring.",
+      "partialUpload": "{number} topshiriq yaratildi, lekin skrinshotlar yuklanmadi: {failed}. Ularni topshiriqning o‘zida qo‘shing.",
+      "tooMany": "Bir martada {max} tadan ko‘p skrinshot bo‘lmaydi",
+      "notImage": "«{name}» rasmga o‘xshamaydi",
+      "tooLarge": "«{name}» 10 MB dan katta",
+      "rateLimited": "Ketma-ket juda ko‘p topshiriq. Biroz kuting."
+    },
+    "detail": {
+      "loading": "Topshiriq yuklanmoqda…",
+      "loadError": "Topshiriqni ochib bo‘lmadi.",
+      "notFound": "Topshiriq topilmadi.",
+      "close": "Yopish",
+      "author": "Muallif",
+      "created": "Yaratilgan",
+      "started": "Ishga olingan",
+      "done": "Tayyor",
+      "noDescription": "Tavsifsiz",
+      "screenshots": "Skrinshotlar",
+      "noScreenshots": "Skrinshotlar yo‘q",
+      "addScreenshot": "Skrinshot qo‘shish",
+      "uploadingScreenshot": "Yuklanmoqda…",
+      "uploadError": "Skrinshot yuklanmadi",
+      "limitReached": "Topshiriqda allaqachon {max} ta skrinshot bor",
+      "removeScreenshot": "Skrinshotni o‘chirish",
+      "removed": "Skrinshot o‘chirildi",
+      "removeError": "Skrinshotni o‘chirib bo‘lmadi",
+      "openOriginal": "Aslini ochish",
+      "prev": "Oldingisi",
+      "next": "Keyingisi",
+      "screenshotAlt": "Skrinshot {index} / {total}",
+      "comments": "Izohlar",
+      "noComments": "Hali izohlar yo‘q",
+      "commentPlaceholder": "Javob yozing yoki aniqlashtiring…",
+      "send": "Yuborish",
+      "sendHint": "Ctrl+Enter yuboradi",
+      "commentError": "Izoh yuborilmadi",
+      "edit": "O‘zgartirish",
+      "save": "Saqlash",
+      "cancel": "Bekor qilish",
+      "saved": "O‘zgarishlar saqlandi",
+      "saveError": "Saqlab bo‘lmadi",
+      "statusError": "Holat o‘zgarmadi. Sahifani yangilang va qaytadan urinib ko‘ring.",
+      "statusChanged": "{number} topshiriq: {status}",
+      "actions": {
+        "IN_PROGRESS": "Ishga olish",
+        "DONE": "Tayyor",
+        "CANCELLED": "Bekor qilish",
+        "NEW": "Qaytarish"
+      }
+    }
   }
 }

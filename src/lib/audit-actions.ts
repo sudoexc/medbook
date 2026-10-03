@@ -745,6 +745,26 @@ export const AUDIT_ACTION = {
   // `meta` carries `{ clinicId, patientId, conversationId, bytes }`. Mirrors
   // the inbound TG webhook path but without an external platform leg.
   MINIAPP_MESSAGE_SENT: "MINIAPP_MESSAGE_SENT",
+
+  // «Задачи» — the clinic's request board for the CRM developers.
+  // `entityType: "DevTask"`, `entityId: <task.id>`; `meta.number` is the
+  // «#N» people quote. The title and texts stay out of `meta`: a request may
+  // name a patient, and the journal keeps no free text (audit SEC-09).
+  //
+  //   DEV_TASK_CREATED — `meta` carries `{ number, priority }`.
+  //   DEV_TASK_STATUS_CHANGED — `{ number, from, to, via? }`; `via` names
+  //   the console tool when the developer moved it from the server.
+  //   DEV_TASK_UPDATED — the author or a manager changed the text or the
+  //   priority: `{ number, fields, priority? }` (which fields, not values).
+  //   DEV_TASK_COMMENTED — `{ number, commentId, via? }`.
+  //   DEV_TASK_ATTACHMENT_ADDED / _REMOVED — `{ number, attachmentId,
+  //   mimeType, sizeBytes }`.
+  DEV_TASK_CREATED: "DEV_TASK_CREATED",
+  DEV_TASK_STATUS_CHANGED: "DEV_TASK_STATUS_CHANGED",
+  DEV_TASK_UPDATED: "DEV_TASK_UPDATED",
+  DEV_TASK_COMMENTED: "DEV_TASK_COMMENTED",
+  DEV_TASK_ATTACHMENT_ADDED: "DEV_TASK_ATTACHMENT_ADDED",
+  DEV_TASK_ATTACHMENT_REMOVED: "DEV_TASK_ATTACHMENT_REMOVED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

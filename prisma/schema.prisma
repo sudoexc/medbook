@@ -415,6 +415,10 @@ model Clinic {
   // entered in the drawer showed every later walk-in paid at the till as
   // «Долг» on the card, in «Должники» and on the call-center rails.
   paymentsTrackedSince       DateTime?
+  // Last number handed out on the «Задачи» board (DevTask.number, shown as
+  // «#12»). Incremented with UPDATE … RETURNING, like patientCounter, so two
+  // tasks filed at the same moment never share a number.
+  devTaskCounter             Int       @default(0)
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 
@@ -482,6 +486,9 @@ model Clinic {
   referrals                Referral[]
   clinicDiagnoses          ClinicDiagnosis[]
   formularyDrugs           ClinicFormularyDrug[]
+  devTasks                 DevTask[]
+  devTaskComments          DevTaskComment[]
+  devTaskAttachments       DevTaskAttachment[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -825,6 +832,9 @@ model User {
   referralsFrom               Referral[]              @relation("ReferralFromDoctor")
   referralsTo                 Referral[]              @relation("ReferralToDoctor")
   clinicDiagnosesCreated      ClinicDiagnosis[]       @relation("ClinicDiagnosisCreator")
+  devTasksCreated             DevTask[]               @relation("DevTaskCreator")
+  devTaskComments             DevTaskComment[]        @relation("DevTaskCommentAuthor")
+  devTaskAttachments          DevTaskAttachment[]     @relation("DevTaskAttachmentUploader")
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -4000,4 +4010,93 @@ model DoctorNotificationPref {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// «Задачи» — the clinic's request board for the CRM developers.
+//
+// The owner (and the desk, and doctors from their cabinet) file what is broken
+// or missing, mostly from a phone, often with a screenshot; the developer
+// picks tasks up and moves them through NEW → IN_PROGRESS → DONE. Only ADMIN /
+// SUPER_ADMIN move a task between columns; the author may edit the text.
+// Nothing here is patient data, but screenshots of CRM screens can show it, so
+// the board is limited to the roles that file and work tasks.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum DevTaskStatus {
+  NEW
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum DevTaskPriority {
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model DevTask {
+  id          String          @id @default(cuid())
+  clinicId    String
+  clinic      Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // Per-clinic «#12», allocated from Clinic.devTaskCounter. The unique index
+  // is the backstop should two allocations ever collide.
+  number      Int
+  title       String
+  description String          @default("") @db.Text
+  status      DevTaskStatus   @default(NEW)
+  priority    DevTaskPriority @default(NORMAL)
+  createdById String
+  createdBy   User            @relation("DevTaskCreator", fields: [createdById], references: [id])
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  // Set when the task enters «В работе»; cleared when it goes back to «Новые».
+  startedAt   DateTime?
+  // Set when the task is marked «Готово»; cleared when it leaves that column.
+  doneAt      DateTime?
+
+  comments    DevTaskComment[]
+  attachments DevTaskAttachment[]
+
+  @@unique([clinicId, number])
+  @@index([clinicId, status, createdAt])
+}
+
+model DevTaskComment {
+  id        String   @id @default(cuid())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  taskId    String
+  task      DevTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("DevTaskCommentAuthor", fields: [authorId], references: [id])
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([clinicId, createdAt])
+}
+
+// A screenshot on a task. The bytes live in the private bucket under
+// `clinics/<clinicId>/dev-tasks/<taskId>/` and are served only through
+// /api/crm/dev-tasks/[id]/attachments/[attachmentId] (never a bucket URL).
+// `thumbKey` is a small JPEG the browser rendered at upload time, so the
+// board does not pull a multi-megabyte phone screenshot for every card.
+model DevTaskAttachment {
+  id           String   @id @default(cuid())
+  clinicId     String
+  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  taskId       String
+  task         DevTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  objectKey    String   @unique
+  thumbKey     String?
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String
+  uploadedBy   User     @relation("DevTaskAttachmentUploader", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([clinicId, createdAt])
 }

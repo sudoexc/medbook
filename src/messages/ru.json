@@ -77,7 +77,8 @@
       "analyticsScheduleHeatmap": "Heatmap расписания",
       "analyticsReports": "Отчёты",
       "settings": "Настройки",
-      "onlineRequests": "Заявки"
+      "onlineRequests": "Заявки",
+      "tasks": "Задачи"
     },
     "footer": {
       "todayCount": "Записей сегодня",
@@ -186,6 +187,10 @@
         "account": {
           "title": "Мой аккаунт",
           "subtitle": "Пароль и безопасность входа"
+        },
+        "tasks": {
+          "title": "Задачи",
+          "subtitle": "Просьбы и замечания для разработчиков CRM"
         }
       },
       "issueTicket": "Выдать талон"
@@ -8554,7 +8559,8 @@
         "analytics": "Моя статистика",
         "notifications": "Уведомления",
         "references": "Справочники",
-        "settings": "Настройки"
+        "settings": "Настройки",
+        "tasks": "Задачи"
       },
       "footer": {
         "todayRecords": "записей сегодня"
@@ -8815,5 +8821,115 @@
     "booked": "Приём по записи:",
     "scan": "Отсканируйте для отслеживания очереди",
     "thanks": "Спасибо за визит!"
+  },
+  "devTasks": {
+    "title": "Задачи",
+    "subtitle": "Просьбы и замечания для разработчиков CRM",
+    "add": "Задача",
+    "addAria": "Новая задача",
+    "showCancelled": "Отменённые",
+    "columns": {
+      "NEW": "Новые",
+      "IN_PROGRESS": "В работе",
+      "DONE": "Готово",
+      "CANCELLED": "Отменённые"
+    },
+    "status": {
+      "NEW": "Новая",
+      "IN_PROGRESS": "В работе",
+      "DONE": "Готово",
+      "CANCELLED": "Отменена"
+    },
+    "priority": {
+      "NORMAL": "Обычная",
+      "HIGH": "Важная",
+      "URGENT": "Срочная"
+    },
+    "age": {
+      "now": "только что",
+      "minutes": "{value} мин назад",
+      "hours": "{value} ч назад",
+      "days": "{value, plural, one {# день} few {# дня} many {# дней} other {# дня}} назад"
+    },
+    "empty": {
+      "NEW": "Новых задач нет",
+      "IN_PROGRESS": "Сейчас ничего не в работе",
+      "DONE": "Готовых задач пока нет",
+      "CANCELLED": "Отменённых задач нет"
+    },
+    "emptyBoard": "Здесь будут ваши просьбы разработчикам. Нажмите «Задача» и опишите, что нужно сделать или исправить.",
+    "loadError": "Не удалось загрузить задачи. Проверьте связь и повторите.",
+    "retry": "Повторить",
+    "forbidden": "Доска задач открыта администратору, ресепшн и врачам.",
+    "commentsCount": "{count, plural, one {# комментарий} few {# комментария} many {# комментариев} other {# комментария}}",
+    "screenshotsCount": "{count, plural, one {# скриншот} few {# скриншота} many {# скриншотов} other {# скриншота}}",
+    "openTask": "Открыть задачу {number}",
+    "create": {
+      "title": "Новая задача",
+      "description": "Опишите, что нужно сделать или исправить. Скриншот очень помогает.",
+      "titleLabel": "Коротко, что нужно",
+      "titlePlaceholder": "Например: не печатается заключение",
+      "descriptionLabel": "Подробности",
+      "descriptionPlaceholder": "Где это происходит, что вы нажимали, что ожидали увидеть",
+      "priorityLabel": "Срочность",
+      "screenshotsLabel": "Скриншоты",
+      "addScreenshots": "Добавить скриншоты",
+      "pasteHint": "Скриншот можно вставить из буфера обмена: Ctrl+V",
+      "removeScreenshot": "Убрать скриншот",
+      "submit": "Отправить",
+      "submitting": "Отправляем…",
+      "uploading": "Загружаем скриншоты: {done} из {total}",
+      "cancel": "Отмена",
+      "created": "Задача {number} создана",
+      "createError": "Не удалось создать задачу. Попробуйте ещё раз.",
+      "partialUpload": "Задача {number} создана, но не загрузились скриншоты: {failed}. Добавьте их в самой задаче.",
+      "tooMany": "Не больше {max} скриншотов за раз",
+      "notImage": "«{name}» не похож на картинку",
+      "tooLarge": "«{name}» больше 10 МБ",
+      "rateLimited": "Слишком много задач подряд. Подождите немного."
+    },
+    "detail": {
+      "loading": "Загружаем задачу…",
+      "loadError": "Не удалось открыть задачу.",
+      "notFound": "Задача не найдена.",
+      "close": "Закрыть",
+      "author": "Автор",
+      "created": "Создана",
+      "started": "Взята в работу",
+      "done": "Готово",
+      "noDescription": "Без описания",
+      "screenshots": "Скриншоты",
+      "noScreenshots": "Скриншотов нет",
+      "addScreenshot": "Добавить скриншот",
+      "uploadingScreenshot": "Загружаем…",
+      "uploadError": "Скриншот не загрузился",
+      "limitReached": "В задаче уже {max} скриншотов",
+      "removeScreenshot": "Удалить скриншот",
+      "removed": "Скриншот удалён",
+      "removeError": "Не удалось удалить скриншот",
+      "openOriginal": "Открыть оригинал",
+      "prev": "Предыдущий",
+      "next": "Следующий",
+      "screenshotAlt": "Скриншот {index} из {total}",
+      "comments": "Комментарии",
+      "noComments": "Комментариев пока нет",
+      "commentPlaceholder": "Ответить или уточнить…",
+      "send": "Отправить",
+      "sendHint": "Ctrl+Enter отправляет",
+      "commentError": "Комментарий не отправлен",
+      "edit": "Изменить",
+      "save": "Сохранить",
+      "cancel": "Отмена",
+      "saved": "Изменения сохранены",
+      "saveError": "Не удалось сохранить",
+      "statusError": "Статус не изменился. Обновите и попробуйте ещё раз.",
+      "statusChanged": "Задача {number}: {status}",
+      "actions": {
+        "IN_PROGRESS": "Взять в работу",
+        "DONE": "Готово",
+        "CANCELLED": "Отменить",
+        "NEW": "Вернуть"
+      }
+    }
   }
 }

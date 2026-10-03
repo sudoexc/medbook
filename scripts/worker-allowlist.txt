@@ -87,3 +87,8 @@ check-tg-webhook.ts
 
 # Read-only reports
 report-day-off-bookings.ts
+
+# The «Задачи» board from the console (list/show read; status/comment write
+# as the SUPER_ADMIN account, audited)
+dev-tasks.ts
+_dev-tasks-cli.ts

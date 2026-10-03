@@ -12,6 +12,7 @@ import {
   ChevronsRightIcon,
   ClipboardCheckIcon,
   FileTextIcon,
+  ListTodoIcon,
   SendIcon,
   SettingsIcon,
   SunIcon,
@@ -20,6 +21,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { isPhoneViewport } from "@/lib/viewport";
+import { useDevTaskOpenCount } from "@/components/dev-tasks/use-dev-task-open-count";
 import { useDoctorSidebarStats } from "../_hooks/use-doctor-sidebar-stats";
 
 type NavItem = {
@@ -61,6 +64,9 @@ const DOCTOR_NAV: NavGroup[] = [
     labelKey: "groups.settings",
     items: [
       { href: "references", labelKey: "sidebar.references", icon: BookOpenIcon },
+      // «Задачи»: the clinic's board for requests to the CRM developers, so
+      // a doctor reports what gets in his way from inside the cabinet.
+      { href: "tasks", labelKey: "sidebar.tasks", icon: ListTodoIcon },
       { href: "settings", labelKey: "sidebar.settings", icon: SettingsIcon },
     ],
   },
@@ -126,7 +132,8 @@ export function DoctorSidebar() {
   React.useEffect(() => {
     try {
       const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
-      if (raw === "1") setCollapsed(true);
+      // No saved choice on a phone: start collapsed, as the CRM rail does.
+      if (raw === "1" || (raw === null && isPhoneViewport())) setCollapsed(true);
     } catch {
       /* localStorage disabled */
     }
@@ -148,11 +155,13 @@ export function DoctorSidebar() {
   // (or a fresh Telegram message) propagates into the sidebar inside
   // the 400ms debounce window without us having to refetch on focus.
   const { data: stats } = useDoctorSidebarStats();
+  const { data: openDevTasks } = useDevTaskOpenCount(true);
   const loadPercent = stats?.loadPercent ?? 0;
   const todayCount = stats?.todayCount ?? 0;
   const badgeByHref: Record<string, number> = {
     "my-day": stats?.todayBadge ?? 0,
     messages: stats?.unreadMessages ?? 0,
+    tasks: openDevTasks ?? 0,
   };
 
   return (

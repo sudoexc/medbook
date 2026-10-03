@@ -189,7 +189,9 @@ export default async function CrmLayout({
             session?.user?.role === "ADMIN" ||
             session?.user?.role === "SUPER_ADMIN"
               ? "ADMIN"
-              : null
+              : session?.user?.role === "RECEPTIONIST"
+                ? "RECEPTIONIST"
+                : null
           }
         />
         <div className="flex min-w-0 flex-1 flex-col">

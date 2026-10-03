@@ -83,6 +83,7 @@ export const CRM_SECTION_KEY: Readonly<Record<string, string>> = {
   analytics: "analytics",
   settings: "settings",
   me: "account",
+  tasks: "tasks",
 };
 
 /**

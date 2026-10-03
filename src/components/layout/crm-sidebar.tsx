@@ -14,6 +14,7 @@ import {
   ClipboardListIcon,
   InboxIcon,
   LayoutDashboardIcon,
+  ListTodoIcon,
   PhoneCallIcon,
   SendIcon,
   SettingsIcon,
@@ -24,7 +25,9 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { isPhoneViewport } from "@/lib/viewport"
 import { useShellSummary } from "@/hooks/use-shell-summary"
+import { useDevTaskOpenCount } from "@/components/dev-tasks/use-dev-task-open-count"
 import {
   ENTERPRISE_FLAGS,
   computeVisibleNav,
@@ -32,8 +35,12 @@ import {
 } from "@/lib/feature-flags"
 
 type BadgeTone = "danger" | "info" | "warning" | "success"
-/** Keys into ShellSummary.unread — drives the live badge count for each nav item. */
-type BadgeKey = "calls" | "telegram" | "notifications" | "leads"
+/**
+ * Keys into ShellSummary.unread — drives the live badge count for each nav
+ * item. `devTasks` comes from its own light poll (the «Задачи» board), not
+ * from the shell summary.
+ */
+type BadgeKey = "calls" | "telegram" | "notifications" | "leads" | "devTasks"
 
 /**
  * `feature` is the gate consumed by `computeVisibleNav` (Phase 9d). When set,
@@ -45,11 +52,15 @@ type BadgeKey = "calls" | "telegram" | "notifications" | "leads"
  * scoreboard, financial dashboard, …). Defense-in-depth — the page server
  * components also `notFound()` non-admins independently.
  *
+ * `roles` is the wider form: the item shows for any of the listed nav roles
+ * (the «Задачи» board is for the owner and the desk, not nurses or call
+ * operators).
+ *
  * `children` lets a parent item declare a static sub-menu. Visible only
  * when the parent route segment is active (or when `children` is non-empty
  * and the user is on a sibling of those children).
  */
-type NavRole = "ADMIN"
+type NavRole = "ADMIN" | "RECEPTIONIST"
 
 type NavItem = {
   href: string
@@ -60,6 +71,7 @@ type NavItem = {
   badgeTone?: BadgeTone
   feature?: "hasTelegramInbox" | "hasCallCenter" | "hasAnalyticsPro"
   requiredRole?: NavRole
+  roles?: NavRole[]
   children?: NavItem[]
 }
 
@@ -178,6 +190,16 @@ export const CRM_NAV: NavGroup[] = [
           },
         ],
       },
+      // «Задачи»: the owner's requests to the CRM developers. The badge is
+      // the number of tasks still open (new + in progress).
+      {
+        href: "tasks",
+        labelKey: "tasks",
+        icon: ListTodoIcon,
+        badgeKey: "devTasks",
+        badgeTone: "info",
+        roles: ["ADMIN", "RECEPTIONIST"],
+      },
       // settings/layout.tsx sends every other role back to /crm, so the
       // item only showed them a click that goes nowhere (audit CM-26).
       {
@@ -203,7 +225,11 @@ export function getVisibleCrmNav(
     .map((group) => ({
       ...group,
       items: group.items
-        .filter((item) => roleAllows(item.requiredRole, role))
+        .filter(
+          (item) =>
+            roleAllows(item.requiredRole, role) &&
+            (!item.roles || (role !== null && item.roles.includes(role))),
+        )
         .map((item) =>
           item.children
             ? {
@@ -316,21 +342,34 @@ export function CrmSidebar({
   const tNav = useTranslations("crmShell.sidebarNav")
   const tShell = useTranslations("crmShell")
   const { data: summary } = useShellSummary()
-  const loadPercent = summary?.today.loadPercent ?? 0
-  const todayCount = summary?.today.appointmentsCount ?? 0
   const visibleNav = React.useMemo(
     () => getVisibleCrmNav(flags, role),
     [flags, role],
   )
+  // Polled only when the item is on screen, so a role without the board
+  // never hits a route that answers 403.
+  const showsTasks = visibleNav.some((g) => g.items.some((i) => i.href === "tasks"))
+  const { data: openDevTasks } = useDevTaskOpenCount(showsTasks)
+  const badges: Record<BadgeKey, number> = {
+    calls: summary?.unread.calls ?? 0,
+    telegram: summary?.unread.telegram ?? 0,
+    notifications: summary?.unread.notifications ?? 0,
+    leads: summary?.unread.leads ?? 0,
+    devTasks: openDevTasks ?? 0,
+  }
+  const loadPercent = summary?.today.loadPercent ?? 0
+  const todayCount = summary?.today.appointmentsCount ?? 0
 
   // Persist collapsed state in localStorage so a hard reload keeps the user's
   // chosen sidebar width. We hydrate after mount to avoid SSR/CSR mismatch on
-  // the initial paint — the server always renders expanded.
+  // the initial paint — the server always renders expanded. With no saved
+  // choice a phone starts collapsed (the owner works the «Задачи» board from
+  // his phone).
   const [collapsed, setCollapsed] = React.useState(false)
   React.useEffect(() => {
     try {
       const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY)
-      if (raw === "1") setCollapsed(true)
+      if (raw === "1" || (raw === null && isPhoneViewport())) setCollapsed(true)
     } catch {
       /* localStorage disabled — fall back to expanded */
     }
@@ -397,8 +436,7 @@ export function CrmSidebar({
                   pathname === bare ||
                   pathname.startsWith(bare + "/")
                 const Icon = item.icon
-                const badgeCount =
-                  item.badgeKey ? summary?.unread[item.badgeKey] ?? 0 : 0
+                const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0
                 const visibleChildren = item.children?.filter((c) => {
                   // Children are pre-filtered by getVisibleCrmNav; this is
                   // a defense-in-depth no-op when called via the prod path.

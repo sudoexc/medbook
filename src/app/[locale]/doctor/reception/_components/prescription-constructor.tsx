@@ -100,7 +100,7 @@ import {
   type DraftPick,
   type RowEdit,
 } from "../_hooks/prescription-rows";
-import { onVisitChecker } from "../_hooks/prescription-columns";
+import { isRepeatClick, onVisitChecker } from "../_hooks/prescription-columns";
 import { PrescriptionPicker } from "./prescription-picker";
 
 const TIMES: VisitPrescriptionTimeOfDay[] = [
@@ -588,10 +588,17 @@ export function PrescriptionConstructor({
           )}
         </div>
         <div className="inline-flex items-center gap-1">
+          {/* Both header buttons ignore the second click of a double click:
+              the first diagnosis folds the columns above «Назначения», and
+              this header can then sit under the cursor that double clicked
+              the diagnosis (prescription-columns.ts, isRepeatClick). */}
           <button
             type="button"
             disabled={disabled}
-            onClick={onOpenCatalog}
+            onClick={(e) => {
+              if (isRepeatClick(e.detail)) return;
+              onOpenCatalog();
+            }}
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50",
               big ? "h-9 rounded-lg px-3 text-sm" : "h-6 px-1.5 text-[11px]",
@@ -604,7 +611,10 @@ export function PrescriptionConstructor({
           <button
             type="button"
             disabled={disabled || customOpen}
-            onClick={() => setCustomOpen(true)}
+            onClick={(e) => {
+              if (isRepeatClick(e.detail)) return;
+              setCustomOpen(true);
+            }}
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/30 bg-primary/5 font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50",
               big ? "h-9 rounded-lg px-3 text-sm" : "h-6 px-1.5 text-[11px]",

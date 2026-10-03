@@ -117,11 +117,15 @@ function render(
     React.createElement(
       QueryClientProvider,
       { client: qc },
-      React.createElement(
-        NextIntlClientProvider,
-        { locale, messages: messages[locale], timeZone: "Asia/Tashkent", now: NOW },
-        el,
-      ),
+      // `children` as a prop: the provider's props type requires it, and
+      // tsc does not count a third createElement argument towards that.
+      React.createElement(NextIntlClientProvider, {
+        locale,
+        messages: messages[locale],
+        timeZone: "Asia/Tashkent",
+        now: NOW,
+        children: el,
+      }),
     ),
   );
 }

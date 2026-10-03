@@ -32,6 +32,12 @@
  *
  * Every pick is composed on the note as the doctor last left it (the query
  * cache, see diagnosis-list.ts), so two quick clicks never undo each other.
+ *
+ * Every click target here ignores the second click of a double click
+ * (isRepeatClick): the block moves under the cursor between the two. A
+ * double click on «+ Диагноз» opens the columns and its second click lands
+ * on the role switch or «Свернуть» that took the bar's place; a pick adds a
+ * row above the columns and moves them down by one.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -237,7 +243,13 @@ export function DiagnosisPicker({
               role="radio"
               aria-checked={role === r}
               disabled={full}
-              onClick={() => setRole(r)}
+              onClick={(e) => {
+                // The bar «+ Диагноз» this row replaces may have been
+                // double clicked: its second click must not turn the next
+                // pick into the main diagnosis.
+                if (isRepeatClick(e.detail)) return;
+                setRole(r);
+              }}
               className={cn(
                 "h-10 rounded-lg px-4 text-[15px] font-semibold transition-colors disabled:opacity-50",
                 role === r
@@ -261,7 +273,12 @@ export function DiagnosisPicker({
         {onCollapse ? (
           <button
             type="button"
-            onClick={onCollapse}
+            onClick={(e) => {
+              // At the bar's right end, where its count sits: a double click
+              // on «+ Диагноз» must not fold the columns right back.
+              if (isRepeatClick(e.detail)) return;
+              onCollapse();
+            }}
             className="ml-auto inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
           >
             <ChevronUpIcon className="size-4" />
@@ -553,7 +570,12 @@ function DxRow({
       {starred !== null ? (
         <button
           type="button"
-          onClick={onStar}
+          onClick={(e) => {
+            // A pick moves the rows down by one, so this star can be what
+            // the second click of a double click on a diagnosis lands on.
+            if (isRepeatClick(e.detail)) return;
+            onStar();
+          }}
           aria-pressed={starred}
           aria-label={
             starred ? t("diagnosis.picker.starRemove") : t("diagnosis.picker.starAdd")
@@ -620,7 +642,10 @@ function CatalogColumn({
     header = (
       <button
         type="button"
-        onClick={() => onTrail(trail.slice(0, -1))}
+        onClick={(e) => {
+          if (isRepeatClick(e.detail)) return;
+          onTrail(trail.slice(0, -1));
+        }}
         title={parent ? parent.title : t("diagnosis.picker.chapters")}
         className="-ml-1.5 inline-flex min-h-9 min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
       >
@@ -712,7 +737,12 @@ function GroupButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => {
+        // One gesture, one level: the list is replaced under the cursor,
+        // and a second click would open whatever block is now there.
+        if (isRepeatClick(e.detail)) return;
+        onClick();
+      }}
       className="flex min-h-12 w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-primary/5 active:bg-primary/10"
     >
       <span className="min-w-0 flex-1">

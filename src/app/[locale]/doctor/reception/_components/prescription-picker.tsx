@@ -27,6 +27,12 @@
  * is often written in two forms («Мексидол 5,0 в/м №10», then «Мексидол
  * 125 мг таб»), and a second click adds the drug again. Only the second
  * click of a double click is ignored, so one gesture never adds two rows.
+ *
+ * Every other click target here ignores that second click as well: the
+ * first diagnosis folds the diagnosis columns above «Назначения» and the
+ * page moves up by some 400px, so the second click of a double click on a
+ * diagnosis lands on whatever is now under the cursor, here a template, a
+ * star or a catalog group just as likely as a drug.
  */
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -300,7 +306,13 @@ export function PrescriptionPicker({
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => onPresetClick(p)}
+                            onClick={(e) => {
+                              // A template adds drugs and a conclusion
+                              // text: never on the second click of a double
+                              // click (see the note at the top).
+                              if (isRepeatClick(e.detail)) return;
+                              onPresetClick(p);
+                            }}
                             title={
                               p.noteTemplate
                                 ? t("structured.presetTitleWithTemplate")
@@ -501,7 +513,12 @@ function PickerItemRow({
       {starred !== null ? (
         <button
           type="button"
-          onClick={onStar}
+          onClick={(e) => {
+            // A star saves at once and says nothing: a stray second click
+            // must not pin or unpin a drug (see the note at the top).
+            if (isRepeatClick(e.detail)) return;
+            onStar();
+          }}
           aria-pressed={starred}
           aria-label={starred ? t("rx.picker.starRemove") : t("rx.picker.starAdd")}
           title={starred ? t("rx.picker.starRemove") : t("rx.picker.starAdd")}
@@ -573,7 +590,10 @@ function CatalogColumn({
   const back = (to: CatalogPath, label: string) => (
     <button
       type="button"
-      onClick={() => onPath(to)}
+      onClick={(e) => {
+        if (isRepeatClick(e.detail)) return;
+        onPath(to);
+      }}
       className="-ml-1.5 inline-flex min-h-9 min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
     >
       <ChevronLeftIcon className="size-4 shrink-0" />
@@ -723,7 +743,12 @@ function GroupButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => {
+        // One gesture, one level: the list is replaced under the cursor,
+        // and a second click would open whatever group is now there.
+        if (isRepeatClick(e.detail)) return;
+        onClick();
+      }}
       className="flex min-h-12 w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-primary/5 active:bg-primary/10"
     >
       <span className="min-w-0 flex-1">
@@ -822,7 +847,13 @@ function SearchResults({
           <button
             type="button"
             disabled={addingToClinic}
-            onClick={onAddToClinicBase}
+            onClick={(e) => {
+              // A half-typed search left open shows these results under
+              // the diagnosis columns, so this button can move under the
+              // cursor too, and it writes to the clinic's whole base.
+              if (isRepeatClick(e.detail)) return;
+              onAddToClinicBase();
+            }}
             className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-lg border border-dashed border-primary/40 px-3 text-left text-sm transition-colors hover:bg-primary/5 disabled:opacity-60"
           >
             {addingToClinic ? (

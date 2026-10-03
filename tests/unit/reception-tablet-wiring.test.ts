@@ -159,3 +159,40 @@ describe("touch rules", () => {
     expect(keypad).toContain('inputMode="tel"');
   });
 });
+
+describe("a ticket or booking in flight", () => {
+  const app = read(`${DIR}/_components/tablet-app.tsx`);
+
+  it("locks the header's «Назад», «Отмена», the step pills and «Обычный режим»", () => {
+    expect(app).toContain("<FlowHeader\n              flow={active}\n              locked={pending}");
+    expect(app).toContain("onClick={onBack} disabled={locked}");
+    expect(app).toMatch(/onClick=\{onCancel\}\s+disabled=\{locked\}/);
+    expect(app).toContain("const reachable = !locked && !isCurrent");
+    expect(app).toContain("locked={pending} />");
+    // «Изменить» and the service chips of the confirm screen.
+    expect(app).toContain("<fieldset disabled={pending}");
+  });
+
+  it("stamps every server answer with the flow that sent it", () => {
+    for (const type of ["done", "ownerQuestion", "patientCreated", "bookingUnsure"]) {
+      const sent = [...app.matchAll(new RegExp(`type: "${type}"[^}]*`, "g"))].map((m) => m[0]);
+      expect(sent.length, type).toBeGreaterThan(0);
+      for (const s of sent) expect(s, type).toContain("flowId");
+    }
+    expect(app).toContain("if (!isCurrentFlow(flowId))");
+  });
+
+  it("the booking's «Записать» says it checks first after a lost answer", () => {
+    expect(app).toContain('t("submitBookCheck")');
+    expect(ru.receptionTablet.confirm.errors.bookingUnsure).not.toMatch(/нажмите ещё раз/i);
+  });
+});
+
+describe("the new patient form", () => {
+  const src = read(`${DIR}/_components/patient-step.tsx`);
+
+  it("dials the phone on the same on-screen keypad as the search", () => {
+    expect(src).toMatch(/<PhoneKeypad\s+fieldId="tablet-new-phone"/);
+    expect(src).toMatch(/<PhoneKeypad\s+fieldId="tablet-phone-search"/);
+  });
+});

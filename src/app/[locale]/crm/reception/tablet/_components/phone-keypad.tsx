@@ -78,16 +78,35 @@ export function PhoneField({
   );
 }
 
-/** A phone's 3 × 4 keypad, 72 px keys. Never takes focus from the field. */
+/**
+ * A phone's 3 × 4 keypad, 72 px keys. Never takes focus from the phone
+ * field. With `fieldId`, a key pressed while another field is being typed
+ * into (the name above it) closes that field's iPad keyboard, which would
+ * otherwise cover the keypad.
+ */
 export function PhoneKeypad({
   local,
   onChange,
+  fieldId,
 }: {
   local: string;
   onChange: (local: string) => void;
+  /** The PhoneField this keypad types into. */
+  fieldId?: string;
 }) {
   const t = useTranslations("receptionTablet.patient");
-  const press = (key: KeypadKey) => onChange(pressKey(local, key));
+  const press = (key: KeypadKey) => {
+    const focused = typeof document !== "undefined" ? document.activeElement : null;
+    if (
+      fieldId &&
+      focused instanceof HTMLElement &&
+      focused.id !== fieldId &&
+      focused.matches("input, textarea")
+    ) {
+      focused.blur();
+    }
+    onChange(pressKey(local, key));
+  };
   return (
     <div role="group" aria-label={t("keypad")} className="grid grid-cols-3 gap-3">
       {KEYPAD_ROWS.flat().map((key) => (

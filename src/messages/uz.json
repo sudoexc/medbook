@@ -2317,6 +2317,11 @@
     "slow": "Aloqa sekin, server javobini kutyapmiz…",
     "forbidden": "Planshet rejimi klinika registraturasi va administratori uchun ochiq.",
     "forbiddenBack": "CRM ga qaytish",
+    "late": {
+      "ticket": "Talon {number} berildi: {name}",
+      "booking": "Yozuv saqlandi: {name}, {when}",
+      "unsure": "Aloqa uzildi: {name} yozuvi saqlanganini tekshiring"
+    },
     "home": {
       "queueCta": "Navbatga",
       "queueCtaHint": "Hozir shifokorga talon",
@@ -2458,6 +2463,7 @@
       "queueNow": "{count, plural, =0 {Hozir navbat yo'q} other {Hozir navbatda # kishi}}",
       "submitQueue": "Navbatga qo'yish",
       "submitBook": "Yozish",
+      "submitBookCheck": "Tekshirib yozish",
       "submitting": "Yuborilmoqda…",
       "pickOtherTime": "Boshqa vaqtni tanlash",
       "errors": {
@@ -2466,6 +2472,7 @@
         "patient_not_found": "Bemor kartasi topilmadi. Bemorni qaytadan toping.",
         "service_not_offered": "Shifokor bu xizmatni endi ko'rsatmaydi. Boshqasini yoki oddiy qabulni tanlang.",
         "network": "Server bilan aloqa yo'q. Wi-Fi ni tekshiring va yana bosing.",
+        "bookingUnsure": "Aloqa uzildi, yozuv saqlanganini bilmaymiz. «Tekshirib yozish» ni bosing: avval uni qidiramiz va ikki marta yozmaymiz.",
         "forbidden": "Bu amal uchun huquq yo'q.",
         "failed": "Bo'lmadi. Yana urinib ko'ring."
       }
@@ -2483,6 +2490,7 @@
       "next": "Keyingi bemor",
       "bookingTitle": "Yozildi",
       "bookingWhen": "{day}, soat {time}",
+      "bookingRecovered": "Yozuv aloqa uzilishidan oldin saqlangan, ikkinchi marta yozilmadi.",
       "bookingHint": "Qabul kuni bemor kelganda «Keldi» ni belgilang."
     }
   },

@@ -11,7 +11,13 @@ import {
 } from "@/components/appointments/phone-owner-prompt";
 import { resolveCaseForNewAppointment } from "@/components/appointments/NewAppointmentDialog";
 import { effectiveServiceTerms } from "@/lib/doctor-service-terms";
-import { DEFAULT_VISIT_MIN, tashkentNoonIso } from "@/lib/reception-tablet/doctor-day";
+import {
+  bookVisit,
+  writeSignal,
+  type BookedVisit,
+  type BookInput,
+} from "@/lib/reception-tablet/book-visit";
+import { tashkentNoonIso } from "@/lib/reception-tablet/doctor-day";
 import { readWriteFailure, TabletWriteError } from "@/lib/reception-tablet/errors";
 import type { ChosenPatient } from "@/lib/reception-tablet/flow";
 
@@ -19,9 +25,12 @@ import type { ChosenPatient } from "@/lib/reception-tablet/flow";
  * The tablet's writes, all through the routes the desktop reception uses:
  *   - «В очередь»  → POST /api/crm/appointments/walkin (registerWalkin: the
  *     ticket letter, queue order, duplicate guard and phone-owner rules);
- *   - «Записать»   → POST /api/crm/patients for a new card (same phone-owner
- *     rules), then POST /api/crm/appointments (bookAppointment: no past,
- *     conflicts, schedule), then the case filing of the booking dialog.
+ *   - «Записать»   → bookVisit (book-visit.ts): POST /api/crm/patients for a
+ *     new card (same phone-owner rules), then POST /api/crm/appointments
+ *     (bookAppointment: no past, conflicts, schedule), then the case filing
+ *     of the booking dialog. After a booking that got no answer, the next
+ *     try first looks the visit up so the patient is never booked twice.
+ * Every write times out on its own (`writeSignal`, 40 s).
  * «Пришёл» reuses `useSetQueueStatus` of the appointment card as is.
  */
 
@@ -82,6 +91,7 @@ export function useIssueWalkin() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: writeSignal(),
       });
       if (!res.ok) {
         const j = await readJson(res);
@@ -95,104 +105,32 @@ export function useIssueWalkin() {
   });
 }
 
-export type BookInput = {
-  patient: ChosenPatient;
-  /** A card this flow already created (a retry after a taken slot). */
-  createdPatientId: string | null;
-  doctorId: string;
-  serviceId: string | null;
-  /** The chosen service's length with this doctor, minutes. */
-  serviceMin: number | null;
-  day: string;
-  time: string;
-  phoneOwner?: PhoneOwnerAnswer;
-  /** Told as soon as a new card exists, before the booking is tried. */
-  onPatientCreated?: (patientId: string) => void;
-};
+export type { BookedVisit, BookInput } from "@/lib/reception-tablet/book-visit";
 
 export function useBookVisit() {
   const qc = useQueryClient();
   const tCase = useTranslations("appointments.case");
-  return useMutation<{ id: string; patientId: string }, Error, BookInput>({
+  return useMutation<BookedVisit, Error, BookInput>({
     networkMode: "always",
-    mutationFn: async (v) => {
-      let patientId: string | null =
-        v.patient.kind === "existing" ? v.patient.id : v.createdPatientId;
-
-      if (!patientId && v.patient.kind === "new") {
-        const res = await fetch("/api/crm/patients", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fullName: v.patient.fullName,
-            phone: v.patient.phone,
-            ...(v.patient.gender ? { gender: v.patient.gender } : {}),
-            // Standing at the desk is how he came, as on the walk-in path.
-            source: "WALKIN",
-            ...(v.phoneOwner ? { phoneOwner: v.phoneOwner } : {}),
-          }),
-        });
-        const j = (await readJson(res)) as
-          | { id?: string; reason?: string; patientId?: string }
-          | null;
-        if (!res.ok) {
-          const owner = readPhoneOwnerMismatch(res.status, j);
-          if (owner) throw new PhoneOwnerMismatchError(owner);
-          // The same person already has a card (the name matched, or staff
-          // answered «тот же человек»): book into it.
-          if (res.status === 409 && j?.reason === "phone_already_exists" && j.patientId) {
-            patientId = j.patientId;
-          } else {
-            throw new TabletWriteError(readWriteFailure(res.status, j));
+    mutationFn: (v) =>
+      bookVisit(v, {
+        // Filed into the patient's case the way the booking dialog files it.
+        // Soft: a failure here never undoes the booking.
+        fileIntoCase: async (appointmentId, patientId, doctorId) => {
+          try {
+            await resolveCaseForNewAppointment({
+              appointmentId,
+              patientId,
+              doctorId,
+              tCase: tCase as unknown as (k: string, v?: Record<string, string | number>) => string,
+              // Several open cases: the appointment card asks later.
+              openSelector: () => undefined,
+            });
+          } catch {
+            // see above
           }
-        } else if (j?.id) {
-          patientId = j.id;
-        }
-        if (!patientId) throw new TabletWriteError({ kind: "failed" });
-        v.onPatientCreated?.(patientId);
-      }
-      if (!patientId) throw new TabletWriteError({ kind: "failed" });
-
-      const res = await fetch("/api/crm/appointments", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          doctorId: v.doctorId,
-          services: v.serviceId ? [{ serviceId: v.serviceId, quantity: 1 }] : [],
-          ...(v.serviceId ? { serviceId: v.serviceId } : {}),
-          date: tashkentNoonIso(v.day),
-          time: v.time,
-          // The slot grid sized the block the same way (service length with
-          // this doctor, else the grid step).
-          durationMin: Math.max(5, v.serviceMin ?? DEFAULT_VISIT_MIN),
-          // The booking dialog's desk default; WALKIN is the live lane's.
-          channel: "PHONE",
-        }),
-      });
-      if (!res.ok) {
-        throw new TabletWriteError(readWriteFailure(res.status, await readJson(res)));
-      }
-      const created = (await res.json()) as { id: string };
-
-      // Filed into the patient's case the way the booking dialog files it.
-      // Soft: a failure here never undoes the booking.
-      try {
-        await resolveCaseForNewAppointment({
-          appointmentId: created.id,
-          patientId,
-          doctorId: v.doctorId,
-          tCase: tCase as unknown as (k: string, v?: Record<string, string | number>) => string,
-          // Several open cases: the appointment card asks later.
-          openSelector: () => undefined,
-        });
-      } catch {
-        // see above
-      }
-      return { id: created.id, patientId };
-    },
+        },
+      }),
     onSuccess: () => invalidateDesk(qc),
   });
 }

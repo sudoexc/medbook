@@ -122,6 +122,7 @@ export function PatientStep({
                 onChange={(phoneLocal) => set({ phoneLocal })}
               />
               <PhoneKeypad
+                fieldId="tablet-phone-search"
                 local={search.phoneLocal}
                 onChange={(phoneLocal) => set({ phoneLocal })}
               />
@@ -307,7 +308,7 @@ function NewPatientForm({
 
   return (
     <form
-      className="mx-auto flex w-full max-w-3xl flex-col gap-6"
+      className="mx-auto flex w-full max-w-4xl flex-col gap-6"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -330,6 +331,15 @@ function NewPatientForm({
           enterKeyHint="next"
           value={draft.fullName}
           onChange={(e) => set({ fullName: e.target.value })}
+          onKeyDown={(e) => {
+            // «Далее» on the iPad keyboard with the number still to dial:
+            // put the keyboard away so the keypad below is in reach, instead
+            // of submitting a form that would only answer «наберите номер».
+            if (e.key === "Enter" && !isCompleteLocal(draft.phoneLocal)) {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
           placeholder={t("fullNamePlaceholder")}
           aria-invalid={Boolean(errors?.fullName) || undefined}
           className={cn(fieldClass, errors?.fullName ? "border-destructive" : "border-border")}
@@ -341,61 +351,73 @@ function NewPatientForm({
         ) : null}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_14rem]">
-        <div className="flex flex-col gap-2">
-          <PhoneField
-            id="tablet-new-phone"
-            label={t("phone")}
+      {/* The phone as on the search: the field with the keypad under it
+          (an iPad has no number pad of its own, its keyboard would cover
+          half the screen), the year and the sex beside them. */}
+      <div className="grid gap-6 md:grid-cols-[minmax(0,25rem)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <PhoneField
+              id="tablet-new-phone"
+              label={t("phone")}
+              local={draft.phoneLocal}
+              onChange={(phoneLocal) => set({ phoneLocal })}
+              invalid={Boolean(errors?.phone)}
+            />
+            {errors?.phone ? (
+              <p className="text-[15px] text-destructive">
+                {errors.phone === "required" ? t("errPhoneRequired") : t("errPhoneIncomplete")}
+              </p>
+            ) : null}
+          </div>
+          <PhoneKeypad
+            fieldId="tablet-new-phone"
             local={draft.phoneLocal}
             onChange={(phoneLocal) => set({ phoneLocal })}
-            invalid={Boolean(errors?.phone)}
           />
-          {errors?.phone ? (
-            <p className="text-[15px] text-destructive">
-              {errors.phone === "required" ? t("errPhoneRequired") : t("errPhoneIncomplete")}
-            </p>
-          ) : null}
         </div>
-        <div className="flex flex-col gap-2">
-          <label htmlFor="tablet-new-year" className="text-[15px] font-semibold text-muted-foreground">
-            {t("birthYear")}
-          </label>
-          <input
-            id="tablet-new-year"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="off"
-            enterKeyHint="done"
-            value={draft.birthYear}
-            onChange={(e) => set({ birthYear: birthYearInput(e.target.value) })}
-            placeholder={t("birthYearPlaceholder")}
-            aria-invalid={Boolean(errors?.birthYear) || undefined}
-            className={cn(
-              fieldClass,
-              "text-[28px] font-semibold tabular-nums",
-              errors?.birthYear ? "border-destructive" : "border-border",
-            )}
-          />
-          {errors?.birthYear ? (
-            <p className="text-[15px] text-destructive">{t("errBirthYear")}</p>
-          ) : null}
-        </div>
-      </div>
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="tablet-new-year" className="text-[15px] font-semibold text-muted-foreground">
+              {t("birthYear")}
+            </label>
+            <input
+              id="tablet-new-year"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
+              enterKeyHint="done"
+              value={draft.birthYear}
+              onChange={(e) => set({ birthYear: birthYearInput(e.target.value) })}
+              placeholder={t("birthYearPlaceholder")}
+              aria-invalid={Boolean(errors?.birthYear) || undefined}
+              className={cn(
+                fieldClass,
+                "text-[28px] font-semibold tabular-nums",
+                errors?.birthYear ? "border-destructive" : "border-border",
+              )}
+            />
+            {errors?.birthYear ? (
+              <p className="text-[15px] text-destructive">{t("errBirthYear")}</p>
+            ) : null}
+          </div>
 
-      <div className="flex flex-col gap-2">
-        <span className="text-[15px] font-semibold text-muted-foreground">
-          {t("gender")} <span className="font-normal">({t("optional")})</span>
-        </span>
-        <Segmented
-          label={t("gender")}
-          allowNone
-          value={draft.gender}
-          onChange={(gender) => set({ gender })}
-          options={[
-            { value: "MALE", label: t("male") },
-            { value: "FEMALE", label: t("female") },
-          ]}
-        />
+          <div className="flex flex-col gap-2">
+            <span className="text-[15px] font-semibold text-muted-foreground">
+              {t("gender")} <span className="font-normal">({t("optional")})</span>
+            </span>
+            <Segmented
+              label={t("gender")}
+              allowNone
+              value={draft.gender}
+              onChange={(gender) => set({ gender })}
+              options={[
+                { value: "MALE", label: t("male") },
+                { value: "FEMALE", label: t("female") },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">

@@ -11,6 +11,8 @@
  */
 import { readPlanLimit, type PlanLimitQuota } from "@/lib/plan-limit";
 
+import type { UnsureBooking } from "./flow";
+
 /** Slot refusals of the booking route, worded in `appointments.drawer.conflict`. */
 export const BOOKING_CONFLICT_REASONS = [
   "doctor_busy",
@@ -41,6 +43,18 @@ export class TabletWriteError extends Error {
   constructor(readonly failure: WriteFailure) {
     super(`tablet_write:${failure.kind}`);
     this.name = "TabletWriteError";
+  }
+}
+
+/**
+ * The booking POST went out and no answer came back (see
+ * booking-recovery.ts): the visit may exist. Carries what to look for on
+ * the next «Записать».
+ */
+export class BookingUnsureError extends Error {
+  constructor(readonly unsure: UnsureBooking) {
+    super("tablet_booking_unsure");
+    this.name = "BookingUnsureError";
   }
 }
 
@@ -83,7 +97,7 @@ export function readWriteFailure(status: number, body: unknown): WriteFailure {
  * AbortError. Both mean «no connection», not «the server said no».
  */
 export function isNetworkError(e: unknown): boolean {
-  if (e instanceof TabletWriteError) return false;
+  if (e instanceof TabletWriteError || e instanceof BookingUnsureError) return false;
   if (e instanceof TypeError) return true;
   return e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError");
 }

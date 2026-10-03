@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { toast } from "sonner";
 import {
   ArrowLeftIcon,
   BrainIcon,
@@ -34,6 +35,7 @@ import {
 import {
   flowReducer,
   HOME,
+  headerBack,
   stepNumber,
   stepsFor,
   canOpenStep,
@@ -42,7 +44,12 @@ import {
   type FlowStep,
   type TabletMode,
 } from "@/lib/reception-tablet/flow";
-import { isNetworkError, TabletWriteError, type WriteFailure } from "@/lib/reception-tablet/errors";
+import {
+  BookingUnsureError,
+  isNetworkError,
+  TabletWriteError,
+  type WriteFailure,
+} from "@/lib/reception-tablet/errors";
 import { nameWithoutYear } from "@/lib/reception-tablet/new-patient";
 
 import {
@@ -72,7 +79,7 @@ import { ErrorNote, Segmented, TOUCH, TouchButton } from "./tablet-ui";
 /** A flow left untouched this long goes back home, ready for the next patient. */
 const IDLE_RESET_MS = 5 * 60_000;
 
-type SubmitFailure = WriteFailure | { kind: "network" };
+type SubmitFailure = WriteFailure | { kind: "network" } | { kind: "bookingUnsure" };
 
 /**
  * `/crm/reception/tablet`: the reception on the clinic's iPad (12.9", touch
@@ -82,6 +89,7 @@ type SubmitFailure = WriteFailure | { kind: "network" };
  */
 export function TabletApp() {
   const tRoot = useTranslations("receptionTablet");
+  const locale = useLocale();
   useTabletLive();
   const now = useMinuteClock();
   const online = useOnline();
@@ -109,16 +117,45 @@ export function TabletApp() {
   const active: ActiveFlow | null = flow.screen === "flow" ? flow : null;
   const services = useDoctorServices(active?.doctorId ?? null);
 
+  // The current flow's id. Bumped whenever a flow ends (home, a new start,
+  // the page closing): a server answer stamped with an older id is not for
+  // the screen now showing.
+  const flowSeq = React.useRef(0);
+  React.useEffect(
+    () => () => {
+      flowSeq.current += 1;
+    },
+    [],
+  );
+
   const goHome = React.useCallback(() => {
+    flowSeq.current += 1;
     dispatch({ type: "home" });
     setSearch(EMPTY_PATIENT_SEARCH);
     setFailure(null);
   }, []);
 
   const start = (mode: TabletMode, doctorId?: string) => {
+    flowSeq.current += 1;
     setSearch(EMPTY_PATIENT_SEARCH);
     setFailure(null);
-    dispatch({ type: "start", mode, doctorId: doctorId ?? null, today: data.today });
+    dispatch({
+      type: "start",
+      mode,
+      doctorId: doctorId ?? null,
+      today: data.today,
+      flowId: flowSeq.current,
+    });
+  };
+
+  // The header's «Назад» on the new patient form goes back to the search.
+  const onHeaderBack = () => {
+    if (!active) return;
+    if (headerBack(active, { creatingPatient: search.creating }) === "closeNewPatient") {
+      setSearch({ ...search, creating: false });
+      return;
+    }
+    dispatch({ type: "back" });
   };
 
   // A refusal belongs to the screen it was shown on.
@@ -149,26 +186,48 @@ export function TabletApp() {
     };
   }, [flow.screen, pending, goHome]);
 
-  const onSubmitError = (e: unknown) => {
-    if (e instanceof PhoneOwnerMismatchError) {
-      dispatch({ type: "ownerQuestion", owner: e.owner });
+  const isCurrentFlow = (flowId: number) => flowSeq.current === flowId;
+
+  const onSubmitError = (flowId: number, patientName: string) => (e: unknown) => {
+    if (!isCurrentFlow(flowId)) {
+      // The flow is gone; only a booking that may have been saved is worth
+      // a word, so nobody books that person again blind.
+      if (e instanceof BookingUnsureError) toast.warning(tRoot("late.unsure", { name: patientName }));
       return;
     }
-    if (e instanceof TabletWriteError) setFailure(e.failure);
+    if (e instanceof PhoneOwnerMismatchError) {
+      dispatch({ type: "ownerQuestion", owner: e.owner, flowId });
+      return;
+    }
+    if (e instanceof BookingUnsureError) {
+      dispatch({ type: "bookingUnsure", unsure: e.unsure, flowId });
+      setFailure({ kind: "bookingUnsure" });
+    } else if (e instanceof TabletWriteError) setFailure(e.failure);
     else if (isNetworkError(e) || !navigator.onLine) setFailure({ kind: "network" });
     else setFailure({ kind: "failed" });
   };
 
   const submit = (phoneOwner?: "same" | "other") => {
     if (!active || !active.patient || !active.doctorId) return;
-    const { patient, doctorId, serviceId } = active;
+    const { flowId, patient, doctorId, serviceId } = active;
+    const patientName = nameWithoutYear(patient.fullName);
     setFailure(null);
     if (active.mode === "queue") {
       const placeHint = liveWaitingCount(rows, doctorId);
       lock(() =>
         issue.mutateAsync({ patient, doctorId, serviceId, phoneOwner }).then((r) => {
+          if (!isCurrentFlow(flowId)) {
+            // Issued after all, for a flow already left: the number must
+            // still reach the desk, or a ticket sits in a queue unknown.
+            toast.success(
+              tRoot("late.ticket", { number: r.ticketNumber, name: r.patient.fullName }),
+              { duration: 30_000 },
+            );
+            return;
+          }
           dispatch({
             type: "done",
+            flowId,
             result: {
               kind: "ticket",
               appointmentId: r.appointmentId,
@@ -181,11 +240,11 @@ export function TabletApp() {
               placeHint: r.duplicate ? null : placeHint,
             },
           });
-        }, onSubmitError),
+        }, onSubmitError(flowId, patientName)),
       );
       return;
     }
-    const { day, time, createdPatientId } = active;
+    const { day, time, createdPatientId, unsureBooking } = active;
     if (!day || !time) return;
     const serviceMin = serviceId
       ? (services.data?.find((s) => s.id === serviceId)?.durationMin ?? null)
@@ -194,6 +253,7 @@ export function TabletApp() {
       book
         .mutateAsync({
           patient,
+          unsure: unsureBooking,
           createdPatientId,
           doctorId,
           serviceId,
@@ -201,21 +261,30 @@ export function TabletApp() {
           day,
           time,
           phoneOwner,
-          onPatientCreated: (patientId) => dispatch({ type: "patientCreated", patientId }),
+          onPatientCreated: (patientId) => dispatch({ type: "patientCreated", patientId, flowId }),
         })
         .then((r) => {
+          if (!isCurrentFlow(flowId)) {
+            const when = `${formatCalendarDay(`${r.day}T12:00:00+05:00`, locale, { month: "long" })}, ${r.time}`;
+            toast.success(tRoot("late.booking", { name: patientName, when }), { duration: 30_000 });
+            return;
+          }
           dispatch({
             type: "done",
+            flowId,
             result: {
               kind: "booking",
               appointmentId: r.id,
-              patientName: nameWithoutYear(patient.fullName),
-              doctorId,
-              day,
-              time,
+              patientName,
+              // As saved: a booking found after a lost answer keeps the
+              // doctor, day and time it was made for.
+              doctorId: r.doctorId,
+              day: r.day,
+              time: r.time,
+              recovered: r.recovered,
             },
           });
-        }, onSubmitError),
+        }, onSubmitError(flowId, patientName)),
     );
   };
 
@@ -227,7 +296,7 @@ export function TabletApp() {
         paddingRight: "env(safe-area-inset-right)",
       }}
     >
-      <TopBar now={now} online={online} updatedAt={data.updatedAt} />
+      <TopBar now={now} online={online} updatedAt={data.updatedAt} locked={pending} />
       {!online ? <OfflineBanner /> : null}
 
       {active ? (
@@ -235,7 +304,8 @@ export function TabletApp() {
           {active.step !== "done" ? (
             <FlowHeader
               flow={active}
-              onBack={() => dispatch({ type: "back" })}
+              locked={pending}
+              onBack={onHeaderBack}
               onCancel={goHome}
               onGoTo={(s) => dispatch({ type: "goTo", step: s })}
             />
@@ -295,7 +365,18 @@ export function TabletApp() {
   );
 }
 
-function TopBar({ now, online, updatedAt }: { now: Date; online: boolean; updatedAt: number }) {
+function TopBar({
+  now,
+  online,
+  updatedAt,
+  locked,
+}: {
+  now: Date;
+  online: boolean;
+  updatedAt: number;
+  /** A write is out: leaving now would lose its answer. */
+  locked: boolean;
+}) {
   const t = useTranslations("receptionTablet");
   const locale = useLocale();
   const lang = locale === "uz" ? "uz" : "ru";
@@ -338,9 +419,15 @@ function TopBar({ now, online, updatedAt }: { now: Date; online: boolean; update
         </span>
         <Link
           href="/crm/reception"
+          aria-disabled={locked || undefined}
+          tabIndex={locked ? -1 : undefined}
+          onClick={(e) => {
+            if (locked) e.preventDefault();
+          }}
           className={cn(
             TOUCH,
             "motion-press inline-flex h-14 items-center gap-2 rounded-2xl border border-border bg-card px-5 text-[17px] font-semibold text-foreground active:bg-muted",
+            locked && "pointer-events-none opacity-50",
           )}
         >
           <LogOutIcon className="size-5" aria-hidden />
@@ -556,11 +643,18 @@ function Home({
 
 function FlowHeader({
   flow,
+  locked,
   onBack,
   onCancel,
   onGoTo,
 }: {
   flow: ActiveFlow;
+  /**
+   * A ticket or booking is being sent: its answer belongs to this patient,
+   * so nothing here leaves the flow until it comes (the write times out on
+   * its own, see `writeSignal` in book-visit.ts).
+   */
+  locked: boolean;
   onBack: () => void;
   onCancel: () => void;
   onGoTo: (step: FlowStep) => void;
@@ -577,7 +671,7 @@ function FlowHeader({
   };
   return (
     <div className="flex shrink-0 items-center gap-4 border-b border-border bg-card/60 px-6 py-3">
-      <TouchButton tone="outline" onClick={onBack}>
+      <TouchButton tone="outline" onClick={onBack} disabled={locked}>
         <ArrowLeftIcon />
         {t("back")}
       </TouchButton>
@@ -593,7 +687,7 @@ function FlowHeader({
         {steps.map((s, i) => {
           const done = isStepComplete(flow, s) && s !== flow.step;
           const isCurrent = s === flow.step;
-          const reachable = !isCurrent && canOpenStep(flow, s);
+          const reachable = !locked && !isCurrent && canOpenStep(flow, s);
           return (
             <li key={s} className="flex items-center gap-2">
               {i > 0 ? <span className="h-px w-5 bg-border" aria-hidden /> : null}
@@ -634,7 +728,13 @@ function FlowHeader({
           );
         })}
       </ol>
-      <TouchButton tone="ghost" onClick={onCancel} className="md:ml-2" aria-label={t("cancel")}>
+      <TouchButton
+        tone="ghost"
+        onClick={onCancel}
+        disabled={locked}
+        className="md:ml-2"
+        aria-label={t("cancel")}
+      >
         <XIcon />
         <span className="hidden xl:inline">{t("cancel")}</span>
       </TouchButton>
@@ -709,13 +809,16 @@ function FlowBody({
     case "confirm":
       return (
         <div className="flex flex-col gap-6">
-          <ConfirmStep
-            flow={flow}
-            doctor={doctor}
-            summary={summary}
-            onGoTo={(s) => dispatch({ type: "goTo", step: s })}
-            onService={(serviceId) => dispatch({ type: "pickService", serviceId })}
-          />
+          {/* «Изменить» and the service chips wait for the answer too. */}
+          <fieldset disabled={pending} className="m-0 min-w-0 border-0 p-0">
+            <ConfirmStep
+              flow={flow}
+              doctor={doctor}
+              summary={summary}
+              onGoTo={(s) => dispatch({ type: "goTo", step: s })}
+              onService={(serviceId) => dispatch({ type: "pickService", serviceId })}
+            />
+          </fieldset>
           {flow.owner ? (
             <OwnerQuestionCard owner={flow.owner} pending={pending} onAnswer={onOwnerAnswer} />
           ) : null}
@@ -803,6 +906,9 @@ function FailureNote({
     case "network":
       text = t("errors.network");
       break;
+    case "bookingUnsure":
+      text = t("errors.bookingUnsure");
+      break;
     default:
       text = t("errors.failed");
   }
@@ -843,7 +949,13 @@ function ConfirmActions({
           aria-busy={pending || undefined}
         >
           {flow.mode === "queue" ? <TicketPlusIcon /> : <CalendarClockIcon />}
-          {pending ? t("submitting") : flow.mode === "queue" ? t("submitQueue") : t("submitBook")}
+          {pending
+            ? t("submitting")
+            : flow.mode === "queue"
+              ? t("submitQueue")
+              : flow.unsureBooking
+                ? t("submitBookCheck")
+                : t("submitBook")}
         </TouchButton>
       )}
     </div>

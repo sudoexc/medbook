@@ -217,6 +217,11 @@ export function BookingDone({
             .join(" · ")}
         </p>
       </div>
+      {result.recovered ? (
+        <p role="status" className="text-[17px] font-medium text-foreground">
+          {t("bookingRecovered")}
+        </p>
+      ) : null}
       <p className="text-[17px] text-muted-foreground">{t("bookingHint")}</p>
       <TouchButton size="xl" className="w-full max-w-md" onClick={onNext}>
         {t("next")}

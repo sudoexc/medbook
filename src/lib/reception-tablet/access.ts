@@ -4,12 +4,20 @@
  *
  * Pure: the page, the manifest route and the unit tests share it.
  */
+import { startPageFor } from "@/lib/start-page";
 
-/** The desk and the clinic's administrators; a SUPER_ADMIN visiting a clinic. */
-export const RECEPTION_TABLET_ROLES = ["RECEPTIONIST", "ADMIN", "SUPER_ADMIN"] as const;
-
-export function canUseReceptionTablet(role: string | null | undefined): boolean {
-  return (RECEPTION_TABLET_ROLES as readonly string[]).includes(role ?? "");
+/**
+ * Only the clinic's iPad accounts: a reception account whose start page is
+ * the tablet (src/lib/start-page.ts). Owner request 05.10.2026: opened from
+ * a desk computer the tablet screen only confuses, so every other account,
+ * administrators included, neither sees it in the menu nor opens it. A
+ * second iPad gets it the same way, via the start page in the user settings.
+ */
+export function canUseReceptionTablet(
+  role: string | null | undefined,
+  startPage: unknown,
+): boolean {
+  return startPageFor(role, startPage) === "reception-tablet";
 }
 
 /** The page under the locale prefix (ru is served without one). */

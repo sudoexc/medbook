@@ -19,9 +19,10 @@ export const START_PAGES = ["reception-tablet"] as const;
 export type StartPage = (typeof START_PAGES)[number];
 
 /**
- * Who may have each start page. The tablet page itself is open to ADMIN and
- * SUPER_ADMIN too, but an admin's day starts in the full CRM; the select in
- * the user settings is offered for reception accounts only.
+ * Who may have each start page. The tablet start page is also what opens
+ * the tablet at all (lib/reception-tablet/access): only reception accounts
+ * with it see or open /crm/reception/tablet, administrators included in the
+ * «no» (owner request 05.10.2026).
  */
 const START_PAGE_ROLES: Record<StartPage, readonly Role[]> = {
   "reception-tablet": ["RECEPTIONIST"],

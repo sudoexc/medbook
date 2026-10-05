@@ -81,6 +81,8 @@ type NavItem = {
    * prefetched as it scrolls into view and would never count as one.
    */
   fullPageLoad?: boolean
+  /** Shown only to the clinic's iPad accounts (lib/reception-tablet/access). */
+  tabletOnly?: boolean
 }
 
 type NavGroup = {
@@ -102,12 +104,14 @@ export const CRM_NAV: NavGroup[] = [
     items: [
       { href: "reception", labelKey: "reception", icon: LayoutDashboardIcon },
       // The desk on the clinic's iPad: queue and book patients by touch.
-      // Same audience as the page itself (lib/reception-tablet/access).
+      // Same audience as the page itself (lib/reception-tablet/access):
+      // the iPad accounts only.
       {
         href: "reception/tablet",
         labelKey: "receptionTablet",
         icon: TabletIcon,
-        roles: ["ADMIN", "RECEPTIONIST"],
+        roles: ["RECEPTIONIST"],
+        tabletOnly: true,
         // Opening the tablet ends the iPad account's desktop switch.
         fullPageLoad: true,
       },
@@ -234,6 +238,7 @@ export const CRM_NAV: NavGroup[] = [
 export function getVisibleCrmNav(
   flags: FeatureFlags,
   role: NavRole | null = null,
+  tabletAccount = false,
 ): NavGroup[] {
   const out = computeVisibleNav(CRM_NAV, flags) as NavGroup[]
   // Apply role-gating to items + children. `computeVisibleNav` only knows
@@ -246,7 +251,8 @@ export function getVisibleCrmNav(
         .filter(
           (item) =>
             roleAllows(item.requiredRole, role) &&
-            (!item.roles || (role !== null && item.roles.includes(role))),
+            (!item.roles || (role !== null && item.roles.includes(role))) &&
+            (!item.tabletOnly || tabletAccount),
         )
         .map((item) =>
           item.children
@@ -345,6 +351,8 @@ export interface CrmSidebarProps {
    * unauthenticated / Storybook contexts; the gate stays closed.
    */
   role?: NavRole | null
+  /** The clinic's iPad account: the only one that sees the tablet item. */
+  tabletAccount?: boolean
 }
 
 const COLLAPSED_STORAGE_KEY = "crm:sidebar:collapsed"
@@ -353,6 +361,7 @@ export function CrmSidebar({
   brand = "Neurofax",
   flags = ENTERPRISE_FLAGS,
   role = null,
+  tabletAccount = false,
 }: CrmSidebarProps) {
   const pathname = usePathname() ?? ""
   const params = useParams()
@@ -361,8 +370,8 @@ export function CrmSidebar({
   const tShell = useTranslations("crmShell")
   const { data: summary } = useShellSummary()
   const visibleNav = React.useMemo(
-    () => getVisibleCrmNav(flags, role),
-    [flags, role],
+    () => getVisibleCrmNav(flags, role, tabletAccount),
+    [flags, role, tabletAccount],
   )
   // Polled only when the item is on screen, so a role without the board
   // never hits a route that answers 403.

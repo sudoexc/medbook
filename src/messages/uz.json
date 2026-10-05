@@ -2315,8 +2315,6 @@
     "offlineBanner": "Server bilan aloqa yo'q. Ekranda oxirgi ma'lumotlar, aloqa tiklanganda yangi amallar ishlaydi.",
     "updatedAt": "Yangilandi: {time}",
     "slow": "Aloqa sekin, server javobini kutyapmiz…",
-    "forbidden": "Planshet rejimi klinika registraturasi va administratori uchun ochiq.",
-    "forbiddenBack": "CRM ga qaytish",
     "late": {
       "ticket": "Talon {number} berildi: {name}",
       "booking": "Yozuv saqlandi: {name}, {when}",

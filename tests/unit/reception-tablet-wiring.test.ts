@@ -84,29 +84,45 @@ describe("texts", () => {
 });
 
 describe("ways in", () => {
-  it("the CRM menu has the tablet for the desk and the administrator only", () => {
+  it("the CRM menu has the tablet for the iPad accounts only", () => {
     const item = CRM_NAV.flatMap((g) => g.items).find((i) => i.href === "reception/tablet");
     expect(item?.labelKey).toBe("receptionTablet");
     expect(item?.fullPageLoad).toBe(true);
-    const hrefs = (role: "ADMIN" | "RECEPTIONIST" | null) =>
-      getVisibleCrmNav(ENTERPRISE_FLAGS, role).flatMap((g) => g.items.map((i) => i.href));
-    expect(hrefs("RECEPTIONIST")).toContain("reception/tablet");
-    expect(hrefs("ADMIN")).toContain("reception/tablet");
+    expect(item?.tabletOnly).toBe(true);
+    const hrefs = (role: "ADMIN" | "RECEPTIONIST" | null, tablet = false) =>
+      getVisibleCrmNav(ENTERPRISE_FLAGS, role, tablet).flatMap((g) => g.items.map((i) => i.href));
+    expect(hrefs("RECEPTIONIST", true)).toContain("reception/tablet");
+    expect(hrefs("RECEPTIONIST")).not.toContain("reception/tablet");
+    expect(hrefs("ADMIN")).not.toContain("reception/tablet");
+    expect(hrefs("ADMIN", true)).not.toContain("reception/tablet");
     expect(hrefs(null)).not.toContain("reception/tablet");
+    // The rest of the menu is the same for the iPad account.
+    expect(hrefs("RECEPTIONIST", true).filter((h) => h !== "reception/tablet")).toEqual(
+      hrefs("RECEPTIONIST"),
+    );
+    const layout = read("src/app/[locale]/crm/layout.tsx");
+    expect(layout).toMatch(
+      /tabletAccount=\{canUseReceptionTablet\(\s*session\?\.user\?\.role,\s*session\?\.user\?\.startPage,?\s*\)\}/,
+    );
     expect(ru.crmShell.sidebarNav.receptionTablet).toBeTruthy();
     expect(uz.crmShell.sidebarNav.receptionTablet).toBeTruthy();
   });
 
-  it("the reception page links to it", () => {
+  it("the reception page links to it for the iPad account only", () => {
     const src = read("src/app/[locale]/crm/reception/_components/reception-page-client.tsx");
     // A full page load (see start-page.test.ts), in the page's language.
     expect(src).toContain('href={getPathname({ href: "/crm/reception/tablet", locale })}');
     expect(src).toContain('t("tabletMode")');
+    expect(src).toMatch(/\{tabletLink \? \(\s*<a\s+href=\{getPathname\(\{ href: "\/crm\/reception\/tablet"/);
+    const page = read("src/app/[locale]/crm/reception/page.tsx");
+    expect(page).toContain("tabletLink={canUseReceptionTablet(session?.user?.role, session?.user?.startPage)}");
   });
 
   it("the page exists, checks the role and links the manifest", () => {
     const page = read(`${DIR}/page.tsx`);
-    expect(page).toContain("canUseReceptionTablet(session?.user?.role)");
+    // Everyone but the iPad accounts goes to the desktop reception.
+    expect(page).toContain("canUseReceptionTablet(session?.user?.role, session?.user?.startPage)");
+    expect(page).toContain("redirect(`/${locale}/crm/reception`)");
     expect(page).toContain("receptionTabletManifestUrl(locale)");
     expect(page).toContain("appleWebApp");
     expect(page).toContain('viewportFit: "cover"');

@@ -17,16 +17,27 @@ import {
 } from "@/lib/reception-tablet/errors";
 
 describe("who works the tablet", () => {
-  it("the desk, the administrator and a SUPER_ADMIN visiting the clinic", () => {
+  // Owner request 05.10.2026: the iPad accounts only.
+  it("a reception account whose start page is the tablet", () => {
+    expect(canUseReceptionTablet("RECEPTIONIST", "reception-tablet")).toBe(true);
+  });
+
+  it("not the desk computer, not the administrator, not a visiting SUPER_ADMIN", () => {
     for (const role of ["RECEPTIONIST", "ADMIN", "SUPER_ADMIN"]) {
-      expect(canUseReceptionTablet(role), role).toBe(true);
+      expect(canUseReceptionTablet(role, null), role).toBe(false);
+      expect(canUseReceptionTablet(role, undefined), role).toBe(false);
     }
   });
 
-  it("nobody else", () => {
-    for (const role of ["DOCTOR", "NURSE", "CALL_OPERATOR", "", null, undefined]) {
-      expect(canUseReceptionTablet(role), String(role)).toBe(false);
+  it("a tablet start page left on an account that changed role does nothing", () => {
+    for (const role of ["ADMIN", "SUPER_ADMIN", "DOCTOR", "NURSE", "CALL_OPERATOR", "", null, undefined]) {
+      expect(canUseReceptionTablet(role, "reception-tablet"), String(role)).toBe(false);
     }
+  });
+
+  it("only the known start page value counts", () => {
+    expect(canUseReceptionTablet("RECEPTIONIST", "crm/reception/tablet")).toBe(false);
+    expect(canUseReceptionTablet("RECEPTIONIST", "")).toBe(false);
   });
 });
 

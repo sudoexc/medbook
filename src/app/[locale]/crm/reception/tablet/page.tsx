@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
-import { Link } from "@/i18n/navigation";
-import { PageContainer } from "@/components/molecules/page-container";
 import {
   canUseReceptionTablet,
   receptionTabletManifestUrl,
@@ -56,20 +55,17 @@ export async function generateMetadata({
   };
 }
 
-export default async function ReceptionTabletPage() {
+export default async function ReceptionTabletPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
   const session = await auth();
-  if (!canUseReceptionTablet(session?.user?.role)) {
-    const t = await getTranslations("receptionTablet");
-    return (
-      <PageContainer>
-        <div className="flex flex-col items-start gap-4 rounded-lg border border-border bg-card p-6">
-          <p className="text-sm text-muted-foreground">{t("forbidden")}</p>
-          <Link href="/crm" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
-            {t("forbiddenBack")}
-          </Link>
-        </div>
-      </PageContainer>
-    );
+  // The iPad accounts only; anyone else (an old bookmark, a typed address
+  // on a desk computer) lands on the desktop reception.
+  if (!canUseReceptionTablet(session?.user?.role, session?.user?.startPage)) {
+    redirect(`/${locale}/crm/reception`);
   }
   return <TabletApp />;
 }

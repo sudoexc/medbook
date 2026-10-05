@@ -281,7 +281,7 @@ describe("the proxy's start page step", () => {
     // The desktop desk's «Режим планшета».
     const desk = read("src/app/[locale]/crm/reception/_components/reception-page-client.tsx");
     expect(desk).not.toMatch(/<Link[^>]*reception\/tablet/);
-    expect(desk).toContain('<a\n            href={getPathname({ href: "/crm/reception/tablet", locale })}');
+    expect(desk).toContain('<a\n              href={getPathname({ href: "/crm/reception/tablet", locale })}');
     // The sidebar's «Планшет».
     const sidebar = read("src/components/layout/crm-sidebar.tsx");
     expect(sidebar).toMatch(/href: "reception\/tablet",[^}]*fullPageLoad: true/);

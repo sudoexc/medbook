@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server"
 
 import { auth } from "@/lib/auth"
 import { CrmSidebar } from "@/components/layout/crm-sidebar"
+import { canUseReceptionTablet } from "@/lib/reception-tablet/access"
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts"
 import { GlobalLeadAlerts } from "@/components/layout/global-lead-alerts"
 import { GlobalArrivalAlerts } from "@/components/layout/global-arrival-alerts"
@@ -193,6 +194,10 @@ export default async function CrmLayout({
                 ? "RECEPTIONIST"
                 : null
           }
+          tabletAccount={canUseReceptionTablet(
+            session?.user?.role,
+            session?.user?.startPage,
+          )}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           {impersonatedClinic && (

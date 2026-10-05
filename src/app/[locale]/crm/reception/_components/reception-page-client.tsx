@@ -70,7 +70,12 @@ import {
  *   │ РЕКОМЕНДАЦИИ │ РАСПРЕДЕЛЕНИЕ │ ПРЕДУПРЕЖДЕНИЯ      │
  *   └────────────────────────────────────────────────────┘
  */
-export function ReceptionPageClient() {
+export function ReceptionPageClient({
+  tabletLink = false,
+}: {
+  /** The iPad account's way back to the tablet; nobody else sees it. */
+  tabletLink?: boolean;
+}) {
   useReceptionRealtime();
 
   const t = useTranslations("reception");
@@ -262,13 +267,15 @@ export function ReceptionPageClient() {
               plain anchor, not a Link: for the iPad account the proxy forgets
               the desktop switch only on a page load, and a prefetch of this
               link used to forget it with nobody tapping. */}
-          <a
-            href={getPathname({ href: "/crm/reception/tablet", locale })}
-            className={cn(buttonVariants({ size: "sm", variant: "outline" }), "gap-2")}
-          >
-            <TabletIcon className="size-4" />
-            {t("tabletMode")}
-          </a>
+          {tabletLink ? (
+            <a
+              href={getPathname({ href: "/crm/reception/tablet", locale })}
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "gap-2")}
+            >
+              <TabletIcon className="size-4" />
+              {t("tabletMode")}
+            </a>
+          ) : null}
           {/* Swapped with the topbar: issuing a ticket is the frequent action at
               the desk, so it took the primary slot up top and booking a slot
               moved down here as the secondary one. */}

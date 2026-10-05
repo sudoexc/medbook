@@ -144,7 +144,8 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
   it("Enterprise plan exposes every nav item to ADMIN", () => {
     const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, "ADMIN");
     const everyHref = new Set<string>();
-    for (const g of CRM_NAV) for (const i of g.items) everyHref.add(i.href);
+    // The iPad tablet is for the iPad accounts only (owner request 05.10.2026).
+    for (const g of CRM_NAV) for (const i of g.items) if (!i.tabletOnly) everyHref.add(i.href);
     expect(nameSet(visible)).toEqual(everyHref);
   });
 

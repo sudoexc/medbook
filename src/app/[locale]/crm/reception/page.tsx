@@ -1,3 +1,6 @@
+import { auth } from "@/lib/auth";
+import { canUseReceptionTablet } from "@/lib/reception-tablet/access";
+
 import { ReceptionPageClient } from "./_components/reception-page-client";
 
 /**
@@ -7,6 +10,11 @@ import { ReceptionPageClient } from "./_components/reception-page-client";
  * Query so the reception screen can poll (30 s fallback) until the
  * realtime-engineer wires up the SSE channel in Phase 3a.
  */
-export default function ReceptionPage() {
-  return <ReceptionPageClient />;
+export default async function ReceptionPage() {
+  const session = await auth();
+  return (
+    <ReceptionPageClient
+      tabletLink={canUseReceptionTablet(session?.user?.role, session?.user?.startPage)}
+    />
+  );
 }

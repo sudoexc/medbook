@@ -501,135 +501,143 @@ export function PatientsTable({
   const isTrulyEmpty = !isLoading && rows.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+      {/* One horizontal scroller for the header and the rows. On a narrow
+          table (a 1366 screen with the right rail) the columns' minimum
+          widths exceed it; the rows scrolled sideways on their own while
+          the header ran out of the card over the rail (05.10.2026). The
+          inner box is as wide as the header needs, never narrower than
+          the card, and the absolutely placed rows take its width. */}
       <div
         role="table"
         aria-label={t("title")}
         aria-rowcount={total ?? rows.length}
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col overflow-x-auto"
       >
-        <div
-          role="row"
-          className="sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
-          style={{ gridTemplateColumns: colsTemplate }}
-        >
-          {visibleColMeta.map((c) => {
-            if (c.sortable) {
-              return (
-                <SortHeader
-                  key={c.id}
-                  id={c.sortable}
-                  label={t(c.labelKey as never)}
-                  active={sort}
-                  dir={dir}
-                  onClick={handleSortChange}
-                />
-              );
-            }
-            const isActions = c.id === "actions";
-            return (
-              <div
-                key={c.id}
-                role="columnheader"
-                className={cn(c.align === "right" && "text-right")}
-              >
-                {isActions ? (
-                  <span className="sr-only">{t(c.labelKey as never)}</span>
-                ) : (
-                  t(c.labelKey as never)
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div
-          ref={parentRef}
-          className="min-h-0 flex-1 overflow-auto"
-          style={{ contain: "strict" }}
-        >
-          {isLoading ? (
-            <div className="p-3">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <SkeletonRow key={i} cols={9} />
-              ))}
-            </div>
-          ) : isTrulyEmpty ? (
-            <div className="p-4">
-              <EmptyState
-                icon={<UsersIcon />}
-                title={hasFilters ? t("empty.filteredTitle") : t("empty.title")}
-                description={
-                  hasFilters
-                    ? t("empty.filteredDescription")
-                    : t("empty.description")
-                }
-                action={
-                  !hasFilters ? (
-                    <Button onClick={onCreate}>{t("empty.action")}</Button>
-                  ) : null
-                }
-              />
-            </div>
-          ) : (
-            <div
-              style={{
-                height: `${totalSize}px`,
-                width: "100%",
-                position: "relative",
-              }}
-            >
-              {virtualRows.map((virtualRow) => {
-                const row = table.getRowModel().rows[virtualRow.index];
-                if (!row) return null;
-                const p = row.original;
-                const animate = animInitial && virtualRow.index < 12;
+        <div className="flex min-h-0 w-max min-w-full flex-1 flex-col">
+          <div
+            role="row"
+            className="sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+            style={{ gridTemplateColumns: colsTemplate }}
+          >
+            {visibleColMeta.map((c) => {
+              if (c.sortable) {
                 return (
-                  <div
-                    key={p.id}
-                    role="row"
-                    tabIndex={0}
-                    onClick={() => onRowActivate(p.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onRowActivate(p.id);
-                      }
-                    }}
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      transform: `translateY(${virtualRow.start}px)`,
-                      gridTemplateColumns: colsTemplate,
-                      animationDelay: animate
-                        ? `${virtualRow.index * 35}ms`
-                        : undefined,
-                    }}
-                    className={cn(
-                      "grid items-center gap-3 border-b border-border px-4 py-3 text-sm transition-colors",
-                      "cursor-pointer hover:bg-muted/30 focus:bg-muted/60 focus:outline-none",
-                      animate && "table-row-fade-stagger",
-                    )}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <div
-                        key={cell.id}
-                        role="cell"
-                        className="flex min-w-0 items-center"
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <SortHeader
+                    key={c.id}
+                    id={c.sortable}
+                    label={t(c.labelKey as never)}
+                    active={sort}
+                    dir={dir}
+                    onClick={handleSortChange}
+                  />
                 );
-              })}
-            </div>
-          )}
+              }
+              const isActions = c.id === "actions";
+              return (
+                <div
+                  key={c.id}
+                  role="columnheader"
+                  className={cn(c.align === "right" && "text-right")}
+                >
+                  {isActions ? (
+                    <span className="sr-only">{t(c.labelKey as never)}</span>
+                  ) : (
+                    t(c.labelKey as never)
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div
+            ref={parentRef}
+            className="min-h-0 flex-1 overflow-auto"
+            style={{ contain: "strict" }}
+          >
+            {isLoading ? (
+              <div className="p-3">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <SkeletonRow key={i} cols={9} />
+                ))}
+              </div>
+            ) : isTrulyEmpty ? (
+              <div className="p-4">
+                <EmptyState
+                  icon={<UsersIcon />}
+                  title={hasFilters ? t("empty.filteredTitle") : t("empty.title")}
+                  description={
+                    hasFilters
+                      ? t("empty.filteredDescription")
+                      : t("empty.description")
+                  }
+                  action={
+                    !hasFilters ? (
+                      <Button onClick={onCreate}>{t("empty.action")}</Button>
+                    ) : null
+                  }
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  height: `${totalSize}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {virtualRows.map((virtualRow) => {
+                  const row = table.getRowModel().rows[virtualRow.index];
+                  if (!row) return null;
+                  const p = row.original;
+                  const animate = animInitial && virtualRow.index < 12;
+                  return (
+                    <div
+                      key={p.id}
+                      role="row"
+                      tabIndex={0}
+                      onClick={() => onRowActivate(p.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onRowActivate(p.id);
+                        }
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                        gridTemplateColumns: colsTemplate,
+                        animationDelay: animate
+                          ? `${virtualRow.index * 35}ms`
+                          : undefined,
+                      }}
+                      className={cn(
+                        "grid items-center gap-3 border-b border-border px-4 py-3 text-sm transition-colors",
+                        "cursor-pointer hover:bg-muted/30 focus:bg-muted/60 focus:outline-none",
+                        animate && "table-row-fade-stagger",
+                      )}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <div
+                          key={cell.id}
+                          role="cell"
+                          className="flex min-w-0 items-center"
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {hasNextPage && !isLoading ? (

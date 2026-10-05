@@ -142,6 +142,14 @@ describe("wiring", () => {
     }
   });
 
+  it("the CRM patient table scrolls its header with its rows", () => {
+    const table = read("src/app/[locale]/crm/patients/_components/patients-table.tsx");
+    expect(table).toContain('className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card"');
+    expect(table).toMatch(
+      /className="flex min-h-0 flex-1 flex-col overflow-x-auto"\s*>\s*<div className="flex min-h-0 w-max min-w-full flex-1 flex-col">\s*<div\s+role="row"/,
+    );
+  });
+
   it("the doctor's patient table drops columns instead of crushing them", () => {
     const table = read("src/app/[locale]/doctor/patients/_components/patients-table.tsx");
     expect(table).toContain('<section className="@container overflow-hidden');

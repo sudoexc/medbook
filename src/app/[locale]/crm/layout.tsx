@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { CrmSidebar } from "@/components/layout/crm-sidebar"
 import { canUseReceptionTablet } from "@/lib/reception-tablet/access"
+import { legacyColorCompanions } from "@/lib/legacy-color"
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts"
 import { GlobalLeadAlerts } from "@/components/layout/global-lead-alerts"
 import { GlobalArrivalAlerts } from "@/components/layout/global-arrival-alerts"
@@ -39,7 +40,10 @@ function renderBrandStyle(
   secondary: string | null | undefined,
 ): string | null {
   const lines: string[] = []
-  if (primary && HEX_COLOR.test(primary)) lines.push(`--brand-primary: ${primary};`)
+  if (primary && HEX_COLOR.test(primary)) {
+    lines.push(`--brand-primary: ${primary};`)
+    lines.push(legacyColorCompanions("--brand-primary", primary))
+  }
   if (secondary && HEX_COLOR.test(secondary)) lines.push(`--brand-secondary: ${secondary};`)
   if (lines.length === 0) return null
   return `:root{${lines.join("")}}`

@@ -38,8 +38,18 @@ import {
   type DoctorPatientRow,
 } from "../_hooks/use-my-patients";
 
+// Columns follow the table's own width (the section is a size container):
+// six fixed tracks need about 800px, and on a 1366 screen with the side
+// panels the table has about 730, so the name and diagnosis tracks shrank
+// to nothing and the headers ran into each other (owner report 05.10.2026,
+// the clinic's older monitors). Narrow: name, age, last visit, diagnosis,
+// actions; from 680px the status joins; from 1000px phone and next visit.
 const GRID =
-  "grid grid-cols-[minmax(0,1.7fr)_64px_150px_110px_minmax(0,1.4fr)_110px_140px_84px] gap-3";
+  "grid grid-cols-[minmax(0,1.7fr)_56px_100px_minmax(0,1.4fr)_76px] gap-3 @min-[680px]:grid-cols-[minmax(0,1.7fr)_56px_100px_minmax(0,1.4fr)_110px_76px] @min-[1000px]:grid-cols-[minmax(0,1.7fr)_64px_150px_110px_minmax(0,1.4fr)_110px_140px_84px]";
+// Dropped below 1000px (phone, next visit) and below 680px (status).
+const WIDE = "hidden @min-[1000px]:block";
+const WIDE_FLEX = "hidden @min-[1000px]:flex";
+const MID = "hidden @min-[680px]:block";
 
 // The month in the interface's language (audit UX-12).
 function dateAndTime(iso: string, locale: string): { date: string; time: string } {
@@ -148,7 +158,7 @@ export function PatientsTable() {
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-card">
+    <section className="@container overflow-hidden rounded-2xl border border-border bg-card">
       <div
         className={cn(
           GRID,
@@ -157,11 +167,11 @@ export function PatientsTable() {
       >
         <div>{t("table.columns.patient")}</div>
         <div>{t("table.columns.age")}</div>
-        <div>{t("table.columns.phone")}</div>
+        <div className={WIDE}>{t("table.columns.phone")}</div>
         <div>{t("table.columns.lastVisit")}</div>
         <div>{t("table.columns.lastDiagnosis")}</div>
-        <div>{t("table.columns.status")}</div>
-        <div>{t("table.columns.nextAppointment")}</div>
+        <div className={MID}>{t("table.columns.status")}</div>
+        <div className={WIDE}>{t("table.columns.nextAppointment")}</div>
         <div className="text-right">{t("table.columns.actions")}</div>
       </div>
 
@@ -226,7 +236,7 @@ export function PatientsTable() {
                   {age !== null ? t("table.ageShort", { age }) : "—"}
                 </div>
 
-                <div className="flex items-center gap-1.5 text-sm text-foreground tabular-nums">
+                <div className={cn(WIDE_FLEX, "items-center gap-1.5 text-sm text-foreground tabular-nums")}>
                   <span>{p.phone}</span>
                   <PhoneIcon className="size-3.5 text-muted-foreground" />
                 </div>
@@ -263,7 +273,7 @@ export function PatientsTable() {
                   )}
                 </div>
 
-                <div>
+                <div className={MID}>
                   <span
                     className={cn(
                       "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold",
@@ -274,7 +284,7 @@ export function PatientsTable() {
                   </span>
                 </div>
 
-                <div className="min-w-0 text-sm">
+                <div className={cn(WIDE, "min-w-0 text-sm")}>
                   {nextAppt ? (
                     <>
                       <div className="font-medium text-foreground tabular-nums">

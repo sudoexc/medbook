@@ -9,6 +9,7 @@ import { MiniAppToastProvider } from "./_components/toast";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { getFeatureFlags } from "@/server/platform/get-feature-flags";
+import { legacyColorCompanions } from "@/lib/legacy-color";
 
 // `viewport-fit=cover` is required so `env(safe-area-inset-top)` returns a
 // real value — Telegram fullscreen mode otherwise overlaps the notch/clock.
@@ -51,6 +52,7 @@ function renderBrandStyle(
   const parts: string[] = [];
   if (primary && HEX_COLOR.test(primary)) {
     parts.push(`--brand-primary: ${primary};`);
+    parts.push(legacyColorCompanions("--brand-primary", primary));
   }
   if (secondary && HEX_COLOR.test(secondary)) {
     parts.push(`--brand-secondary: ${secondary};`);

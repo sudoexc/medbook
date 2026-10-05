@@ -87,6 +87,7 @@ describe("ways in", () => {
   it("the CRM menu has the tablet for the desk and the administrator only", () => {
     const item = CRM_NAV.flatMap((g) => g.items).find((i) => i.href === "reception/tablet");
     expect(item?.labelKey).toBe("receptionTablet");
+    expect(item?.fullPageLoad).toBe(true);
     const hrefs = (role: "ADMIN" | "RECEPTIONIST" | null) =>
       getVisibleCrmNav(ENTERPRISE_FLAGS, role).flatMap((g) => g.items.map((i) => i.href));
     expect(hrefs("RECEPTIONIST")).toContain("reception/tablet");
@@ -98,7 +99,8 @@ describe("ways in", () => {
 
   it("the reception page links to it", () => {
     const src = read("src/app/[locale]/crm/reception/_components/reception-page-client.tsx");
-    expect(src).toContain('href="/crm/reception/tablet"');
+    // A full page load (see start-page.test.ts), in the page's language.
+    expect(src).toContain('href={getPathname({ href: "/crm/reception/tablet", locale })}');
     expect(src).toContain('t("tabletMode")');
   });
 

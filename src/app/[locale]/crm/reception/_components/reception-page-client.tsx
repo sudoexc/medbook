@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Link } from "@/i18n/navigation";
+import { getPathname } from "@/i18n/navigation";
 import { useClinicToday } from "@/hooks/use-clinic-today";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusDot } from "@/components/atoms/status-dot";
@@ -258,14 +258,17 @@ export function ReceptionPageClient() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {/* The same desk on the clinic's iPad (/crm/reception/tablet). */}
-          <Link
-            href="/crm/reception/tablet"
+          {/* The same desk on the clinic's iPad (/crm/reception/tablet). A
+              plain anchor, not a Link: for the iPad account the proxy forgets
+              the desktop switch only on a page load, and a prefetch of this
+              link used to forget it with nobody tapping. */}
+          <a
+            href={getPathname({ href: "/crm/reception/tablet", locale })}
             className={cn(buttonVariants({ size: "sm", variant: "outline" }), "gap-2")}
           >
             <TabletIcon className="size-4" />
             {t("tabletMode")}
-          </Link>
+          </a>
           {/* Swapped with the topbar: issuing a ticket is the frequent action at
               the desk, so it took the primary slot up top and booking a slot
               moved down here as the secondary one. */}

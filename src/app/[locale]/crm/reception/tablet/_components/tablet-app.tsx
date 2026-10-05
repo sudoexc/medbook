@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Link } from "@/i18n/navigation";
+import { getPathname } from "@/i18n/navigation";
 import { formatCalendarDay, formatDate } from "@/lib/format";
 import {
   conflictReasonText,
@@ -424,9 +424,15 @@ function TopBar({
           {formatDate(now, lang, "time")}
         </span>
         {/* `?mode=desktop`: an account whose start page is this tablet page
-            would otherwise be sent straight back here by the proxy. */}
-        <Link
-          href="/crm/reception?mode=desktop"
+            would otherwise be sent straight back here by the proxy. A plain
+            anchor, not a Link: the proxy remembers the switch only on a page
+            load (a Link prefetch used to flip it with nobody tapping), and
+            the load drops router prefetches cached in tablet mode. */}
+        <a
+          href={getPathname({
+            href: { pathname: "/crm/reception", query: { mode: "desktop" } },
+            locale: lang,
+          })}
           aria-disabled={locked || undefined}
           tabIndex={locked ? -1 : undefined}
           onClick={(e) => {
@@ -440,7 +446,7 @@ function TopBar({
         >
           <LogOutIcon className="size-5" aria-hidden />
           <span className="hidden sm:inline">{t("exit")}</span>
-        </Link>
+        </a>
       </div>
     </header>
   );

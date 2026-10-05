@@ -139,6 +139,15 @@ export type StartPageDecision =
  *   - the start page itself → forget the switch: back in tablet mode, the
  *     next visit to the CRM root opens the tablet again.
  *
+ * The cookie only ever changes on a page load (`pageLoad`, see
+ * `isTopLevelPageLoad`). Link prefetches and the App Router's own fetches
+ * reach the proxy too; when they could write it, a prefetched «Обычный
+ * режим» link turned desktop mode on for the whole sign-in, and a prefetched
+ * «Режим планшета» link turned it off again (review 05.10.2026). Both
+ * switches are therefore full page loads, which also drop the router's
+ * cached prefetches, so no redirect cached under the old mode survives.
+ * The redirect itself has no side effect and applies to every request.
+ *
  * Accounts without a start page are never touched (no cookie either).
  */
 export function startPageDecision(args: {
@@ -150,6 +159,8 @@ export function startPageDecision(args: {
   startPage: string | null | undefined;
   sessionId: string | null | undefined;
   overrideCookie: string | null | undefined;
+  /** The browser is loading this page itself (`isTopLevelPageLoad`). */
+  pageLoad: boolean;
 }): StartPageDecision {
   const page = startPageFor(args.role, args.startPage);
   if (!page || args.surface !== "crm") return null;
@@ -158,18 +169,55 @@ export function startPageDecision(args: {
   const want = overrideCookieValue(args.sessionId);
 
   if (`${args.surface}/${subpath}` === target) {
-    return args.overrideCookie ? { kind: "forget-desktop" } : null;
+    return args.overrideCookie && args.pageLoad ? { kind: "forget-desktop" } : null;
   }
   const params = new URLSearchParams(args.search);
   if (
     params.get(DESKTOP_MODE_PARAM) === DESKTOP_MODE_VALUE &&
     isStartPageEntry(args.surface, subpath, "")
   ) {
-    return args.overrideCookie === want
+    return args.overrideCookie === want || !args.pageLoad
       ? null
       : { kind: "remember-desktop", value: want };
   }
   if (!isStartPageEntry(args.surface, subpath, args.search)) return null;
   if (args.overrideCookie === want) return null;
   return { kind: "redirect", target };
+}
+
+/** The subset of `Headers` the page load check reads. */
+type HeaderSource = { get(name: string): string | null };
+
+// Speculative loads announce themselves: `Sec-Purpose: prefetch` (and
+// `prefetch;prerender`) in current browsers, `Purpose`, `X-Purpose` and
+// `X-Moz` in older ones.
+const SPECULATIVE_HEADERS = ["sec-purpose", "purpose", "x-purpose", "x-moz"];
+const SPECULATIVE = /prefetch|prerender|preview/i;
+
+/**
+ * Pure: is this request the browser loading the page itself (a typed URL, a
+ * bookmark, the home screen icon, a plain link, a reload), rather than a Link
+ * prefetch or a client-side navigation fetching an RSC payload?
+ *
+ * WHY Fetch Metadata and not Next's headers: Next deletes its flight headers
+ * (`rsc`, `next-router-prefetch`, `next-router-segment-prefetch`, …) from the
+ * request before the proxy runs (next/dist/server/web/adapter.js, unless
+ * skipProxyUrlNormalize is on), so a prefetch and a click look the same
+ * here. The browser's own `Sec-Fetch-Dest` does tell them apart: `document`
+ * for a page load, `empty` for every fetch the router makes. The flight
+ * headers are still refused, so turning skipProxyUrlNormalize on later does
+ * not reopen the hole. Browsers without Fetch Metadata (Safari before 16.4)
+ * fall back to the Accept header: a page load asks for HTML, the router
+ * sends no Accept at all.
+ */
+export function isTopLevelPageLoad(headers: HeaderSource): boolean {
+  for (const name of SPECULATIVE_HEADERS) {
+    if (SPECULATIVE.test(headers.get(name) ?? "")) return false;
+  }
+  if (headers.get("rsc") !== null || headers.get("next-router-prefetch") !== null) {
+    return false;
+  }
+  const dest = headers.get("sec-fetch-dest");
+  if (dest !== null) return dest === "document";
+  return (headers.get("accept") ?? "").includes("text/html");
 }

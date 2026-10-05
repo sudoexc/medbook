@@ -74,6 +74,13 @@ type NavItem = {
   requiredRole?: NavRole
   roles?: NavRole[]
   children?: NavItem[]
+  /**
+   * Render a plain anchor (a full page load) instead of a client-side Link.
+   * WHY: the iPad reception account's desktop switch is a cookie the proxy
+   * changes only on a page load (src/lib/start-page.ts); a Link would be
+   * prefetched as it scrolls into view and would never count as one.
+   */
+  fullPageLoad?: boolean
 }
 
 type NavGroup = {
@@ -101,6 +108,8 @@ export const CRM_NAV: NavGroup[] = [
         labelKey: "receptionTablet",
         icon: TabletIcon,
         roles: ["ADMIN", "RECEPTIONIST"],
+        // Opening the tablet ends the iPad account's desktop switch.
+        fullPageLoad: true,
       },
       { href: "action-center", labelKey: "actionCenter", icon: ZapIcon },
       // Site booking requests (audit LD-01). The badge counts requests
@@ -452,9 +461,10 @@ export function CrmSidebar({
                   return true
                 }) ?? []
                 const label = tNav(item.labelKey)
+                const ItemLink = item.fullPageLoad ? "a" : Link
                 return (
                   <li key={item.href}>
-                    <Link
+                    <ItemLink
                       href={full}
                       aria-current={active ? "page" : undefined}
                       title={collapsed ? label : undefined}
@@ -507,7 +517,7 @@ export function CrmSidebar({
                           ) : null}
                         </>
                       )}
-                    </Link>
+                    </ItemLink>
                     {/*
                       Sub-nav: only render once the parent route is active so
                       the sidebar doesn't grow taller until the user actually

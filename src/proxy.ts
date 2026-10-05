@@ -24,7 +24,8 @@
  *      the bare CRM entry goes to that page; `?mode=desktop` switches it to
  *      the desktop reception for the rest of the sign-in (see
  *      `startPageDecision`). Read from the session the gate already holds,
- *      no extra query.
+ *      no extra query. The switch cookie changes only on a page load, never
+ *      on a Link prefetch (`isTopLevelPageLoad`).
  *   6. Defer locale handling to next-intl.
  *
  * Steps 2 and 3 send a doctor to /doctor/me/… and everyone else to /crm/me/…
@@ -50,6 +51,7 @@ import {
   SECURITY_ENROL_SUBPATH,
   forcedAccountRedirect,
   isExemptFromForcedRedirect,
+  isTopLevelPageLoad,
   parseStaffPath,
   sendsSuperAdminToPlatform,
   startPageDecision,
@@ -192,6 +194,9 @@ export default async function proxy(request: NextRequest) {
       startPage: session.user.startPage ?? null,
       sessionId: session.user.sessionId ?? null,
       overrideCookie: request.cookies.get(START_PAGE_OVERRIDE_COOKIE)?.value ?? null,
+      // WHY: prefetches run this step too; only a real page load may flip
+      // the desktop switch.
+      pageLoad: isTopLevelPageLoad(request.headers),
     });
     if (start?.kind === "redirect") {
       return NextResponse.redirect(

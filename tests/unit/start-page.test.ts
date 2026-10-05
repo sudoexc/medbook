@@ -17,7 +17,7 @@ import {
   startPagePath,
 } from "@/lib/start-page";
 import { homeForRole, safeCallbackOrHome } from "@/lib/post-login-redirect";
-import { startPageDecision } from "@/server/auth/staff-redirects";
+import { isTopLevelPageLoad, startPageDecision } from "@/server/auth/staff-redirects";
 import { UpdateUserSchema } from "@/server/schemas/user";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -114,6 +114,49 @@ describe("post-login redirect", () => {
   });
 });
 
+describe("what counts as a page load for the switch cookie", () => {
+  const h = (headers: Record<string, string>) => new Headers(headers);
+
+  it("a page the browser loads itself counts", () => {
+    expect(
+      isTopLevelPageLoad(
+        h({ "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", accept: "text/html,*/*;q=0.8" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("the router's prefetches and client-side navigations do not", () => {
+    // What reaches the proxy: Next has already removed `rsc` and `next-router-prefetch`.
+    expect(isTopLevelPageLoad(h({ "sec-fetch-dest": "empty", "sec-fetch-mode": "cors", accept: "*/*" }))).toBe(
+      false,
+    );
+    // Even if Next stopped stripping them, its own headers give the fetch away.
+    expect(isTopLevelPageLoad(h({ rsc: "1", "next-router-prefetch": "1", accept: "text/html" }))).toBe(false);
+    expect(isTopLevelPageLoad(h({ "next-router-prefetch": "1" }))).toBe(false);
+  });
+
+  it("speculative page loads by the browser do not", () => {
+    for (const [name, value] of [
+      ["sec-purpose", "prefetch"],
+      ["sec-purpose", "prefetch;prerender"],
+      ["purpose", "prefetch"],
+      ["x-purpose", "preview"],
+      ["x-moz", "prefetch"],
+    ]) {
+      expect(
+        isTopLevelPageLoad(h({ "sec-fetch-dest": "document", accept: "text/html", [name]: value })),
+        `${name}: ${value}`,
+      ).toBe(false);
+    }
+  });
+
+  it("without Fetch Metadata, a request for HTML counts and a bare fetch does not", () => {
+    expect(isTopLevelPageLoad(h({ accept: "text/html,application/xhtml+xml" }))).toBe(true);
+    expect(isTopLevelPageLoad(h({ accept: "*/*" }))).toBe(false);
+    expect(isTopLevelPageLoad(h({}))).toBe(false);
+  });
+});
+
 describe("the proxy's start page step", () => {
   const ipad = {
     surface: "crm" as const,
@@ -121,6 +164,7 @@ describe("the proxy's start page step", () => {
     startPage: TABLET,
     sessionId: "s1",
     overrideCookie: null as string | null,
+    pageLoad: true,
   };
 
   it("sends the bare CRM entry to the tablet page", () => {
@@ -166,6 +210,25 @@ describe("the proxy's start page step", () => {
     expect(startPageDecision({ ...ipad, subpath: "reception/tablet", search: "" })).toBeNull();
   });
 
+  it("a prefetch or a client-side fetch never writes the switch cookie", () => {
+    const fetchOnly = { ...ipad, pageLoad: false };
+    // A prefetched «Обычный режим» used to turn desktop mode on for the whole sign-in.
+    expect(startPageDecision({ ...fetchOnly, subpath: "reception", search: "?mode=desktop" })).toBeNull();
+    // A prefetched «Режим планшета» or sidebar «Планшет» used to turn it off again.
+    expect(
+      startPageDecision({ ...fetchOnly, subpath: "reception/tablet", search: "", overrideCookie: "s1" }),
+    ).toBeNull();
+    // With the switch made, the router's fetches of the desk stay on it.
+    expect(
+      startPageDecision({ ...fetchOnly, subpath: "reception", search: "", overrideCookie: "s1" }),
+    ).toBeNull();
+    // The redirect has no side effect, so a fetch of the bare entry still gets it.
+    expect(startPageDecision({ ...fetchOnly, subpath: "reception", search: "" })).toEqual({
+      kind: "redirect",
+      target: "crm/reception/tablet",
+    });
+  });
+
   it("never touches accounts without a start page, not even with ?mode=desktop", () => {
     for (const who of [
       { role: "RECEPTIONIST", startPage: null },
@@ -201,11 +264,28 @@ describe("the proxy's start page step", () => {
     const proxy = readFileSync(path.join(ROOT, "src/proxy.ts"), "utf8");
     expect(proxy).toContain("startPageDecision(");
     expect(proxy).toContain("START_PAGE_OVERRIDE_COOKIE");
+    expect(proxy).toContain("pageLoad: isTopLevelPageLoad(request.headers)");
     const tablet = readFileSync(
       path.join(ROOT, "src/app/[locale]/crm/reception/tablet/_components/tablet-app.tsx"),
       "utf8",
     );
-    expect(tablet).toContain('href="/crm/reception?mode=desktop"');
+    expect(tablet).toContain('href: { pathname: "/crm/reception", query: { mode: "desktop" } }');
+  });
+
+  it("every switch between the modes is a page load, never a prefetchable Link", () => {
+    const read = (f: string) => readFileSync(path.join(ROOT, f), "utf8");
+    // The tablet's «Обычный режим».
+    const tablet = read("src/app/[locale]/crm/reception/tablet/_components/tablet-app.tsx");
+    expect(tablet).not.toMatch(/<Link\b/);
+    expect(tablet).toMatch(/<a\s+href=\{getPathname\(\{\s+href: \{ pathname: "\/crm\/reception"/);
+    // The desktop desk's «Режим планшета».
+    const desk = read("src/app/[locale]/crm/reception/_components/reception-page-client.tsx");
+    expect(desk).not.toMatch(/<Link[^>]*reception\/tablet/);
+    expect(desk).toContain('<a\n            href={getPathname({ href: "/crm/reception/tablet", locale })}');
+    // The sidebar's «Планшет».
+    const sidebar = read("src/components/layout/crm-sidebar.tsx");
+    expect(sidebar).toMatch(/href: "reception\/tablet",[^}]*fullPageLoad: true/);
+    expect(sidebar).toContain('const ItemLink = item.fullPageLoad ? "a" : Link');
   });
 
   it("both login forms pass the start page to the redirect", () => {

@@ -345,28 +345,29 @@ describe("the visit screen layout", () => {
   const session = read("reception/_components/session-tab-content.tsx");
   const panels = read("reception/_components/structured-fields-panel.tsx");
 
-  it("middle: diagnosis over prescriptions; left: control visit; right: advice", () => {
+  it("wide column: diagnosis over prescriptions; side column: advice over the control visit", () => {
     const order = [
-      "<FollowUpPanel />",
       "<DiagnosisPanel />",
       "<PrescriptionsPanel />",
       "<AdvicePanel />",
+      "<FollowUpPanel />",
     ].map((tag) => session.indexOf(tag));
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    // «Диагноз» on top of the middle column, «Назначения» right under it
-    // (owner request 03.10.2026); the conclusion editor left the screen.
+    // «Диагноз» on top, «Назначения» right under it (owner request
+    // 03.10.2026); the conclusion editor left the screen.
     expect(session).toMatch(
-      /lg:row-span-2[^>]*>\s*<DiagnosisPanel \/>\s*<PrescriptionsPanel \/>\s*<\/div>/,
+      /<div className="flex min-w-0 flex-col gap-4 xl:gap-5">\s*<DiagnosisPanel \/>\s*<PrescriptionsPanel \/>\s*<\/div>/,
+    );
+    // «Контрольный визит» under «Рекомендации» (owner request 05.10.2026).
+    expect(session).toMatch(
+      /<div className="flex min-w-0 flex-col gap-4 self-start xl:gap-5">\s*<AdvicePanel \/>\s*<FollowUpPanel \/>\s*<\/div>/,
     );
     expect(session).not.toContain("NotesEditorPanel");
     expect(session).not.toContain("DiagnosisFollowUpPanel");
-    // On one column the middle comes first: diagnosis, prescriptions,
-    // control visit, advice.
-    expect(session).toMatch(/className="order-first [^"]*lg:order-none[^"]*lg:row-span-2/);
   });
 
-  it("the left panel keeps only the control visit; the diagnosis panel holds the card and its protocols", () => {
+  it("the control visit panel keeps only the control visit; the diagnosis panel holds the card and its protocols", () => {
     const left = panels.slice(
       panels.indexOf("export function FollowUpPanel"),
       panels.indexOf("export function PrescriptionsPanel"),
@@ -391,22 +392,15 @@ describe("the visit screen layout", () => {
     expect(middle).toContain("diagnoses={visitDiagnosesOf(note)}");
   });
 
-  it("three columns only from 2xl, and the left track gives its room back to the middle", () => {
-    // Fixed side tracks fill before the middle one; with the 240px sidebar
-    // three columns at xl leave the middle too narrow for the pickers.
+  it("two tracks from lg up: the wide one for the pickers, a fixed side one", () => {
     const grid = session.match(/<div className="(grid grid-cols-1[^"]*)">/)![1]!;
-    const threeTracks = grid
-      .split(/\s+/)
-      .filter((c) => /grid-cols-\[[^\]]*_[^\]]*_[^\]]*\]/.test(c));
-    expect(threeTracks).toEqual([
-      "2xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)_minmax(0,300px)]",
+    const tracks = grid.split(/\s+/).filter((c) => /grid-cols-\[/.test(c));
+    expect(tracks).toEqual([
+      "lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]",
+      "xl:grid-cols-[minmax(0,1fr)_minmax(0,340px)]",
+      "2xl:grid-cols-[minmax(0,1fr)_minmax(0,360px)]",
     ]);
-    expect(grid).toContain("lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]");
-    expect(grid).toContain("xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]");
-    // The middle keeps spanning both rows until the third column exists.
-    expect(session).toMatch(/lg:row-span-2[^"]*2xl:row-span-1/);
-    expect(grid).toContain("2xl:grid-rows-none");
-    expect(grid).not.toMatch(/(^|\s)xl:grid-rows-none/);
+    expect(grid).not.toMatch(/grid-rows|row-span/);
   });
 
   it("the paused AI rail leaves no empty column behind", () => {

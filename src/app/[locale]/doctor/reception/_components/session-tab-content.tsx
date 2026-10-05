@@ -18,9 +18,9 @@ import {
  * Tab-driven body of the reception page.
  *
  * - `session` (default) — the live consultation: «Диагноз» and under it
- *   «Назначения» in the middle column, the control visit on the left,
- *   advice on the right (under the left column below 2xl). The conclusion
- *   text has no editor here any more; its preview opens from the sign bar.
+ *   «Назначения» in the wide column, advice and under it the control visit
+ *   in the side column. The conclusion text has no editor here any more;
+ *   its preview opens from the sign bar.
  * - `history` / `documents` / `prescriptions` — read-only views of the
  *   active patient's chart, reusing the same doctor-scoped infinite queries
  *   from `/doctor/patients/[id]` so we don't fork two implementations.
@@ -35,39 +35,35 @@ export function SessionTabContent({ locale }: { locale: string }) {
   const patientId = activeAppointment?.patient.id ?? null;
 
   if (activeTab === "session") {
-    // Clinic-requested three-column flow, reworked 29.09.2026 («хаммаси
-    // бирлашиб ковоти») and 03.10.2026. The middle column is the visit's
+    // Clinic-requested flow, reworked 29.09.2026 («хаммаси бирлашиб
+    // ковоти»), 03.10.2026 and 05.10.2026. The wide column is the visit's
     // work, top to bottom: «Диагноз», as big as «Назначения» and split in
     // three the same way (owner request, «как назначения сделал сверху, так
     // же диагноз сделай, таким же большим и на три разделённый»), then
     // «Назначения». The conclusion editor that sat there went unused, and
     // the doctor, who works with the mouse, needed the room for the picker
-    // columns. The left column keeps «Контрольный визит»; advice stays on
-    // the right.
+    // columns.
     //
-    // The left track is narrower than when it held up to four diagnoses
-    // (400/420px): only the control visit and, until 2xl, the advice under
-    // it live there now, and every pixel it gives back goes to the two
-    // three-column pickers in the middle.
-    //
-    // The third column waits for 2xl. The side tracks are fixed and fill
-    // before the middle one, which on this page also loses the 240px
-    // sidebar: three columns at xl would leave the middle about 360px on a
-    // 1366 laptop and about 270px at 1280, too narrow for the pickers' three
-    // columns. Until 2xl
-    // the middle spans two rows so advice drops under the short left column
-    // instead of under the tall middle one. On one column the order is the
-    // working order: diagnosis, prescriptions, control visit, advice.
+    // The side column holds «Рекомендации» and under it «Контрольный
+    // визит» (the card is titled «Данные приёма» before the visit starts):
+    // owner request 05.10.2026, «данные приёма переведи под рекомендации».
+    // It used to be a column of its own on the left with nothing under the
+    // short card; folding it under advice gives that whole track back to
+    // the pickers, so two tracks from lg up, the side one fixed. On one
+    // column the order is the working order: diagnosis, prescriptions,
+    // advice, control visit.
     return (
       <>
         <ConclusionTemplateChannel />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)] xl:gap-5 2xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)_minmax(0,300px)] 2xl:grid-rows-none">
-          <FollowUpPanel />
-          <div className="order-first flex min-w-0 flex-col gap-4 lg:order-none lg:row-span-2 xl:gap-5 2xl:row-span-1">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)] xl:grid-cols-[minmax(0,1fr)_minmax(0,340px)] xl:gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+          <div className="flex min-w-0 flex-col gap-4 xl:gap-5">
             <DiagnosisPanel />
             <PrescriptionsPanel />
           </div>
-          <AdvicePanel />
+          <div className="flex min-w-0 flex-col gap-4 self-start xl:gap-5">
+            <AdvicePanel />
+            <FollowUpPanel />
+          </div>
         </div>
       </>
     );

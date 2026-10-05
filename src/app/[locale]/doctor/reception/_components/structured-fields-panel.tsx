@@ -264,18 +264,16 @@ export function DiagnosisPanel() {
 }
 
 /**
- * Left column: «Контрольный визит», alone there since «Диагноз» moved to
- * the top of the middle column (03.10.2026). Advice drops under it until
- * the third column exists (session-tab-content.tsx).
+ * «Контрольный визит», in the side column under «Рекомендации» since
+ * 05.10.2026 (session-tab-content.tsx).
  */
 export function FollowUpPanel() {
   const t = useTranslations("doctor.reception");
   const { visitNoteId } = useReceptionContext();
   const { note, isFinalized, applyPatch } = useLoudVisitNotePatch(visitNoteId);
 
-  // Always one element, even with nothing in it: the session grid places
-  // its items in order, and without this cell «Назначения» would take the
-  // left column of a signed note that has no control visit.
+  // Always one element, even with nothing in it, so the side column's
+  // stack keeps the same shape on a signed note without a control visit.
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {!note ? (

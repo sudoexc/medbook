@@ -101,7 +101,8 @@ export const GET = createApiListHandler(
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       include: {
         patient: {
-          select: { id: true, fullName: true, phone: true, photoUrl: true },
+          // birthDate: the doctor's visit screen shows the patient's age.
+          select: { id: true, fullName: true, phone: true, photoUrl: true, birthDate: true },
         },
         doctor: {
           select: {

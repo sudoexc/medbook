@@ -14,6 +14,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { formatCalendarDay, formatDate } from "@/lib/format";
+import { ageFromBirth } from "@/lib/patient-age";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { Button } from "@/components/ui/button";
 
@@ -29,17 +30,6 @@ import {
   type VisitNotePatch,
   type VisitNoteRow,
 } from "../_hooks/use-visit-note";
-
-function ageFromBirth(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const b = new Date(iso);
-  if (Number.isNaN(b.getTime())) return null;
-  const now = new Date();
-  let y = now.getFullYear() - b.getFullYear();
-  const m = now.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) y -= 1;
-  return y >= 0 ? y : null;
-}
 
 function initials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -106,9 +96,7 @@ export function ActivePatientCard() {
   }
 
   const p = activeAppointment.patient;
-  const age = ageFromBirth(
-    (p as unknown as { birthDate?: string | null }).birthDate ?? null,
-  );
+  const age = ageFromBirth(p.birthDate);
   const note = noteQuery.data;
   const isFinalized = note?.status === "FINALIZED";
   // Two-lanes: the live lane has no appointment time, only a join moment.
@@ -177,7 +165,11 @@ export function ActivePatientCard() {
         })()}
         {age !== null && (
           <MetaCell label={t("activePatient.ageLabel")}>
-            <span className="tabular-nums">{t("activePatient.ageYears", { age })}</span>
+            <span className="tabular-nums">
+              {age.years > 0
+                ? t("activePatient.ageYears", { age: age.years })
+                : t("activePatient.ageMonths", { months: age.months })}
+            </span>
           </MetaCell>
         )}
         <MetaCell label={t("activePatient.phoneLabel")}>

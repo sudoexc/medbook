@@ -39,6 +39,8 @@ export type QueueAppointment = {
     fullName: string;
     phone: string;
     photoUrl: string | null;
+    /** For the age on the active patient card; null when not recorded. */
+    birthDate?: string | null;
   };
   doctor: {
     id: string;

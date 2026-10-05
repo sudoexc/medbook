@@ -6809,6 +6809,7 @@
         "activePatient": "Faol bemor",
         "ageLabel": "Yoshi",
         "ageYears": "{age} yosh",
+        "ageMonths": "{months} oylik",
         "phoneLabel": "Telefon",
         "typeLabel": "Turi",
         "scheduledLabel": "Rejalashtirilgan",

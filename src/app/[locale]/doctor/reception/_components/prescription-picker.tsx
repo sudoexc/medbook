@@ -72,6 +72,7 @@ import {
 import { useDrugFacets } from "../../references/_hooks/use-drug-catalog";
 import type { DoctorPresetRow } from "../_hooks/use-doctor-presets";
 import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
+import { UnstarSchemaConfirm } from "./unstar-schema-confirm";
 import {
   atcSubgroups,
   catalogRootGroups,
@@ -152,25 +153,47 @@ export function PrescriptionPicker({
   const shortlist = shortlistQuery.data;
   const usual = shortlist?.usual ?? NO_USUAL;
 
-  const { favorites, pinned, isLoading: favoritesLoading, toggle } =
-    useDoctorFavorites("DRUG");
+  const {
+    favorites,
+    pinned,
+    isLoading: favoritesLoading,
+    requestToggle,
+    pendingUnstar,
+    confirmUnstar,
+    cancelUnstar,
+  } = useDoctorFavorites("DRUG");
   // Drugs starred in this session from the catalog or the search: the
   // shortlist the server sent does not know them yet, and «Мои» must show
   // them at once.
   const [seen, setSeen] = React.useState<ReadonlyMap<string, DrugSearchHit>>(
     () => new Map(),
   );
+  // `slot` names the row clicked (one drug can sit in three columns), so
+  // the «убрать вместе со схемой?» question opens under that row only.
   const toggleStar = React.useCallback(
-    (item: DrugShortItem) => {
+    (item: DrugShortItem, slot: string) => {
       if (!item.drugId) return;
       if (item.drug) {
         const drug = item.drug;
         setSeen((prev) => new Map(prev).set(drug.id, drug));
       }
-      toggle(item.drugId);
+      requestToggle(item.drugId, slot);
     },
-    [toggle],
+    [requestToggle],
   );
+  // The next patient, or the same picker reopened, starts without a
+  // question left open from before.
+  React.useEffect(() => {
+    cancelUnstar();
+  }, [noteId, cancelUnstar]);
+  const unstarConfirmFor = (slot: string) =>
+    pendingUnstar?.slot === slot ? (
+      <UnstarSchemaConfirm
+        onConfirm={confirmUnstar}
+        onCancel={cancelUnstar}
+        className="mx-1 mb-1"
+      />
+    ) : null;
 
   const onVisit = React.useMemo(() => onVisitChecker(rows, legacy), [rows, legacy]);
 
@@ -226,13 +249,14 @@ export function PrescriptionPicker({
 
   const searching = query.trim().length >= 2;
 
-  const itemProps = (item: DrugShortItem) => ({
+  const itemProps = (item: DrugShortItem, slot: string) => ({
     item,
     locale,
     starred: item.drugId ? pinned.has(item.drugId) : null,
     added: onVisit(item),
     onPick: () => onPickItem(item),
-    onStar: () => toggleStar(item),
+    onStar: () => toggleStar(item, slot),
+    confirm: unstarConfirmFor(slot),
   });
 
   return (
@@ -272,6 +296,7 @@ export function PrescriptionPicker({
             setQuery("");
           }}
           onStar={toggleStar}
+          confirmFor={unstarConfirmFor}
           onAddToClinicBase={() => {
             onAddToClinicBase(query);
             setQuery("");
@@ -327,7 +352,7 @@ export function PrescriptionPicker({
                       {frequentView.own.map((item, i) => (
                         <PickerItemRow
                           key={`f-${item.key}`}
-                          {...itemProps(item)}
+                          {...itemProps(item, `f-${item.key}`)}
                           count={item.count}
                           big={i < BIG_ROWS}
                         />
@@ -348,7 +373,7 @@ export function PrescriptionPicker({
                       </p>
                       <ul className="flex flex-col gap-0.5">
                         {frequentView.core.map((item) => (
-                          <PickerItemRow key={`fc-${item.key}`} {...itemProps(item)} />
+                          <PickerItemRow key={`fc-${item.key}`} {...itemProps(item, `fc-${item.key}`)} />
                         ))}
                       </ul>
                     </div>
@@ -373,7 +398,7 @@ export function PrescriptionPicker({
                   ) : (
                     <ul className="flex flex-col gap-0.5">
                       {mine.map((item) => (
-                        <PickerItemRow key={`m-${item.key}`} {...itemProps(item)} />
+                        <PickerItemRow key={`m-${item.key}`} {...itemProps(item, `m-${item.key}`)} />
                       ))}
                     </ul>
                   )}
@@ -422,7 +447,7 @@ export function PrescriptionPicker({
               core={core}
               usual={usual}
               locale={locale}
-              renderItem={(item, key) => <PickerItemRow key={key} {...itemProps(item)} />}
+              renderItem={(item, key) => <PickerItemRow key={key} {...itemProps(item, key)} />}
               pinned={pinned}
             />
           </div>
@@ -538,6 +563,7 @@ function PickerItemRow({
   added,
   onPick,
   onStar,
+  confirm,
   count,
   big = false,
 }: {
@@ -548,6 +574,8 @@ function PickerItemRow({
   added: boolean;
   onPick: () => void;
   onStar: () => void;
+  /** The unstar question under the row, when it asked (`UnstarSchemaConfirm`). */
+  confirm?: React.ReactNode;
   /** «Частые»: how often he wrote it, shown as a pill before the name. */
   count?: number;
   /** One of the first rows of «Частые»: a bigger target. */
@@ -560,87 +588,92 @@ function PickerItemRow({
     : "";
   const sub = usual || strengths || "";
   return (
-    <li className="relative">
-      <button
-        type="button"
-        onClick={(e) => {
-          if (isRepeatClick(e.detail)) return;
-          onPick();
-        }}
-        title={
-          added
-            ? t("rx.picker.onVisit")
-            : item.count > 0
-              ? t("rx.shortCount", { n: item.count })
-              : undefined
-        }
-        className={cn(
-          "block w-full rounded-lg px-2 text-left transition-colors",
-          big ? "min-h-14 py-2" : "min-h-12 py-1.5",
-          added
-            ? "bg-success/5 hover:bg-success/10 active:bg-success/15"
-            : "hover:bg-primary/5 active:bg-primary/10",
-        )}
-      >
-        <span
-          className={cn(
-            "block break-words",
-            // The line height after the size: tailwind-merge drops a
-            // leading-* that comes before a text-* size.
-            big ? "text-base font-semibold" : "text-[15px] font-medium",
-            "leading-snug",
-            added ? "text-muted-foreground" : "text-foreground",
-          )}
-        >
-          {count && count > 0 ? (
-            <span className="mr-1.5 inline-flex -translate-y-px align-middle">
-              <CountPill n={count} big={big} title={t("rx.shortCount", { n: count })} />
-            </span>
-          ) : null}
-          {added ? (
-            <CheckIcon className="mr-1 inline size-4 -translate-y-px text-success" />
-          ) : null}
-          {item.label}
-        </span>
-        {/* Always there, so the star never covers the name. */}
-        <span
-          className={cn(
-            "mt-0.5 line-clamp-2 min-h-[1.125rem] break-words text-[13px] leading-snug text-muted-foreground",
-            starred !== null && "pr-8",
-          )}
-          title={
-            usual
-              ? item.arsenalSchema
-                ? t("rx.picker.arsenalHint")
-                : t("rx.picker.usualHint")
-              : undefined
-          }
-        >
-          {sub}
-        </span>
-      </button>
-      {starred !== null ? (
+    <li>
+      {/* The row in its own box: the star sits at its bottom corner, and
+          the unstar question below must not drag it down. */}
+      <div className="relative">
         <button
           type="button"
           onClick={(e) => {
-            // A star saves at once and says nothing: a stray second click
-            // must not pin or unpin a drug (see the note at the top).
             if (isRepeatClick(e.detail)) return;
-            onStar();
+            onPick();
           }}
-          aria-pressed={starred}
-          aria-label={starred ? t("rx.picker.starRemove") : t("rx.picker.starAdd")}
-          title={starred ? t("rx.picker.starRemove") : t("rx.picker.starAdd")}
+          title={
+            added
+              ? t("rx.picker.onVisit")
+              : item.count > 0
+                ? t("rx.shortCount", { n: item.count })
+                : undefined
+          }
           className={cn(
-            "absolute bottom-0.5 right-0.5 inline-flex size-8 items-center justify-center rounded-lg transition-colors",
-            starred
-              ? "text-amber-500 hover:bg-amber-500/10"
-              : "text-muted-foreground/50 hover:bg-muted hover:text-amber-500",
+            "block w-full rounded-lg px-2 text-left transition-colors",
+            big ? "min-h-14 py-2" : "min-h-12 py-1.5",
+            added
+              ? "bg-success/5 hover:bg-success/10 active:bg-success/15"
+              : "hover:bg-primary/5 active:bg-primary/10",
           )}
         >
-          <StarIcon className={cn("size-4", starred ? "fill-amber-400" : "")} />
+          <span
+            className={cn(
+              "block break-words",
+              // The line height after the size: tailwind-merge drops a
+              // leading-* that comes before a text-* size.
+              big ? "text-base font-semibold" : "text-[15px] font-medium",
+              "leading-snug",
+              added ? "text-muted-foreground" : "text-foreground",
+            )}
+          >
+            {count && count > 0 ? (
+              <span className="mr-1.5 inline-flex -translate-y-px align-middle">
+                <CountPill n={count} big={big} title={t("rx.shortCount", { n: count })} />
+              </span>
+            ) : null}
+            {added ? (
+              <CheckIcon className="mr-1 inline size-4 -translate-y-px text-success" />
+            ) : null}
+            {item.label}
+          </span>
+          {/* Always there, so the star never covers the name. */}
+          <span
+            className={cn(
+              "mt-0.5 line-clamp-2 min-h-[1.125rem] break-words text-[13px] leading-snug text-muted-foreground",
+              starred !== null && "pr-8",
+            )}
+            title={
+              usual
+                ? item.arsenalSchema
+                  ? t("rx.picker.arsenalHint")
+                  : t("rx.picker.usualHint")
+                : undefined
+            }
+          >
+            {sub}
+          </span>
         </button>
-      ) : null}
+        {starred !== null ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              // A star saves at once and says nothing: a stray second click
+              // must not pin or unpin a drug (see the note at the top).
+              if (isRepeatClick(e.detail)) return;
+              onStar();
+            }}
+            aria-pressed={starred}
+            aria-label={starred ? t("rx.picker.starRemove") : t("rx.picker.starAdd")}
+            title={starred ? t("rx.picker.starRemove") : t("rx.picker.starAdd")}
+            className={cn(
+              "absolute bottom-0.5 right-0.5 inline-flex size-8 items-center justify-center rounded-lg transition-colors",
+              starred
+                ? "text-amber-500 hover:bg-amber-500/10"
+                : "text-muted-foreground/50 hover:bg-muted hover:text-amber-500",
+            )}
+          >
+            <StarIcon className={cn("size-4", starred ? "fill-amber-400" : "")} />
+          </button>
+        ) : null}
+      </div>
+      {confirm}
     </li>
   );
 }
@@ -908,6 +941,7 @@ function SearchResults({
   onVisit,
   onPickHit,
   onStar,
+  confirmFor,
   onAddToClinicBase,
   addingToClinic,
 }: {
@@ -917,7 +951,8 @@ function SearchResults({
   pinned: ReadonlySet<string>;
   onVisit: (item: { drugId: string | null; label: string }) => boolean;
   onPickHit: (hit: DrugSearchHit) => void;
-  onStar: (item: DrugShortItem) => void;
+  onStar: (item: DrugShortItem, slot: string) => void;
+  confirmFor: (slot: string) => React.ReactNode;
   onAddToClinicBase: () => void;
   addingToClinic: boolean;
 }) {
@@ -960,7 +995,8 @@ function SearchResults({
                 starred={pinned.has(hit.id)}
                 added={onVisit({ drugId: hit.id, label })}
                 onPick={() => onPickHit(hit)}
-                onStar={() => onStar(item)}
+                onStar={() => onStar(item, `s-${hit.id}`)}
+                confirm={confirmFor(`s-${hit.id}`)}
               />
             );
           })}

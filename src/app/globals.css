@@ -698,3 +698,34 @@
     box-shadow: inherit;
   }
 }
+
+/* Toasts on the reception iPad page (/crm/reception/tablet, see
+   components/ui/sonner.tsx): sonner's defaults are 13px text and 24px
+   buttons, made for a mouse at a desk. Unlayered, like the styles sonner
+   injects itself, so the higher specificity here decides. */
+.toaster-tablet[data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  padding: 18px 20px;
+  gap: 12px;
+  border-radius: 16px;
+  font-size: 17px;
+}
+
+.toaster-tablet[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-title] {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.toaster-tablet[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-description] {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.toaster-tablet[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-button] {
+  height: 44px;
+  padding-left: 16px;
+  padding-right: 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}

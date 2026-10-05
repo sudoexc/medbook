@@ -2356,6 +2356,9 @@
       "statusOff": "Jadvaldan tashqari",
       "nextFree": "{time} dan bo'sh",
       "noFreeToday": "Bugun hammasi band",
+      "todayFree": "Bugun {time} dan bo'sh",
+      "todayOff": "Bugun ishlamaydi",
+      "todayOffNext": "Bugun ishlamaydi, eng yaqin qabul {day}",
       "toQueue": "Navbatga",
       "toBook": "Vaqtga",
       "selected": "Tanlandi"
@@ -2389,6 +2392,7 @@
       "byName": "Familiya bo'yicha",
       "phoneLabel": "Bemor telefoni",
       "phonePlaceholder": "90 123 45 67",
+      "intlPlaceholder": "79161234567",
       "nameLabel": "Bemor familiyasi",
       "namePlaceholder": "Familiya yoki «Familiya 1985»",
       "typeMoreDigits": "Raqamni tering, qidiruv to'rtta raqamdan boshlanadi",
@@ -2413,6 +2417,9 @@
       "fullName": "Familiya va ism",
       "fullNamePlaceholder": "Karimov Temur",
       "phone": "Telefon",
+      "phoneCountry": "Raqam davlati",
+      "otherCountry": "Boshqa davlat",
+      "intlHint": "Avval davlat kodi, keyin raqam",
       "birthYear": "Tug'ilgan yili",
       "birthYearPlaceholder": "1985",
       "gender": "Jinsi",
@@ -2423,6 +2430,7 @@
       "errFullNameShort": "Ism juda qisqa",
       "errPhoneRequired": "Telefon raqamini tering",
       "errPhoneIncomplete": "+998 dan keyin 9 ta raqam kerak",
+      "errPhoneIntl": "Raqamni to'liq, davlat kodi bilan tering",
       "errBirthYear": "Tug'ilgan yili: to'rtta raqam, masalan 1985",
       "submit": "Davom etish",
       "backToSearch": "Qidiruvga"
@@ -2430,7 +2438,9 @@
     "doctor": {
       "title": "Qaysi shifokorga?",
       "titleBook": "Qaysi shifokorga yozamiz?",
-      "empty": "Bugun jadval bo'yicha hech kim ishlamaydi. Barcha shifokorlarni oching."
+      "empty": "Bugun jadval bo'yicha hech kim ishlamaydi. Barcha shifokorlarni oching.",
+      "emptyBook": "Yaqin 15 kun ichida jadval bo'yicha hech kim qabul qilmaydi. Barcha shifokorlarni oching.",
+      "showBookable": "Faqat jadval bo'yicha"
     },
     "service": {
       "title": "Xizmat",
@@ -7305,7 +7315,11 @@
         "remove": "Sevimlilardan olib tashlash",
         "loadFailed": "Sevimlilarni yuklab bo‘lmadi. Yulduzchalar oxirgi ma’lumotlar bo‘yicha ko‘rsatilgan.",
         "saveFailed": "Sevimlilarni saqlab bo‘lmadi, qayta urinib ko‘ring",
-        "arsenalFull": "«Mening» ro‘yxatida allaqachon {max} ta. Ortiqchasini «Mening arsenalim» da olib tashlang"
+        "arsenalFull": "«Mening» ro‘yxatida allaqachon {max} ta. Ortiqchasini «Mening arsenalim» da olib tashlang",
+        "unstarSchemaQuestion": "«Mening» ro‘yxatidan olib tashlansinmi? «Mening arsenalim» dagi qabul sxemangiz ham o‘chadi",
+        "unstarConfirm": "Olib tashlash",
+        "unstarKeep": "Qoldirish",
+        "diagnosisUnknown": "Bu kod XKT-10 da ham, klinika bazasida ham yo‘q"
       },
       "applyProtocol": {
         "fallbackSummary": "Qabulga protokoldagi tayinlovlar, tavsiyalar, nazorat tashrifi va xulosa matni qo‘shiladi.",
@@ -8946,6 +8960,7 @@
       "toast": {
         "full": "Arsenal to‘la. Qo‘shish uchun birortasini olib tashlang.",
         "stale": "Ro‘yxat boshqa oynada o‘zgardi. Yangi tartib ko‘rsatildi.",
+        "diagnosisUnknown": "Bu kod XKT-10 da ham, klinika bazasida ham yo‘q",
         "saveFailed": "Saqlab bo‘lmadi. Qayta urinib ko‘ring"
       }
     }
@@ -9216,13 +9231,17 @@
       "addScreenshots": "Skrinshot qo‘shish",
       "pasteHint": "Skrinshotni buferdan qo‘yish mumkin: Ctrl+V",
       "removeScreenshot": "Skrinshotni olib tashlash",
+      "noPreview": "Oldindan ko‘rish yo‘q",
       "submit": "Yuborish",
       "submitting": "Yuborilmoqda…",
       "uploading": "Skrinshotlar yuklanmoqda: {done} / {total}",
       "cancel": "Bekor qilish",
       "created": "{number} topshiriq yaratildi",
       "createError": "Topshiriqni yaratib bo‘lmadi. Qaytadan urinib ko‘ring.",
-      "partialUpload": "{number} topshiriq yaratildi, lekin skrinshotlar yuklanmadi: {failed}. Ularni topshiriqning o‘zida qo‘shing.",
+      "uploadFailedNotice": "{number} topshiriq yaratildi, lekin ayrim skrinshotlar yuklanmadi. Ular pastda: «Qayta urinish» ni bosing yoki oynani yoping, topshiriq ochiladi.",
+      "retry": "Qayta urinish",
+      "retryFailed": "Skrinshotlar yuklanmadi: {failed}. Aloqani tekshiring va qayta urining.",
+      "closeAndOpen": "Yopish",
       "tooMany": "Bir martada {max} tadan ko‘p skrinshot bo‘lmaydi",
       "notImage": "«{name}» rasmga o‘xshamaydi",
       "tooLarge": "«{name}» 10 MB dan katta",
@@ -9248,6 +9267,10 @@
       "removed": "Skrinshot o‘chirildi",
       "removeError": "Skrinshotni o‘chirib bo‘lmadi",
       "openOriginal": "Aslini ochish",
+      "noPreview": "Oldindan ko‘rish yo‘q",
+      "heicNoPreview": "HEIC formati",
+      "cannotShow": "Brauzer bu rasmni ko‘rsata olmadi. Aslini oching.",
+      "heicCannotShow": "Bu brauzer HEIC formatini (iPhone rasmi) ko‘rsatmaydi. Aslini oching: fayl yuklab olinadi yoki ko‘rish dasturida ochiladi.",
       "prev": "Oldingisi",
       "next": "Keyingisi",
       "screenshotAlt": "Skrinshot {index} / {total}",

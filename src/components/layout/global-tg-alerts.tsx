@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { isReceptionTabletPath } from "@/lib/reception-tablet/access";
 import { isDoctorThread } from "@/lib/doctor-tg-alert";
 import {
   DOCTOR_NOTIFICATION_PREFS_KEY,
@@ -70,11 +71,16 @@ export function GlobalTgAlerts({
   });
 
   const onInboxPageRef = React.useRef(false);
+  // The reception iPad page answers no messages, and the toast's «Открыть»
+  // would leave a booking half done: no toast there, the unread badge of
+  // the desktop still counts it.
+  const onTabletRef = React.useRef(false);
   const inboxPathRef = React.useRef(inboxPath);
   const scopeRef = React.useRef(scope);
   const wantsAlertsRef = React.useRef(true);
   React.useEffect(() => {
     onInboxPageRef.current = pathname.includes(inboxPath);
+    onTabletRef.current = isReceptionTabletPath(pathname);
     inboxPathRef.current = inboxPath;
     scopeRef.current = scope;
     wantsAlertsRef.current =
@@ -85,7 +91,7 @@ export function GlobalTgAlerts({
     (event: { type: string; payload?: unknown }) => {
       if (event.type !== "tg.message.new") return;
       // The inbox page runs its own, focus-aware alerting.
-      if (onInboxPageRef.current) return;
+      if (onInboxPageRef.current || onTabletRef.current) return;
 
       const p = (event.payload ?? {}) as {
         conversationId?: string;

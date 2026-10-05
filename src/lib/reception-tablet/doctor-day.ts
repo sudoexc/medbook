@@ -41,6 +41,11 @@ export type DoctorTodayLike = {
   workingMinutes: number;
   status: "busy" | "free" | "off";
   nextFree: string | null;
+  /**
+   * First day of the next 15 he can be booked on (server/doctors/today).
+   * Optional: an older server does not send it.
+   */
+  nextWorkDay?: string | null;
 };
 
 /** A doctor as the tablet lists them (the doctors list endpoint's row). */
@@ -72,6 +77,13 @@ export type DoctorDaySummary = {
   status: "busy" | "free" | "off";
   /** First free booking slot today, «HH:mm». */
   nextFree: string | null;
+  /** First day of the booking calendar's 15 he works, «YYYY-MM-DD», or null. */
+  nextWorkDay: string | null;
+  /**
+   * «Записать на время» offers him: on duty today, or working on one of
+   * the next 15 days. A doctor off today but in tomorrow is bookable.
+   */
+  bookable: boolean;
 };
 
 function laneStatus(r: Pick<TabletApptRow, "queueStatus" | "status">): AppointmentStatus {
@@ -135,6 +147,14 @@ export function summarizeDoctorDay(args: {
   const status: DoctorDaySummary["status"] = current
     ? "busy"
     : (args.today?.status ?? "off");
+  const onDuty =
+    args.scheduleUnknown === true ||
+    scheduled ||
+    nextFree !== null ||
+    current !== null ||
+    waiting.length > 0 ||
+    bookedAhead > 0;
+  const nextWorkDay = args.today?.nextWorkDay ?? null;
   return {
     doctorId: args.doctorId,
     waiting: waiting.length,
@@ -147,15 +167,13 @@ export function summarizeDoctorDay(args: {
     // A doctor with no schedule rows at all still takes bookings (the slot
     // finder's 09:00-19:00 fallback), and one who came in outside his
     // schedule is on duty the moment he has a patient: both stay on screen.
-    onDuty:
-      args.scheduleUnknown === true ||
-      scheduled ||
-      nextFree !== null ||
-      current !== null ||
-      waiting.length > 0 ||
-      bookedAhead > 0,
+    onDuty,
     status,
     nextFree,
+    nextWorkDay,
+    // An older server without `nextWorkDay` leaves booking as it was:
+    // whoever is on duty today.
+    bookable: onDuty || nextWorkDay !== null,
   };
 }
 
@@ -167,11 +185,18 @@ const collator = new Intl.Collator("ru", { numeric: true, sensitivity: "base" })
  * status: a tile that moves while the receptionist reaches for it is a
  * patient put in the wrong queue. Off-duty doctors go last, and only when
  * the receptionist asked for everyone.
+ *
+ * `forBooking` («Записать на время»): a booking is for a day of the next
+ * 15, so after today's doctors come those who work later in that window
+ * (WHY: the step used to show today's doctors only, and a patient for a
+ * doctor in on Thursday could not be booked from the tablet at all
+ * without «Показать всех»). Still a fixed order: today's first, then the
+ * rest, each by cabinet.
  */
 export function orderTabletDoctors<D extends TabletDoctorLike>(
   doctors: ReadonlyArray<D>,
   summaries: ReadonlyMap<string, DoctorDaySummary>,
-  opts: { showAll: boolean },
+  opts: { showAll: boolean; forBooking?: boolean },
 ): D[] {
   const byPlace = (a: D, b: D) => {
     const ca = a.cabinet?.number ?? "";
@@ -181,9 +206,31 @@ export function orderTabletDoctors<D extends TabletDoctorLike>(
     return collator.compare(a.nameRu, b.nameRu);
   };
   const onDuty = doctors.filter((d) => summaries.get(d.id)?.onDuty).sort(byPlace);
-  if (!opts.showAll) return onDuty;
-  const rest = doctors.filter((d) => !summaries.get(d.id)?.onDuty).sort(byPlace);
-  return [...onDuty, ...rest];
+  const later = opts.forBooking
+    ? doctors
+        .filter((d) => !summaries.get(d.id)?.onDuty && summaries.get(d.id)?.bookable)
+        .sort(byPlace)
+    : [];
+  const shown = [...onDuty, ...later];
+  if (!opts.showAll) return shown;
+  const ids = new Set(shown.map((d) => d.id));
+  const rest = doctors.filter((d) => !ids.has(d.id)).sort(byPlace);
+  return [...shown, ...rest];
+}
+
+/**
+ * The day «Записать на время» opens on for a doctor: the day already
+ * picked, unless that is before his first working day of the window, which
+ * then takes its place (he has no slot before it, the strip would only
+ * answer «нет свободного времени»).
+ */
+export function openingBookingDay(
+  current: string | null,
+  nextWorkDay: string | null | undefined,
+): string | null {
+  if (!nextWorkDay) return current;
+  if (!current || current < nextWorkDay) return nextWorkDay;
+  return current;
 }
 
 /** Minutes a booking is past its slot start (0 while it is still ahead). */

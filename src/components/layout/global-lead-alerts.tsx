@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import { useRouter } from "@/i18n/navigation";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { shellSummaryKey } from "@/hooks/use-shell-summary";
 import { playNotificationSound } from "@/lib/notification-sound";
+import { isReceptionTabletPath } from "@/lib/reception-tablet/access";
 
 /**
  * Shell-level signal for booking requests from the public site (audit LD-01).
@@ -23,16 +25,25 @@ import { playNotificationSound } from "@/lib/notification-sound";
  * `canWork` is false for roles that do not process requests (nurse, doctor
  * in CRM): they still get the badge refresh (it reads 0 for them) but no
  * toast about work that is not theirs.
+ *
+ * Not on the reception iPad page: calling a site request back is desk work,
+ * and the toast's «Открыть» would take the tablet away from the patient
+ * being booked. The sidebar badge keeps counting.
  */
 export function GlobalLeadAlerts({ canWork }: { canWork: boolean }) {
   const t = useTranslations("onlineRequests");
   const router = useRouter();
   const qc = useQueryClient();
+  const onTablet = isReceptionTabletPath(usePathname());
+  const onTabletRef = React.useRef(onTablet);
+  React.useEffect(() => {
+    onTabletRef.current = onTablet;
+  }, [onTablet]);
 
   const handler = React.useCallback(
     (event: { type: string; payload?: unknown }) => {
       void qc.invalidateQueries({ queryKey: shellSummaryKey });
-      if (event.type !== "lead.created" || !canWork) return;
+      if (event.type !== "lead.created" || !canWork || onTabletRef.current) return;
       const p = (event.payload ?? {}) as { name?: string };
       playNotificationSound();
       toast.info(t("toast.title"), {

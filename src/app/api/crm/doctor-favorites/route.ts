@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { err, ok } from "@/server/http";
+import { isPinnableDiagnosisCode } from "@/server/icd10/clinic-catalog";
 
 const ENTITY_TYPES = ["DRUG", "PROTOCOL", "HANDOUT", "LAB_TEST", "LAB_PANEL", "ICD10"] as const;
 
@@ -84,6 +85,13 @@ export const POST = createApiHandler(
       if (pinned >= ARSENAL_MAX) {
         return err("ArsenalFull", 409, { reason: "arsenal_full", max: ARSENAL_MAX });
       }
+    }
+
+    // A diagnosis star is an arsenal pin, and a pin is only a code: one of
+    // the classifier or of the clinic's own catalog, as «Мой арсенал»
+    // checks it. A code from nowhere would be a nameless slot in his 30.
+    if (body.entityType === "ICD10" && !(await isPinnableDiagnosisCode(body.entityCode))) {
+      return err("NotFound", 404, { reason: "diagnosis_unknown" });
     }
 
     const created = await prisma.doctorFavorite.create({

@@ -8,8 +8,13 @@
  * («девяносто, сто двадцать три…»). A paste of a whole number
  * («+998 90 123-45-67») still lands as those 9 digits.
  *
+ * A patient from abroad gets «Другая страна» on the «Новый пациент» form:
+ * the field then holds the whole international number, country code first,
+ * typed on the same keypad (see `intlDigitsFrom` and `intlToE164`).
+ *
  * Pure: shared by the page and the unit tests.
  */
+import { isValidCardPhone, normalizePhone } from "@/lib/phone";
 
 /** The country prefix shown in front of the field. */
 export const UZ_PREFIX = "+998";
@@ -113,4 +118,50 @@ export function phoneTail(phone: string | null | undefined): string {
   if (digits.length < 7) return "";
   const tail = digits.slice(-4);
   return `${tail.slice(0, 2)} ${tail.slice(2)}`;
+}
+
+// ── «Другая страна» ─────────────────────────────────────────────────────
+
+/** Shown in front of the international field: the rest is typed. */
+export const INTL_PREFIX = "+";
+
+/** E.164 allows 15 digits with the country code. */
+export const INTL_MAX_DIGITS = 15;
+
+/**
+ * The digits of an international number typed or pasted into the field,
+ * country code first, at most 15: «+7 (916) 123-45-67» lands as
+ * «79161234567».
+ */
+export function intlDigitsFrom(raw: string | null | undefined): string {
+  return (raw ?? "").replace(/\D/g, "").slice(0, INTL_MAX_DIGITS);
+}
+
+/** One key press on the keypad in the international field. */
+export function pressIntlKey(digits: string, key: KeypadKey): string {
+  if (key === "clear") return "";
+  if (key === "back") return digits.slice(0, -1);
+  if (digits.length >= INTL_MAX_DIGITS) return digits;
+  return digits + key;
+}
+
+/** «+79161234567»; just «+» while nothing is typed. */
+export function formatIntl(digits: string): string {
+  return `${INTL_PREFIX}${intlDigitsFrom(digits)}`;
+}
+
+/**
+ * The number as the card stores it («+79161234567»), or null while it is
+ * not a whole number. WHY this rule: it is the one staff already use on a
+ * card (`isValidCardPhone`, the desktop's phone check): a foreign number
+ * written in full with its country code, 10 to 15 digits, never a «+998»
+ * stub passing as foreign. A whole Uzbek number typed here is taken as the
+ * Uzbek number it is. Nine digits are refused although the card rule reads
+ * them as Uzbek: in this field they are a foreign number cut short.
+ */
+export function intlToE164(digits: string): string | null {
+  const d = intlDigitsFrom(digits);
+  if (d.length < 10) return null;
+  const typed = `${INTL_PREFIX}${d}`;
+  return isValidCardPhone(typed) ? normalizePhone(typed) : null;
 }

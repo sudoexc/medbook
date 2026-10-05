@@ -1,6 +1,12 @@
 "use client";
 
-import { DEV_TASK_THUMB_MAX_BYTES, fitWithin } from "@/lib/dev-tasks";
+import {
+  DEV_TASK_HEIC_EDGE,
+  DEV_TASK_MAX_BYTES,
+  DEV_TASK_THUMB_MAX_BYTES,
+  fitWithin,
+  jpegFileName,
+} from "@/lib/dev-tasks";
 
 /**
  * A small JPEG of a screenshot, drawn in the browser before upload, so the
@@ -30,6 +36,49 @@ export async function makeScreenshotThumb(file: File): Promise<Blob | null> {
       canvas.toBlob(resolve, "image/jpeg", 0.8),
     );
     return blob && blob.size <= DEV_TASK_THUMB_MAX_BYTES ? blob : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A HEIC from an iPhone as a JPEG, redrawn in the browser before upload,
+ * when this browser can decode HEIC (Safari can; Chrome cannot). WHY: the
+ * task board is read in Chrome too, where a stored HEIC is a broken image
+ * for everyone. Null when the browser cannot draw it or the JPEG would be
+ * too big: the original goes up then, and the board shows a card with
+ * «Открыть оригинал» for it instead of a broken image.
+ */
+export async function heicAsJpeg(file: File): Promise<File | null> {
+  if (typeof document === "undefined") return null;
+  try {
+    const source = await decode(file);
+    if (!source) return null;
+    const { width, height } = fitWithin(source.width, source.height, DEV_TASK_HEIC_EDGE);
+    if (width === 0 || height === 0) {
+      source.close();
+      return null;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const g = canvas.getContext("2d");
+    if (!g) {
+      source.close();
+      return null;
+    }
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, width, height);
+    g.drawImage(source.image, 0, 0, width, height);
+    source.close();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.88),
+    );
+    if (!blob || blob.size > DEV_TASK_MAX_BYTES) return null;
+    return new File([blob], jpegFileName(file.name), {
+      type: "image/jpeg",
+      lastModified: file.lastModified,
+    });
   } catch {
     return null;
   }

@@ -54,6 +54,7 @@ import {
   type DrugDetail,
 } from "../../_components/drug-detail";
 import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
+import { UnstarSchemaConfirm } from "./unstar-schema-confirm";
 import { DrugSimilar } from "../../references/_components/drug-similar";
 
 async function fetchDrugs(q: string): Promise<DrugDetail[]> {
@@ -96,7 +97,8 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
     staleTime: 60_000,
   });
 
-  const { pinned, toggle } = useDoctorFavorites("DRUG");
+  const { pinned, requestToggle, pendingUnstar, confirmUnstar, cancelUnstar } =
+    useDoctorFavorites("DRUG");
 
   // Reset query on close.
   React.useEffect(() => {
@@ -106,8 +108,9 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
       setOpenedAnalogue(null);
       setFavoritesOnly(false);
       setPane("list");
+      cancelUnstar();
     }
-  }, [open]);
+  }, [open, cancelUnstar]);
 
   const rawRows = drugsQuery.data ?? [];
   const filteredRows = favoritesOnly
@@ -276,7 +279,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggle(d.id);
+                          requestToggle(d.id);
                         }}
                         title={isPinned ? t("favorites.remove") : t("favorites.add")}
                         aria-label={isPinned ? t("favorites.remove") : t("favorites.add")}
@@ -294,6 +297,14 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                           )}
                         />
                       </button>
+                      {pendingUnstar?.entityCode === d.id ? (
+                        // Unstarring would delete his arsenal schema too.
+                        <UnstarSchemaConfirm
+                          onConfirm={confirmUnstar}
+                          onCancel={cancelUnstar}
+                          className="mx-1 mb-1"
+                        />
+                      ) : null}
                     </li>
                   );
                 })}

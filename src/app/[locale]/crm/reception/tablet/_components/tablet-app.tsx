@@ -29,6 +29,7 @@ import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-curr
 import {
   arrivalsFor,
   liveWaitingCount,
+  openingBookingDay,
   orderTabletDoctors,
   type TabletApptRow,
 } from "@/lib/reception-tablet/doctor-day";
@@ -144,6 +145,11 @@ export function TabletApp() {
       mode,
       doctorId: doctorId ?? null,
       today: data.today,
+      // «На время» on a doctor's tile: open on his first working day.
+      day:
+        mode === "book" && doctorId
+          ? openingBookingDay(data.today, data.summaries.get(doctorId)?.nextWorkDay)
+          : undefined,
       flowId: flowSeq.current,
     });
   };
@@ -785,12 +791,23 @@ function FlowBody({
       return (
         <DoctorStep
           mode={flow.mode}
+          today={data.today}
           doctors={data.doctors}
           summaries={data.summaries}
           selectedId={flow.doctorId}
           showAll={showAll}
           onShowAllChange={onShowAllChange}
-          onPick={(doctorId) => dispatch({ type: "pickDoctor", doctorId })}
+          onPick={(doctorId) =>
+            dispatch({
+              type: "pickDoctor",
+              doctorId,
+              // Booking: a doctor in from Thursday opens on Thursday.
+              day:
+                flow.mode === "book"
+                  ? openingBookingDay(flow.day, data.summaries.get(doctorId)?.nextWorkDay)
+                  : undefined,
+            })
+          }
         />
       );
     case "time":

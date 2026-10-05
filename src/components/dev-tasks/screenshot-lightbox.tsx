@@ -2,16 +2,19 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, ImageIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import type { DevTaskAttachmentDto } from "@/lib/dev-tasks";
+import { isHeicFile, type DevTaskAttachmentDto } from "@/lib/dev-tasks";
+import { cn } from "@/lib/utils";
 
 /**
  * A screenshot at full size. Arrows (and ← → on a keyboard) step through
  * the task's screenshots; «Открыть оригинал» opens the file in a new tab
- * for zooming on a phone.
+ * for zooming on a phone. A file this browser cannot draw (a HEIC from an
+ * iPhone, in Chrome) shows a card saying so with «Открыть оригинал»
+ * instead of a broken image.
  */
 export function ScreenshotLightbox({
   items,
@@ -29,6 +32,7 @@ export function ScreenshotLightbox({
   const current = open ? items[Math.min(index, items.length - 1)] : null;
   const total = items.length;
   const at = index ?? 0;
+  const [broken, setBroken] = React.useState<Record<string, true>>({});
 
   const step = React.useCallback(
     (delta: number) => {
@@ -56,13 +60,32 @@ export function ScreenshotLightbox({
         </DialogTitle>
         {current ? (
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-lg bg-muted/40">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a session-gated stream, not a static asset */}
-            <img
-              key={current.id}
-              src={current.url}
-              alt={t("screenshotAlt", { index: at + 1, total })}
-              className="max-h-[calc(100dvh-9rem)] w-auto max-w-full object-contain"
-            />
+            {broken[current.id] ? (
+              <div className="flex max-w-sm flex-col items-center gap-3 px-6 py-10 text-center">
+                <ImageIcon className="size-10 text-muted-foreground" aria-hidden />
+                <p className="text-sm text-foreground">
+                  {isHeicFile({ type: current.mimeType }) ? t("heicCannotShow") : t("cannotShow")}
+                </p>
+                <a
+                  href={current.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(buttonVariants(), "h-11 px-4 md:h-9")}
+                >
+                  <ExternalLinkIcon />
+                  {t("openOriginal")}
+                </a>
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- a session-gated stream, not a static asset
+              <img
+                key={current.id}
+                src={current.url}
+                alt={t("screenshotAlt", { index: at + 1, total })}
+                onError={() => setBroken((prev) => ({ ...prev, [current.id]: true }))}
+                className="max-h-[calc(100dvh-9rem)] w-auto max-w-full object-contain"
+              />
+            )}
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-2">

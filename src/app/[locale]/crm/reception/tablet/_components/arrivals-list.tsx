@@ -104,7 +104,11 @@ function ArrivalRow({
         {time}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-lg font-semibold text-foreground">{row.patient.fullName}</p>
+        {/* Two lines, not one cut short: in landscape the column is narrow
+            and «Каримова Мохинур Ба…» is not a name anyone can call out. */}
+        <p className="line-clamp-2 break-words text-lg font-semibold leading-snug text-foreground">
+          {row.patient.fullName}
+        </p>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-muted-foreground">
           {where ? <span className="truncate">{where}</span> : null}
           {row.queueStatus === "NO_SHOW" ? (

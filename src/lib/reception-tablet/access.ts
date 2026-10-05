@@ -17,6 +17,21 @@ export function receptionTabletPath(locale: string): string {
   return locale === "uz" ? "/uz/crm/reception/tablet" : "/crm/reception/tablet";
 }
 
+/**
+ * Whether a pathname is the tablet page, with or without the locale prefix
+ * (`next/navigation` gives «/uz/crm/reception/tablet», the i18n router
+ * «/crm/reception/tablet»), a trailing slash or a query string.
+ *
+ * WHY: the CRM's shell alerts (a Telegram message, a site request, a Mini
+ * App check-in) are global toasts with small «Открыть» buttons that leave
+ * the page. On the iPad page they must speak its size and never navigate
+ * the receptionist away from a patient half way through a booking.
+ */
+export function isReceptionTabletPath(pathname: string | null | undefined): boolean {
+  const path = (pathname ?? "").split(/[?#]/)[0]!.replace(/\/+$/, "");
+  return /^(?:\/(?:ru|uz))?\/crm\/reception\/tablet$/.test(path);
+}
+
 /** Where the manifest is served; the language picks the start page. */
 export function receptionTabletManifestUrl(locale: string): string {
   return `/reception-tablet.webmanifest?lang=${locale === "uz" ? "uz" : "ru"}`;

@@ -23,10 +23,11 @@ import { z } from "zod";
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import {
   ARSENAL_MAX,
+  ARSENAL_PINS_READ,
   nextArsenalPosition,
   orderArsenal,
   parseDrugArsenalSchema,
-  reorderedPositions,
+  reorderedWindow,
   SCHEMA_LIMITS,
   type ArsenalKind,
 } from "@/lib/arsenal";
@@ -41,6 +42,10 @@ import {
 } from "@/server/catalog/doctor-lists";
 import { loadDrugHits } from "@/server/catalog/drug-hits";
 import { loadFormulary } from "@/server/catalog/formulary";
+import {
+  isPinnableDiagnosisCode,
+  pinnableDiagnosisCodes,
+} from "@/server/icd10/clinic-catalog";
 import { err, ok, parseQuery } from "@/server/http";
 
 const ROLES = ["ADMIN", "DOCTOR"] as const;
@@ -85,7 +90,8 @@ const PatchBody = z.discriminatedUnion("op", [
     op: z.literal("reorder"),
     doctorId: DoctorIdField,
     kind: KIND,
-    codes: z.array(CodeField).max(60),
+    // The pins the page shows, never more (`ARSENAL_PINS_READ`).
+    codes: z.array(CodeField).max(ARSENAL_PINS_READ),
   }),
   z.object({
     op: z.literal("schema"),
@@ -158,6 +164,11 @@ export const GET = createApiListHandler({ roles: [...ROLES] }, async ({ request,
 
   const lists = await loadDoctorDiagnosisLists({ doctor, days: 365, limit: 12 });
   const pinned = new Set(lists.arsenal.map((p) => p.code));
+  // «В арсенал» only for what a pin would accept (POST checks the same):
+  // a code from an old note that neither catalog knows is not offered.
+  const pinnable = await pinnableDiagnosisCodes(
+    lists.frequent.map((d) => d.code ?? "").filter(Boolean),
+  );
   return ok({
     doctor: doctorName(doctor),
     kind: "ICD10",
@@ -165,7 +176,9 @@ export const GET = createApiListHandler({ roles: [...ROLES] }, async ({ request,
     frequentLimit: lists.frequentLimit,
     items: lists.arsenal,
     // Only coded diagnoses can be pinned: a pin is a code.
-    top: lists.frequent.filter((d) => d.code && !pinned.has(d.code.toUpperCase())),
+    top: lists.frequent.filter(
+      (d) => d.code && !pinned.has(d.code.toUpperCase()) && pinnable.has(d.code.toUpperCase()),
+    ),
     topSource: lists.frequentSource,
   });
 });
@@ -187,6 +200,10 @@ export const POST = createApiHandler(
       const formulary = await loadFormulary();
       const hits = await loadDrugHits([code], ctx.clinicId, formulary);
       if (!hits.has(code)) return err("NotFound", 404, { reason: "drug_not_visible" });
+    } else if (!(await isPinnableDiagnosisCode(code))) {
+      // A code of the classifier or of the clinic's own catalog only: a
+      // typo would sit in his 30 as a nameless slot.
+      return err("NotFound", 404, { reason: "diagnosis_unknown" });
     }
 
     const pins = await pinsOf(doctor.userId, body.kind);
@@ -280,16 +297,26 @@ export const PATCH = createApiHandler(
         const rows = await tx.doctorFavorite.findMany({
           where: { userId: doctor.userId, entityType: body.kind },
           select: { id: true, entityCode: true, sortOrder: true, createdAt: true },
+          // In arsenal order, so the window below is the page's window.
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           take: 200,
         });
         const ordered = orderArsenal(rows);
-        const idOf = new Map(ordered.map((r) => [storedCode(body.kind, r.entityCode), r.id]));
-        const current = [...idOf.keys()];
-        const plan = reorderedPositions(current, codes);
-        if (!plan.ok) return { ok: false as const, current };
+        const rowOf = new Map(ordered.map((r) => [storedCode(body.kind, r.entityCode), r]));
+        const codesOf = (list: typeof ordered) => [
+          ...new Set(list.map((r) => storedCode(body.kind, r.entityCode))),
+        ];
+        // The page shows the first ARSENAL_PINS_READ pins: the drag is the
+        // order of those, and any older stars past them stay after them.
+        const shown = codesOf(ordered.slice(0, ARSENAL_PINS_READ));
+        const past = codesOf(ordered.slice(ARSENAL_PINS_READ)).filter((c) => !shown.includes(c));
+        const plan = reorderedWindow([...shown, ...past], codes, shown.length);
+        if (!plan.ok) return { ok: false as const, current: shown };
         for (const p of plan.positions) {
+          const row = rowOf.get(p.entityCode)!;
+          if (row.sortOrder === p.sortOrder) continue;
           await tx.doctorFavorite.update({
-            where: { id: idOf.get(p.entityCode)! },
+            where: { id: row.id },
             data: { sortOrder: p.sortOrder },
           });
         }

@@ -55,6 +55,10 @@ const db = vi.hoisted(() => ({
   noteArgs: [] as Array<Record<string, unknown>>,
   audits: [] as Array<Record<string, unknown>>,
   opts: [] as Array<{ roles?: string[] }>,
+  /** The clinic's own diagnosis catalog (codes the classifier lacks). */
+  clinicDx: [] as Array<{ code: string | null; nameRu: string }>,
+  favReads: [] as Array<{ take?: number }>,
+  favUpdates: 0,
   seq: 0,
 }));
 
@@ -92,7 +96,10 @@ vi.mock("@/lib/prisma", () => {
       ),
     },
     doctorFavorite: {
-      findMany: vi.fn(async ({ where }: { where: { userId?: string; entityType?: string } }) => favsOf(where)),
+      findMany: vi.fn(async ({ where, take }: { where: { userId?: string; entityType?: string }; take?: number }) => {
+        db.favReads.push({ take });
+        return favsOf(where).slice(0, take ?? Infinity);
+      }),
       findUnique: vi.fn(async ({ where }: { where: Parameters<typeof byUnique>[0] }) => byUnique(where) ?? null),
       count: vi.fn(async ({ where }: { where: { userId?: string; entityType?: string } }) => favsOf(where).length),
       create: vi.fn(async ({ data }: { data: Omit<Fav, "id" | "createdAt" | "schema"> & { schema?: unknown } }) => {
@@ -101,6 +108,7 @@ vi.mock("@/lib/prisma", () => {
         return row;
       }),
       update: vi.fn(async ({ where, data }: { where: Parameters<typeof byUnique>[0]; data: Partial<Fav> }) => {
+        db.favUpdates += 1;
         const row = byUnique(where)!;
         Object.assign(row, data);
         return row;
@@ -138,7 +146,16 @@ vi.mock("@/lib/prisma", () => {
         return [...counts].map(([drugId, n]) => ({ drugId, _count: { _all: n } }));
       }),
     },
-    clinicDiagnosis: { findMany: vi.fn(async () => []) },
+    clinicDiagnosis: {
+      // `OR: [{ code: { equals, mode: "insensitive" } }]` (pinnableDiagnosisCodes)
+      // or a plain read of every coded row (the diagnosis lists).
+      findMany: vi.fn(async ({ where }: { where?: { OR?: Array<{ code: { equals: string } }> } }) => {
+        const wanted = where?.OR?.map((o) => o.code.equals.toUpperCase());
+        return db.clinicDx.filter(
+          (d) => d.code && (!wanted || wanted.includes(d.code.toUpperCase())),
+        );
+      }),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
   };
   return { prisma };
@@ -300,6 +317,9 @@ beforeEach(() => {
   db.noteArgs = [];
   db.audits = [];
   db.opts = [];
+  db.clinicDx = [];
+  db.favReads = [];
+  db.favUpdates = 0;
   db.seq = 0;
   asDoctor();
 });
@@ -607,5 +627,93 @@ describe("the diagnosis lists", () => {
     expect(body.frequentSource).toBe("own");
     expect(body.frequentLimit).toBe(20);
     expect(body.starred.map((s) => s.code)).toEqual(["G43.0", "M54.4"]);
+  });
+});
+
+// ── Small tails (05.10.2026) ─────────────────────────────────────────────
+
+describe("a doctor with more than 50 old stars can still drag", () => {
+  it("the page reads 50 and the reorder takes those 50; the rest stay after them", async () => {
+    // 60 stars from before the cap of 30, epoch-second positions.
+    db.favs = Array.from({ length: 60 }, (_, i) => pin(`d${String(i).padStart(2, "0")}`, 1_790_000_000 + i));
+    const page = await loadDoctorDrugLists({ doctor: { id: "doc_aziz", userId: "u_aziz" }, clinicId: "c1", days: 365, limit: 12 });
+    expect(page.arsenal).toHaveLength(50);
+    const shown = page.arsenal.map((p) => p.code);
+    // Drag the 50th to the top, as the page sends it.
+    const dragged = [shown[49]!, ...shown.slice(0, 49)];
+    const res = await arsenalPatch(req("PATCH", { op: "reorder", kind: "DRUG", codes: dragged }));
+    expect(res.status).toBe(200);
+    const order = favsOf({ userId: "u_aziz", entityType: "DRUG" }).map((f) => f.entityCode);
+    expect(order.slice(0, 50)).toEqual(dragged);
+    // The ten he never saw keep their order, below the window.
+    expect(order.slice(50)).toEqual(Array.from({ length: 10 }, (_, i) => `d${50 + i}`));
+    const again = await loadDoctorDrugLists({ doctor: { id: "doc_aziz", userId: "u_aziz" }, clinicId: "c1", days: 365, limit: 12 });
+    expect(again.arsenal.map((p) => p.code)).toEqual(dragged);
+  });
+
+  it("a window that changed under the drag is still refused, and only moved rows are written", async () => {
+    db.favs = Array.from({ length: 55 }, (_, i) => pin(`d${String(i).padStart(2, "0")}`, i));
+    const shown = favsOf({ userId: "u_aziz", entityType: "DRUG" }).slice(0, 50).map((f) => f.entityCode);
+    // A drag made on the list before d00 was unpinned elsewhere.
+    db.favs = db.favs.filter((f) => f.entityCode !== "d00");
+    const stale = await arsenalPatch(req("PATCH", { op: "reorder", kind: "DRUG", codes: shown }));
+    expect(stale.status).toBe(409);
+    expect(db.favUpdates).toBe(0);
+    // Swapping two neighbours on a renumbered list writes those two only.
+    db.favs = Array.from({ length: 3 }, (_, i) => pin(`d${i}`, i));
+    const ok = await arsenalPatch(req("PATCH", { op: "reorder", kind: "DRUG", codes: ["d1", "d0", "d2"] }));
+    expect(ok.status).toBe(200);
+    expect(db.favUpdates).toBe(2);
+  });
+
+  it("more codes than the page can show are refused at the door", async () => {
+    const codes = Array.from({ length: 51 }, (_, i) => `d${i}`);
+    expect((await arsenalPatch(req("PATCH", { op: "reorder", kind: "DRUG", codes }))).status).toBe(400);
+  });
+});
+
+describe("a diagnosis pin must be a code somebody knows", () => {
+  it("the arsenal refuses a code from nowhere, takes the classifier's and the clinic's own", async () => {
+    const unknown = await arsenalPost(req("POST", { kind: "ICD10", code: "Q99.9X" }));
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toMatchObject({ reason: "diagnosis_unknown" });
+    expect(db.favs).toEqual([]);
+    expect((await arsenalPost(req("POST", { kind: "ICD10", code: "g43.0" }))).status).toBe(200);
+    // «Код знаю, в базе нет»: learned by the clinic with its code.
+    db.clinicDx = [{ code: "U99.1", nameRu: "Постковидный синдром (клиника)" }];
+    expect((await arsenalPost(req("POST", { kind: "ICD10", code: "u99.1" }))).status).toBe(200);
+    expect(db.favs.map((f) => f.entityCode)).toEqual(["G43.0", "U99.1"]);
+  });
+
+  it("a star on the visit screen is checked the same way; drugs and protocols are not", async () => {
+    const star = (entityType: string, entityCode: string) =>
+      favoritePost(
+        new Request("http://x/api/crm/doctor-favorites", {
+          method: "POST",
+          body: JSON.stringify({ entityType, entityCode }),
+        }),
+      );
+    const unknown = await star("ICD10", "ZZ1");
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toMatchObject({ reason: "diagnosis_unknown" });
+    expect((await star("ICD10", "G44.2")).status).toBe(200);
+    expect((await star("PROTOCOL", "WHATEVER")).status).toBe(200);
+  });
+
+  it("«В арсенал» never offers a code a pin would refuse", async () => {
+    const note = (code: string, days: number): Note => ({
+      doctorId: "doc_aziz",
+      clinicId: "c1",
+      createdAt: ago(days),
+      diagnosisCode: code,
+      diagnosisName: `Диагноз ${code}`,
+      additionalDiagnoses: [],
+      prescriptions: [],
+    });
+    db.notes = [note("G44.2", 1), note("XX9.9", 2), note("U99.1", 3)];
+    db.clinicDx = [{ code: "U99.1", nameRu: "Постковидный синдром (клиника)" }];
+    const res = await arsenalGet(req("GET", undefined, "?kind=ICD10"));
+    const body = (await res.json()) as { top: { code: string }[] };
+    expect(body.top.map((t) => t.code)).toEqual(["G44.2", "U99.1"]);
   });
 });

@@ -121,10 +121,13 @@ export type FlowAction =
       mode: TabletMode;
       doctorId?: string | null;
       today: string;
+      /** Booking: the day to open on (`openingBookingDay`), else today. */
+      day?: string | null;
       flowId?: number;
     }
   | { type: "pickPatient"; patient: ChosenPatient }
-  | { type: "pickDoctor"; doctorId: string }
+  /** `day`, booking only: his first working day when the picked one is earlier. */
+  | { type: "pickDoctor"; doctorId: string; day?: string | null }
   | { type: "pickService"; serviceId: string | null }
   | { type: "pickDay"; day: string }
   | { type: "pickTime"; time: string }
@@ -211,6 +214,7 @@ function startFlow(
   doctorId: string | null,
   today: string,
   flowId: number,
+  day?: string | null,
 ): ActiveFlow {
   return {
     screen: "flow",
@@ -220,7 +224,7 @@ function startFlow(
     patient: null,
     doctorId,
     serviceId: null,
-    day: mode === "book" ? today : null,
+    day: mode === "book" ? (day ?? today) : null,
     time: null,
     owner: null,
     createdPatientId: null,
@@ -231,7 +235,13 @@ function startFlow(
 
 export function flowReducer(state: FlowState, action: FlowAction): FlowState {
   if (action.type === "start") {
-    return startFlow(action.mode, action.doctorId ?? null, action.today, action.flowId ?? 0);
+    return startFlow(
+      action.mode,
+      action.doctorId ?? null,
+      action.today,
+      action.flowId ?? 0,
+      action.day,
+    );
   }
   if (action.type === "home") return HOME;
   if (state.screen !== "flow") return state;
@@ -268,11 +278,13 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
     }
     case "pickDoctor": {
       const changed = action.doctorId !== state.doctorId;
+      const day = state.mode === "book" && action.day ? action.day : state.day;
       const next: ActiveFlow = {
         ...state,
         doctorId: action.doctorId,
         serviceId: changed ? null : state.serviceId,
-        time: changed ? null : state.time,
+        day,
+        time: changed || day !== state.day ? null : state.time,
         owner: null,
       };
       return { ...next, step: firstOpenStep(next) };

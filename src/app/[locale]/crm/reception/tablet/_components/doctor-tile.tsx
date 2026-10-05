@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { CalendarClockIcon, CheckIcon, TicketPlusIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { intlLocale } from "@/lib/format";
 import { splitMinutes, type DoctorDaySummary } from "@/lib/reception-tablet/doctor-day";
 
 import type { TabletDoctor } from "../_hooks/use-tablet-data";
@@ -165,16 +166,67 @@ export function DoctorTile({
   );
 }
 
+/** «ср, 7 окт.»: a day of the booking window, as the day strip names it. */
+function shortDay(day: string, locale: string): string {
+  return new Intl.DateTimeFormat(intlLocale(locale === "uz" ? "uz" : "ru"), {
+    timeZone: "Asia/Tashkent",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${day}T12:00:00+05:00`));
+}
+
+/**
+ * Today at a glance for a booking: free from when, full, or not working
+ * today and the first day he does. The step lists doctors who work later
+ * in the window too, so «сегодня» must be said, not assumed.
+ */
+function TodayAvailability({
+  summary,
+  today,
+}: {
+  summary: DoctorDaySummary | undefined;
+  today: string;
+}) {
+  const t = useTranslations("receptionTablet.tile");
+  const locale = useLocale();
+  if (!summary) return null;
+  // Working today (by the schedule, or the open day of a doctor without
+  // one) but no slot left: full. Not working today: when he is next.
+  const worksToday = summary.scheduled || summary.nextWorkDay === today;
+  const text = summary.nextFree
+    ? t("todayFree", { time: summary.nextFree })
+    : worksToday
+      ? t("noFreeToday")
+      : summary.nextWorkDay
+        ? t("todayOffNext", { day: shortDay(summary.nextWorkDay, locale) })
+        : t("todayOff");
+  return (
+    <p
+      className={cn(
+        "flex items-center gap-2 text-[17px] font-medium",
+        summary.nextFree ? "text-primary" : "text-muted-foreground",
+      )}
+    >
+      <CalendarClockIcon className="size-5 shrink-0" aria-hidden />
+      <span className="min-w-0 break-words">{text}</span>
+    </p>
+  );
+}
+
 /** Doctor step tile: the whole card is one big target. */
 export function DoctorPickTile({
   doctor,
   summary,
   selected,
+  bookingToday = null,
   onPick,
 }: {
   doctor: TabletDoctor;
   summary: DoctorDaySummary | undefined;
   selected: boolean;
+  /** «Записать на время» (today's Tashkent day): say how today stands for him. */
+  bookingToday?: string | null;
   onPick: () => void;
 }) {
   const t = useTranslations("receptionTablet.tile");
@@ -194,6 +246,7 @@ export function DoctorPickTile({
     >
       <TileHead doctor={doctor} summary={summary} />
       <TileStats summary={summary} />
+      {bookingToday ? <TodayAvailability summary={summary} today={bookingToday} /> : null}
       {selected ? (
         <span className="absolute -right-2 -top-2 inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-[15px] font-semibold text-primary-foreground shadow">
           <CheckIcon className="size-4" aria-hidden />

@@ -2,16 +2,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type {
-  DevTaskAttachmentDto,
-  DevTaskDetailDto,
-  DevTaskListDto,
-  DevTaskPriority,
-  DevTaskStatus,
+import {
+  isHeicFile,
+  uploadInTurn,
+  type DevTaskAttachmentDto,
+  type DevTaskDetailDto,
+  type DevTaskListDto,
+  type DevTaskPriority,
+  type DevTaskStatus,
 } from "@/lib/dev-tasks";
 
 import { devTaskKey, devTasksBoardKey, devTasksKey } from "./query-keys";
-import { makeScreenshotThumb } from "./screenshot-thumb";
+import { heicAsJpeg, makeScreenshotThumb } from "./screenshot-thumb";
 
 /**
  * Data hooks of the «Задачи» board, shared by /crm/tasks and /doctor/tasks.
@@ -145,14 +147,16 @@ export function useAddDevTaskComment() {
 }
 
 /**
- * One screenshot, with the small preview the board cards show. The preview
- * is best effort: a format the browser cannot draw (HEIC in Chrome) goes up
- * without one.
+ * One screenshot, with the small preview the board cards show. A HEIC goes
+ * up as a JPEG when this browser can redraw it (`heicAsJpeg`), so Chrome can
+ * show it later. The preview is best effort: a format the browser cannot
+ * draw (HEIC in Chrome) goes up without one.
  */
 export async function uploadDevTaskScreenshot(
   taskId: string,
-  file: File,
+  picked: File,
 ): Promise<DevTaskAttachmentDto> {
+  const file = isHeicFile(picked) ? ((await heicAsJpeg(picked)) ?? picked) : picked;
   const form = new FormData();
   form.append("file", file, file.name || "screenshot");
   const thumb = await makeScreenshotThumb(file);
@@ -167,25 +171,23 @@ export async function uploadDevTaskScreenshot(
 export function useUploadDevTaskScreenshots() {
   const refresh = useRefreshAll();
   return useMutation<
-    { uploaded: number; failed: number },
+    { uploaded: number; failed: number; failedFiles: File[] },
     DevTaskApiError,
     { taskId: string; files: File[]; onProgress?: (done: number) => void }
   >({
     mutationFn: async ({ taskId, files, onProgress }) => {
-      let uploaded = 0;
-      let failed = 0;
-      // One at a time: a phone on a weak network finishes the first
-      // screenshot instead of stalling all of them at once.
-      for (const file of files) {
-        try {
-          await uploadDevTaskScreenshot(taskId, file);
-          uploaded += 1;
-        } catch {
-          failed += 1;
-        }
-        onProgress?.(uploaded + failed);
-      }
-      return { uploaded, failed };
+      // One at a time (`uploadInTurn`); the files that failed come back so
+      // the caller can offer them again.
+      const result = await uploadInTurn(
+        files,
+        (file) => uploadDevTaskScreenshot(taskId, file),
+        onProgress,
+      );
+      return {
+        uploaded: result.uploaded.length,
+        failed: result.failed.length,
+        failedFiles: result.failed,
+      };
     },
     onSettled: () => refresh(),
   });

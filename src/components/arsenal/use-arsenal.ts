@@ -242,7 +242,9 @@ export function useArsenalMutations(kind: ArsenalKind, doctorId?: string | null)
         ? t("toast.full")
         : reason === "order_stale"
           ? t("toast.stale")
-          : t("toast.saveFailed"),
+          : reason === "diagnosis_unknown"
+            ? t("toast.diagnosisUnknown")
+            : t("toast.saveFailed"),
       { id: "doctor-arsenal-save" },
     );
   });

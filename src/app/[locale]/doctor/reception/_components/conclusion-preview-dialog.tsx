@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { templatesInBody, type BodyTemplate } from "@/lib/conclusion-body";
+import { listenForEscape } from "@/lib/frame-escape";
 import { visitDiagnosisCodes } from "@/lib/visit-diagnoses";
 
 import { useReceptionContext } from "../_hooks/reception-context";
@@ -51,6 +52,23 @@ export function ConclusionPreviewDialog({
 }) {
   const t = useTranslations("doctor.reception");
   const tDialogs = useTranslations("doctor.receptionDialogs");
+  // Esc inside the sheet: the key fires in the frame's window, which the
+  // dialog's own Escape handling never hears (listenForEscape). One
+  // listener at a time, on the frame that loaded last, gone when the frame
+  // goes (the dialog closes, a save redraws it) or the dialog unmounts.
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  React.useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
+  const detachEscape = React.useRef<(() => void) | null>(null);
+  const stopEscape = React.useCallback(() => {
+    detachEscape.current?.();
+    detachEscape.current = null;
+  }, []);
+  React.useEffect(() => {
+    if (!open) stopEscape();
+  }, [open, stopEscape]);
+  React.useEffect(() => stopEscape, [stopEscape]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* A flex column instead of the dialog's default grid, and a width of
@@ -85,6 +103,12 @@ export function ConclusionPreviewDialog({
             key={`${noteId}:${updatedAt}`}
             src={`/api/crm/visit-notes/${noteId}/print?embed=1`}
             title={t("actionBar.previewTitle")}
+            onLoad={(e) => {
+              stopEscape();
+              detachEscape.current = listenForEscape(e.currentTarget.contentWindow, () =>
+                onOpenChangeRef.current(false),
+              );
+            }}
             className="min-h-0 w-full flex-1 border-0 bg-white"
           />
         ) : null}

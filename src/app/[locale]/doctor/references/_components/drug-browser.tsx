@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { useDoctorFavorites } from "../../reception/_hooks/use-doctor-favorites";
+import { UnstarSchemaConfirm } from "../../reception/_components/unstar-schema-confirm";
 import { useFrequentDrugs } from "../../reception/_hooks/use-frequent-drugs";
 import {
   useDrugCatalog,
@@ -105,7 +106,8 @@ export function DrugBrowser() {
   }, []);
 
   const facets = useDrugFacets();
-  const { pinned, toggle } = useDoctorFavorites("DRUG");
+  const { pinned, requestToggle, pendingUnstar, confirmUnstar, cancelUnstar } =
+    useDoctorFavorites("DRUG");
   const frequent = useFrequentDrugs(30);
 
   // Favourites and «часто назначаю» are id sets resolved through the same
@@ -358,12 +360,20 @@ export function DrugBrowser() {
                       term={searching ? term : ""}
                       categoryLabel={categoryLabel}
                       pinned={pinned.has(d.id)}
-                      onTogglePin={() => toggle(d.id)}
+                      onTogglePin={() => requestToggle(d.id)}
                       onOpen={setSelected}
                       pinLabel={
                         pinned.has(d.id) ? t("drugs.unpin") : t("drugs.pin")
                       }
                     />
+                    {pendingUnstar?.entityCode === d.id ? (
+                      // Unstarring would delete his arsenal schema too.
+                      <UnstarSchemaConfirm
+                        onConfirm={confirmUnstar}
+                        onCancel={cancelUnstar}
+                        className="mx-2 mb-1"
+                      />
+                    ) : null}
                   </li>
                 ))}
               </ul>

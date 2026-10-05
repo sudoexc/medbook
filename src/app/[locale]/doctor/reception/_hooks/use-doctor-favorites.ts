@@ -26,7 +26,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { ARSENAL_MAX } from "@/lib/arsenal";
+import { ARSENAL_MAX, isEmptyDrugSchema, parseDrugArsenalSchema } from "@/lib/arsenal";
 
 export type CatalogEntityType =
   | "DRUG"
@@ -206,6 +206,27 @@ export function favoriteToggleOptions(
   };
 }
 
+/**
+ * Whether unstarring `entityCode` would also throw away the schema he set
+ * for it on «Мой арсенал».
+ *
+ * WHY: the schema lives on the pin itself (DoctorFavorite.schema), so an
+ * unstar deletes it with the row. A star is one quiet click, and a stray
+ * one used to erase a dose, times and course he had typed in on the
+ * arsenal page. Such an unstar asks first (inline, two buttons); a pin
+ * without a schema, or a pin, still goes at once.
+ */
+export function unstarDropsSchema(
+  list: readonly DoctorFavoriteRow[],
+  entityCode: string,
+): boolean {
+  const row = list.find((f) => f.entityCode === entityCode);
+  return !!row && !isEmptyDrugSchema(parseDrugArsenalSchema(row.schema));
+}
+
+/** An unstar waiting for «Убрать» or «Оставить»; `slot` says which row asked. */
+export type PendingUnstar = { entityCode: string; slot: string };
+
 /** Pin or unpin, decided from the list as it stands right now (the cache). */
 export function nextFavoriteToggle(
   queryClient: QueryClient,
@@ -253,7 +274,9 @@ export function useDoctorFavorites(entityType: CatalogEntityType) {
         ? toast.error(t("favorites.arsenalFull", { max: ARSENAL_MAX }), {
             id: "doctor-favorites-save",
           })
-        : toast.error(t("favorites.saveFailed"), { id: "doctor-favorites-save" }),
+        : error instanceof FavoriteWriteError && error.reason === "diagnosis_unknown"
+          ? toast.error(t("favorites.diagnosisUnknown"), { id: "doctor-favorites-save" })
+          : toast.error(t("favorites.saveFailed"), { id: "doctor-favorites-save" }),
     ),
   );
 
@@ -264,11 +287,39 @@ export function useDoctorFavorites(entityType: CatalogEntityType) {
     [mutate, queryClient, entityType],
   );
 
+  // A star click from the screen: an unstar that would lose an arsenal
+  // schema waits for an answer (`unstarDropsSchema`); anything else toggles
+  // at once, as `toggle` does.
+  const [pendingUnstar, setPendingUnstar] = React.useState<PendingUnstar | null>(null);
+  const requestToggle = React.useCallback(
+    (entityCode: string, slot: string = entityCode) => {
+      const list =
+        queryClient.getQueryData<DoctorFavoriteRow[]>(doctorFavoritesKey(entityType)) ?? [];
+      if (unstarDropsSchema(list, entityCode)) {
+        setPendingUnstar({ entityCode, slot });
+        return;
+      }
+      setPendingUnstar(null);
+      mutate(nextFavoriteToggle(queryClient, entityType, entityCode));
+    },
+    [mutate, queryClient, entityType],
+  );
+  const confirmUnstar = React.useCallback(() => {
+    if (!pendingUnstar) return;
+    setPendingUnstar(null);
+    mutate({ entityCode: pendingUnstar.entityCode, pin: false });
+  }, [mutate, pendingUnstar]);
+  const cancelUnstar = React.useCallback(() => setPendingUnstar(null), []);
+
   return {
     favorites,
     pinned,
     isLoading: query.isLoading,
     toggle,
+    requestToggle,
+    pendingUnstar,
+    confirmUnstar,
+    cancelUnstar,
     isToggling: mutation.isPending,
   };
 }

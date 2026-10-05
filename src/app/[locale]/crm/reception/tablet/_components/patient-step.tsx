@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ChevronRightIcon, PhoneIcon, SearchIcon, UserPlusIcon } from "lucide-react";
+import { ChevronRightIcon, GlobeIcon, PhoneIcon, SearchIcon, UserPlusIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useDebounced } from "@/hooks/use-debounced";
@@ -14,10 +14,12 @@ import {
   isCompleteLocal,
   phoneSearchTerm,
   phoneTail,
+  UZ_PREFIX,
 } from "@/lib/reception-tablet/phone";
 import {
   birthYearInput,
   draftFromSearch,
+  newPatientPhone,
   validateNewPatient,
   type NewPatientDraft,
   type NewPatientErrors,
@@ -303,6 +305,10 @@ function NewPatientForm({
     onDone({ kind: "new", ...v.value });
   };
 
+  const intl = draft.phoneCountry === "intl";
+  const phoneValue = intl ? (draft.phoneIntl ?? "") : draft.phoneLocal;
+  const setPhoneValue = (v: string) => set(intl ? { phoneIntl: v } : { phoneLocal: v });
+
   const fieldClass =
     "h-[4.5rem] w-full rounded-2xl border bg-card px-5 text-[22px] font-medium text-foreground outline-none placeholder:text-muted-foreground/50 focus:ring-2 focus:ring-ring";
 
@@ -335,7 +341,7 @@ function NewPatientForm({
             // «Далее» on the iPad keyboard with the number still to dial:
             // put the keyboard away so the keypad below is in reach, instead
             // of submitting a form that would only answer «наберите номер».
-            if (e.key === "Enter" && !isCompleteLocal(draft.phoneLocal)) {
+            if (e.key === "Enter" && !newPatientPhone(draft)) {
               e.preventDefault();
               e.currentTarget.blur();
             }
@@ -353,27 +359,47 @@ function NewPatientForm({
 
       {/* The phone as on the search: the field with the keypad under it
           (an iPad has no number pad of its own, its keyboard would cover
-          half the screen), the year and the sex beside them. */}
+          half the screen), the year and the sex beside them. «Другая
+          страна» swaps the +998 digits for a whole international number,
+          on the same keypad; each keeps what was typed into it. */}
       <div className="grid gap-6 md:grid-cols-[minmax(0,25rem)_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
+          <Segmented
+            label={t("phoneCountry")}
+            value={intl ? "intl" : "uz"}
+            onChange={(v) => v && set({ phoneCountry: v })}
+            options={[
+              { value: "uz", label: UZ_PREFIX, icon: <PhoneIcon className="size-5" /> },
+              { value: "intl", label: t("otherCountry"), icon: <GlobeIcon className="size-5" /> },
+            ]}
+          />
           <div className="flex flex-col gap-2">
             <PhoneField
+              key={intl ? "intl" : "uz"}
               id="tablet-new-phone"
               label={t("phone")}
-              local={draft.phoneLocal}
-              onChange={(phoneLocal) => set({ phoneLocal })}
+              kind={intl ? "intl" : "uz"}
+              local={phoneValue}
+              onChange={setPhoneValue}
               invalid={Boolean(errors?.phone)}
             />
             {errors?.phone ? (
               <p className="text-[15px] text-destructive">
-                {errors.phone === "required" ? t("errPhoneRequired") : t("errPhoneIncomplete")}
+                {errors.phone === "required"
+                  ? t("errPhoneRequired")
+                  : errors.phone === "intlInvalid"
+                    ? t("errPhoneIntl")
+                    : t("errPhoneIncomplete")}
               </p>
+            ) : intl ? (
+              <p className="text-[15px] text-muted-foreground">{t("intlHint")}</p>
             ) : null}
           </div>
           <PhoneKeypad
             fieldId="tablet-new-phone"
-            local={draft.phoneLocal}
-            onChange={(phoneLocal) => set({ phoneLocal })}
+            kind={intl ? "intl" : "uz"}
+            local={phoneValue}
+            onChange={setPhoneValue}
           />
         </div>
         <div className="flex flex-col gap-6">

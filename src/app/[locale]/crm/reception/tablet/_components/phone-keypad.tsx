@@ -7,19 +7,28 @@ import { DeleteIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   formatLocal,
+  INTL_PREFIX,
+  intlDigitsFrom,
   KEYPAD_ROWS,
   localDigitsFrom,
+  pressIntlKey,
   pressKey,
   UZ_PREFIX,
   type KeypadKey,
 } from "@/lib/reception-tablet/phone";
+
+/** «+998» and the 9 national digits, or «Другая страна»: «+» and the rest. */
+export type PhoneKind = "uz" | "intl";
 
 import { TOUCH } from "./tablet-ui";
 
 /**
  * The phone field: «+998» fixed in front, the national digits after it.
  * A real input (`inputmode="tel"`), so the iPad's own number pad and a paste
- * work too; the on-screen keypad below is the usual way in.
+ * work too; the on-screen keypad below is the usual way in. With `kind`
+ * «intl» the fixed part is only «+» and the field takes the whole
+ * international number, country code first, ungrouped (every country
+ * groups its numbers its own way).
  */
 export function PhoneField({
   id,
@@ -28,6 +37,7 @@ export function PhoneField({
   label,
   invalid,
   autoFocus,
+  kind = "uz",
 }: {
   id: string;
   local: string;
@@ -35,8 +45,11 @@ export function PhoneField({
   label: string;
   invalid?: boolean;
   autoFocus?: boolean;
+  kind?: PhoneKind;
 }) {
   const t = useTranslations("receptionTablet.patient");
+  const intl = kind === "intl";
+  const shown = intl ? intlDigitsFrom(local) : formatLocal(local);
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={id} className="text-[15px] font-semibold text-muted-foreground">
@@ -49,7 +62,7 @@ export function PhoneField({
         )}
       >
         <span className="select-none text-[28px] font-semibold tabular-nums text-muted-foreground">
-          {UZ_PREFIX}
+          {intl ? INTL_PREFIX : UZ_PREFIX}
         </span>
         <input
           id={id}
@@ -61,9 +74,13 @@ export function PhoneField({
           enterKeyHint="search"
           autoFocus={autoFocus}
           aria-invalid={invalid || undefined}
-          placeholder={t("phonePlaceholder")}
-          value={formatLocal(local)}
+          placeholder={intl ? t("intlPlaceholder") : t("phonePlaceholder")}
+          value={shown}
           onChange={(e) => {
+            if (intl) {
+              onChange(intlDigitsFrom(e.target.value));
+              return;
+            }
             const next = localDigitsFrom(e.target.value);
             // Backspace over a group space leaves the digits as they were;
             // take it as deleting a digit, or the key would seem dead.
@@ -88,11 +105,14 @@ export function PhoneKeypad({
   local,
   onChange,
   fieldId,
+  kind = "uz",
 }: {
   local: string;
   onChange: (local: string) => void;
   /** The PhoneField this keypad types into. */
   fieldId?: string;
+  /** «intl»: up to 15 digits of an international number instead of 9. */
+  kind?: PhoneKind;
 }) {
   const t = useTranslations("receptionTablet.patient");
   const press = (key: KeypadKey) => {
@@ -105,7 +125,7 @@ export function PhoneKeypad({
     ) {
       focused.blur();
     }
-    onChange(pressKey(local, key));
+    onChange(kind === "intl" ? pressIntlKey(local, key) : pressKey(local, key));
   };
   return (
     <div role="group" aria-label={t("keypad")} className="grid grid-cols-3 gap-3">

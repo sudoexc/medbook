@@ -22,6 +22,18 @@ import type {
 /** Pins per kind. A longer list stops being a set he reaches for blind. */
 export const ARSENAL_MAX = 30;
 
+/**
+ * Pins the arsenal page and the visit screen read per kind: the 30, and
+ * room to show a few over it. Stars made before the cap of 30 can go past
+ * it; a doctor with more sees the first ones, in order.
+ *
+ * WHY shared: the reorder takes the order of exactly the pins the page
+ * showed (`reorderedWindow`). When the page read 50 and the server compared
+ * the drag with every pin, a doctor with more than 50 old stars could never
+ * save a drag («список изменился» on every try).
+ */
+export const ARSENAL_PINS_READ = 50;
+
 /** The «10 · 20 · 30» switch of a «Частые» column. */
 export const FREQUENT_LIMITS = [10, 20, 30] as const;
 export type FrequentLimit = (typeof FREQUENT_LIMITS)[number];
@@ -265,6 +277,30 @@ export function reorderedPositions(
     ok: true,
     positions: next.map((entityCode, sortOrder) => ({ entityCode, sortOrder })),
   };
+}
+
+/**
+ * The positions a drag writes when the page showed only the first
+ * `windowSize` of the pins (`ARSENAL_PINS_READ`): his order for the pins he
+ * saw, 0..k-1, then every pin past them in its current order, k.., so the
+ * ones he never saw stay below the ones he arranged. The window itself must
+ * match exactly, as in `reorderedPositions`: a list changed under the drag
+ * is still refused.
+ *
+ * `current` is every pin in arsenal order, the window first.
+ */
+export function reorderedWindow(
+  current: readonly string[],
+  next: readonly string[],
+  windowSize: number,
+): ReturnType<typeof reorderedPositions> {
+  const size = Math.max(0, Math.min(windowSize, current.length));
+  const plan = reorderedPositions(current.slice(0, size), next);
+  if (!plan.ok) return plan;
+  const tail = current
+    .slice(size)
+    .map((entityCode, i) => ({ entityCode, sortOrder: next.length + i }));
+  return { ok: true, positions: [...plan.positions, ...tail] };
 }
 
 /**

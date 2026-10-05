@@ -285,6 +285,51 @@ export function screenshotProblem(file: { type: string; size: number }): Screens
   return null;
 }
 
+/**
+ * HEIC / HEIF, the iPhone camera's own format. Safari draws it; Chrome and
+ * Firefox do not, so a HEIC screenshot showed there as a broken image.
+ * Judged by the type, or by the name when a picker gave no type.
+ */
+export function isHeicFile(file: { type?: string | null; name?: string | null }): boolean {
+  const type = (file.type || "").toLowerCase();
+  if (type) return type === "image/heic" || type === "image/heif";
+  return /\.(heic|heif)$/i.test(file.name || "");
+}
+
+/** «IMG_0042.HEIC» as the JPEG it became: «IMG_0042.jpg». */
+export function jpegFileName(name: string | null | undefined): string {
+  const base = (name || "").trim().replace(/\.[^./\\]*$/, "");
+  return `${base || "screenshot"}.jpg`;
+}
+
+/** Longest side a HEIC is redrawn at as a JPEG: a screenshot stays sharp, a 48 MP photo shrinks. */
+export const DEV_TASK_HEIC_EDGE = 3000;
+
+/**
+ * Each item through `upload`, one after another (a phone on a weak network
+ * finishes the first screenshot instead of stalling all of them), keeping
+ * which ones failed, so the dialog can offer them again instead of losing
+ * them.
+ */
+export async function uploadInTurn<T>(
+  items: readonly T[],
+  upload: (item: T) => Promise<unknown>,
+  onProgress?: (done: number) => void,
+): Promise<{ uploaded: T[]; failed: T[] }> {
+  const uploaded: T[] = [];
+  const failed: T[] = [];
+  for (const item of items) {
+    try {
+      await upload(item);
+      uploaded.push(item);
+    } catch {
+      failed.push(item);
+    }
+    onProgress?.(uploaded.length + failed.length);
+  }
+  return { uploaded, failed };
+}
+
 /** Longest side of the card preview the browser renders at upload. */
 export const DEV_TASK_THUMB_EDGE = 480;
 

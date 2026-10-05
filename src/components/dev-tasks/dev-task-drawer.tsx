@@ -36,6 +36,7 @@ import {
   DEV_TASK_PRIORITIES,
   DEV_TASK_TITLE_MAX,
   formatDevTaskNumber,
+  isHeicFile,
   screenshotProblem,
   type DevTaskDetailDto,
   type DevTaskPriority,
@@ -544,7 +545,14 @@ function Screenshots({
                 className="block size-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {broken[a.id] ? (
-                  <ImageIcon className="m-auto size-6 text-muted-foreground" aria-hidden />
+                  // A format this browser cannot draw (a HEIC in Chrome):
+                  // said in words, with the original one tap away below.
+                  <span className="flex size-full flex-col items-center justify-center gap-1 px-1 pb-7 text-center">
+                    <ImageIcon className="size-6 text-muted-foreground" aria-hidden />
+                    <span className="text-[11px] font-medium leading-tight text-muted-foreground">
+                      {isHeicFile({ type: a.mimeType }) ? t("heicNoPreview") : t("noPreview")}
+                    </span>
+                  </span>
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element -- a session-gated stream, not a static asset
                   <img
@@ -557,6 +565,16 @@ function Screenshots({
                   />
                 )}
               </button>
+              {broken[a.id] ? (
+                <a
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute inset-x-1 bottom-1 rounded-md bg-background/90 px-1 py-1 text-center text-[11px] font-medium leading-tight text-primary ring-1 ring-border hover:bg-background"
+                >
+                  {t("openOriginal")}
+                </a>
+              ) : null}
               {task.can.edit ? (
                 <button
                   type="button"

@@ -27,6 +27,43 @@ function isStaticCode(code: string): boolean {
 }
 
 /**
+ * The codes of `codes` a doctor may pin to his arsenal (a star on the visit
+ * screen, «В арсенал» on «Мой арсенал»), upper case: a code of the bundled
+ * classifier, or one the clinic's own catalog holds (a diagnosis learned
+ * with a code the classifier lacks, «код знаю, в базе нет»).
+ *
+ * WHY: a pin is only a code, and it was stored unchecked, so a typo or a
+ * code from nowhere sat in his 30 as a slot with no name that adds nothing
+ * to a visit. The clinic catalog is read in the caller's tenant context
+ * (one indexed query, only for codes the classifier does not know).
+ */
+export async function pinnableDiagnosisCodes(
+  codes: readonly string[],
+): Promise<Set<string>> {
+  const wanted = [...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean))];
+  const out = new Set(wanted.filter((c) => isStaticCode(c)));
+  const rest = wanted.filter((c) => !out.has(c));
+  if (rest.length === 0) return out;
+  // One `equals` per code: case-insensitive equality is the filter every
+  // Prisma version runs the same way (the clinic stored codes as typed).
+  const learned = await prisma.clinicDiagnosis.findMany({
+    where: { OR: rest.map((c) => ({ code: { equals: c, mode: "insensitive" as const } })) },
+    select: { code: true },
+    take: rest.length * 4,
+  });
+  for (const row of learned) {
+    const code = row.code?.trim().toUpperCase();
+    if (code && rest.includes(code)) out.add(code);
+  }
+  return out;
+}
+
+/** One code, see `pinnableDiagnosisCodes`. */
+export async function isPinnableDiagnosisCode(code: string): Promise<boolean> {
+  return (await pinnableDiagnosisCodes([code])).has(code.trim().toUpperCase());
+}
+
+/**
  * A wording compared without its punctuation: «Мигрень без ауры [простая
  * мигрень]» and «Мигрень без ауры, простая мигрень» are the same words.
  */

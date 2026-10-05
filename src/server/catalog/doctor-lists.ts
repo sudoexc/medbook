@@ -20,6 +20,7 @@
  * Ranking is pure and unit-tested (shortlist.ts, src/lib/arsenal.ts).
  */
 import {
+  ARSENAL_PINS_READ,
   normalizeFrequentLimit,
   orderArsenal,
   parseDrugArsenalSchema,
@@ -58,8 +59,6 @@ const USUAL_LIMIT = 300;
 const LINE_MATCH_LIMIT = 400;
 /** The clinic's newest notes read for clinic-wide use and the fallback. */
 export const CLINIC_NOTES_LIMIT = 400;
-/** Pins read per kind: the arsenal's 30, and room to show a few over it. */
-const PINS_READ = 50;
 
 const DAY_MS = 86_400_000;
 
@@ -233,7 +232,7 @@ export async function loadDoctorDrugLists(args: {
           where: { userId: doctor.userId, entityType: "DRUG" },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           select: { entityCode: true, schema: true, sortOrder: true, createdAt: true },
-          take: PINS_READ,
+          take: ARSENAL_PINS_READ,
         })
       : Promise.resolve([]),
     prisma.visitPrescription.findMany({
@@ -509,7 +508,7 @@ export async function loadDoctorDiagnosisLists(args: {
           where: { userId: doctor.userId, entityType: "ICD10" },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           select: { entityCode: true, sortOrder: true, createdAt: true },
-          take: PINS_READ,
+          take: ARSENAL_PINS_READ,
         })
       : Promise.resolve([]),
     prisma.visitNote.findMany({

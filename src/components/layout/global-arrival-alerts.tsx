@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
@@ -9,6 +10,7 @@ import { useRouter } from "@/i18n/navigation";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { deskHasReacted } from "@/lib/appointments/self-check-in";
 import { playNotificationSound } from "@/lib/notification-sound";
+import { isReceptionTabletPath } from "@/lib/reception-tablet/access";
 
 /** One alert per visit: a repeated event replaces it instead of stacking. */
 function alertId(appointmentId: string): string {
@@ -28,10 +30,20 @@ function alertId(appointmentId: string): string {
  * «Отметился в приложении» badge on the lists in the meantime.
  *
  * Mounted for the roles that check patients in (`canWork`).
+ *
+ * On the reception iPad page the alert still rings (the patient is waiting,
+ * and the tablet's «Пришли по записи» is where he is checked in), but
+ * without «Открыть»: that leads to the desktop reception and would drop
+ * the booking the receptionist is in the middle of.
  */
 export function GlobalArrivalAlerts({ canWork }: { canWork: boolean }) {
   const t = useTranslations("reception.live");
   const router = useRouter();
+  const onTablet = isReceptionTabletPath(usePathname());
+  const onTabletRef = React.useRef(onTablet);
+  React.useEffect(() => {
+    onTabletRef.current = onTablet;
+  }, [onTablet]);
 
   const handler = React.useCallback(
     (event: { type: string; payload?: unknown }) => {
@@ -59,13 +71,17 @@ export function GlobalArrivalAlerts({ canWork }: { canWork: boolean }) {
         description: p.time ? `${name} · ${p.time}` : name,
         // Until a person reacts: the patient is waiting to be met.
         duration: Number.POSITIVE_INFINITY,
-        action: {
-          label: t("open"),
-          onClick: () =>
-            router.push(
-              `/crm/reception?ap=${encodeURIComponent(appointmentId)}`,
-            ),
-        },
+        ...(onTabletRef.current
+          ? {}
+          : {
+              action: {
+                label: t("open"),
+                onClick: () =>
+                  router.push(
+                    `/crm/reception?ap=${encodeURIComponent(appointmentId)}`,
+                  ),
+              },
+            }),
         cancel: {
           label: t("dismiss"),
           onClick: () => undefined,

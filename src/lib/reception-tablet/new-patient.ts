@@ -10,7 +10,7 @@
  *
  * Pure: shared by the page and the unit tests.
  */
-import { isCompleteLocal, toE164 } from "./phone";
+import { intlToE164, isCompleteLocal, toE164 } from "./phone";
 
 /** Same floor as `parsePatientIdentity`: nobody alive was born earlier. */
 export const MIN_BIRTH_YEAR = 1900;
@@ -19,6 +19,13 @@ export type NewPatientDraft = {
   fullName: string;
   /** National digits, see `lib/reception-tablet/phone`. */
   phoneLocal: string;
+  /**
+   * «Другая страна»: the number is `phoneIntl`, the whole international
+   * number, instead of the +998 digits. Absent: an Uzbek number.
+   */
+  phoneCountry?: "uz" | "intl";
+  /** Digits of the international number, country code first. */
+  phoneIntl?: string;
   /** As typed: «», «19», «1985». */
   birthYear: string;
   gender: "MALE" | "FEMALE" | null;
@@ -27,13 +34,15 @@ export type NewPatientDraft = {
 export const EMPTY_NEW_PATIENT: NewPatientDraft = {
   fullName: "",
   phoneLocal: "",
+  phoneCountry: "uz",
+  phoneIntl: "",
   birthYear: "",
   gender: null,
 };
 
 export type NewPatientErrors = {
   fullName?: "required" | "short";
-  phone?: "required" | "incomplete";
+  phone?: "required" | "incomplete" | "intlInvalid";
   birthYear?: "invalid";
 };
 
@@ -106,7 +115,11 @@ export function validateNewPatient(
   if (!name) errors.fullName = "required";
   else if (!hasEnoughLetters(name)) errors.fullName = "short";
 
-  if (!draft.phoneLocal) errors.phone = "required";
+  const phone = newPatientPhone(draft);
+  if (draft.phoneCountry === "intl") {
+    if (!draft.phoneIntl) errors.phone = "required";
+    else if (!phone) errors.phone = "intlInvalid";
+  } else if (!draft.phoneLocal) errors.phone = "required";
   else if (!isCompleteLocal(draft.phoneLocal)) errors.phone = "incomplete";
 
   const year = parseBirthYear(draft.birthYear, now);
@@ -123,11 +136,22 @@ export function validateNewPatient(
     ok: true,
     value: {
       fullName: newPatientFullName(name, birthYear),
-      phone: toE164(draft.phoneLocal)!,
+      phone: phone!,
       birthYear,
       gender: draft.gender,
     },
   };
+}
+
+/**
+ * The number the form would send, E.164, or null while it is not whole:
+ * the +998 digits, or with «Другая страна» the international number. The
+ * server stores it with the same normalizer either way.
+ */
+export function newPatientPhone(draft: NewPatientDraft): string | null {
+  return draft.phoneCountry === "intl"
+    ? intlToE164(draft.phoneIntl ?? "")
+    : toE164(draft.phoneLocal);
 }
 
 /**

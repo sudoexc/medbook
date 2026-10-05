@@ -1,8 +1,11 @@
 "use client"
 
 import { useTheme } from "@/components/providers/theme-provider"
+import { isReceptionTabletPath } from "@/lib/reception-tablet/access"
+import { cn } from "@/lib/utils"
+import { usePathname } from "next/navigation"
 import { Toaster as Sonner } from "sonner"
-import type { ComponentProps } from "react"
+import type { CSSProperties, ComponentProps } from "react"
 
 type ToasterProps = ComponentProps<typeof Sonner>
 
@@ -10,15 +13,20 @@ type ToasterProps = ComponentProps<typeof Sonner>
  * Toast host using Sonner. Mount once in the root layout. Call `toast()` from
  * anywhere to fire notifications. See https://sonner.emilkowal.ski/
  */
-function Toaster({ ...props }: ToasterProps) {
+function Toaster({ className, style, ...props }: ToasterProps) {
   // The painted theme, not the stored choice: off the staff surfaces the
   // page is light whatever is stored (audit LD-17).
   const { resolvedTheme } = useTheme()
+  // The reception iPad page is read from arm's length and worked with a
+  // finger: its toasts get its own text and button sizes (`.toaster-tablet`
+  // in globals.css) and a wider card, whoever fired them.
+  const tablet = isReceptionTabletPath(usePathname())
 
   return (
     <Sonner
       theme={resolvedTheme}
-      className="toaster group"
+      className={cn("toaster group", tablet && "toaster-tablet", className)}
+      style={tablet ? ({ "--width": "26rem", ...style } as CSSProperties) : style}
       toastOptions={{
         classNames: {
           toast:

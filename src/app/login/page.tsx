@@ -108,8 +108,10 @@ function LoginForm() {
     const session = await getSession();
     const role = (session?.user?.role as Role | undefined) ?? null;
     const locale = readLocaleCookie();
+    // The account's start page (e.g. the iPad reception account's tablet
+    // page) replaces the role's home; the session carries it only when set.
     const target = role
-      ? safeCallbackOrHome(callbackUrl, role, locale)
+      ? safeCallbackOrHome(callbackUrl, role, locale, session?.user?.startPage)
       : `/${locale}/crm`;
     router.push(target);
     router.refresh();

@@ -61,6 +61,7 @@ import {
 import { realClientIp } from "./client-ip";
 import { clinicLocksOut } from "@/server/auth/clinic-access";
 import { isUserActivityRequest } from "./user-activity";
+import { startPageFor } from "./start-page";
 
 const APP_ROLES: ReadonlySet<Role> = new Set([
   "SUPER_ADMIN",
@@ -260,7 +261,19 @@ async function checkStaffCredentials(
     clinicId: user.clinicId ?? null,
     mustChangePassword: user.mustChangePassword,
     preferredLocale: user.preferredLocale,
+    startPage: user.startPage ?? null,
   };
+}
+
+/**
+ * Stamp the account's start page on the JWT, or drop the claim when none
+ * applies: only accounts that have one carry it, so everyone else's token
+ * and session payload stay exactly as they were.
+ */
+function applyStartPage(token: JWT, role: unknown, value: unknown): void {
+  const page = startPageFor(typeof role === "string" ? role : null, value);
+  if (page) token.startPage = page;
+  else delete token.startPage;
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -420,11 +433,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id?: string;
           mustChangePassword?: boolean;
           preferredLocale?: string;
+          startPage?: string | null;
         };
         token.role = u.role;
         token.clinicId = u.clinicId ?? null;
         token.userId = u.id ?? token.sub;
         token.mustChangePassword = Boolean(u.mustChangePassword);
+        applyStartPage(token, u.role, u.startPage);
         // Seed the UI-language cookie from the persisted staff preference so a
         // fresh browser/device lands in the saved language. Best-effort: a
         // cookie-write failure (e.g. invoked outside a request scope) must
@@ -505,6 +520,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
           token.mustChangePassword = verdict.fresh.mustChangePassword;
           if (!verdict.fresh.mustChangePassword) token.pwTempAt = null;
+          // JWTs minted before start pages existed pick theirs up here, with
+          // no re-login; an admin's change applies the same way.
+          applyStartPage(token, verdict.fresh.role, verdict.fresh.startPage);
         }
       }
       // SUPER_ADMIN "impersonate clinic" cookie support. We re-read the
@@ -592,6 +610,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         typeof token.sid === "string" && token.sid ? token.sid : null;
       session.user.tempPasswordLoginAt =
         typeof token.pwTempAt === "number" ? token.pwTempAt : null;
+      // Only when set: the login forms and the proxy read it.
+      const startPage = startPageFor(role, token.startPage);
+      if (startPage) session.user.startPage = startPage;
       // Phase 19 Wave 4 — surface the active impersonation stamp so the
       // CRM layout and the createApiHandler wrapper can reject writes under
       // VIEW_ONLY without re-reading the grant row on every request.

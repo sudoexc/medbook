@@ -139,8 +139,19 @@ describe("decideStaffSession", () => {
     expect(v).toEqual({
       ok: true,
       sessionId: "s1",
-      fresh: { role: "RECEPTIONIST", clinicId: "c1", mustChangePassword: false },
+      fresh: { role: "RECEPTIONIST", clinicId: "c1", mustChangePassword: false, startPage: null },
     });
+  });
+
+  it("hands back the account's current start page, so open sessions follow an admin's change", () => {
+    const v = decideStaffSession({
+      claims,
+      binding: sid,
+      row: row(),
+      user: user({ startPage: "reception-tablet" }),
+      now: NOW,
+    });
+    expect(v).toMatchObject({ ok: true, fresh: { startPage: "reception-tablet" } });
   });
 
   it("refuses a JWT with neither a session id nor a session cookie (no more legacy pass)", () => {

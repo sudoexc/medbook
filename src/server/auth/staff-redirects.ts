@@ -3,6 +3,14 @@
  * so they can be unit-tested without Next's request objects (audit DC-02).
  */
 import { shouldRedirectDoctorToCabinet } from "@/lib/doctor-cabinet";
+import {
+  DESKTOP_MODE_PARAM,
+  DESKTOP_MODE_VALUE,
+  isStartPageEntry,
+  overrideCookieValue,
+  startPageFor,
+  startPageTarget,
+} from "@/lib/start-page";
 
 // /crm, /doctor and their /<locale>/ variants — capture the locale (if
 // present), the surface and the subpath beneath it.
@@ -108,4 +116,60 @@ export function sendsSuperAdminToPlatform(args: {
     !args.clinicId &&
     !isExemptFromForcedRedirect(args.subpath, [ACCOUNT_SUBPATH])
   );
+}
+
+export type StartPageDecision =
+  /** Send the request to the start page; `target` is under the locale. */
+  | { kind: "redirect"; target: string }
+  /** Let it through and set the desktop override cookie to `value`. */
+  | { kind: "remember-desktop"; value: string }
+  /** Let it through and drop the desktop override cookie. */
+  | { kind: "forget-desktop" }
+  | null;
+
+/**
+ * Pure: the per-account start page step of the staff-page gate (owner
+ * request 05.10.2026, see src/lib/start-page.ts).
+ *
+ *   - the bare CRM entry (/crm, /crm/reception, no query) → the start page,
+ *     unless this sign-in deliberately switched to the desktop reception;
+ *   - `/crm/reception?mode=desktop` (the tablet's «Обычный режим») → let it
+ *     through and remember the switch, so the sidebar's «Ресепшн» does not
+ *     bounce the receptionist back to the tablet;
+ *   - the start page itself → forget the switch: back in tablet mode, the
+ *     next visit to the CRM root opens the tablet again.
+ *
+ * Accounts without a start page are never touched (no cookie either).
+ */
+export function startPageDecision(args: {
+  surface: "crm" | "doctor";
+  subpath: string;
+  /** `request.nextUrl.search`: "" or "?…". */
+  search: string;
+  role: string | undefined;
+  startPage: string | null | undefined;
+  sessionId: string | null | undefined;
+  overrideCookie: string | null | undefined;
+}): StartPageDecision {
+  const page = startPageFor(args.role, args.startPage);
+  if (!page || args.surface !== "crm") return null;
+  const subpath = args.subpath.replace(/^\/+|\/+$/g, "");
+  const target = startPageTarget(page);
+  const want = overrideCookieValue(args.sessionId);
+
+  if (`${args.surface}/${subpath}` === target) {
+    return args.overrideCookie ? { kind: "forget-desktop" } : null;
+  }
+  const params = new URLSearchParams(args.search);
+  if (
+    params.get(DESKTOP_MODE_PARAM) === DESKTOP_MODE_VALUE &&
+    isStartPageEntry(args.surface, subpath, "")
+  ) {
+    return args.overrideCookie === want
+      ? null
+      : { kind: "remember-desktop", value: want };
+  }
+  if (!isStartPageEntry(args.surface, subpath, args.search)) return null;
+  if (args.overrideCookie === want) return null;
+  return { kind: "redirect", target };
 }

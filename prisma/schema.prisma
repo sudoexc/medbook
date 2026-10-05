@@ -800,6 +800,14 @@ model User {
   // staff-notification dispatcher reads to localise its sends.
   preferredLocale String @default("ru") // "ru" | "uz"
 
+  // Per-account start page (owner request 05.10.2026): the clinic's iPad
+  // reception account opens straight into the tablet page after sign-in and
+  // whenever it opens the CRM root. Null = the role's usual home. A plain
+  // string, not an enum, so a new start page needs no migration; the app only
+  // honours whitelisted values for the roles they belong to
+  // (src/lib/start-page.ts).
+  startPage String?
+
   doctor                      Doctor?
   accounts                    Account[]
   sessions                    Session[]

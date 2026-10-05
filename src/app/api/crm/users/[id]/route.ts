@@ -8,6 +8,10 @@
  * DOCTOR role releases the card like DELETE does, and an active DOCTOR
  * without a card (a reactivation, a promotion) needs `doctorId`. Nobody can
  * deactivate their own account here either, as in DELETE.
+ *
+ * `startPage` (owner request 05.10.2026, src/lib/start-page.ts) is accepted
+ * only for the roles it belongs to (the tablet page: RECEPTIONIST), and is
+ * cleared when the account leaves that role.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -20,6 +24,7 @@ import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateUserSchema } from "@/server/schemas/user";
 import { planDoctorBinding, redactStaffUser } from "@/server/users/staff-user";
 import { runClinicWide } from "@/server/branches/branch-rules";
+import { planStartPageUpdate } from "@/lib/start-page";
 import {
   LOGIN_LOOKUP_LIMIT,
   anyCaseEmail,
@@ -112,6 +117,14 @@ export const PATCH = createApiHandler(
     if (!binding.ok) {
       return err("validation", 422, { reason: binding.reason });
     }
+    const startPage = planStartPageUpdate({
+      nextRole: body.role ?? before.role,
+      current: before.startPage,
+      requested: body.startPage,
+    });
+    if (!startPage.ok) {
+      return err("validation", 422, { reason: startPage.reason });
+    }
     if (binding.linkCardId) {
       // Scoped to this clinic by the tenant extension; spelled out anyway.
       const linkCardId = binding.linkCardId;
@@ -142,6 +155,7 @@ export const PATCH = createApiHandler(
             ...(rest.photoUrl !== undefined ? { photoUrl: rest.photoUrl } : {}),
             ...(rest.telegramId !== undefined ? { telegramId: rest.telegramId } : {}),
             ...(rest.active !== undefined ? { active: rest.active } : {}),
+            ...(startPage.write ? { startPage: startPage.value } : {}),
           },
         });
         // Release first: Doctor.userId is unique.

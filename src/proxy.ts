@@ -20,7 +20,12 @@
  *      a clinic visit ran out) goes back to /admin/clinics, with
  *      `?expired=1` when that is why (audit G5-09). Here and not in the CRM
  *      layout: a layout does not re-render on client-side navigation.
- *   5. Defer locale handling to next-intl.
+ *   5. An account with a start page (the iPad reception account) opening
+ *      the bare CRM entry goes to that page; `?mode=desktop` switches it to
+ *      the desktop reception for the rest of the sign-in (see
+ *      `startPageDecision`). Read from the session the gate already holds,
+ *      no extra query.
+ *   6. Defer locale handling to next-intl.
  *
  * Steps 2 and 3 send a doctor to /doctor/me/… and everyone else to /crm/me/…
  * The CRM layout bounces doctors into their cabinet, so before DC-02 a doctor
@@ -47,7 +52,9 @@ import {
   isExemptFromForcedRedirect,
   parseStaffPath,
   sendsSuperAdminToPlatform,
+  startPageDecision,
 } from "@/server/auth/staff-redirects";
+import { START_PAGE_OVERRIDE_COOKIE } from "@/lib/start-page";
 import { latestGrantLapsedRecently } from "@/server/platform/impersonation";
 import type { Role } from "@/lib/tenant-context";
 
@@ -174,6 +181,39 @@ export default async function proxy(request: NextRequest) {
       url.pathname = "/admin/clinics";
       url.search = expired ? "?expired=1" : "";
       return NextResponse.redirect(url);
+    }
+
+    // 5. Per-account start page.
+    const start = startPageDecision({
+      surface: staff.surface,
+      subpath: staff.subpath,
+      search: request.nextUrl.search,
+      role: session.user.role,
+      startPage: session.user.startPage ?? null,
+      sessionId: session.user.sessionId ?? null,
+      overrideCookie: request.cookies.get(START_PAGE_OVERRIDE_COOKIE)?.value ?? null,
+    });
+    if (start?.kind === "redirect") {
+      return NextResponse.redirect(
+        buildStaffRedirect(request, staff.locale, start.target),
+      );
+    }
+    if (start) {
+      const res = intlMiddleware(request);
+      // A session cookie (no max-age): the desktop switch ends with the
+      // browser session, and its value ties it to this sign-in.
+      res.cookies.set(
+        START_PAGE_OVERRIDE_COOKIE,
+        start.kind === "remember-desktop" ? start.value : "",
+        {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          ...(start.kind === "forget-desktop" ? { maxAge: 0 } : {}),
+        },
+      );
+      return res;
     }
   }
   return intlMiddleware(request);

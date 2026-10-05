@@ -505,7 +505,9 @@ describe("the migration is additive and safe on existing rows", () => {
     expect(ts).toBeGreaterThanOrEqual(20261003300000);
     expect(ts).toBeLessThanOrEqual(20261003399999);
     const all = readdirSync(path.join(root, "prisma/migrations")).filter((n) => /^\d{14}_/.test(n)).sort();
-    expect(all.at(-1)).toBe(dir);
+    // WHY not «the latest»: later migrations (e.g. the 05.10 start page) come
+    // after it. What matters is that nothing was slipped in before it.
+    expect(all[all.indexOf(dir!) - 1]).toBe("20261003100000_dev_tasks");
   });
 
   it("only adds: nullable or defaulted columns, and indexes", () => {

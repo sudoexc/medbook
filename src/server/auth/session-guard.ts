@@ -85,12 +85,17 @@ export type GuardUser = {
   idleTimeoutMinutes: number | null;
   /** `Clinic.active` of the user's clinic (audit SEC-10); null without one. */
   clinicActive?: boolean | null;
+  /** Raw `User.startPage` (src/lib/start-page.ts); null without one. */
+  startPage?: string | null;
 };
 
 export type FreshClaims = {
   role: Role;
   clinicId: string | null;
   mustChangePassword: boolean;
+  /** Re-read like the role, so an admin setting or clearing the start page
+   *  applies on the next request of sessions that are already open. */
+  startPage: string | null;
 };
 
 export type StaffSessionVerdict =
@@ -180,6 +185,7 @@ export function decideStaffSession(args: {
       role: user.role,
       clinicId: user.clinicId,
       mustChangePassword: user.mustChangePassword,
+      startPage: user.startPage ?? null,
     },
   };
 }
@@ -280,6 +286,7 @@ async function loadSnapshot(
           clinicId: true,
           mustChangePassword: true,
           lastSessionRotatedAt: true,
+          startPage: true,
           clinic: { select: { sessionIdleTimeoutMinutes: true, active: true } },
         },
       }),
@@ -297,6 +304,7 @@ async function loadSnapshot(
           lastSessionRotatedAt: user.lastSessionRotatedAt,
           idleTimeoutMinutes: user.clinic?.sessionIdleTimeoutMinutes ?? null,
           clinicActive: user.clinic?.active ?? null,
+          startPage: user.startPage ?? null,
         }
       : null,
     loadedAt: now.getTime(),

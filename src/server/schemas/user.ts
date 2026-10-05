@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { queryBool } from "./query-bool";
+import { START_PAGES } from "@/lib/start-page";
 
 export const RoleEnum = z.enum([
   "SUPER_ADMIN",
@@ -59,6 +60,10 @@ export const UpdateUserSchema = z
     telegramId: StaffTelegramIdSchema.optional().nullable(),
     active: z.boolean().optional(),
     doctorId: z.string().optional(),
+    // «Стартовая страница»: a whitelisted value or null for the role's usual
+    // home. Which roles may have which page is checked by the route
+    // (planStartPageUpdate), against the role after the edit.
+    startPage: z.enum(START_PAGES).nullable().optional(),
   });
 
 export const QueryUserSchema = z.object({

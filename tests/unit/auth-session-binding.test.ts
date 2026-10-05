@@ -349,3 +349,92 @@ describe("jwt callback: the guard itself failing", () => {
     expect(token).toMatchObject({ role: "ADMIN", clinicId: "c1" });
   });
 });
+
+describe("start page claim (owner request 05.10.2026)", () => {
+  const base = { userId: "u1", sub: "u1", role: "RECEPTIONIST", clinicId: "c1", mustChangePassword: false };
+
+  it("the sign-in stamps the account's start page on the JWT", async () => {
+    const token = await cfg().callbacks.jwt({
+      token: {},
+      user: { id: "u1", role: "RECEPTIONIST", clinicId: "c1", startPage: "reception-tablet" },
+    });
+    expect(token!.startPage).toBe("reception-tablet");
+  });
+
+  it("an account without one, or with one its role cannot have, carries no claim at all", async () => {
+    const plain = await cfg().callbacks.jwt({
+      token: {},
+      user: { id: "u1", role: "RECEPTIONIST", clinicId: "c1", startPage: null },
+    });
+    expect(plain).not.toHaveProperty("startPage");
+    const admin = await cfg().callbacks.jwt({
+      token: {},
+      user: { id: "u2", role: "ADMIN", clinicId: "c1", startPage: "reception-tablet" },
+    });
+    expect(admin).not.toHaveProperty("startPage");
+  });
+
+  it("a JWT minted before start pages existed picks it up on the next request, no re-login", async () => {
+    h.evaluate.mockResolvedValue({
+      ok: true,
+      sessionId: "s1",
+      fresh: { role: "RECEPTIONIST", clinicId: "c1", mustChangePassword: false, startPage: "reception-tablet" },
+    });
+    const token = await cfg().callbacks.jwt({ token: { ...base, sid: "s1" } });
+    expect(token!.startPage).toBe("reception-tablet");
+  });
+
+  it("an admin clearing it drops the claim from open sessions", async () => {
+    h.evaluate.mockResolvedValue({
+      ok: true,
+      sessionId: "s1",
+      fresh: { role: "RECEPTIONIST", clinicId: "c1", mustChangePassword: false, startPage: null },
+    });
+    const token = await cfg().callbacks.jwt({
+      token: { ...base, sid: "s1", startPage: "reception-tablet" },
+    });
+    expect(token).not.toHaveProperty("startPage");
+  });
+
+  it("a database blip keeps the claim as it was", async () => {
+    h.evaluate.mockResolvedValue({ ok: true, sessionId: null, fresh: null });
+    const token = await cfg().callbacks.jwt({
+      token: { ...base, sid: "s1", startPage: "reception-tablet" },
+    });
+    expect(token!.startPage).toBe("reception-tablet");
+  });
+
+  it("the session carries it only when set, so other sessions' payload is unchanged", async () => {
+    const withIt = await cfg().callbacks.session({
+      session: { user: {} },
+      token: { ...base, sid: "s1", startPage: "reception-tablet" },
+    });
+    expect(withIt.user.startPage).toBe("reception-tablet");
+    const without = await cfg().callbacks.session({
+      session: { user: {} },
+      token: { ...base, sid: "s1" },
+    });
+    expect(without.user).not.toHaveProperty("startPage");
+  });
+
+  it("authorize hands the stored start page to the jwt callback", async () => {
+    h.users.set("ipad@x.uz", {
+      id: "u9",
+      email: "ipad@x.uz",
+      name: "iPad",
+      role: "RECEPTIONIST",
+      clinicId: "c1",
+      active: true,
+      passwordHash: await bcrypt.hash("pw", 4),
+      mustChangePassword: false,
+      totpEnabledAt: null,
+      startPage: "reception-tablet",
+    });
+    const authorize = cfg().providers[0]!.options.authorize;
+    const user = await authorize(
+      { email: "ipad@x.uz", password: "pw" },
+      new Request("https://x/api/auth/callback/credentials", { headers: { "x-real-ip": "203.0.113.9" } }),
+    );
+    expect(user).toMatchObject({ id: "u9", startPage: "reception-tablet" });
+  });
+});

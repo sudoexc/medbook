@@ -97,11 +97,11 @@ describe("ST-18 · user dialog refusals are translated", () => {
     ]) {
       expect(map[reason], reason).toBeTruthy();
     }
-    // Each mapped reason is one the users API (or its binding plan) sends.
-    const binding = readFileSync(
-      path.join(process.cwd(), "src/server/users/staff-user.ts"),
-      "utf8",
-    );
+    // Each mapped reason is one the users API (or its binding and start
+    // page plans) sends.
+    const binding =
+      readFileSync(path.join(process.cwd(), "src/server/users/staff-user.ts"), "utf8") +
+      readFileSync(path.join(process.cwd(), "src/lib/start-page.ts"), "utf8");
     for (const reason of Object.keys(map)) {
       expect(routes + binding, reason).toContain(`"${reason}"`);
     }

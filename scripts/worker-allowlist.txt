@@ -79,6 +79,7 @@ _catalog-plan.ts
 
 # Accounts and bots
 bootstrap-super-admin.ts
+set-start-page.ts
 _seed-passwords.ts
 audit-known-passwords.ts
 connect-tg-bot.ts

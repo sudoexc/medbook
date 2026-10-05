@@ -43,6 +43,7 @@ import { Badge } from "@/components/ui/badge";
 
 import { SettingsApiError, settingsFetch } from "../../_hooks/use-settings-api";
 import { PasswordReentryDialog } from "../../_components/password-reentry-dialog";
+import { parseStartPage, startPageAllowedFor, type StartPage } from "@/lib/start-page";
 
 type Role =
   | "ADMIN"
@@ -65,6 +66,8 @@ type UserRow = {
   totpEnabled: boolean;
   /** The schedule card a doctor login holds (audit ST-04). */
   doctorCard: { id: string; nameRu: string } | null;
+  /** Page the account opens on (src/lib/start-page.ts); null = the usual. */
+  startPage?: string | null;
 };
 
 const ROLES: Role[] = [
@@ -89,6 +92,7 @@ const USER_ERROR_KEYS: Record<string, string> = {
   doctor_id_required: "users.doctorRequiredError",
   cannot_deactivate_self: "users.cannotDeactivateSelf",
   last_admin: "users.lastAdminError",
+  start_page_not_allowed: "users.startPageNotAllowed",
 };
 
 function useUserErrorToast() {
@@ -268,7 +272,14 @@ export function UsersSettingsClient() {
                   <td className="px-3 py-2 font-medium">{u.name}</td>
                   <td className="px-3 py-2 text-muted-foreground">{u.email}</td>
                   <td className="px-3 py-2">
-                    <Badge variant="outline">{t(`users.roles.${u.role}`)}</Badge>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant="outline">{t(`users.roles.${u.role}`)}</Badge>
+                      {/* So the admin sees which account opens in tablet mode. */}
+                      {parseStartPage(u.startPage) === "reception-tablet" &&
+                      startPageAllowedFor(u.role, "reception-tablet") ? (
+                        <Badge variant="secondary">{t("users.startPageBadge")}</Badge>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {u.phone ?? "—"}
@@ -765,6 +776,7 @@ function EditUserDialog({
     telegramId: string;
     active: boolean;
     doctorId: string;
+    startPage: StartPage | "";
   }>({
     name: row.name,
     email: row.email,
@@ -773,7 +785,13 @@ function EditUserDialog({
     telegramId: row.telegramId ?? "",
     active: row.active,
     doctorId: row.doctorCard?.id ?? "",
+    startPage: parseStartPage(row.startPage) ?? "",
   });
+  // «Стартовая страница» is offered where it applies: today the tablet page,
+  // for reception accounts. The server clears it when the role changes.
+  const offersStartPage = startPageAllowedFor(form.role, "reception-tablet");
+  const startPageChanged =
+    offersStartPage && (form.startPage || null) !== (parseStartPage(row.startPage) ?? null);
   const telegramIdInvalid =
     form.telegramId.trim() !== "" && !/^\d{1,20}$/.test(form.telegramId.trim());
 
@@ -809,6 +827,8 @@ function EditUserDialog({
             : {}),
           active: form.active,
           ...(needsCard && form.doctorId ? { doctorId: form.doctorId } : {}),
+          // Sent only when edited, like the Telegram ID.
+          ...(startPageChanged ? { startPage: form.startPage || null } : {}),
         }),
       }),
     onSuccess: () => {
@@ -905,6 +925,30 @@ function EditUserDialog({
                 : t("users.telegramIdHint")}
             </p>
           </div>
+          {offersStartPage ? (
+            <div>
+              <Label htmlFor="edit-start-page">{t("users.startPage")}</Label>
+              <select
+                id="edit-start-page"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                value={form.startPage}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    startPage: parseStartPage(e.target.value) ?? "",
+                  })
+                }
+              >
+                <option value="">{t("users.startPageDefault")}</option>
+                <option value="reception-tablet">
+                  {t("users.startPageTablet")}
+                </option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("users.startPageHint")}
+              </p>
+            </div>
+          ) : null}
           {needsCard ? (
             <div>
               <Label htmlFor="edit-doctor">{t("users.doctorBinding")}</Label>

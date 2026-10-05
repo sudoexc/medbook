@@ -1,6 +1,8 @@
 import "next-auth";
 import "next-auth/jwt";
 
+import type { StartPage } from "@/lib/start-page";
+
 type AppRole =
   | "SUPER_ADMIN"
   | "ADMIN"
@@ -20,6 +22,8 @@ declare module "next-auth" {
     clinicId?: string | null;
     mustChangePassword?: boolean;
     preferredLocale?: string;
+    /** Raw `User.startPage`; the jwt callback keeps only a value that applies. */
+    startPage?: string | null;
   }
   interface Session {
     user: {
@@ -42,6 +46,11 @@ declare module "next-auth" {
       // null otherwise. Lets that fresh session set a new password without
       // re-typing the temporary one, for a short window only.
       tempPasswordLoginAt?: number | null;
+      // The account's start page (src/lib/start-page.ts), present only when
+      // one applies to it: the login forms send the user there and the proxy
+      // reroutes the bare CRM entry to it. Absent for everyone else, so their
+      // session payload is unchanged.
+      startPage?: StartPage;
     };
   }
 }
@@ -60,5 +69,7 @@ declare module "next-auth/jwt" {
     sidUnbound?: boolean;
     /** Epoch ms of a sign-in made with a temporary password. */
     pwTempAt?: number | null;
+    /** The account's start page, set only when one applies. */
+    startPage?: StartPage;
   }
 }

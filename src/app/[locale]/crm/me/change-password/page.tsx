@@ -17,7 +17,7 @@ export default async function ChangePasswordPage({
   // will 401 and the page won't break.
   const view = changePasswordView(session?.user);
   const homeHref = session?.user
-    ? homeForRole(session.user.role, locale)
+    ? homeForRole(session.user.role, locale, session.user.startPage)
     : `/${locale}/crm`;
   return (
     <ChangePasswordClient

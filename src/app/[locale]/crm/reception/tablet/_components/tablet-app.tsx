@@ -423,8 +423,10 @@ function TopBar({
         <span className="text-3xl font-bold tabular-nums text-foreground" suppressHydrationWarning>
           {formatDate(now, lang, "time")}
         </span>
+        {/* `?mode=desktop`: an account whose start page is this tablet page
+            would otherwise be sent straight back here by the proxy. */}
         <Link
-          href="/crm/reception"
+          href="/crm/reception?mode=desktop"
           aria-disabled={locked || undefined}
           tabIndex={locked ? -1 : undefined}
           onClick={(e) => {

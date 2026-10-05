@@ -176,3 +176,61 @@ describe("ops/backup.sh restore kit", () => {
     noPlaintextSecrets();
   });
 });
+
+describe("ops/backup.sh encrypted copy to a Telegram channel", () => {
+  function stubCurl(exitCode: number) {
+    // Records every call and keeps a copy of each uploaded document, so the
+    // test can check that only gpg output ever leaves the server.
+    stub(
+      "curl",
+      [
+        `printf '%s\\n' "$@" >> "${work}/curl.argv"`,
+        `for a in "$@"; do case "$a" in document=@*) f="\${a#document=@}"; f="\${f%%;*}"; cat "$f" >> "${work}/uploaded.bin";; esac; done`,
+        `exit ${exitCode}`,
+        "",
+      ].join("\n"),
+    );
+  }
+
+  it("sends one encrypted archive with the dump, the files and the kit", () => {
+    stubCurl(0);
+    const r = runBackup({
+      BACKUP_PASSPHRASE: "correct horse battery staple",
+      BACKUP_TG_CHAT_ID: "-1001234567890",
+      TELEGRAM_BOT_TOKEN: "123:bot-token",
+    });
+    expect(r.status, r.log).toBe(0);
+    expect(r.log).toMatch(/telegram copy OK \(1 part\(s\)\)/);
+    const argv = readFileSync(path.join(work, "curl.argv"), "utf8");
+    expect(argv).toMatch(/sendDocument/);
+    expect(argv).toMatch(/chat_id=-1001234567890/);
+    expect(argv).toMatch(/caption=NeuroFax · бэкап/);
+    // The upload is the gpg stub's hex output, never the plain dump or keys.
+    const uploaded = readFileSync(path.join(work, "uploaded.bin"));
+    expect(uploaded.includes(Buffer.from("marker-key-7f3a"))).toBe(false);
+    expect(/^[0-9a-f\s]+$/.test(uploaded.toString("utf8"))).toBe(true);
+    // The passphrase reached gpg on fd 3, not curl or a command line.
+    expect(argv).not.toMatch(/correct horse/);
+    noPlaintextSecrets();
+  });
+
+  it("never sends anything without encryption configured", () => {
+    stubCurl(0);
+    const r = runBackup({ BACKUP_TG_CHAT_ID: "-1001234567890", TELEGRAM_BOT_TOKEN: "123:bot-token" });
+    expect(r.status, r.log).toBe(0);
+    expect(r.log).toMatch(/TELEGRAM COPY SKIPPED: neither BACKUP_GPG_RECIPIENT nor BACKUP_PASSPHRASE is set/);
+    expect(existsSync(path.join(work, "curl.argv"))).toBe(false);
+  });
+
+  it("a failed upload is loud but does not fail the local backup", () => {
+    stubCurl(22);
+    const r = runBackup({
+      BACKUP_PASSPHRASE: "x",
+      BACKUP_TG_CHAT_ID: "-1001234567890",
+      TELEGRAM_BOT_TOKEN: "123:bot-token",
+    });
+    expect(r.status, r.log).toBe(0);
+    expect(r.log).toMatch(/TELEGRAM COPY FAILED: 0\/1 part\(s\) sent/);
+    expect(backupFiles().some((f) => /pg-medbook-.*\.sql\.gz$/.test(f))).toBe(true);
+  });
+});

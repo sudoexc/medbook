@@ -505,6 +505,23 @@ compose up -d --no-deps --force-recreate nginx`.
 завести ключи (это смена ключей MinIO, отдельная процедура).
 
 
+### 4.4b Зашифрованная копия в закрытом Telegram-канале
+
+Каждую ночь `ops/backup.sh` (раздел 4b) пакует дамп, файлы клиники и restore kit
+в ОДИН архив, шифрует его тем же `BACKUP_PASSPHRASE` (AES-256) и отправляет ботом
+клиники в закрытый канал владельца. Telegram видит только шифротекст. Больше 45 МБ
+архив уходит частями.
+
+Переменные в `/opt/neurofax/.env`: `BACKUP_TG_CHAT_ID=-100…` (канал, бот в нём
+админ), `BACKUP_PASSPHRASE` (хранится ТАКЖЕ у владельца вне сервера, без него архив
+не открыть), опционально `BACKUP_TG_BOT_TOKEN` (иначе `TELEGRAM_BOT_TOKEN`) и
+`BACKUP_TG_PROXY` (если api.telegram.org заблокирован).
+
+Восстановление из канала: скачать все части одного дня, затем
+`cat neurofax-backup-*.tar.gpg.part* > b.gpg && gpg -d b.gpg | tar -x` →
+`pg-*.sql.gz`, `files-*.tar.gz`, `restore-kit-*.tar.gz.gpg` (его открыть тем же
+паролем: `gpg -d restore-kit-*.gpg | tar -xz`), дальше по §4.5.
+
 ### 4.5 Ключи и конфиги: restore kit (audit INF-08)
 
 Дамп сам по себе клинику не восстанавливает. Паспорта и заметки пациентов,

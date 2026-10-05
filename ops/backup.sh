@@ -186,6 +186,77 @@ else
   log "BACKUP_REMOTE unset — backups exist only on this disk"
 fi
 
+# ── 4b. Encrypted copy to a private Telegram channel ───────────────────────
+# A second off-box copy that needs no second server: the night's dump, the
+# clinic files and the restore kit, packed into ONE archive, encrypted with
+# the same BACKUP_PASSPHRASE / BACKUP_GPG_RECIPIENT as the kit, and sent by
+# the clinic bot to a private channel only the owner reads. Telegram only
+# ever sees ciphertext. Bot API uploads stop at 50 MB, so a bigger archive
+# goes out in 45 MB parts (restore: `cat part* > b.gpg; gpg -d b.gpg | tar -xz`).
+#
+#   BACKUP_TG_CHAT_ID=-100…        the channel (bot must be its admin)
+#   BACKUP_TG_BOT_TOKEN=…          optional, defaults to TELEGRAM_BOT_TOKEN
+#   BACKUP_TG_PROXY=socks5h://…    optional, when api.telegram.org is blocked
+#
+# Loud but not fatal, like the rsync copy above.
+tg_alert() {
+  if [[ -n "${ALERT_TG_TOKEN:-}" && -n "${ALERT_TG_CHAT_ID:-}" ]]; then
+    curl -fsS --max-time 15 "https://api.telegram.org/bot${ALERT_TG_TOKEN}/sendMessage" \
+      -d "chat_id=${ALERT_TG_CHAT_ID}" -d "text=$1" >/dev/null 2>&1 || true
+  fi
+}
+if [[ -n "${BACKUP_TG_CHAT_ID:-}" ]]; then
+  TG_TOKEN="${BACKUP_TG_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}"
+  if [[ -z "$TG_TOKEN" ]]; then
+    log "TELEGRAM COPY SKIPPED: no BACKUP_TG_BOT_TOKEN / TELEGRAM_BOT_TOKEN"
+  elif [[ -z "${BACKUP_GPG_RECIPIENT:-}" && -z "${BACKUP_PASSPHRASE:-}" ]]; then
+    # Never send patient data to a third party unencrypted.
+    log "TELEGRAM COPY SKIPPED: neither BACKUP_GPG_RECIPIENT nor BACKUP_PASSPHRASE is set"
+  else
+    TGDIR=$(mktemp -d)
+    BUNDLE="${TGDIR}/neurofax-backup-${TS}.tar.gpg"
+    BUNDLE_FILES=("$(basename "$DUMP")" "$(basename "$FILES")")
+    [[ -f "$KIT" ]] && BUNDLE_FILES+=("$(basename "$KIT")")
+    if [[ -n "${BACKUP_GPG_RECIPIENT:-}" ]]; then
+      tg_encrypt() { gpg --batch --yes --trust-model always --recipient "$BACKUP_GPG_RECIPIENT" --encrypt --output "$1"; }
+    else
+      tg_encrypt() { gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --symmetric --cipher-algo AES256 --output "$1" 3<<<"$BACKUP_PASSPHRASE"; }
+    fi
+    if tar -cf - -C "$DEST" "${BUNDLE_FILES[@]}" | tg_encrypt "$BUNDLE"; then
+      split -b 45m -d -a 2 "$BUNDLE" "${BUNDLE}.part"
+      PARTS=("${BUNDLE}".part*)
+      N=${#PARTS[@]}
+      PROXY_ARGS=()
+      [[ -n "${BACKUP_TG_PROXY:-}" ]] && PROXY_ARGS=(--proxy "$BACKUP_TG_PROXY")
+      HUMAN_DUMP=$(numfmt --to=iec "$DUMP_SIZE" 2>/dev/null || echo "${DUMP_SIZE}B")
+      HUMAN_FILES=$(numfmt --to=iec "$FILES_SIZE" 2>/dev/null || echo "${FILES_SIZE}B")
+      i=0; sent=0
+      for p in "${PARTS[@]}"; do
+        i=$((i + 1))
+        caption="NeuroFax · бэкап ${DAY} (${TS}) · база ${HUMAN_DUMP}, файлы ${HUMAN_FILES} · часть ${i}/${N} · AES-256"
+        # ${arr[@]+...}: an empty array under `set -u` breaks bash 3.2.
+        if curl -fsS --max-time 300 ${PROXY_ARGS[@]+"${PROXY_ARGS[@]}"} \
+            -F "chat_id=${BACKUP_TG_CHAT_ID}" \
+            -F "caption=${caption}" \
+            -F "document=@${p};filename=$(basename "$BUNDLE").part$(printf '%02d' $((i - 1)))" \
+            "https://api.telegram.org/bot${TG_TOKEN}/sendDocument" >/dev/null 2>/tmp/backup-tg.err; then
+          sent=$((sent + 1))
+        fi
+      done
+      if [[ "$sent" -eq "$N" ]]; then
+        log "telegram copy OK (${N} part(s))"
+      else
+        log "TELEGRAM COPY FAILED: ${sent}/${N} part(s) sent. See /tmp/backup-tg.err"
+        tg_alert "⚠️ MedBook: Telegram backup copy FAILED on $(hostname): ${sent}/${N} parts sent."
+      fi
+    else
+      log "TELEGRAM COPY FAILED: could not build the encrypted archive"
+      tg_alert "⚠️ MedBook: Telegram backup copy FAILED on $(hostname): encryption step."
+    fi
+    rm -rf "$TGDIR"
+  fi
+fi
+
 # ── 5. Retention ───────────────────────────────────────────────────────────
 # Pruned only after the artefacts of THIS run landed — a failing run must not
 # delete history while adding nothing.

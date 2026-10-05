@@ -365,6 +365,10 @@ describe("the visit screen layout", () => {
     );
     expect(session).not.toContain("NotesEditorPanel");
     expect(session).not.toContain("DiagnosisFollowUpPanel");
+    // Inside the side column's flex stack a self-aligned card shrinks to
+    // its text; advice spans the column like the control visit under it.
+    const advice = read("reception/_components/advice-panel.tsx");
+    expect(advice).toContain('<section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">');
   });
 
   it("the control visit panel keeps only the control visit; the diagnosis panel holds the card and its protocols", () => {

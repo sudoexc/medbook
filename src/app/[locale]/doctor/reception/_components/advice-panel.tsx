@@ -114,7 +114,7 @@ export function AdvicePanel() {
   );
 
   return (
-    <section className="flex flex-col gap-3 self-start rounded-2xl border border-border bg-card p-4">
+    <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
         <h2 className="shrink-0 text-sm font-semibold text-foreground">
           {t("advicePanel.title")}

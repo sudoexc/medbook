@@ -153,7 +153,18 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // Esc (or a backdrop click) while the «убрать из арсенала?» question
+        // is open answers the question, it must not close the whole drawer.
+        if (!next && pendingUnstar) {
+          cancelUnstar();
+          return;
+        }
+        onOpenChange(next);
+      }}
+    >
       <DialogContent
         className="flex h-[min(90dvh,46rem)] w-[calc(100vw-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
         showCloseButton={false}

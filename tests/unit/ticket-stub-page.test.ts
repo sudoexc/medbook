@@ -205,3 +205,27 @@ describe("the slip on an 80mm thermal printer", () => {
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(13);
   });
 });
+
+// Owner report 08.10.2026: «Распечатать» at the desk opened a new tab that
+// stayed open. Both the desk and the iPad print through one hidden frame.
+describe("printing the slip from the desk and the iPad", () => {
+  const read = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
+
+  it("the desk prints through the hidden frame, never a new tab", () => {
+    const dialog = read("src/app/[locale]/crm/reception/_components/walkin-ticket-dialog.tsx");
+    expect(dialog).not.toContain("window.open(`/ticket/");
+    expect(dialog).toContain("<TicketPrintFrame");
+    // A print pressed for one ticket never fires for the next one.
+    expect(dialog).toContain("job={printJob?.id === ticket.appointmentId ? printJob.n : 0}");
+  });
+
+  it("the iPad uses the same frame, and the frame matches the slip's page", () => {
+    const done = read("src/app/[locale]/crm/reception/tablet/_components/done-screen.tsx");
+    expect(done).toContain('import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";');
+    expect(done).not.toContain("function TicketPrintFrame");
+    const frame = read("src/components/ticket/ticket-print-frame.tsx");
+    expect(frame).toContain("@page { size: 80mm auto; margin: 0; }");
+    expect(frame).toContain("key={job}");
+    expect(frame).toContain("if (job === 0) return null;");
+  });
+});

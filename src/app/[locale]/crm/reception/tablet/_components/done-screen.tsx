@@ -13,6 +13,7 @@ import type { FlowResult } from "@/lib/reception-tablet/flow";
 import type { TabletDoctor } from "../_hooks/use-tablet-data";
 import { doctorName } from "./doctor-tile";
 import { TouchButton } from "./tablet-ui";
+import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";
 
 /** The patient's live status page behind the slip's short code. */
 function useTicketQr(ticketCode: string | null): string | null {
@@ -30,42 +31,6 @@ function useTicketQr(ticketCode: string | null): string | null {
     };
   }, [ticketCode]);
   return ticketCode ? qr : null;
-}
-
-/**
- * Prints the existing ticket stub (`/ticket/<id>`, opened with the staff
- * session) from a hidden frame: the stub prints itself (AutoPrint), so the
- * iPad's AirPrint sheet comes up without leaving the tablet page. Safari on
- * iPadOS may print the page around the frame instead of the frame alone, so
- * while a print is pending the page's own print styles show nothing but the
- * stub's frame: either way the paper carries the slip.
- */
-function TicketPrintFrame({ appointmentId, job }: { appointmentId: string; job: number }) {
-  if (job === 0) return null;
-  return (
-    <>
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          .tablet-print-frame, .tablet-print-frame * { visibility: visible !important; }
-          .tablet-print-frame {
-            position: fixed !important; inset: 0 auto auto 0 !important;
-            width: 80mm !important; height: 200mm !important;
-          }
-          @page { size: 80mm auto; margin: 2mm; }
-        }
-      `}</style>
-      <iframe
-        key={job}
-        src={`/ticket/${appointmentId}`}
-        title="ticket"
-        aria-hidden="true"
-        tabIndex={-1}
-        className="tablet-print-frame"
-        style={{ position: "absolute", width: 0, height: 0, border: 0, visibility: "hidden" }}
-      />
-    </>
-  );
 }
 
 export function TicketDone({

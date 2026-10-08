@@ -154,6 +154,43 @@ describe("decideStaffSession", () => {
     expect(v).toMatchObject({ ok: true, fresh: { startPage: "reception-tablet" } });
   });
 
+  // Owner request 08.10.2026: the iPad reception account has no idle timeout
+  // and a day-long cap; every other account keeps the clinic's rules.
+  it("the iPad reception account is not idled out, and lasts a working day", () => {
+    const tablet = user({ startPage: "reception-tablet" });
+    const idle3h = row({ lastActivityAt: ago(180 * MIN) });
+    expect(decideStaffSession({ claims, binding: sid, row: idle3h, user: tablet, now: NOW })).toMatchObject({ ok: true });
+    expect(decideStaffSession({ claims, binding: sid, row: idle3h, user: user(), now: NOW })).toMatchObject({
+      ok: false,
+      reason: "idle",
+    });
+    const day = { lastSessionRotatedAt: ago(10 * 60 * MIN) };
+    expect(
+      decideStaffSession({ claims, binding: sid, row: row(), user: user({ ...day, startPage: "reception-tablet" }), now: NOW }),
+    ).toMatchObject({ ok: true });
+    expect(decideStaffSession({ claims, binding: sid, row: row(), user: user(day), now: NOW })).toMatchObject({
+      ok: false,
+      reason: "forced-rerotate",
+    });
+    const overnight = user({ lastSessionRotatedAt: ago(17 * 60 * MIN), startPage: "reception-tablet" });
+    expect(decideStaffSession({ claims, binding: sid, row: row(), user: overnight, now: NOW })).toMatchObject({
+      ok: false,
+      reason: "forced-rerotate",
+    });
+  });
+
+  it("a tablet start page left on a non-reception account changes nothing", () => {
+    const admin = user({ role: "ADMIN", startPage: "reception-tablet" });
+    const v = decideStaffSession({
+      claims: { ...claims, role: "ADMIN" as const },
+      binding: sid,
+      row: row({ lastActivityAt: ago(180 * MIN) }),
+      user: admin,
+      now: NOW,
+    });
+    expect(v).toMatchObject({ ok: false, reason: "idle" });
+  });
+
   it("refuses a JWT with neither a session id nor a session cookie (no more legacy pass)", () => {
     const v = decideStaffSession({ claims, binding: { kind: "none" }, row: null, user: user(), now: NOW });
     expect(v).toMatchObject({ ok: false, reason: "expired" });

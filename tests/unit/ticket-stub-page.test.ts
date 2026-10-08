@@ -11,6 +11,8 @@
  * The page is rendered to markup with the process forced to UTC, opened by
  * the front desk (a staff session of the clinic, audit INF-10).
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -179,5 +181,27 @@ describe("/ticket/<id> stub", () => {
     expect(html).toContain("Клиника Тест");
     expect(html).not.toContain("Кабинет:");
     expect(html).not.toContain("—");
+  });
+});
+
+// Owner report 08.10.2026: on the desk's Xprinter XP-80 the small lines were
+// hard to read. The slip fits the printer's 72mm band (no shrink-to-fit) and
+// prints in black, nothing under 13px.
+describe("the slip on an 80mm thermal printer", () => {
+  const src = readFileSync(path.join(process.cwd(), "src/app/ticket/[id]/page.tsx"), "utf8");
+  const slip = src.slice(src.indexOf('width: "72mm"'));
+
+  it("fits the 72mm printable band with no page margin", () => {
+    expect(src).toContain('width: "72mm"');
+    expect(src).toContain('boxSizing: "border-box"');
+    expect(src).toContain("@page { size: 80mm auto; margin: 0; }");
+    expect(src).not.toContain('width: "80mm"');
+  });
+
+  it("prints black and nothing smaller than 13px", () => {
+    expect(slip).not.toMatch(/#666|#999/);
+    const sizes = [...slip.matchAll(/fontSize: "(\d+)px"/g)].map((m) => Number(m[1]));
+    expect(sizes.length).toBeGreaterThan(5);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(13);
   });
 });

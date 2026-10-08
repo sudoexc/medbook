@@ -219,13 +219,19 @@ export default async function TicketPage({
 
   return (
     <div
+      // Sized for the 80mm thermal printer at the desk (Xprinter XP-80,
+      // owner report 08.10.2026: the small lines were hard to read). Its
+      // printable band is 72mm: the old 80mm box plus padding and page
+      // margins was wider, so Chrome shrank the whole slip to fit. And a
+      // thermal head prints grey as sparse dots, so every line is black and
+      // the smallest text is 13px.
       style={{
-        width: "80mm",
-        minHeight: "120mm",
+        width: "72mm",
+        boxSizing: "border-box",
         margin: "0 auto",
-        padding: "5mm",
+        padding: "2mm 1mm 4mm",
         fontFamily: "Arial, sans-serif",
-        fontSize: "12px",
+        fontSize: "15px",
         color: "#000",
         background: "#fff",
       }}
@@ -233,7 +239,7 @@ export default async function TicketPage({
       <style>{`
         @media print {
           body { margin: 0; padding: 0; }
-          @page { size: 80mm auto; margin: 2mm; }
+          @page { size: 80mm auto; margin: 0; }
         }
         @media screen {
           body { background: #f0f0f0; }
@@ -242,56 +248,56 @@ export default async function TicketPage({
 
       {/* Header */}
       <div style={{ textAlign: "center", borderBottom: "1px dashed #000", paddingBottom: "3mm", marginBottom: "3mm" }}>
-        <div style={{ fontSize: "16px", fontWeight: "bold", letterSpacing: "1px" }}>{clinicName}</div>
+        <div style={{ fontSize: "22px", fontWeight: "bold", letterSpacing: "1px" }}>{clinicName}</div>
         {clinicAddress ? (
-          <div style={{ fontSize: "9px", color: "#666", marginTop: "1mm" }}>{clinicAddress}</div>
+          <div style={{ fontSize: "13px", marginTop: "1mm" }}>{clinicAddress}</div>
         ) : null}
       </div>
 
       {/* Ticket number — BIG */}
       <div style={{ textAlign: "center", margin: "4mm 0" }}>
-        <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase", letterSpacing: "2px" }}>{ticketNumber ? t("yourNumber") : t("yourTime")}</div>
-        <div style={{ fontSize: "48px", fontWeight: "bold", lineHeight: "1.1", letterSpacing: "2px" }}>{ticketNumber ?? appointment.time ?? timeStr}</div>
+        <div style={{ fontSize: "15px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "2px" }}>{ticketNumber ? t("yourNumber") : t("yourTime")}</div>
+        <div style={{ fontSize: "64px", fontWeight: "bold", lineHeight: "1.1", letterSpacing: "2px" }}>{ticketNumber ?? appointment.time ?? timeStr}</div>
       </div>
 
       {/* Separator */}
       <div style={{ borderTop: "1px dashed #000", margin: "3mm 0" }} />
 
       {/* Details */}
-      <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+      <table style={{ width: "100%", fontSize: "16px", borderCollapse: "collapse" }}>
         <tbody>
           <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("patient")}</td>
+            <td style={{ padding: "1.5mm 0" }}>{t("patient")}</td>
             <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{initials(appointment.patient.fullName)}</td>
           </tr>
           <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("doctor")}</td>
-            <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{doctorName}</td>
+            <td style={{ padding: "1.5mm 0" }}>{t("doctor")}</td>
+            <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{doctorName}</td>
           </tr>
           {cabinet ? (
             <tr>
-              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("cabinet")}</td>
-              <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>{cabinet}</td>
+              <td style={{ padding: "1.5mm 0" }}>{t("cabinet")}</td>
+              <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold", fontSize: "20px" }}>{cabinet}</td>
             </tr>
           ) : null}
           {serviceName ? (
             <tr>
-              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("service")}</td>
+              <td style={{ padding: "1.5mm 0" }}>{t("service")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{serviceName}</td>
             </tr>
           ) : null}
           <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("date")}</td>
+            <td style={{ padding: "1.5mm 0" }}>{t("date")}</td>
             <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{issuedAt}</td>
           </tr>
           {waitingAhead !== null ? (
             <tr>
-              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("ahead")}</td>
+              <td style={{ padding: "1.5mm 0" }}>{t("ahead")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{t("aheadCount", { count: waitingAhead })}</td>
             </tr>
           ) : (
             <tr>
-              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("booked")}</td>
+              <td style={{ padding: "1.5mm 0" }}>{t("booked")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{appointment.time ?? timeStr}</td>
             </tr>
           )}
@@ -306,20 +312,20 @@ export default async function TicketPage({
         <img
           src={qrUrl}
           alt="QR"
-          width={140}
-          height={140}
+          width={150}
+          height={150}
           style={{ display: "inline-block" }}
         />
-        <div style={{ fontSize: "8px", color: "#999", marginTop: "1.5mm" }}>
+        <div style={{ fontSize: "13px", marginTop: "1.5mm" }}>
           {t("scan")}
         </div>
       </div>
 
       {/* Footer */}
       <div style={{ textAlign: "center", borderTop: "1px dashed #000", paddingTop: "3mm", marginTop: "3mm" }}>
-        <div style={{ fontSize: "9px", color: "#666" }}>{t("thanks")}</div>
+        <div style={{ fontSize: "14px" }}>{t("thanks")}</div>
         {clinicPhone ? (
-          <div style={{ fontSize: "8px", color: "#999", marginTop: "1mm" }}>{clinicPhone}</div>
+          <div style={{ fontSize: "15px", fontWeight: "bold", marginTop: "1mm" }}>{clinicPhone}</div>
         ) : null}
       </div>
 

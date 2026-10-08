@@ -16,6 +16,13 @@
  */
 
 export const FORCED_REROTATE_MS = 8 * 60 * 60 * 1000; // 8h
+/**
+ * The clinic's iPad reception account (owner request 08.10.2026): it walks
+ * around with the receptionist and lies on the desk between patients, so
+ * the idle timeout signed it out several times a day. It has no idle
+ * timeout and signs in once a morning: the cap covers a working day.
+ */
+export const TABLET_REROTATE_MS = 16 * 60 * 60 * 1000; // 16h
 export const IDLE_TIMEOUT_MIN = 5;
 export const IDLE_TIMEOUT_MAX = 240;
 export const IDLE_TIMEOUT_DEFAULT = 30;
@@ -31,8 +38,11 @@ export type CheckLifetimeArgs = {
   /** Session creation time, used as a fallback when `lastSessionRotatedAt`
    *  is null. */
   sessionCreatedAt: Date;
-  /** Effective per-clinic idle window in minutes. */
-  idleTimeoutMinutes: number;
+  /** Effective per-clinic idle window in minutes; null: no idle timeout
+   *  (the iPad reception account). */
+  idleTimeoutMinutes: number | null;
+  /** The forced re-sign-in window; FORCED_REROTATE_MS unless given. */
+  rerotateMs?: number;
   /** Now (test-injectable). */
   now?: Date;
 };
@@ -45,17 +55,19 @@ export function checkSessionLifetime(
   args: CheckLifetimeArgs,
 ): SessionLifetimeReason {
   const now = args.now ?? new Date();
-  const idleClamped = clampIdleMinutes(args.idleTimeoutMinutes);
-  const idleCutoffMs = idleClamped * 60 * 1000;
-  const idleAge = now.getTime() - args.lastActivityAt.getTime();
-  if (idleAge > idleCutoffMs) return "idle";
+  if (args.idleTimeoutMinutes !== null) {
+    const idleClamped = clampIdleMinutes(args.idleTimeoutMinutes);
+    const idleCutoffMs = idleClamped * 60 * 1000;
+    const idleAge = now.getTime() - args.lastActivityAt.getTime();
+    if (idleAge > idleCutoffMs) return "idle";
+  }
 
   // For the forced-rerotate window we use lastSessionRotatedAt when it's
   // populated; otherwise the session's own creation time. A user who's
   // never had their session rotated and was created ≤8h ago is fine.
   const rotateAnchor = args.lastSessionRotatedAt ?? args.sessionCreatedAt;
   const rotateAge = now.getTime() - rotateAnchor.getTime();
-  if (rotateAge > FORCED_REROTATE_MS) return "forced-rerotate";
+  if (rotateAge > (args.rerotateMs ?? FORCED_REROTATE_MS)) return "forced-rerotate";
 
   return null;
 }

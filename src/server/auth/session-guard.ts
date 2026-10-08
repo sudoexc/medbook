@@ -43,7 +43,9 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   checkSessionLifetime,
   IDLE_TIMEOUT_DEFAULT,
+  TABLET_REROTATE_MS,
 } from "./session-security";
+import { canUseReceptionTablet } from "@/lib/reception-tablet/access";
 import { clinicLocksOut } from "./clinic-access";
 
 export type SessionBinding =
@@ -168,11 +170,18 @@ export function decideStaffSession(args: {
       floor && floor.getTime() > row.lastActivityAt.getTime()
         ? floor
         : row.lastActivityAt;
+    // The iPad reception account: no idle timeout, a day-long cap
+    // (TABLET_REROTATE_MS). Read from the fresh user row, so turning the
+    // tablet start page off restores the clinic's rules at once.
+    const tablet = canUseReceptionTablet(user.role, user.startPage);
     const lifetime = checkSessionLifetime({
       lastActivityAt,
       lastSessionRotatedAt: user.lastSessionRotatedAt,
       sessionCreatedAt: row.createdAt,
-      idleTimeoutMinutes: user.idleTimeoutMinutes ?? IDLE_TIMEOUT_DEFAULT,
+      idleTimeoutMinutes: tablet
+        ? null
+        : (user.idleTimeoutMinutes ?? IDLE_TIMEOUT_DEFAULT),
+      rerotateMs: tablet ? TABLET_REROTATE_MS : undefined,
       now,
     });
     if (lifetime) return reject(lifetime);

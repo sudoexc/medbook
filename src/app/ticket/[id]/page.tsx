@@ -267,37 +267,37 @@ export default async function TicketPage({
       <table style={{ width: "100%", fontSize: "16px", borderCollapse: "collapse" }}>
         <tbody>
           <tr>
-            <td style={{ padding: "1.5mm 0" }}>{t("patient")}</td>
+            <td style={{ padding: "1.5mm 3mm 1.5mm 0", whiteSpace: "nowrap" }}>{t("patient")}</td>
             <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{initials(appointment.patient.fullName)}</td>
           </tr>
           <tr>
-            <td style={{ padding: "1.5mm 0" }}>{t("doctor")}</td>
+            <td style={{ padding: "1.5mm 3mm 1.5mm 0", whiteSpace: "nowrap" }}>{t("doctor")}</td>
             <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{doctorName}</td>
           </tr>
           {cabinet ? (
             <tr>
-              <td style={{ padding: "1.5mm 0" }}>{t("cabinet")}</td>
+              <td style={{ padding: "1.5mm 3mm 1.5mm 0", whiteSpace: "nowrap" }}>{t("cabinet")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold", fontSize: "20px" }}>{cabinet}</td>
             </tr>
           ) : null}
           {serviceName ? (
             <tr>
-              <td style={{ padding: "1.5mm 0" }}>{t("service")}</td>
+              <td style={{ padding: "1.5mm 3mm 1.5mm 0", whiteSpace: "nowrap" }}>{t("service")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{serviceName}</td>
             </tr>
           ) : null}
           <tr>
-            <td style={{ padding: "1.5mm 0" }}>{t("date")}</td>
+            <td style={{ padding: "1.5mm 3mm 1.5mm 0", whiteSpace: "nowrap" }}>{t("date")}</td>
             <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{issuedAt}</td>
           </tr>
           {waitingAhead !== null ? (
             <tr>
-              <td style={{ padding: "1.5mm 0" }}>{t("ahead")}</td>
+              <td style={{ padding: "1.5mm 3mm 1.5mm 0", whiteSpace: "nowrap" }}>{t("ahead")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{t("aheadCount", { count: waitingAhead })}</td>
             </tr>
           ) : (
             <tr>
-              <td style={{ padding: "1.5mm 0" }}>{t("booked")}</td>
+              <td style={{ padding: "1.5mm 3mm 1.5mm 0", whiteSpace: "nowrap" }}>{t("booked")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{appointment.time ?? timeStr}</td>
             </tr>
           )}

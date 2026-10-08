@@ -17,7 +17,7 @@
  * PII is initials-only (server-enforced). No ticker.
  */
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 
 import {
@@ -36,10 +36,15 @@ import { Bi, useTvTranslators } from "../../_i18n";
 
 // ─── Tunables (visual iteration knobs) ──────────────────────────────────────
 const OVERLAY_MS = 15_000; // call takeover auto-dismiss
-const MAX_WAITING_ROWS = 8; // queue rows before «ещё N»
+const PAGE_MS = 8_000; // a long list shows its next page this often
 const MAX_PAST_COMPACT = 2; // finished bookings kept above the now-line
-const MAX_UPCOMING_ROWS = 9; // booking rows before «ещё N»
-const TILE_RADIUS = 24; // bento tile corner radius, px
+const TILE_RADIUS = "1.5rem"; // bento tile corner radius
+const INNER_RADIUS = "1rem"; // plates and highlighted rows inside a tile
+// The whole board is sized in rem and the rem follows the screen: 16px on a
+// 1920×1080 (or 1080×1920) screen, 8px on the TV box's 960×540. Fixed pixel
+// sizes left the clinic's TCL 32" with the header and «Сейчас принимается»
+// filling the screen and the queue cut off (owner report 08.10.2026).
+const REM = "clamp(6px, min(100vh, 100vw) / 67.5, 40px)";
 // Bento palette — LIGHT theme (owner's boss wants white/light, 2026-07-06).
 // Solid layers only; depth = page one step darker than the white tiles +
 // hairline tile borders. Accents darkened for contrast on white.
@@ -166,6 +171,8 @@ export default function DoctorTVPage() {
     }
     return { pastSlots: past, upcomingSlots: upcoming };
   }, [slots, nowMinutes]);
+  const queuePager = usePagedRows(data?.queue.waiting ?? []);
+  const upcomingPager = usePagedRows(upcomingSlots);
   const doneCount = useMemo(
     () => (slots ?? []).filter((s) => s.status === "COMPLETED").length,
     [slots],
@@ -213,20 +220,20 @@ export default function DoctorTVPage() {
         />
       )}
 
-      <div className="flex h-full flex-col gap-4 p-5">
+      <div className="flex h-full flex-col gap-3 p-4">
         {/* ── Header tile: cabinet plate · doctor · clock ────────────── */}
         <Tile className="shrink-0">
-          <div className="flex items-center gap-6 px-7 py-5">
+          <div className="flex items-center gap-6 px-7 py-4">
             {data?.doctor.cabinet && (
               <div
-                className="flex h-24 w-24 shrink-0 flex-col items-center justify-center"
+                className="flex h-20 w-20 shrink-0 flex-col items-center justify-center"
                 style={{
                   background: accent,
                   color: "#fff",
-                  borderRadius: TILE_RADIUS - 8,
+                  borderRadius: INNER_RADIUS,
                 }}
               >
-                <span className="text-center text-[11px] font-semibold uppercase leading-tight tracking-wider opacity-80">
+                <span className="text-center text-[0.625rem] font-semibold uppercase leading-tight tracking-wider opacity-80">
                   <Bi k="doctorBoard.cabinet" stacked />
                 </span>
                 <span className="text-5xl font-bold leading-none">
@@ -243,7 +250,7 @@ export default function DoctorTVPage() {
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="font-mono text-6xl font-bold tabular-nums leading-none">
+              <p className="font-mono text-5xl font-bold tabular-nums leading-none">
                 {timeStr}
               </p>
               <p className="mt-1.5 text-xl capitalize" style={{ color: C.muted }}>
@@ -257,44 +264,41 @@ export default function DoctorTVPage() {
           </div>
         </Tile>
 
-        {/* ── Now serving tile — the loudest thing on the board ─────── */}
+        {/* ── Now serving: one compact band (owner 08.10.2026: it took
+            half the screen and pushed the queue off the TV). ─────────── */}
         <Tile
           className="shrink-0"
           style={data?.queue.current ? { background: GREEN_TINT } : undefined}
         >
-          <div className="flex items-center justify-between gap-6 px-7 py-6">
+          <div className="flex items-center justify-between gap-6 px-7 py-3.5">
             <div className="min-w-0">
               <p
-                className="text-xl font-semibold uppercase tracking-wide"
+                className="text-base font-semibold uppercase tracking-wide"
                 style={{ color: data?.queue.current ? GREEN : FAINT }}
               >
                 <Bi k="doctorBoard.nowReceiving" />
               </p>
               <p
-                className="mt-1 truncate text-6xl font-bold leading-tight"
+                className="mt-0.5 truncate text-4xl font-bold leading-tight"
                 style={{ color: data?.queue.current ? C.fg : FAINT }}
               >
                 {data?.queue.current ? (
                   data.queue.current.fullName
                 ) : (
-                  <Bi
-                    k="doctorBoard.cabinetFree"
-                    stacked
-                    uzClassName="mt-1 text-4xl"
-                  />
+                  <Bi k="doctorBoard.cabinetFree" />
                 )}
               </p>
             </div>
             {data?.queue.current?.ticketNumber && (
               <div
-                className="flex shrink-0 items-center px-6 py-3"
+                className="flex shrink-0 items-center px-5 py-2"
                 style={{
                   background: "#D3F1E2",
-                  borderRadius: TILE_RADIUS - 8,
+                  borderRadius: INNER_RADIUS,
                 }}
               >
                 <span
-                  className="font-mono text-6xl font-bold tabular-nums"
+                  className="font-mono text-5xl font-bold tabular-nums"
                   style={{ color: GREEN }}
                 >
                   {data.queue.current.ticketNumber}
@@ -306,14 +310,17 @@ export default function DoctorTVPage() {
 
         {/* ── Two lane tiles: queue LEFT, bookings RIGHT — always ───── */}
         <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
-          {/* LEFT — live queue */}
+          {/* LEFT — live queue. As many rows as fit; a longer queue
+              turns its pages every PAGE_MS so everyone finds their number. */}
           <Tile className="flex min-h-0 flex-col">
             <TileHead
               title={<Bi k="doctorBoard.liveQueue" stacked uzClassName="text-base" />}
               value={data ? String(data.queue.waiting.length) : "…"}
               color={AMBER}
+              page={queuePager.page}
+              pages={queuePager.pages}
             />
-            <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4">
+            <div className="flex min-h-0 flex-1 flex-col px-6 pb-4">
               {!data || data.queue.waiting.length === 0 ? (
                 <p className="py-8 text-2xl" style={{ color: FAINT }}>
                   <Bi
@@ -323,51 +330,47 @@ export default function DoctorTVPage() {
                   />
                 </p>
               ) : (
-                <div className="flex flex-col gap-2.5">
-                  {data.queue.waiting.slice(0, MAX_WAITING_ROWS).map((w, i) => (
-                    <div
-                      key={w.id}
-                      className="flex items-center gap-4 px-4 py-3"
-                      style={{
-                        background: i === 0 ? C.inset : "transparent",
-                        borderRadius: TILE_RADIUS - 10,
-                      }}
-                    >
-                      <span
-                        className="shrink-0 font-mono text-4xl font-bold tabular-nums"
-                        style={{ color: i === 0 ? AMBER : C.fg, minWidth: 108 }}
-                      >
-                        {w.ticketNumber}
-                      </span>
-                      <span
-                        className="min-w-0 flex-1 truncate text-2xl"
-                        style={{ color: i === 0 ? C.fg : C.muted }}
-                      >
-                        {w.fullName}
-                      </span>
-                      <span
-                        className="shrink-0 text-xl tabular-nums"
-                        style={{ color: FAINT }}
-                      >
-                        <Bi
-                          k="doctorBoard.etaShort"
-                          values={{ minutes: String(w.etaMinutes) }}
-                        />
-                      </span>
-                    </div>
-                  ))}
-                  {data.queue.waiting.length > MAX_WAITING_ROWS && (
-                    <p className="px-4 py-1 text-xl" style={{ color: FAINT }}>
-                      <Bi
-                        k="doctorBoard.more"
-                        values={{
-                          count: String(
-                            data.queue.waiting.length - MAX_WAITING_ROWS,
-                          ),
+                <div
+                  ref={queuePager.boxRef}
+                  key={queuePager.page}
+                  className="board-in flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
+                >
+                  {queuePager.rows.map((w, i) => {
+                    const first = queuePager.offset + i === 0;
+                    return (
+                      <div
+                        key={w.id}
+                        data-row
+                        className="flex shrink-0 items-center gap-4 px-4 py-2.5"
+                        style={{
+                          background: first ? C.inset : "transparent",
+                          borderRadius: INNER_RADIUS,
                         }}
-                      />
-                    </p>
-                  )}
+                      >
+                        <span
+                          className="shrink-0 font-mono text-4xl font-bold tabular-nums"
+                          style={{ color: first ? AMBER : C.fg, minWidth: "6.75rem" }}
+                        >
+                          {w.ticketNumber}
+                        </span>
+                        <span
+                          className="min-w-0 flex-1 truncate text-2xl"
+                          style={{ color: first ? C.fg : C.muted }}
+                        >
+                          {w.fullName}
+                        </span>
+                        <span
+                          className="shrink-0 text-xl tabular-nums"
+                          style={{ color: FAINT }}
+                        >
+                          <Bi
+                            k="doctorBoard.etaShort"
+                            values={{ minutes: String(w.etaMinutes) }}
+                          />
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -379,8 +382,10 @@ export default function DoctorTVPage() {
               title={<Bi k="doctorBoard.bookings" stacked uzClassName="text-base" />}
               value={data ? `${doneCount}/${slotCount}` : "…"}
               color={C.muted}
+              page={upcomingPager.page}
+              pages={upcomingPager.pages}
             />
-            <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-4">
               {!data || slotCount === 0 ? (
                 <p className="py-8 text-2xl" style={{ color: FAINT }}>
                   <Bi
@@ -390,7 +395,7 @@ export default function DoctorTVPage() {
                   />
                 </p>
               ) : (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex min-h-0 flex-1 flex-col gap-1.5">
                   {pastSlots.length > MAX_PAST_COMPACT && (
                     <p className="px-4 py-1 text-lg" style={{ color: FAINT }}>
                       <Bi
@@ -419,21 +424,19 @@ export default function DoctorTVPage() {
                     </span>
                   </div>
 
-                  {upcomingSlots.slice(0, MAX_UPCOMING_ROWS).map((s, i) => (
-                    <SlotRow key={s.id} slot={s} next={i === 0} />
-                  ))}
-                  {upcomingSlots.length > MAX_UPCOMING_ROWS && (
-                    <p className="px-4 py-1 text-xl" style={{ color: FAINT }}>
-                      <Bi
-                        k="doctorBoard.more"
-                        values={{
-                          count: String(
-                            upcomingSlots.length - MAX_UPCOMING_ROWS,
-                          ),
-                        }}
+                  <div
+                    ref={upcomingPager.boxRef}
+                    key={upcomingPager.page}
+                    className="board-in flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden"
+                  >
+                    {upcomingPager.rows.map((s, i) => (
+                      <SlotRow
+                        key={s.id}
+                        slot={s}
+                        next={upcomingPager.offset + i === 0}
                       />
-                    </p>
-                  )}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -459,6 +462,7 @@ function Page({ children }: { children: React.ReactNode }) {
     >
       {children}
       <style>{`
+        html { font-size: ${REM}; }
         @keyframes board-in { from { opacity: 0; } to { opacity: 1; } }
         .board-in { animation: board-in 0.25s ease-out; }
       `}</style>
@@ -495,27 +499,97 @@ function TileHead({
   title,
   value,
   color,
+  page = 0,
+  pages = 1,
 }: {
   title: React.ReactNode;
   value: string;
   color: string;
+  /** Which page of a long list is on screen: dots, one per page. */
+  page?: number;
+  pages?: number;
 }) {
   return (
-    <div className="flex items-baseline justify-between px-6 pt-5 pb-3">
+    <div className="flex items-center justify-between gap-4 px-6 pt-4 pb-3">
       <h2
         className="text-xl font-semibold uppercase tracking-wide"
         style={{ color: C.muted }}
       >
         {title}
       </h2>
-      <span
-        className="font-mono text-3xl font-bold tabular-nums"
-        style={{ color }}
-      >
-        {value}
-      </span>
+      <div className="flex shrink-0 items-center gap-4">
+        {pages > 1 && (
+          <div className="flex items-center gap-1.5" aria-hidden>
+            {Array.from({ length: pages }, (_, i) => (
+              <span
+                key={i}
+                className="h-2.5 rounded-full transition-all"
+                style={{
+                  width: i === page ? "1.75rem" : "0.625rem",
+                  background: i === page ? color : C.line,
+                }}
+              />
+            ))}
+          </div>
+        )}
+        <span
+          className="font-mono text-3xl font-bold tabular-nums"
+          style={{ color }}
+        >
+          {value}
+        </span>
+      </div>
     </div>
   );
+}
+
+/**
+ * As many rows of a list as fit its box, and the next page every PAGE_MS
+ * when they do not all fit. The box is the list's own flex-1 area; a row
+ * (`data-row`) is measured once rendered, so the count follows the screen
+ * and the board's rem.
+ */
+function usePagedRows<T>(items: readonly T[]) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [perPage, setPerPage] = useState(0);
+  const [page, setPage] = useState(0);
+  const count = items.length;
+
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box || count === 0) return;
+    const measure = () => {
+      const row = box.querySelector<HTMLElement>("[data-row]");
+      if (!row || box.clientHeight === 0) return;
+      const gap = parseFloat(getComputedStyle(box).rowGap) || 0;
+      const fit = Math.floor((box.clientHeight + gap) / (row.offsetHeight + gap));
+      setPerPage(Math.max(1, fit));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [count, page]);
+
+  // Until measured, render everything once so a row exists to measure.
+  const size = perPage > 0 ? perPage : Math.max(1, count);
+  const pages = Math.max(1, Math.ceil(count / size));
+  const current = page < pages ? page : 0;
+
+  useEffect(() => {
+    if (pages <= 1) return;
+    const id = setInterval(() => setPage((p) => (p + 1) % pages), PAGE_MS);
+    return () => clearInterval(id);
+  }, [pages]);
+
+  const offset = current * size;
+  return {
+    boxRef,
+    rows: items.slice(offset, offset + size),
+    offset,
+    page: current,
+    pages,
+  };
 }
 
 function SlotRow({
@@ -550,7 +624,7 @@ function SlotRow({
       className="flex items-center gap-4 px-4 py-2.5"
       style={{
         background: next ? C.inset : "transparent",
-        borderRadius: TILE_RADIUS - 10,
+        borderRadius: INNER_RADIUS,
       }}
     >
       <span className="w-24 shrink-0 font-mono text-3xl font-bold tabular-nums">

@@ -41,10 +41,11 @@ const MAX_PAST_COMPACT = 2; // finished bookings kept above the now-line
 const TILE_RADIUS = "1.5rem"; // bento tile corner radius
 const INNER_RADIUS = "1rem"; // plates and highlighted rows inside a tile
 // The whole board is sized in rem and the rem follows the screen: 16px on a
-// 1920×1080 (or 1080×1920) screen, 8px on the TV box's 960×540. Fixed pixel
-// sizes left the clinic's TCL 32" with the header and «Сейчас принимается»
-// filling the screen and the queue cut off (owner report 08.10.2026).
-const REM = "clamp(6px, min(100vh, 100vw) / 67.5, 40px)";
+// 1920×1080 (or 1080×1920) screen ×1.18, so about 9.5px on the TV box's
+// 960×540. Fixed pixel sizes left the clinic's TCL 32" with the header and
+// «Сейчас принимается» filling the screen and the queue cut off; then 18%
+// larger, to read it from across the corridor (owner, 08.10.2026).
+const REM = "clamp(6px, min(100vh, 100vw) / 57, 44px)";
 // Bento palette — LIGHT theme (owner's boss wants white/light, 2026-07-06).
 // Solid layers only; depth = page one step darker than the white tiles +
 // hairline tile borders. Accents darkened for contrast on white.

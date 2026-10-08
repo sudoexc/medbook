@@ -12,7 +12,7 @@ const board = read("src/app/tv/d/[token]/page.tsx");
 
 describe("the doctor's TV board fits any screen", () => {
   it("sizes everything in rem, and the rem follows the screen", () => {
-    expect(board).toContain('const REM = "clamp(6px, min(100vh, 100vw) / 67.5, 40px)";');
+    expect(board).toContain('const REM = "clamp(6px, min(100vh, 100vw) / 57, 44px)";');
     expect(board).toContain("html { font-size: ${REM}; }");
     // No pixel geometry left behind in the tiles.
     expect(board).not.toMatch(/TILE_RADIUS - \d/);

@@ -206,17 +206,29 @@ describe("the slip on an 80mm thermal printer", () => {
   });
 });
 
-// Owner report 08.10.2026: «Распечатать» at the desk opened a new tab that
-// stayed open. Both the desk and the iPad print through one hidden frame.
+// Owner reports 08.10 and 09.10.2026: the desk's new tab stayed open after
+// printing; the hidden frame then lost Chrome's silent kiosk printing. The
+// desk opens a small window that closes itself once printed; the iPad keeps
+// the hidden frame (AirPrint).
 describe("printing the slip from the desk and the iPad", () => {
   const read = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
 
-  it("the desk prints through the hidden frame, never a new tab", () => {
-    const dialog = read("src/app/[locale]/crm/reception/_components/walkin-ticket-dialog.tsx");
-    expect(dialog).not.toContain("window.open(`/ticket/");
-    expect(dialog).toContain("<TicketPrintFrame");
-    // A print pressed for one ticket never fires for the next one.
-    expect(dialog).toContain("job={printJob?.id === ticket.appointmentId ? printJob.n : 0}");
+  it("the desk prints in its own small window that closes after printing", () => {
+    const open = read("src/components/ticket/open-ticket-print.ts");
+    expect(open).toContain("`/ticket/${encodeURIComponent(appointmentId)}?close=1`");
+    expect(open).toContain('"popup,width=440,height=680"');
+    const auto = read("src/app/ticket/[id]/_components/auto-print.tsx");
+    expect(auto).toContain('get("close") === "1"');
+    expect(auto).toContain('window.addEventListener("afterprint", onAfterPrint)');
+    for (const f of [
+      "src/app/[locale]/crm/reception/_components/walkin-ticket-dialog.tsx",
+      "src/app/[locale]/crm/reception/_components/doctor-queue-panel.tsx",
+      "src/app/[locale]/crm/appointments/_components/appointment-drawer.tsx",
+    ]) {
+      const src = read(f);
+      expect(src, f).toContain("openTicketPrint(");
+      expect(src, f).not.toContain("<TicketPrintFrame");
+    }
   });
 
   it("the iPad uses the same frame, and the frame matches the slip's page", () => {

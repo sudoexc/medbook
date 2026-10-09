@@ -101,15 +101,13 @@ describe("wiring", () => {
     expect(screen).toContain("reorder.mutate({ doctorId: doctor.id, orderedIds }");
   });
 
-  it("reprints go through the hidden frame, never a new tab", () => {
+  it("reprints: the iPad through the hidden frame, the desk through the self-closing window", () => {
+    expect(screen).toContain("<TicketPrintFrame");
     for (const f of [
-      "src/app/[locale]/crm/reception/tablet/_components/queue-screen.tsx",
       "src/app/[locale]/crm/reception/_components/doctor-queue-panel.tsx",
       "src/app/[locale]/crm/appointments/_components/appointment-drawer.tsx",
     ]) {
-      const src = read(f);
-      expect(src, f).toContain("<TicketPrintFrame");
-      expect(src, f).not.toContain("window.open(`/ticket/");
+      expect(read(f), f).toContain("openTicketPrint(");
     }
     const panel = read("src/app/[locale]/crm/reception/_components/doctor-queue-panel.tsx");
     expect(panel).toContain('{t("reprint")}');

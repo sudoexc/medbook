@@ -14,6 +14,12 @@ import { useEffect } from "react";
  */
 export function AutoPrint({ delayMs = 350 }: { delayMs?: number }) {
   useEffect(() => {
+    // The desk opens the stub in its own small window (`?close=1`, see
+    // components/ticket/open-ticket-print.ts): it closes once printed, or
+    // once the print dialog is cancelled.
+    const closeAfter = new URLSearchParams(window.location.search).get("close") === "1";
+    const onAfterPrint = () => window.close();
+    if (closeAfter) window.addEventListener("afterprint", onAfterPrint);
     const id = setTimeout(() => {
       try {
         window.print();
@@ -21,7 +27,10 @@ export function AutoPrint({ delayMs = 350 }: { delayMs?: number }) {
         // Print unavailable (e.g. headless preview) — no-op.
       }
     }, delayMs);
-    return () => clearTimeout(id);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener("afterprint", onAfterPrint);
+    };
   }, [delayMs]);
   return null;
 }

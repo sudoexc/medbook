@@ -55,7 +55,7 @@ import {
 // the channel row. The status select that used to live here is gone — see
 // `<AppointmentLifecycle>` for the replacement.
 import { MoneyText } from "@/components/atoms/money-text";
-import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";
+import { openTicketPrint } from "@/components/ticket/open-ticket-print";
 import { tashkentDateOf, tashkentToday } from "@/lib/tashkent-time";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -156,9 +156,7 @@ export function AppointmentDrawer({
 
   // «Талон» reprints today's ticket of anyone in the queue (owner request
   // 08.10.2026), from whichever reception view opened this card. The stub
-  // only prints for today, so the button shows only then. Tied to this
-  // appointment, so a print never fires for the next card opened.
-  const [ticketPrint, setTicketPrint] = React.useState<{ id: string; n: number } | null>(null);
+  // only prints for today, so the button shows only then.
   const canReprint =
     !!appt &&
     tashkentDateOf(appt.date) === tashkentToday() &&
@@ -291,12 +289,7 @@ export function AppointmentDrawer({
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                onClick={() =>
-                  setTicketPrint((p) => ({
-                    id: appt.id,
-                    n: p?.id === appt.id ? p.n + 1 : 1,
-                  }))
-                }
+                onClick={() => openTicketPrint(appt.id)}
               >
                 <PrinterIcon className="size-3.5" />
                 {t("reprintTicket")}
@@ -311,9 +304,6 @@ export function AppointmentDrawer({
               <XIcon className="size-4" />
             </Button>
           </div>
-          {appt && ticketPrint?.id === appt.id ? (
-            <TicketPrintFrame appointmentId={appt.id} job={ticketPrint.n} />
-          ) : null}
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">

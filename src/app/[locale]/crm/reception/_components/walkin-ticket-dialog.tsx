@@ -24,7 +24,7 @@ import {
   type PatientHit,
 } from "@/components/appointments/new-appointment-dialog/types";
 
-import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";
+import { openTicketPrint } from "@/components/ticket/open-ticket-print";
 import { useActiveDoctors } from "../_hooks/use-reception-live";
 import {
   PhoneOwnerMismatchError,
@@ -95,10 +95,6 @@ export function WalkinTicketDialog({
   );
   const [doctorId, setDoctorId] = React.useState<string | null>(null);
   const [ticket, setTicket] = React.useState<WalkinTicket | null>(null);
-  // Bumped by «Распечатать»: prints through a hidden frame (no new tab).
-  // Tied to the ticket it was pressed for, so the next ticket issued in the
-  // same dialog does not print by itself.
-  const [printJob, setPrintJob] = React.useState<{ id: string; n: number } | null>(null);
   // The new patient's number belongs to a card with another name (audit
   // Q-03). The ticket waits for reception's «same person / other person».
   const [ownerConflict, setOwnerConflict] =
@@ -258,22 +254,14 @@ export function WalkinTicketDialog({
                 variant="outline"
                 className="gap-2"
                 // The staff session opens the stub by id (audit INF-10);
-                // the same link prints nothing for a stranger. A hidden frame
-                // on this page, not a new tab that stayed open (08.10.2026).
-                onClick={() =>
-                  setPrintJob((j) => ({
-                    id: ticket.appointmentId,
-                    n: j?.id === ticket.appointmentId ? j.n + 1 : 1,
-                  }))
-                }
+                // the same link prints nothing for a stranger. Its own small
+                // window that closes after printing, so Chrome's kiosk
+                // printing stays silent (09.10.2026).
+                onClick={() => openTicketPrint(ticket.appointmentId)}
               >
                 <PrinterIcon className="size-4" />
                 {t("result.print")}
               </Button>
-              <TicketPrintFrame
-                appointmentId={ticket.appointmentId}
-                job={printJob?.id === ticket.appointmentId ? printJob.n : 0}
-              />
               <div className="flex gap-2">
                 <Button type="button" variant="ghost" onClick={reset}>
                   <PlusIcon className="size-4" />

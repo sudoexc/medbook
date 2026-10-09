@@ -17,6 +17,7 @@ import { formatCalendarDay, formatDate } from "@/lib/format";
 import { ageFromBirth } from "@/lib/patient-age";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { Button } from "@/components/ui/button";
+import { printConclusion } from "@/components/visit/print-conclusion";
 
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { useReceptionContext } from "../_hooks/reception-context";
@@ -108,13 +109,10 @@ export function ActivePatientCard() {
   // hits Cmd/Ctrl+P (or the button in the HTML) to land a PDF. No ?lang —
   // Ф5: the route defaults to the patient's preferredLang, and the page
   // itself has a RU/UZ switcher.
+  // One press prints the sheet alone, no tab (owner report 09.10.2026).
   const onPrint = () => {
     if (!visitNoteId) return;
-    window.open(
-      `/api/crm/visit-notes/${visitNoteId}/print`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    printConclusion(visitNoteId);
   };
 
   // Ф5 — one button prints the whole visit package: conclusion + handout
@@ -123,11 +121,7 @@ export function ActivePatientCard() {
   // left the screen still print with it.
   const onPrintPackage = () => {
     if (!visitNoteId) return;
-    window.open(
-      `/api/crm/visit-notes/${visitNoteId}/print?type=package`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    printConclusion(visitNoteId, "package");
   };
 
   return (

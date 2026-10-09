@@ -20,9 +20,10 @@
  */
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { WandSparklesIcon, XIcon } from "lucide-react";
+import { PrinterIcon, WandSparklesIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { printConclusion } from "@/components/visit/print-conclusion";
 import {
   Dialog,
   DialogContent,
@@ -87,6 +88,12 @@ export function ConclusionPreviewDialog({
               {t("actionBar.previewHint")}
             </DialogDescription>
           </DialogHeader>
+          {/* Prints the sheet alone (owner report 09.10.2026): the browser's
+              right-click «Печать» printed the CRM page around the frame. */}
+          <Button type="button" onClick={() => printConclusion(noteId)} className="h-10 gap-2 px-4">
+            <PrinterIcon className="size-4" />
+            {t("activePatient.print")}
+          </Button>
           <button
             type="button"
             onClick={() => onOpenChange(false)}

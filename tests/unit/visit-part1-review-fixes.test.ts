@@ -186,7 +186,8 @@ describe("[2] a pick waiting in the dose prompt", () => {
     const preview = bar.slice(bar.indexOf("const openPreview"), bar.indexOf("const openPreview") + 1400);
     expect(preview).toContain("if (isPendingDosePick(e)) {");
     expect(preview).toContain("open = false;");
-    expect(preview).toContain("if (open) setPreviewOpen(true);");
+    // «Печать» (09.10.2026) goes through the same gate: refused alike.
+    expect(preview).toMatch(/if \(open\) \{[\s\S]*?if \(then === "print"\) printConclusion\(visitNoteId\);\s*else setPreviewOpen\(true\);/);
     expect(bar.match(/t\("rx\.pendingBlocksSign"/g)).toHaveLength(2);
   });
 

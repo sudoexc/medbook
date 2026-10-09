@@ -97,6 +97,16 @@ function pickPrintType(request: Request): "clinical" | "handout" | "package" {
 // own renders the full document and prints with Cmd+P, so a top-level
 // navigation (Sec-Fetch-Dest: document) is a print like any other, with
 // its print bar and its audit row.
+// ?autoprint=1: the doctor's «Печать» button loads the sheet in a hidden
+// frame and it prints itself (owner report 09.10.2026: he had to open the
+// preview and print from the right-click menu, which printed the whole CRM
+// page around it, three sheets). A real print: print bar hidden on paper,
+// audit row written.
+function pickAutoprint(request: Request): boolean {
+  return new URL(request.url).searchParams.get("autoprint") === "1";
+}
+const AUTOPRINT_SCRIPT = `<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},300)})</script>`;
+
 function pickEmbed(request: Request): boolean {
   if (new URL(request.url).searchParams.get("embed") !== "1") return false;
   return request.headers.get("sec-fetch-dest") !== "document";
@@ -151,6 +161,7 @@ export const GET = createApiListHandler(
     const explicitLocale = pickLocale(request);
     const printType = pickPrintType(request);
     const embed = pickEmbed(request);
+    const autoprint = pickAutoprint(request);
 
     const note = await prisma.visitNote.findUnique({
       where: { id },
@@ -1018,7 +1029,9 @@ export const GET = createApiListHandler(
     }
     @media print {
       body { font-size: 12px; }
-      .page { margin: 0; padding: 16mm; max-width: none; }
+      /* @page sets the margin; padding here as well left half the sheet
+         empty and spilled one page onto several (09.10.2026). */
+      .page { margin: 0; padding: 0; max-width: none; }
       .no-print { display: none !important; }
     }
     .print-bar {
@@ -1132,6 +1145,7 @@ export const GET = createApiListHandler(
   <div class="page">
     ${handoutInner}
   </div>
+  ${autoprint ? AUTOPRINT_SCRIPT : ""}
 </body>
 </html>`;
 
@@ -1192,7 +1206,7 @@ export const GET = createApiListHandler(
       }
     </div>
 
-    <section class="block">
+    <section class="block block-dx">
       <h3>${escapeHtml(labels.diagnosis)}</h3>
       <div>${diagnosisLine}</div>
     </section>
@@ -1228,7 +1242,7 @@ export const GET = createApiListHandler(
 
     ${bodyMapSection}
 
-    <section class="block">
+    <section class="block block-rx">
       <h3>${escapeHtml(labels.prescriptions)}</h3>
       ${renderChips([
         ...formatPrescriptionLines(note.visitPrescriptions, locale, {
@@ -1320,8 +1334,10 @@ export const GET = createApiListHandler(
       margin: 28px 0;
     }
     @media print {
-      body { font-size: 11px; }
-      .page { margin: 0; padding: 16mm; max-width: none; }
+      body { font-size: 12px; }
+      /* @page sets the margin; padding here as well left half the sheet
+         empty and spilled one page onto several (09.10.2026). */
+      .page { margin: 0; padding: 0; max-width: none; }
       .no-print { display: none !important; }
       .page-break { border: 0; margin: 0; page-break-before: always; }
       section.block { page-break-inside: avoid; }
@@ -1425,6 +1441,25 @@ export const GET = createApiListHandler(
     section.block {
       margin: 14px 0;
     }
+    /* The doctor reads these from across the desk and the patient takes
+       them home: larger than the rest (owner report 09.10.2026). */
+    section.block-dx > div {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+    section.block-dx .diagnosis-more {
+      font-size: 14px;
+      font-weight: 500;
+    }
+    section.block-dx h3,
+    section.block-rx h3 {
+      font-size: 13px;
+    }
+    section.block-rx .chips li {
+      font-size: 14px;
+      padding: 5px 12px;
+    }
     section.block h3 {
       margin: 0 0 6px 0;
       font-size: 11px;
@@ -1510,6 +1545,7 @@ export const GET = createApiListHandler(
   <div class="page">
     ${inner}
   </div>
+  ${autoprint ? AUTOPRINT_SCRIPT : ""}
 </body>
 </html>`;
 

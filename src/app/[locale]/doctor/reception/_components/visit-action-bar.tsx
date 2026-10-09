@@ -27,11 +27,13 @@ import {
   CheckIcon,
   EyeIcon,
   Loader2Icon,
+  PrinterIcon,
   SquareCheckIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { printConclusion } from "@/components/visit/print-conclusion";
 import { type ConclusionSection } from "@/lib/visit-note-sections";
 import {
   Dialog,
@@ -202,7 +204,7 @@ export function VisitActionBar() {
    * Open the sheet as the server will print it: a drug picked a second ago
    * is still on the wire, and the first frame of the preview would miss it.
    */
-  const openPreview = async () => {
+  const openPreview = async (then: "preview" | "print" = "preview") => {
     if (!visitNoteId || previewPreparing) return;
     setPreviewPreparing(true);
     let open = true;
@@ -224,7 +226,12 @@ export function VisitActionBar() {
       // A failed save has its own toast; the preview shows what is saved.
     } finally {
       setPreviewPreparing(false);
-      if (open) setPreviewOpen(true);
+      if (open) {
+        // «Печать» (owner report 09.10.2026): the same settled sheet, printed
+        // at once without opening the preview.
+        if (then === "print") printConclusion(visitNoteId);
+        else setPreviewOpen(true);
+      }
     }
   };
 
@@ -266,6 +273,17 @@ export function VisitActionBar() {
               <EyeIcon className="size-4" />
             )}
             {t("editor.viewPreview")}
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="h-10 px-4 text-sm"
+            disabled={previewPreparing}
+            onClick={() => void openPreview("print")}
+          >
+            <PrinterIcon className="size-4" />
+            {t("activePatient.print")}
           </Button>
           <Button
             type="button"

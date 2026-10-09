@@ -9321,7 +9321,8 @@
         "CANCELLED": "Bekor qilish",
         "NEW": "Qaytarish"
       }
-    }
+    },
+    "moveFailed": "Vazifani ko'chirib bo'lmadi, sahifani yangilang"
   },
   "staffCall": {
     "button": "Registraturani chaqirish",

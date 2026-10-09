@@ -152,3 +152,22 @@ describe("developer tooling and schema", () => {
     expect(sql).not.toMatch(/\bDROP\b|\bRENAME\b/);
   });
 });
+
+// Owner 09.10.2026: «как перетаскивать в готово?» — cards drag between
+// columns for those who may move them, along the allowed moves only.
+describe("dragging a task into another column", () => {
+  const read = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
+  const board = read("src/components/dev-tasks/dev-task-board.tsx");
+
+  it("only managers drag, only to allowed columns, through the same update", () => {
+    expect(board).toContain("export function DevTaskBoard({ canMove = false }");
+    expect(board).toContain("draggable={canMove}");
+    expect(board).toContain("allowedStatusTargets(drag.from).includes(to)");
+    expect(board).toContain("update.mutate(\n      { id: moving.id, status: to },");
+    expect(read("src/app/[locale]/crm/tasks/page.tsx")).toContain(
+      "<DevTaskBoard canMove={canManageDevTasks(session?.user?.role)} />",
+    );
+    // Doctors file and comment; they do not move tasks.
+    expect(read("src/app/[locale]/doctor/tasks/page.tsx")).toContain("<DevTaskBoard />");
+  });
+});

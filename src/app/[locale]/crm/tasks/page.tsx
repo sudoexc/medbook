@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { DevTaskBoard } from "@/components/dev-tasks/dev-task-board";
 import { PageContainer } from "@/components/molecules/page-container";
 import { auth } from "@/lib/auth";
-import { canSeeDevTasks } from "@/lib/dev-tasks";
+import { canManageDevTasks, canSeeDevTasks } from "@/lib/dev-tasks";
 
 /**
  * /crm/tasks — «Задачи»: the owner's requests to the CRM developers
@@ -27,7 +27,7 @@ export default async function TasksPage() {
   // useSearchParams (the open task, `?task=12`) needs a boundary.
   return (
     <Suspense>
-      <DevTaskBoard />
+      <DevTaskBoard canMove={canManageDevTasks(session?.user?.role)} />
     </Suspense>
   );
 }

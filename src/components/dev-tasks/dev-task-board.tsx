@@ -11,8 +11,11 @@ import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
 import {
   DEV_TASK_BOARD_COLUMNS,
+  allowedStatusTargets,
   groupDevTasks,
   parseDevTaskRef,
   type DevTaskCardDto,
@@ -22,7 +25,7 @@ import {
 import { DevTaskCard } from "./dev-task-card";
 import { DevTaskDrawer } from "./dev-task-drawer";
 import { NewDevTaskDialog } from "./new-dev-task-dialog";
-import { useDevTaskBoard } from "./use-dev-tasks";
+import { useDevTaskBoard, useUpdateDevTask } from "./use-dev-tasks";
 
 /** Count chip colour per column: new work stands out, the rest stays calm. */
 const COUNT_TONE: Record<DevTaskStatus, string> = {
@@ -41,8 +44,27 @@ const COUNT_TONE: Record<DevTaskStatus, string> = {
  * task lives in the URL (`?task=12`), so a link sent in Telegram opens it
  * and the phone's back button closes it.
  */
-export function DevTaskBoard() {
+export function DevTaskBoard({ canMove = false }: { canMove?: boolean }) {
   const t = useTranslations("devTasks");
+  // Drag a card into another column (owner, 09.10.2026: «как перетаскивать в
+  // готово?»). Only those who may change a task's status (ADMIN /
+  // SUPER_ADMIN, `canMove`), and only along the allowed moves; the drawer's
+  // column buttons stay for phones and the keyboard.
+  const update = useUpdateDevTask();
+  const [drag, setDrag] = React.useState<{ id: string; from: DevTaskStatus } | null>(null);
+  const [over, setOver] = React.useState<DevTaskStatus | null>(null);
+  const canDropOn = (to: DevTaskStatus) =>
+    !!drag && drag.from !== to && allowedStatusTargets(drag.from).includes(to);
+  const dropOn = (to: DevTaskStatus) => {
+    const moving = drag;
+    setDrag(null);
+    setOver(null);
+    if (!moving || !canDropOn(to)) return;
+    update.mutate(
+      { id: moving.id, status: to },
+      { onError: () => toast.error(t("moveFailed")) },
+    );
+  };
   const router = useRouter();
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
@@ -98,7 +120,20 @@ export function DevTaskBoard() {
     ) : (
       <ul className="flex flex-col gap-2">
         {rows.map((task) => (
-          <li key={task.id}>
+          <li
+            key={task.id}
+            draggable={canMove}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", task.id);
+              setDrag({ id: task.id, from: task.status });
+            }}
+            onDragEnd={() => {
+              setDrag(null);
+              setOver(null);
+            }}
+            className={cn(canMove && "cursor-grab active:cursor-grabbing", drag?.id === task.id && "opacity-50")}
+          >
             <DevTaskCard task={task} onOpen={openTask} />
           </li>
         ))}
@@ -231,7 +266,24 @@ export function DevTaskBoard() {
               <section
                 key={s}
                 aria-label={t(`columns.${s}`)}
-                className="flex min-w-0 flex-col gap-2 rounded-xl bg-muted/30 p-2"
+                onDragOver={(e) => {
+                  if (!canDropOn(s)) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (over !== s) setOver(s);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  dropOn(s);
+                }}
+                className={cn(
+                  "flex min-w-0 flex-col gap-2 rounded-xl bg-muted/30 p-2 ring-2 ring-transparent transition-colors",
+                  drag && canDropOn(s) && "ring-primary/30",
+                  over === s && "bg-primary/5 ring-primary",
+                )}
               >
                 <header className="flex items-center justify-between px-1 py-1">
                   <h3 className="text-sm font-semibold text-foreground">{t(`columns.${s}`)}</h3>

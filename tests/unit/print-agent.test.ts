@@ -114,6 +114,12 @@ describe("the agent", () => {
     expect(AGENT_SCRIPT).toContain("'Local\\NeuroFaxPrintAgent'");
   });
 
+  it("the installer points the PC at the public address, not the app's own", () => {
+    const route = read("src/app/api/crm/print-agent/installer/route.ts");
+    expect(route).toContain("process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`");
+    expect(route).not.toContain("url.host");
+  });
+
   it("tokens are stored hashed", () => {
     expect(hashAgentToken("abc")).toMatch(/^[0-9a-f]{64}$/);
     expect(read("prisma/migrations/20261009120000_print_agents/migration.sql")).toContain('"tokenHash" TEXT NOT NULL');

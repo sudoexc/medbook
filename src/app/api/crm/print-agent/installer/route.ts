@@ -5,6 +5,7 @@
  * agent stops) and starts it at every sign-in (src/server/print/agent-script.ts).
  */
 import { createApiListHandler } from "@/lib/api-handler";
+import { SITE_DOMAIN } from "@/lib/constants";
 import { err } from "@/server/http";
 import { mintPrintAgent } from "@/server/print/agent";
 import { installerBat } from "@/server/print/agent-script";
@@ -19,7 +20,10 @@ export const GET = createApiListHandler(
     const printer = url.searchParams.get("printer")?.trim() ?? "";
     if (!IPV4.test(printer)) return err("BadRequest", 400, { reason: "printer_ip" });
     const token = await mintPrintAgent({ clinicId: ctx.clinicId, printerHost: printer });
-    const server = process.env.NEXT_PUBLIC_BASE_URL ?? `${url.protocol}//${url.host}`;
+    // The public address, never the request's: behind nginx the app sees
+    // itself as http://0.0.0.0:3000, which the first installer wrote into
+    // the PC's config (09.10.2026).
+    const server = (process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`).replace(/\/+$/, "");
     return new Response(installerBat({ server, token }), {
       headers: {
         "Content-Type": "application/octet-stream",

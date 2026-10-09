@@ -822,7 +822,8 @@
         "expand": "Javoblarni ko'rsatish",
         "collapse": "Yopish"
       },
-      "addPayment": "To'lov qabul qilish"
+      "addPayment": "To'lov qabul qilish",
+      "reprintTicket": "Talon"
     },
     "rail": {
       "quickActions": "Tez amallar",
@@ -2082,7 +2083,8 @@
         },
         "sectionLive": "Jonli navbat",
         "sectionBooked": "Yozuvlar",
-        "bookedHint": "Yozuvlar navbat tartibida qatnashmaydi"
+        "bookedHint": "Yozuvlar navbat tartibida qatnashmaydi",
+        "reprint": "Talonni qayta chop etish"
       }
     },
     "warnings": {
@@ -2337,7 +2339,8 @@
       "arrivalsTitle": "Yozuv bo'yicha kelganlar",
       "arrivalsHint": "Bemor kelganda «Keldi» ni bosing",
       "arrivalsEmpty": "Bugunga yozilganlarning hammasi belgilangan",
-      "arrivalsNone": "Bugunga yozuvlar yo'q"
+      "arrivalsNone": "Bugunga yozuvlar yo'q",
+      "queueOpen": "Navbat"
     },
     "tile": {
       "cabinet": "Kab. {number}",
@@ -2500,6 +2503,24 @@
       "bookingWhen": "{day}, soat {time}",
       "bookingRecovered": "Yozuv aloqa uzilishidan oldin saqlangan, ikkinchi marta yozilmadi.",
       "bookingHint": "Qabul kuni bemor kelganda «Keldi» ni belgilang."
+    },
+    "queue": {
+      "title": "Navbat",
+      "back": "Orqaga",
+      "doctors": "Shifokorlar",
+      "arrange": "Tartib bilan joylash",
+      "arrangeHint": "Odamlarni qanday tartibda chaqirsangiz, shu tartibda bosing: birinchi, ikkinchi, uchinchi. Qayta bosish raqamni olib tashlaydi. Qolganlar ulardan keyin turadi.",
+      "empty": "Bu shifokorni hozir hech kim kutmayapti",
+      "liveTitle": "Jonli navbat",
+      "arrivedTitle": "Yozuv bo'yicha kelganlar",
+      "place": "{place}-o'rin",
+      "urgent": "Shoshilinch",
+      "up": "Yuqoriga",
+      "down": "Pastga",
+      "print": "Chop etish",
+      "cancel": "Bekor qilish",
+      "saving": "Saqlanmoqda…",
+      "save": "Tartibni saqlash ({count})"
     }
   },
   "appointmentLifecycle": {

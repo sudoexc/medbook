@@ -193,3 +193,12 @@ export function TicketLetter({
     </span>
   );
 }
+
+/** The bar under a screen's content, clear of the iPad's home indicator. */
+export function BottomBar({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="shrink-0 border-t border-border bg-card px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {children}
+    </div>
+  );
+}

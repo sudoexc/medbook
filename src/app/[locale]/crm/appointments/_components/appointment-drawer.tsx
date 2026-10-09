@@ -11,6 +11,7 @@ import {
   ExternalLinkIcon,
   FolderOpenIcon,
   PhoneIcon,
+  PrinterIcon,
   UserIcon,
   XIcon,
 } from "lucide-react";
@@ -54,6 +55,8 @@ import {
 // the channel row. The status select that used to live here is gone — see
 // `<AppointmentLifecycle>` for the replacement.
 import { MoneyText } from "@/components/atoms/money-text";
+import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";
+import { tashkentDateOf, tashkentToday } from "@/lib/tashkent-time";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { SelfCheckInBadge } from "@/components/atoms/self-check-in-badge";
@@ -150,6 +153,16 @@ export function AppointmentDrawer({
   const timeline = usePatientTimeline(query.data?.patient.id ?? null);
 
   const appt = query.data;
+
+  // «Талон» reprints today's ticket of anyone in the queue (owner request
+  // 08.10.2026), from whichever reception view opened this card. The stub
+  // only prints for today, so the button shows only then. Tied to this
+  // appointment, so a print never fires for the next card opened.
+  const [ticketPrint, setTicketPrint] = React.useState<{ id: string; n: number } | null>(null);
+  const canReprint =
+    !!appt &&
+    tashkentDateOf(appt.date) === tashkentToday() &&
+    ["BOOKED", "CONFIRMED", "WAITING", "IN_PROGRESS"].includes(appt.status as string);
 
   const [notesLocal, setNotesLocal] = React.useState<string>("");
   const [notesDirty, setNotesDirty] = React.useState(false);
@@ -273,6 +286,22 @@ export function AppointmentDrawer({
                   : t("loading")}
               </SheetDescription>
             </div>
+            {canReprint && appt ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() =>
+                  setTicketPrint((p) => ({
+                    id: appt.id,
+                    n: p?.id === appt.id ? p.n + 1 : 1,
+                  }))
+                }
+              >
+                <PrinterIcon className="size-3.5" />
+                {t("reprintTicket")}
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               size="icon-sm"
@@ -282,6 +311,9 @@ export function AppointmentDrawer({
               <XIcon className="size-4" />
             </Button>
           </div>
+          {appt && ticketPrint?.id === appt.id ? (
+            <TicketPrintFrame appointmentId={appt.id} job={ticketPrint.n} />
+          ) : null}
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">

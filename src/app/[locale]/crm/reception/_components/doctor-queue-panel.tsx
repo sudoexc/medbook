@@ -27,6 +27,7 @@ import {
   PhoneCallIcon,
   PlayIcon,
   PlusIcon,
+  PrinterIcon,
   UserCheckIcon,
   UserXIcon,
   XIcon,
@@ -50,6 +51,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { cn } from "@/lib/utils";
+import { tashkentDateOf } from "@/lib/tashkent-time";
+import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -414,6 +417,15 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
 
     const [confirmTarget, setConfirmTarget] =
       React.useState<AppointmentStatus | null>(null);
+    // «Перепечатать талон» (owner request 08.10.2026): today's ticket only,
+    // the stub refuses other days. Per row, so it prints this row's ticket.
+    const [printJob, setPrintJob] = React.useState(0);
+    const canReprint =
+      tashkentDateOf(row.date) === clinicToday &&
+      (row.queueStatus === "WAITING" ||
+        row.queueStatus === "IN_PROGRESS" ||
+        row.queueStatus === "BOOKED" ||
+        row.queueStatus === "CONFIRMED");
 
     const handle = (next: AppointmentStatus) => {
       mutation.mutate(next);
@@ -557,6 +569,12 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
               <ExternalLinkIcon className="mr-2 size-3.5" />
               {t("openCard")}
             </DropdownMenuItem>
+            {canReprint ? (
+              <DropdownMenuItem onClick={() => setPrintJob((n) => n + 1)}>
+                <PrinterIcon className="mr-2 size-3.5" />
+                {t("reprint")}
+              </DropdownMenuItem>
+            ) : null}
             {canPrioritize ? (
               <DropdownMenuItem
                 disabled={priorityMutation.isPending}
@@ -601,6 +619,7 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        <TicketPrintFrame appointmentId={row.id} job={printJob} />
 
         <AlertDialog
           open={confirmTarget !== null}

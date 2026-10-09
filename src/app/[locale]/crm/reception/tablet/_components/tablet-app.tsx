@@ -8,6 +8,7 @@ import {
   BrainIcon,
   CalendarClockIcon,
   CheckIcon,
+  ListOrderedIcon,
   LogOutIcon,
   RefreshCwIcon,
   TicketPlusIcon,
@@ -75,7 +76,8 @@ import { DoctorTile } from "./doctor-tile";
 import { BookingDone, TicketDone } from "./done-screen";
 import { EMPTY_PATIENT_SEARCH, PatientStep, type PatientSearchState } from "./patient-step";
 import { TimeStep } from "./time-step";
-import { ErrorNote, Segmented, TOUCH, TouchButton } from "./tablet-ui";
+import { QueueScreen } from "./queue-screen";
+import { BottomBar, ErrorNote, Segmented, TOUCH, TouchButton } from "./tablet-ui";
 
 /** A flow left untouched this long goes back home, ready for the next patient. */
 const IDLE_RESET_MS = 5 * 60_000;
@@ -101,6 +103,8 @@ export function TabletApp() {
   const [search, setSearch] = React.useState<PatientSearchState>(EMPTY_PATIENT_SEARCH);
   const [showAll, setShowAll] = React.useState(false);
   const [homeTab, setHomeTab] = React.useState<"doctors" | "arrivals">("doctors");
+  // «Очередь»: reprints and the order of the live queue (08.10.2026).
+  const [queueOpen, setQueueOpen] = React.useState(false);
   const [failure, setFailure] = React.useState<SubmitFailure | null>(null);
 
   const issue = useIssueWalkin();
@@ -114,6 +118,20 @@ export function TabletApp() {
     [data.doctors],
   );
   const rows = data.rows as unknown as TabletApptRow[];
+  // The queue screen lists the doctors on duty, plus anyone else somebody
+  // is still waiting for.
+  const queueDoctors = React.useMemo(() => {
+    const onDuty = orderTabletDoctors(data.doctors, data.summaries, { showAll: false });
+    const listed = new Set(onDuty.map((d) => d.id));
+    const extra = data.doctors.filter(
+      (d) => !listed.has(d.id) && (data.summaries.get(d.id)?.waiting ?? 0) > 0,
+    );
+    return [...onDuty, ...extra];
+  }, [data.doctors, data.summaries]);
+  const waitingTotal = React.useMemo(
+    () => [...data.summaries.values()].reduce((n, s) => n + s.waiting, 0),
+    [data.summaries],
+  );
 
   const active: ActiveFlow | null = flow.screen === "flow" ? flow : null;
   const services = useDoctorServices(active?.doctorId ?? null);
@@ -352,6 +370,13 @@ export function TabletApp() {
             </BottomBar>
           ) : null}
         </div>
+      ) : queueOpen ? (
+        <QueueScreen
+          rows={rows}
+          doctors={queueDoctors}
+          online={online}
+          onBack={() => setQueueOpen(false)}
+        />
       ) : (
         <Home
           data={{ ...data, rows }}
@@ -364,6 +389,8 @@ export function TabletApp() {
           onTabChange={setHomeTab}
           doctorById={doctorById}
           onStart={start}
+          onOpenQueue={() => setQueueOpen(true)}
+          waitingTotal={waitingTotal}
           scrollRef={scrollRef}
         />
       )}
@@ -465,14 +492,6 @@ function OfflineBanner() {
   );
 }
 
-function BottomBar({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="shrink-0 border-t border-border bg-card px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-      {children}
-    </div>
-  );
-}
-
 type HomeData = Omit<TabletData, "rows"> & { rows: TabletApptRow[] };
 
 function Home({
@@ -486,6 +505,8 @@ function Home({
   onTabChange,
   doctorById,
   onStart,
+  onOpenQueue,
+  waitingTotal,
   scrollRef,
 }: {
   data: HomeData;
@@ -498,6 +519,8 @@ function Home({
   onTabChange: (v: "doctors" | "arrivals") => void;
   doctorById: Map<string, TabletDoctor>;
   onStart: (mode: TabletMode, doctorId?: string) => void;
+  onOpenQueue: () => void;
+  waitingTotal: number;
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const t = useTranslations("receptionTablet.home");
@@ -524,16 +547,23 @@ function Home({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
-        <Segmented
-          className="mb-6 xl:hidden"
-          label={t("doctorsTitle")}
-          value={tab}
-          onChange={(v) => v && onTabChange(v)}
-          options={[
-            { value: "doctors", label: <>{t("doctorsTitle")} {count(onDutyCount)}</> },
-            { value: "arrivals", label: <>{t("arrivalsTitle")} {count(arrivals.length)}</> },
-          ]}
-        />
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <Segmented
+            className="min-w-0 flex-1 xl:hidden"
+            label={t("doctorsTitle")}
+            value={tab}
+            onChange={(v) => v && onTabChange(v)}
+            options={[
+              { value: "doctors", label: <>{t("doctorsTitle")} {count(onDutyCount)}</> },
+              { value: "arrivals", label: <>{t("arrivalsTitle")} {count(arrivals.length)}</> },
+            ]}
+          />
+          {/* Reprints and the order of the live queue (08.10.2026). */}
+          <TouchButton tone="outline" className="xl:ml-auto" onClick={onOpenQueue}>
+            <ListOrderedIcon />
+            {t("queueOpen")} {count(waitingTotal)}
+          </TouchButton>
+        </div>
 
         {data.isError ? (
           <ErrorNote

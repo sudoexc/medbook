@@ -10,6 +10,8 @@ import { legacyColorCompanions } from "@/lib/legacy-color"
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts"
 import { GlobalLeadAlerts } from "@/components/layout/global-lead-alerts"
 import { GlobalArrivalAlerts } from "@/components/layout/global-arrival-alerts"
+import { GlobalStaffCallAlerts } from "@/components/staff-calls/global-staff-call-alerts"
+import { isStaffCallAlertRole } from "@/lib/staff-calls"
 import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch"
 import { CrmTopbar } from "@/components/layout/crm-topbar"
 import { ImpersonationBanner } from "@/components/layout/impersonation-banner"
@@ -183,6 +185,9 @@ export default async function CrmLayout({
           session?.user?.role === "RECEPTIONIST"
         }
       />
+      {/* «Позвать регистратуру»: a doctor's call, full screen for the desk
+          and the nurse on every CRM screen, the iPad's included. */}
+      <GlobalStaffCallAlerts enabled={isStaffCallAlertRole(session?.user?.role)} />
       <SessionExpiryWatch />
       {brandStyle ? (
         <style dangerouslySetInnerHTML={{ __html: brandStyle }} />

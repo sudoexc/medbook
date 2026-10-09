@@ -489,6 +489,7 @@ model Clinic {
   devTasks                 DevTask[]
   devTaskComments          DevTaskComment[]
   devTaskAttachments       DevTaskAttachment[]
+  staffCalls               StaffCall[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -977,6 +978,7 @@ model Doctor {
   visitNoteAmendments VisitNoteAmendment[]
   presets             DoctorPreset[]
 
+  staffCalls             StaffCall[]
   @@unique([clinicId, slug])
   @@unique([clinicId, ticketPrefix])
   @@index([clinicId, isActive])
@@ -4125,3 +4127,30 @@ model DevTaskAttachment {
   @@index([taskId, createdAt])
   @@index([clinicId, createdAt])
 }
+
+/// «Позвать регистратуру» (owner request 09.10.2026): a doctor calls the
+/// desk (the receptionist or the nurse) from his cabinet. Every reception
+/// screen shows it full screen until someone answers «Иду»; the doctor then
+/// sees who is coming. An OPEN call older than STAFF_CALL_OPEN_MS counts as
+/// expired (src/lib/staff-calls.ts), no sweep needed.
+model StaffCall {
+  id          String    @id @default(cuid())
+  clinicId    String
+  clinic      Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId    String
+  doctor      Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  /// The doctor's user who pressed the button.
+  createdById String?
+  /// OPEN, ACKED (someone answered «Иду») or CANCELLED (the doctor took it back).
+  status      String    @default("OPEN")
+  ackedById   String?
+  /// Who is coming, as the doctor's screen shows it.
+  ackedByName String?
+  createdAt   DateTime  @default(now())
+  ackedAt     DateTime?
+  closedAt    DateTime?
+
+  @@index([clinicId, status, createdAt])
+  @@index([doctorId, createdAt])
+}
+

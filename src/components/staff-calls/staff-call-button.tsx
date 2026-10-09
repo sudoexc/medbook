@@ -1,0 +1,111 @@
+"use client";
+
+import * as React from "react";
+import { useTranslations } from "next-intl";
+import { toast } from "sonner";
+import { BellRingIcon, CheckCircle2Icon, XIcon } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { doctorCallState } from "@/lib/staff-calls";
+import { playNotificationSound } from "@/lib/notification-sound";
+
+import { useMyStaffCall } from "./use-staff-calls";
+
+/**
+ * «Позвать регистратуру» in the doctor's top bar (owner request
+ * 09.10.2026): one press calls the desk (the receptionist or the nurse),
+ * whose screens show it full screen. While it rings the button says so and
+ * can take it back; once someone answers «Иду» it shows who is coming.
+ */
+export function StaffCallButton() {
+  const t = useTranslations("staffCall");
+  const { query, call, cancel } = useMyStaffCall();
+  const current = query.data ?? null;
+
+  // Re-evaluate the state as time passes (ringing ends, «идёт» fades).
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 5_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const state = doctorCallState(current, now);
+
+  // The answer: a sound and a toast, once per call.
+  const announced = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (state !== "coming" || !current || announced.current === current.id) return;
+    announced.current = current.id;
+    playNotificationSound();
+    toast.success(
+      current.ackedByName ? t("coming", { name: current.ackedByName }) : t("comingNoName"),
+      { duration: 10_000 },
+    );
+  }, [state, current, t]);
+
+  const press = () =>
+    call.mutate(undefined, {
+      onSuccess: (r) => {
+        setNow(Date.now());
+        toast.info(t("sent"), { id: `staff-call:${r.call.id}` });
+      },
+      onError: () => toast.error(t("callFailed")),
+    });
+
+  if (state === "calling" && current) {
+    return (
+      <div className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={press}
+          disabled={call.isPending}
+          title={t("callAgain")}
+          className="motion-press inline-flex h-10 items-center gap-2 rounded-xl border-2 border-warning bg-warning/15 px-3.5 text-sm font-semibold text-warning-text"
+        >
+          <BellRingIcon className="size-4 animate-pulse" />
+          <span className="hidden sm:inline">{t("calling")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => cancel.mutate(current.id)}
+          disabled={cancel.isPending}
+          aria-label={t("cancel")}
+          title={t("cancel")}
+          className="motion-press inline-flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <XIcon className="size-4" />
+        </button>
+      </div>
+    );
+  }
+
+  if (state === "coming" && current) {
+    return (
+      <button
+        type="button"
+        onClick={press}
+        disabled={call.isPending}
+        title={t("callAgain")}
+        className="motion-press inline-flex h-10 max-w-[18rem] items-center gap-2 rounded-xl border-2 border-success bg-success/15 px-3.5 text-sm font-semibold text-success"
+      >
+        <CheckCircle2Icon className="size-4 shrink-0" />
+        <span className="hidden truncate sm:inline">
+          {current.ackedByName ? t("coming", { name: current.ackedByName }) : t("comingNoName")}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={press}
+      disabled={call.isPending}
+      className={cn(
+        "motion-press inline-flex h-10 items-center gap-2 rounded-xl bg-warning px-3.5 text-sm font-semibold text-warning-foreground shadow-sm transition-colors hover:bg-warning/90 disabled:opacity-60",
+      )}
+    >
+      <BellRingIcon className="size-4" />
+      <span className="hidden sm:inline">{t("button")}</span>
+    </button>
+  );
+}

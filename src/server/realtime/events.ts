@@ -156,6 +156,11 @@ export const EVENT_TYPES = [
   // конфликтов» red), and every open patient card refreshes «Медицина».
   // Audited by the routes themselves, so not by the pumper.
   "patient.medicalRecordChanged",
+  // «Позвать регистратуру» (owner request 09.10.2026): a doctor's call to
+  // the desk was made, answered («Иду») or taken back. Every reception
+  // screen shows an open call full screen; the doctor's screen shows who is
+  // coming. No patient data in the payload.
+  "staff-call.updated",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -651,6 +656,19 @@ export type PreVisitSubmittedEventPayload = z.infer<
  * so the reception toast can greet without an extra fetch; the receptionist
  * still marks «Пришёл» manually after verifying.
  */
+export const StaffCallPayload = z
+  .object({
+    callId: z.string().min(1),
+    doctorId: z.string().min(1),
+    doctorName: z.string().optional(),
+    cabinet: z.string().nullable().optional(),
+    status: z.enum(["OPEN", "ACKED", "CANCELLED"]),
+    ackedByName: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+  })
+  .passthrough();
+export type StaffCallEventPayload = z.infer<typeof StaffCallPayload>;
+
 export const PatientArrivedPayload = z
   .object({
     appointmentId: z.string().min(1),
@@ -771,6 +789,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("lead.created", LeadEventPayload),
   makeEvent("lead.updated", LeadEventPayload),
   makeEvent("patient.medicalRecordChanged", PatientMedicalRecordChangedPayload),
+  makeEvent("staff-call.updated", StaffCallPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

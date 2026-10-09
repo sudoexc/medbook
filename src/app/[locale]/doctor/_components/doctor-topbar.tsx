@@ -32,6 +32,7 @@ export interface DoctorTopbarProps {
   userEmail?: string | null;
 }
 
+import { StaffCallButton } from "@/components/staff-calls/staff-call-button";
 import { DoctorSearch } from "./doctor-search";
 import { AddWalkinDialog } from "../my-day/_components/add-walkin-dialog";
 import { useDoctorToday } from "../my-day/_hooks/use-doctor-today";
@@ -90,6 +91,9 @@ export function DoctorTopbar({
           F2
         </span>
       </button>
+
+      {/* «Позвать регистратуру» (owner request 09.10.2026). */}
+      <StaffCallButton />
 
       {doctorId ? (
         <AddWalkinDialog

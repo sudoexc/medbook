@@ -9322,5 +9322,23 @@
         "NEW": "Qaytarish"
       }
     }
+  },
+  "staffCall": {
+    "button": "Registraturani chaqirish",
+    "sent": "Registratura chaqirildi",
+    "calling": "Registratura chaqirilmoqda…",
+    "callAgain": "Yana chaqirish",
+    "cancel": "Chaqiruvni bekor qilish",
+    "coming": "Sizga kelmoqda: {name}",
+    "comingNoName": "Sizga kelishmoqda",
+    "callFailed": "Chaqirib bo'lmadi, aloqani tekshiring",
+    "overlayTitle": "Sizni shifokor chaqiryapti",
+    "cabinet": "{number}-kabinet",
+    "justNow": "hozirgina",
+    "ago": "{min} daqiqa oldin",
+    "go": "Boraman",
+    "alreadyGoing": "Allaqachon boryapti: {name}",
+    "closed": "Chaqiruv allaqachon yopilgan",
+    "ackFailed": "Yuborilmadi, yana bosing"
   }
 }

@@ -53,6 +53,8 @@ export interface DoctorBoardData {
     specializationRu: string | null;
     color: string | null;
     cabinet: string | null;
+    /** «Перерыв» / «Обед» (09.10.2026); absent from an older server. */
+    pause?: { kind: "BREAK" | "LUNCH"; since: string } | null;
   };
   now: string;
   queue: { current: DoctorBoardCurrent | null; waiting: DoctorBoardWaiting[] };

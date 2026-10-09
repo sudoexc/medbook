@@ -19,6 +19,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { CheckCircle2Icon, CoffeeIcon, UtensilsIcon } from "lucide-react";
 
 import {
   useDoctorBoard,
@@ -33,6 +34,7 @@ import {
   useAudioUnlock,
 } from "../../_shared";
 import { Bi, useTvTranslators } from "../../_i18n";
+import { DOCTOR_RESUMED_SHOWN_MS } from "@/lib/doctor-pause";
 
 // ─── Tunables (visual iteration knobs) ──────────────────────────────────────
 const OVERLAY_MS = 15_000; // call takeover auto-dismiss
@@ -157,6 +159,29 @@ export default function DoctorTVPage() {
       : null;
 
   const accent = data?.doctor.color || "#2353FF";
+
+  // «Перерыв» / «Обед» (owner request 09.10.2026): the pause replaces the
+  // queue; when it ends, «Врач снова принимает» for a few seconds, then the
+  // queue as it was.
+  const pause = data?.doctor.pause ?? null;
+  const wasPaused = useRef(false);
+  const [resumed, setResumed] = useState(false);
+  useEffect(() => {
+    if (pause) {
+      wasPaused.current = true;
+      setResumed(false);
+      return;
+    }
+    if (!wasPaused.current || !data) return;
+    wasPaused.current = false;
+    setResumed(true);
+  }, [pause, data]);
+  // Its own timer: a refetch during the banner must not cancel it.
+  useEffect(() => {
+    if (!resumed) return;
+    const id = setTimeout(() => setResumed(false), DOCTOR_RESUMED_SHOWN_MS);
+    return () => clearTimeout(id);
+  }, [resumed]);
   // The TV box's own time zone is whatever the installer left on it; the
   // board and its now-line follow the clinic's wall clock (Asia/Tashkent).
   const clock = tashkentPartsOf(time);
@@ -265,6 +290,12 @@ export default function DoctorTVPage() {
           </div>
         </Tile>
 
+        {pause ? (
+          <PausePanel kind={pause.kind} since={pause.since} />
+        ) : resumed ? (
+          <ResumedPanel />
+        ) : (
+          <>
         {/* ── Now serving: one compact band (owner 08.10.2026: it took
             half the screen and pushed the queue off the TV). ─────────── */}
         <Tile
@@ -443,6 +474,9 @@ export default function DoctorTVPage() {
             </div>
           </Tile>
         </div>
+
+          </>
+        )}
 
         {/* ── Quiet footer ───────────────────────────────────────────── */}
         <p className="shrink-0 px-2 text-lg" style={{ color: FAINT }}>
@@ -645,3 +679,48 @@ function SlotRow({
     </div>
   );
 }
+
+/** «Врач на перерыве» / «Врач на обеде» instead of the queue. */
+function PausePanel({ kind, since }: { kind: "BREAK" | "LUNCH"; since: string }) {
+  const tv = useTvTranslators();
+  const Icon = kind === "LUNCH" ? UtensilsIcon : CoffeeIcon;
+  const time = new Date(since).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Tashkent",
+  });
+  return (
+    <Tile className="board-in flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-10 text-center">
+      <span
+        className="flex size-36 items-center justify-center rounded-full"
+        style={{ background: "#FEF3C7", color: AMBER }}
+      >
+        <Icon className="size-20" aria-hidden />
+      </span>
+      <p className="text-7xl font-bold leading-tight">{tv.ru(`doctorBoard.pause.${kind}`)}</p>
+      <p className="text-4xl font-semibold" style={{ color: C.muted }}>
+        {tv.ru("doctorBoard.pause.since", { time })}
+      </p>
+      <p className="text-3xl" style={{ color: FAINT }}>
+        {tv.ru("doctorBoard.pause.queueKept")}
+      </p>
+    </Tile>
+  );
+}
+
+/** A few seconds of «Врач снова принимает» before the queue returns. */
+function ResumedPanel() {
+  const tv = useTvTranslators();
+  return (
+    <Tile
+      className="board-in flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-10 text-center"
+      style={{ background: GREEN_TINT }}
+    >
+      <CheckCircle2Icon className="size-36" style={{ color: GREEN }} aria-hidden />
+      <p className="text-7xl font-bold leading-tight" style={{ color: GREEN }}>
+        {tv.ru("doctorBoard.pause.resumed")}
+      </p>
+    </Tile>
+  );
+}
+

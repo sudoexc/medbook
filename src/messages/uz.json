@@ -9165,6 +9165,13 @@
         "WAITING": "keldi",
         "IN_PROGRESS": "qabulda",
         "COMPLETED": "yakunlandi"
+      },
+      "pause": {
+        "BREAK": "Shifokor tanaffusda",
+        "LUNCH": "Shifokor tushlikda",
+        "since": "{time} dan",
+        "queueKept": "Navbat saqlanadi",
+        "resumed": "Shifokor yana qabul qilmoqda"
       }
     },
     "announce": {
@@ -9341,5 +9348,14 @@
     "alreadyGoing": "Allaqachon boryapti: {name}",
     "closed": "Chaqiruv allaqachon yopilgan",
     "ackFailed": "Yuborilmadi, yana bosing"
+  },
+  "doctorPause": {
+    "break": "Tanaffus",
+    "lunch": "Tushlik",
+    "endBreak": "Tanaffusni tugatish",
+    "endLunch": "Tushlikni tugatish",
+    "since": "{time} dan",
+    "resumedToast": "Televizorda yana navbat",
+    "failed": "Bo'lmadi, aloqani tekshiring"
   }
 }

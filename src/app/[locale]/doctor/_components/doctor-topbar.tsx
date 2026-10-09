@@ -33,6 +33,7 @@ export interface DoctorTopbarProps {
 }
 
 import { StaffCallButton } from "@/components/staff-calls/staff-call-button";
+import { DoctorPauseButtons } from "@/components/doctor-pause/doctor-pause-buttons";
 import { DoctorSearch } from "./doctor-search";
 import { AddWalkinDialog } from "../my-day/_components/add-walkin-dialog";
 import { useDoctorToday } from "../my-day/_hooks/use-doctor-today";
@@ -92,8 +93,10 @@ export function DoctorTopbar({
         </span>
       </button>
 
-      {/* «Позвать регистратуру» (owner request 09.10.2026). */}
+      {/* «Позвать регистратуру» and «Перерыв» / «Обед» (owner requests
+          09.10.2026). */}
       <StaffCallButton />
+      <DoctorPauseButtons />
 
       {doctorId ? (
         <AddWalkinDialog

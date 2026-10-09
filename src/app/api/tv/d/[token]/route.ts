@@ -33,6 +33,7 @@ import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
 import { boardRowKey } from "@/server/appointments/public-ticket";
+import { currentDoctorPause } from "@/server/doctor-pause";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -89,7 +90,7 @@ export async function GET(request: Request): Promise<Response> {
     const now = new Date();
     const { dayStart, dayEnd } = tashkentDayBounds(now);
 
-    const [projection, slotRows] = await Promise.all([
+    const [projection, slotRows, pause] = await Promise.all([
       getQueueProjection({
         clinicId: doctor.clinicId,
         doctorIds: [doctor.id],
@@ -113,6 +114,8 @@ export async function GET(request: Request): Promise<Response> {
         orderBy: [{ date: "asc" }, { time: "asc" }],
         take: 200,
       }),
+      // «Перерыв» / «Обед» (09.10.2026): the board shows it instead of the queue.
+      currentDoctorPause(doctor.id, now),
     ]);
 
     const q = projection.get(doctor.id);
@@ -130,6 +133,7 @@ export async function GET(request: Request): Promise<Response> {
         specializationRu: doctor.specializationRu,
         color: doctor.color,
         cabinet: doctor.cabinet?.number ?? null,
+        pause: pause ? { kind: pause.kind, since: pause.startedAt } : null,
       },
       now: now.toISOString(),
       queue: {

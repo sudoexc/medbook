@@ -490,6 +490,7 @@ model Clinic {
   devTaskComments          DevTaskComment[]
   devTaskAttachments       DevTaskAttachment[]
   staffCalls               StaffCall[]
+  doctorPauses             DoctorPause[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -979,6 +980,7 @@ model Doctor {
   presets             DoctorPreset[]
 
   staffCalls             StaffCall[]
+  pauses                 DoctorPause[]
   @@unique([clinicId, slug])
   @@unique([clinicId, ticketPrefix])
   @@index([clinicId, isActive])
@@ -4152,5 +4154,26 @@ model StaffCall {
 
   @@index([clinicId, status, createdAt])
   @@index([doctorId, createdAt])
+}
+
+/// «Перерыв» / «Обед» (owner request 09.10.2026): the doctor steps out; his
+/// TV shows «Врач на перерыве» / «Врач на обеде» instead of the queue until
+/// he presses «Закончить». The open pause is the row without `endedAt`
+/// started today (Tashkent): one left open overnight ends by itself. The
+/// rows stay as a record of breaks.
+model DoctorPause {
+  id          String    @id @default(cuid())
+  clinicId    String
+  clinic      Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId    String
+  doctor      Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  /// BREAK or LUNCH.
+  kind        String
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  createdById String?
+
+  @@index([doctorId, endedAt, startedAt])
+  @@index([clinicId, startedAt])
 }
 

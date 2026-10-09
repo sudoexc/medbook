@@ -175,6 +175,7 @@ export function CallTakeover({
 }) {
   return (
     <div
+      data-call-takeover
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center ${className}`}
       style={{ background: CALL_GREEN, color: "#FFFFFF" }}
     >

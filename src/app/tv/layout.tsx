@@ -9,6 +9,8 @@ import type { Viewport } from "next";
 import ru from "@/messages/ru.json";
 import uz from "@/messages/uz.json";
 
+import { VersionWatch } from "@/components/version-watch";
+
 import { TvI18nProvider } from "./_i18n";
 
 // The boards are designed light (owner, 2026-07-06). Android TV's WebView
@@ -19,6 +21,9 @@ export const viewport: Viewport = { colorScheme: "only light" };
 export default function TvLayout({ children }: { children: React.ReactNode }) {
   return (
     <TvI18nProvider messages={{ ru: ru.tvBoard, uz: uz.tvBoard }}>
+      {/* A TV has nobody typing: it reloads after a deploy as soon as it is
+          not calling a patient (09.10.2026). */}
+      <VersionWatch idleMs={0} blockSelector="[data-call-takeover]" />
       {children}
     </TvI18nProvider>
   );

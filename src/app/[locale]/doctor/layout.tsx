@@ -10,6 +10,7 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { DoctorSidebar } from "./_components/doctor-sidebar";
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts";
 import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch";
+import { VersionWatch } from "@/components/version-watch";
 import { DoctorTopbar } from "./_components/doctor-topbar";
 import { DoctorCardMissing } from "./_components/doctor-card-missing";
 
@@ -79,6 +80,8 @@ export default async function DoctorLayout({
       <div className="flex h-screen min-h-0 w-full bg-background">
         <GlobalTgAlerts inboxPath="/doctor/messages" scope="doctor" />
         <SessionExpiryWatch />
+        {/* Reload after a deploy at a safe moment (09.10.2026). */}
+        <VersionWatch />
         <DoctorSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <DoctorTopbar

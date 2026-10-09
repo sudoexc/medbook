@@ -13,7 +13,16 @@
 
 export type ClinicEntryMode = "WRITE" | "VIEW_ONLY";
 
-export type ClinicEntry = { reason: string; mode: ClinicEntryMode };
+export type ClinicEntry = {
+  reason: string;
+  mode: ClinicEntryMode;
+  /**
+   * Entering a switched-off clinic on purpose (owner request 09.10.2026):
+   * set by the dialog only for such a clinic, after its warning. The route
+   * refuses an inactive clinic without it.
+   */
+  breakGlass?: boolean;
+};
 
 export const CLINIC_ENTRY_DEFAULT_MODE: ClinicEntryMode = "VIEW_ONLY";
 
@@ -43,7 +52,7 @@ export function checkClinicEntry(reason: string, mode: string): ClinicEntryCheck
 
 /**
  * Mints the grant. Always sends the mode: the route still defaults a missing
- * one to WRITE for older callers.
+ * one to WRITE for older callers. `breakGlass` goes only when set.
  */
 export async function postClinicEntry(
   clinicId: string,
@@ -53,7 +62,12 @@ export async function postClinicEntry(
   const res = await fetchImpl("/api/platform/session/switch-clinic", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ clinicId, reason: entry.reason, mode: entry.mode }),
+    body: JSON.stringify({
+      clinicId,
+      reason: entry.reason,
+      mode: entry.mode,
+      ...(entry.breakGlass ? { breakGlass: true } : {}),
+    }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }

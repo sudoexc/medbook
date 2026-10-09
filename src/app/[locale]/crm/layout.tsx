@@ -218,6 +218,9 @@ export default async function CrmLayout({
               clinicName={impersonatedClinic.nameRu}
               clinicSlug={impersonatedClinic.slug}
               mode={impersonationMode}
+              // Lease countdown and «Продлить» (owner request 09.10.2026).
+              expiresAt={session?.user?.impersonation?.expiresAt ?? null}
+              maxExpiresAt={session?.user?.impersonation?.maxExpiresAt ?? null}
             />
           )}
           <TrialBanner subscription={subscription} />

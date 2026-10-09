@@ -140,7 +140,10 @@ export function decideStaffSession(args: {
   });
 
   if (!user || !user.active) return reject("inactive");
-  // The platform switched the clinic off: its staff are signed out.
+  // The platform switched the clinic off: its staff are signed out. A
+  // SUPER_ADMIN who entered it on purpose stays (owner request 09.10.2026):
+  // his row has no home clinic, and the clinic in his claims is never read
+  // here.
   if (
     clinicLocksOut({
       role: user.role,
@@ -176,7 +179,11 @@ export function decideStaffSession(args: {
     const tablet = canUseReceptionTablet(user.role, user.startPage);
     const lifetime = checkSessionLifetime({
       lastActivityAt,
-      lastSessionRotatedAt: user.lastSessionRotatedAt,
+      // The SUPER_ADMIN keeps up to 3 sessions (owner request 09.10.2026),
+      // and `User.lastSessionRotatedAt` moves with every sign-in: a phone
+      // sign-in would restart the laptop's 8h cap. His cap runs from each
+      // session's own start instead (null falls back to `createdAt`).
+      lastSessionRotatedAt: isSuper ? null : user.lastSessionRotatedAt,
       sessionCreatedAt: row.createdAt,
       idleTimeoutMinutes: tablet
         ? null

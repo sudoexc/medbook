@@ -174,6 +174,10 @@ export const SwitchClinicSchema = z.object({
   // (clinicId === null). Min 4 chars so we can't ship empty strings.
   reason: z.string().trim().min(4).max(500).optional(),
   mode: z.enum(["WRITE", "VIEW_ONLY"]).optional(),
+  // Entering a switched-off clinic (owner request 09.10.2026): the dialog
+  // sends `true` only after showing «Клиника выключена». Ignored for an
+  // active clinic and when leaving.
+  breakGlass: z.boolean().optional(),
 });
 export type SwitchClinic = z.infer<typeof SwitchClinicSchema>;
 

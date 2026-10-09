@@ -5266,8 +5266,17 @@
         "cancel": "Bekor qilish",
         "enter": "Kirish",
         "entering": "Kirilmoqda…",
-        "failed": "Klinikaga kirib bo'lmadi: {detail}"
+        "failed": "Klinikaga kirib bo'lmadi: {detail}",
+        "inactiveWarning": "Klinika o'chirilgan: xodimlar va bemorlar uni ko'rmaydi"
       }
+    },
+    "banner": {
+      "timeLeft": "Qoldi: {time}",
+      "expired": "Kirish vaqti tugadi",
+      "extend": "Uzaytirish",
+      "extending": "Uzaytirilmoqda…",
+      "extendFailed": "Uzaytirib bo'lmadi",
+      "limitReached": "Boshqa uzaytirib bo'lmaydi: 8 soat o'tdi"
     },
     "clinics": {
       "title": "Klinikalar",

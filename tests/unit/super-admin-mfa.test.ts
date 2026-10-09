@@ -49,7 +49,7 @@ vi.mock("@/lib/prisma", () => ({
       }),
     },
     clinic: {
-      findUnique: vi.fn(async () => ({ id: "c1", slug: "neurofax", nameRu: "N" })),
+      findUnique: vi.fn(async () => ({ id: "c1", slug: "neurofax", nameRu: "N", active: true })),
     },
     auditLog: {
       create: vi.fn(async ({ data }: { data: unknown }) => {

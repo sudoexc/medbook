@@ -506,10 +506,17 @@ export const AUDIT_ACTION = {
   //   reason + mode. `entityType: "ImpersonationGrant"`, `entityId:
   //   <grantId>`. `meta` carries `{ clinicId, mode, expiresAt, reason }`.
   //
-  //   SUPER_ADMIN_IMPERSONATE_ENDED — admin clicked Exit or entered another
-  //   clinic, ending a live grant (audit G5-09: one row per ended grant, none
-  //   when nothing was live). `entityType: "ImpersonationGrant"`. `meta`
-  //   carries `{ clinicId, durationMs, via: "exit" | "switch" }`.
+  //   SUPER_ADMIN_IMPERSONATE_ENDED — admin clicked Exit, entered another
+  //   clinic or signed out, ending a live grant (audit G5-09: one row per
+  //   ended grant, none when nothing was live). `entityType:
+  //   "ImpersonationGrant"`. `meta` carries `{ clinicId, durationMs, via:
+  //   "exit" | "switch" | "sign_out" }` (sign-out: owner request 09.10.2026).
+  //
+  //   SUPER_ADMIN_IMPERSONATE_EXTENDED — «Продлить» in the banner gave the
+  //   live grant a fresh 60 min lease, capped at 8 h from its start (owner
+  //   request 09.10.2026, docs/design/OWNER-ACCOUNT.md §2). `entityType:
+  //   "ImpersonationGrant"`, `entityId: <grantId>`. `meta` carries
+  //   `{ clinicId, mode, previousExpiresAt, expiresAt, maxExpiresAt }`.
   //
   //   SUPER_ADMIN_IMPERSONATE_EXPIRED — the grant's 60 min lease ran out
   //   without an exit; the worker sweep (`expireLapsedGrants`) closes it.
@@ -523,6 +530,7 @@ export const AUDIT_ACTION = {
   //   `{ method, path, clinicId }`.
   SUPER_ADMIN_IMPERSONATE_STARTED: "SUPER_ADMIN_IMPERSONATE_STARTED",
   SUPER_ADMIN_IMPERSONATE_ENDED: "SUPER_ADMIN_IMPERSONATE_ENDED",
+  SUPER_ADMIN_IMPERSONATE_EXTENDED: "SUPER_ADMIN_IMPERSONATE_EXTENDED",
   SUPER_ADMIN_IMPERSONATE_EXPIRED: "SUPER_ADMIN_IMPERSONATE_EXPIRED",
   SUPER_ADMIN_VIEW_AS_BLOCKED: "SUPER_ADMIN_VIEW_AS_BLOCKED",
   //

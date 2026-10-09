@@ -445,13 +445,20 @@ export function ClinicsPageClient({ expired = false }: { expired?: boolean }) {
                   </td>
                   <td className="p-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {/* A switched-off clinic can be entered too (owner
+                          request 09.10.2026): the dialog warns that its
+                          staff and patients cannot see it and sends
+                          `breakGlass`. */}
                       <Button
-                        variant="default"
+                        variant={c.active ? "default" : "outline"}
                         size="sm"
                         onClick={() =>
-                          setEntering({ id: c.id, name: c.nameRu })
+                          setEntering({
+                            id: c.id,
+                            name: c.nameRu,
+                            inactive: !c.active,
+                          })
                         }
-                        disabled={!c.active}
                       >
                         <LogInIcon />
                         Войти

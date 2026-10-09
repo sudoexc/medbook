@@ -68,7 +68,7 @@ import {
 const ROOT = join(__dirname, "..", "..");
 const src = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
-function render(target: { id: string; name: string } | null) {
+function render(target: { id: string; name: string; inactive?: boolean } | null) {
   const onCancel = vi.fn();
   const onEnter = vi.fn(async () => {});
   const html = renderToStaticMarkup(
@@ -168,6 +168,18 @@ describe("CM-21: the entry dialog", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("warns before entering a switched-off clinic (owner request 09.10.2026)", () => {
+    const off = render({ id: "c9", name: "Off", inactive: true }).html;
+    expect(off).toContain("data-inactive-clinic");
+    expect(off).toContain("adminPlatform.switcher.entry.inactiveWarning");
+    const on = render({ id: "c1", name: "NeuroFax" }).html;
+    expect(on).not.toContain("inactiveWarning");
+    // The flag goes out only from the dialog that showed the warning.
+    expect(src("src/components/layout/clinic-entry-dialog.tsx")).toContain(
+      "...(target.inactive ? { breakGlass: true } : {})",
+    );
   });
 
   it("renders nothing without a target", () => {

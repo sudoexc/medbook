@@ -9,8 +9,11 @@
  * guard that every `auth()` runs (an open session ends within the guard's
  * 10-second cache).
  *
- * SUPER_ADMIN has no home clinic and is never locked out this way; entering
- * a switched-off clinic is already refused in /admin.
+ * SUPER_ADMIN has no home clinic and is never locked out this way, not even
+ * while visiting a switched-off clinic: the platform owner may enter one on
+ * purpose, after the «Клиника выключена» warning and with `breakGlass`
+ * (owner request 09.10.2026, docs/design/OWNER-ACCOUNT.md §2). The role
+ * check holds whatever clinic is passed in.
  */
 export function clinicLocksOut(user: {
   role: string;

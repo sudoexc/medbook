@@ -14,6 +14,11 @@ type AppRole =
 type ImpersonationSessionStamp = {
   grantId: string;
   mode: "WRITE" | "VIEW_ONLY";
+  /** ISO end of the current lease: the banner's countdown (owner request
+   *  09.10.2026). Null only for a JWT minted before the claim existed. */
+  expiresAt?: string | null;
+  /** ISO latest end «Продлить» can reach (8 h from the grant's start). */
+  maxExpiresAt?: string | null;
 } | null;
 
 declare module "next-auth" {
@@ -63,6 +68,10 @@ declare module "next-auth/jwt" {
     mustChangePassword?: boolean;
     impersonationGrantId?: string | null;
     impersonationMode?: "WRITE" | "VIEW_ONLY" | null;
+    /** Epoch ms end of the live grant's lease, re-read on every refresh. */
+    impersonationExpiresAt?: number | null;
+    /** Epoch ms cap of that lease (8 h from the grant's start). */
+    impersonationMaxExpiresAt?: number | null;
     /** UserSession row id minted at sign-in (see session-guard.ts). */
     sid?: string | null;
     /** Minting the UserSession row failed at sign-in: skip the row binding. */

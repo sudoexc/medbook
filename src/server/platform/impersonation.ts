@@ -31,6 +31,14 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import type { ImpersonationMode } from "@/generated/prisma/client";
 
 export const IMPERSONATION_LEASE_MS = 60 * 60 * 1000; // 60 minutes
+/**
+ * «Продлить» in the banner (owner request 09.10.2026, design
+ * docs/design/OWNER-ACCOUNT.md §2): a visit can be extended lease by lease,
+ * but never past 8 hours from the grant's start, the same ceiling as a
+ * staff session. A day-long support job takes a new entry with its own
+ * reason.
+ */
+export const IMPERSONATION_MAX_MS = 8 * 60 * 60 * 1000; // 8 hours
 export const GRANT_COOKIE_NAME = "admin_grant_id";
 /**
  * For how long after a lease ran out /admin/clinics explains the return
@@ -137,8 +145,8 @@ export async function getActiveGrant(grantId: string): Promise<
  * whether this call ended it, so the caller journals an end only once.
  *
  * `reason` is one of:
- *   - "user_exit" — admin clicked the exit banner / dropdown, or entered
- *                   another clinic
+ *   - "user_exit" — admin clicked the exit banner / dropdown, entered
+ *                   another clinic, or signed out (`endGrantOnSignOut`)
  *   - "expired"   — the lease ran out (`expireLapsedGrants` stamps these)
  *   - "revoked"   — manual / automated revocation (future)
  */
@@ -154,6 +162,146 @@ export async function endGrant(
     data: { endedAt: new Date(), endedReason: reason },
   });
   return res.count > 0;
+}
+
+/** Pure: the latest moment a grant may ever run to (8 h from its start). */
+export function maxLeaseEnd(grant: { startedAt: Date }): Date {
+  return new Date(grant.startedAt.getTime() + IMPERSONATION_MAX_MS);
+}
+
+/**
+ * Pure: where a lease extended at `now` ends, or null when it cannot grow.
+ *
+ * «Продлить» gives a fresh 60 minute lease from the click, capped at 8 h from
+ * the grant's start (owner request 09.10.2026). Counting from now rather than
+ * from the old end keeps the rule the lease was built on: at no moment does
+ * a live grant hold more than 60 minutes ahead, so repeated clicks cannot
+ * bank hours. The button shows only in the last 5 minutes anyway.
+ */
+export function extendedLeaseEnd(
+  grant: { startedAt: Date; expiresAt: Date },
+  now: Date,
+): Date | null {
+  const next = Math.min(
+    now.getTime() + IMPERSONATION_LEASE_MS,
+    maxLeaseEnd(grant).getTime(),
+  );
+  return next > grant.expiresAt.getTime() ? new Date(next) : null;
+}
+
+export type ExtendGrantResult =
+  | {
+      ok: true;
+      grant: { id: string; clinicId: string; mode: GrantMode; startedAt: Date };
+      previousExpiresAt: Date;
+      expiresAt: Date;
+      maxExpiresAt: Date;
+    }
+  | { ok: false; reason: "no_live_grant" }
+  | { ok: false; reason: "lease_cap_reached"; expiresAt: Date; maxExpiresAt: Date };
+
+/**
+ * Extend the caller's own live grant (POST /api/platform/session/extend).
+ * The caller journals SUPER_ADMIN_IMPERSONATE_EXTENDED and re-sets the
+ * cookies. A grant of another admin, an ended one or one whose lease already
+ * ran out is "no_live_grant": a lapsed lease is closed by the sweep, never
+ * revived.
+ */
+export async function extendGrant(
+  grantId: string,
+  superAdminId: string,
+  now: Date = new Date(),
+): Promise<ExtendGrantResult> {
+  const active = await getActiveGrant(grantId);
+  if (!active || active.superAdminId !== superAdminId) {
+    return { ok: false, reason: "no_live_grant" };
+  }
+  const maxExpiresAt = maxLeaseEnd(active);
+  const next = extendedLeaseEnd(active, now);
+  if (!next) {
+    return {
+      ok: false,
+      reason: "lease_cap_reached",
+      expiresAt: active.expiresAt,
+      maxExpiresAt,
+    };
+  }
+  // Conditional on the grant still being open and unexpired: an exit, a
+  // sign-out or the expiry sweep that got there first wins.
+  const res = await prisma.impersonationGrant.updateMany({
+    where: {
+      id: grantId,
+      superAdminId,
+      endedAt: null,
+      expiresAt: { gt: now },
+    },
+    data: { expiresAt: next },
+  });
+  if (res.count === 0) return { ok: false, reason: "no_live_grant" };
+  return {
+    ok: true,
+    grant: {
+      id: active.id,
+      clinicId: active.clinicId,
+      mode: active.mode,
+      startedAt: active.startedAt,
+    },
+    previousExpiresAt: active.expiresAt,
+    expiresAt: next,
+    maxExpiresAt,
+  };
+}
+
+/**
+ * Sign-out ends the visit (owner request 09.10.2026, design §0: signing out
+ * mid-grant and signing back in, or another SUPER_ADMIN signing in on the
+ * same browser, used to carry on the old live grant). Ends `grantId` only
+ * when it is live and belongs to `superAdminId`, and journals
+ * SUPER_ADMIN_IMPERSONATE_ENDED with `via: "sign_out"`. Returns whether it
+ * ended one. Never throws: a sign-out must always go through.
+ */
+export async function endGrantOnSignOut(input: {
+  grantId: string;
+  superAdminId: string;
+  ip: string | null;
+  userAgent: string | null;
+}): Promise<boolean> {
+  try {
+    return await runWithTenant(
+      { kind: "SUPER_ADMIN", userId: input.superAdminId },
+      async () => {
+        const active = await getActiveGrant(input.grantId);
+        if (!active || active.superAdminId !== input.superAdminId) return false;
+        if (!(await endGrant(input.grantId, "user_exit"))) return false;
+        await prisma.auditLog
+          .create({
+            data: {
+              clinicId: active.clinicId,
+              actorId: input.superAdminId,
+              actorRole: "SUPER_ADMIN",
+              actorLabel: "platform",
+              action: AUDIT_ACTION.SUPER_ADMIN_IMPERSONATE_ENDED,
+              entityType: "ImpersonationGrant",
+              entityId: input.grantId,
+              meta: {
+                clinicId: active.clinicId,
+                durationMs: Date.now() - active.startedAt.getTime(),
+                via: "sign_out",
+              },
+              ip: input.ip,
+              userAgent: input.userAgent?.slice(0, 500) ?? null,
+            },
+          })
+          .catch((e: unknown) => {
+            console.warn(`[impersonation] sign-out audit failed grant=${input.grantId}`, e);
+          });
+        return true;
+      },
+    );
+  } catch (e) {
+    console.error(`[impersonation] sign-out could not end grant=${input.grantId}`, e);
+    return false;
+  }
 }
 
 /**

@@ -58,10 +58,14 @@ import {
   recordLoginEvent,
   type LoginAuditEvent,
 } from "@/server/auth/login-audit";
-import { realClientIp } from "./client-ip";
+import { clientIpForAudit, realClientIp } from "./client-ip";
 import { clinicLocksOut } from "@/server/auth/clinic-access";
 import { isUserActivityRequest } from "./user-activity";
 import { startPageFor } from "./start-page";
+
+// Same name as GRANT_COOKIE_NAME in src/server/platform/impersonation.ts,
+// whose helpers this module imports lazily (JWT refresh, sign-out).
+const GRANT_COOKIE_NAME = "admin_grant_id";
 
 const APP_ROLES: ReadonlySet<Role> = new Set([
   "SUPER_ADMIN",
@@ -276,6 +280,24 @@ function applyStartPage(token: JWT, role: unknown, value: unknown): void {
   else delete token.startPage;
 }
 
+/** No live visit: drop every impersonation claim (fail closed). */
+function dropImpersonation(token: JWT): void {
+  token.clinicId = null;
+  token.impersonationGrantId = null;
+  token.impersonationMode = null;
+  token.impersonationExpiresAt = null;
+  token.impersonationMaxExpiresAt = null;
+}
+
+/** Cookie options that delete a cookie through `cookies()` (sign-out). */
+const EXPIRED_COOKIE = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: 0,
+};
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // CRM session TTL is capped at 24h per TZ §9.2. `updateAge` rotates the
   // JWT at most hourly while the user is active so the cookie stays fresh
@@ -300,13 +322,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         (typeof token?.userId === "string" && token.userId) ||
         (typeof token?.sub === "string" && token.sub) ||
         null;
+      let reqHeaders: { get(name: string): string | null } | null = null;
+      try {
+        reqHeaders = await headers();
+      } catch {
+        // Outside a request scope: the rows below are still worth writing.
+      }
       if (userId) {
-        let reqHeaders: { get(name: string): string | null } | null = null;
-        try {
-          reqHeaders = await headers();
-        } catch {
-          // Outside a request scope: the row is still worth writing.
-        }
         await recordLoginEvent(
           {
             kind: "logout",
@@ -344,18 +366,53 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       } catch (err) {
         console.error("[auth] sign-out session cleanup failed", err);
       }
+      // Sign-out ends a SUPER_ADMIN's clinic visit too (owner request
+      // 09.10.2026, docs/design/OWNER-ACCOUNT.md §0 and §2): signing out
+      // mid-grant and back in, or another SUPER_ADMIN signing in on this
+      // browser, used to carry on the old live grant. The grant cookie is the
+      // source (the JWT's copy may be an hour old); only a live grant of this
+      // very admin is ended and journaled. The JWT side refuses an ended or
+      // foreign grant anyway, should the cookies below survive.
+      let grantCookie: string | null = null;
+      try {
+        grantCookie = (await cookies()).get(GRANT_COOKIE_NAME)?.value ?? null;
+      } catch {
+        // Outside a request scope: only the JWT's copy is left.
+      }
+      const grantIds = new Set(
+        [grantCookie, token?.impersonationGrantId].filter(
+          (g): g is string => typeof g === "string" && g.length > 0,
+        ),
+      );
+      if (userId && token?.role === "SUPER_ADMIN" && grantIds.size > 0) {
+        try {
+          const { endGrantOnSignOut } = await import(
+            "@/server/platform/impersonation"
+          );
+          for (const grantId of grantIds) {
+            await endGrantOnSignOut({
+              grantId,
+              superAdminId: userId,
+              ip: reqHeaders ? clientIpForAudit({ headers: reqHeaders }) : null,
+              userAgent: reqHeaders?.get("user-agent") ?? null,
+            });
+          }
+        } catch (err) {
+          // The sign-out itself must go through; the lease ends on its own.
+          console.error("[auth] sign-out could not end the clinic visit", err);
+        }
+      }
       try {
         const store = await cookies();
-        store.set(SESSION_COOKIE_NAME, "", {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          path: "/",
-          maxAge: 0,
-        });
+        store.set(SESSION_COOKIE_NAME, "", EXPIRED_COOKIE);
         // The branch pick is the signed-out user's, not the next one's on
         // this PC (audit ST-06).
         store.set(activeBranchClearCookie());
+        // The clinic visit cookies go with the session whoever signs out, so
+        // the next person on this browser starts with none (owner request
+        // 09.10.2026).
+        store.set(OVERRIDE_COOKIE_NAME, "", EXPIRED_COOKIE);
+        store.set(GRANT_COOKIE_NAME, "", EXPIRED_COOKIE);
       } catch {
         // Outside a request scope; the row is gone, which is what matters.
       }
@@ -471,7 +528,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // back to /login on every request.
         if (u.id) {
           try {
-            const minted = await mintUserSessionOnSignIn(u.id, u.clinicId ?? null);
+            const minted = await mintUserSessionOnSignIn(
+              u.id,
+              u.clinicId ?? null,
+              u.role ?? null,
+            );
             token.sid = minted.sessionId;
             token.sidUnbound = false;
           } catch (err) {
@@ -541,11 +602,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const overrideCookie = store.get(OVERRIDE_COOKIE_NAME);
           const overridden = verifyClinicOverride(overrideCookie?.value ?? null);
           if (overridden) {
-            const grantCookie = store.get("admin_grant_id");
+            const grantCookie = store.get(GRANT_COOKIE_NAME);
             const grantId = grantCookie?.value ?? null;
             if (grantId) {
               try {
-                const { getActiveGrant } = await import(
+                const { getActiveGrant, maxLeaseEnd } = await import(
                   "@/server/platform/impersonation"
                 );
                 // The JWT callback runs outside any runWithTenant boundary,
@@ -558,38 +619,45 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   "auth: verify SUPER_ADMIN impersonation grant during JWT refresh",
                   () => getActiveGrant(grantId),
                 );
-                if (active && active.clinicId === overridden) {
+                // The grant must be THIS admin's (owner request 09.10.2026,
+                // docs/design/OWNER-ACCOUNT.md §0): only the clinic was
+                // compared, so another SUPER_ADMIN signing in on the same
+                // browser carried on the first one's live grant. A grant of
+                // anyone else is refused exactly like a clinic mismatch.
+                const ownerId = (token.userId as string | undefined) ?? token.sub;
+                if (
+                  active &&
+                  active.clinicId === overridden &&
+                  active.superAdminId === ownerId
+                ) {
                   token.clinicId = overridden;
                   token.impersonationGrantId = grantId;
                   token.impersonationMode = active.mode;
+                  // Read on every refresh like the mode, so «Продлить»
+                  // shows up in the banner's countdown at once.
+                  token.impersonationExpiresAt = active.expiresAt.getTime();
+                  token.impersonationMaxExpiresAt = maxLeaseEnd(active).getTime();
                 } else {
-                  // Grant gone / expired / mismatched — drop the override.
-                  token.clinicId = null;
-                  token.impersonationGrantId = null;
-                  token.impersonationMode = null;
+                  // Grant gone / expired / mismatched / someone else's —
+                  // drop the override.
+                  dropImpersonation(token);
                 }
               } catch {
                 // DB read failed — fail closed. We cannot confirm an active
                 // grant, so the override is NOT honoured (an unverifiable
                 // impersonation is treated as none). The admin drops back to
                 // the platform view and can re-impersonate.
-                token.clinicId = null;
-                token.impersonationGrantId = null;
-                token.impersonationMode = null;
+                dropImpersonation(token);
               }
             } else {
               // Override cookie present but grant cookie missing/expired. No
               // live grant ⇒ no impersonation (fail closed). Honouring a
               // grant-less override would be an ungateable WRITE outliving the
               // 60-min lease, so we drop it.
-              token.clinicId = null;
-              token.impersonationGrantId = null;
-              token.impersonationMode = null;
+              dropImpersonation(token);
             }
           } else {
-            token.clinicId = null;
-            token.impersonationGrantId = null;
-            token.impersonationMode = null;
+            dropImpersonation(token);
           }
         } catch {
           // Outside a request scope (e.g. during sign-in callback invoked
@@ -623,9 +691,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         | null
         | undefined;
       if (grantId && mode) {
+        // `expiresAt` / `maxExpiresAt` drive the banner's countdown and
+        // «Продлить» (owner request 09.10.2026).
+        const expiresAt = token.impersonationExpiresAt;
+        const maxExpiresAt = token.impersonationMaxExpiresAt;
         session.user.impersonation = {
           grantId,
           mode,
+          expiresAt:
+            typeof expiresAt === "number" ? new Date(expiresAt).toISOString() : null,
+          maxExpiresAt:
+            typeof maxExpiresAt === "number"
+              ? new Date(maxExpiresAt).toISOString()
+              : null,
         };
       } else {
         session.user.impersonation = null;

@@ -48,6 +48,8 @@ type ClinicOption = {
   slug: string
   nameRu: string
   nameUz?: string
+  /** `Clinic.active`: a switched-off one is entered with a warning. */
+  active?: boolean
 }
 
 export interface ClinicSwitcherProps {
@@ -213,7 +215,11 @@ export function ClinicSwitcher({
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!isActive && !isSwitching) {
-                      setEntering({ id: c.id, name: c.nameRu })
+                      setEntering({
+                        id: c.id,
+                        name: c.nameRu,
+                        inactive: c.active === false,
+                      })
                     }
                   }}
                   className="flex items-center justify-between gap-2"

@@ -47,9 +47,11 @@ export async function readSessionCookie(): Promise<string | null> {
 /**
  * Mint a fresh UserSession on a successful sign-in.
  *
- * Sequence (concurrent-session policy = "1 active per user"):
+ * Sequence (concurrent-session policy = "1 active per user", 3 for the
+ * SUPER_ADMIN, owner request 09.10.2026):
  *   1. Read every existing UserSession row for this user.
- *   2. Pick the IDs to delete (kicking ALL prior rows per spec).
+ *   2. Pick the IDs to delete (kicking ALL prior rows per spec; a
+ *      SUPER_ADMIN keeps his 2 newest, see `pickSessionsToKick`).
  *   3. Delete them and emit `CONCURRENT_SESSION_KICKED` per kicked id.
  *   4. Insert a new row with a fresh random `tokenHash`.
  *   5. Stamp `User.lastSessionRotatedAt = now()` (proxy 8h check anchor)
@@ -64,6 +66,8 @@ export async function readSessionCookie(): Promise<string | null> {
 export async function mintUserSessionOnSignIn(
   userId: string,
   clinicId: string | null,
+  /** The account's role at sign-in; only SUPER_ADMIN changes the policy. */
+  role: string | null = null,
 ): Promise<{ sessionId: string; token: string }> {
   const token = generateSessionToken();
   const tokenHash = hashSessionToken(token);
@@ -79,7 +83,7 @@ export async function mintUserSessionOnSignIn(
       where: { userId },
       select: { id: true, createdAt: true },
     });
-    const kickedIds = pickSessionsToKick(prior);
+    const kickedIds = pickSessionsToKick(prior, role);
 
     const created = await prisma.$transaction(async (tx) => {
       if (kickedIds.length > 0) {

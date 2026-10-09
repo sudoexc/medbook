@@ -2,7 +2,8 @@
  * POST /api/platform/session/switch-clinic — set / clear the SUPER_ADMIN
  * clinic-override cookie (and the Phase 19 W4 grant cookie).
  *
- * Body: `{ clinicId: string | null, reason?: string, mode?: "WRITE" | "VIEW_ONLY" }`.
+ * Body: `{ clinicId: string | null, reason?: string, mode?: "WRITE" | "VIEW_ONLY",
+ * breakGlass?: boolean }`.
  *   - When `clinicId` is set, `reason` is required (≥4 chars). The handler
  *     mints an `ImpersonationGrant` row (60min lease, default WRITE mode),
  *     sets `admin_clinic_override` (the existing HMAC-signed clinicId
@@ -22,35 +23,29 @@
  * the lease ran out used to write one with clinicId null. A lapsed grant is
  * not stamped "user_exit" here either; the expiry sweep closes it as
  * "expired" (`expireLapsedGrants`).
+ *
+ * A switched-off clinic (`Clinic.active = false`) is entered only with
+ * `breakGlass: true`, sent by the entry dialog after its warning, and the
+ * STARTED row carries `meta.inactiveClinic = true` (owner request
+ * 09.10.2026). Without the flag: 409 `clinic_inactive`, no grant.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { ok, err, notFound } from "@/server/http";
+import { ok, err, notFound, conflict } from "@/server/http";
 import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
 import { mfaRequiredResponse, owesTotpEnrolment } from "@/server/auth/mfa-gate";
 import {
-  OVERRIDE_COOKIE_NAME,
-  signClinicOverride,
-} from "@/server/platform/clinic-override";
-import {
-  GRANT_COOKIE_NAME,
   createGrant,
   endGrant,
   getActiveGrant,
 } from "@/server/platform/impersonation";
+import {
+  clearLeaseCookieHeaders,
+  leaseCookieHeaders,
+  readGrantCookie,
+} from "@/server/platform/grant-cookies";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { SwitchClinicSchema } from "@/server/schemas/platform";
-
-function readGrantCookie(request: Request): string | null {
-  const header = request.headers.get("cookie");
-  if (!header) return null;
-  const needle = `${GRANT_COOKIE_NAME}=`;
-  for (const pair of header.split(";")) {
-    const trimmed = pair.trim();
-    if (trimmed.startsWith(needle)) return trimmed.slice(needle.length) || null;
-  }
-  return null;
-}
 
 /** End the caller's live grant, if there is one, and journal it. */
 async function endLiveGrant(
@@ -77,19 +72,6 @@ async function endLiveGrant(
       via,
     },
   });
-}
-
-function cookieHeader(name: string, value: string, maxAgeSeconds: number): string {
-  return [
-    `${name}=${value}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    process.env.NODE_ENV === "production" ? "Secure" : "",
-    `Max-Age=${maxAgeSeconds}`,
-  ]
-    .filter(Boolean)
-    .join("; ");
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -131,9 +113,18 @@ export async function POST(request: Request): Promise<Response> {
 
         const exists = await prisma.clinic.findUnique({
           where: { id: clinicId },
-          select: { id: true, slug: true, nameRu: true },
+          select: { id: true, slug: true, nameRu: true, active: true },
         });
         if (!exists) return notFound();
+        // A switched-off clinic can be entered, but only on purpose (owner
+        // request 09.10.2026, docs/design/OWNER-ACCOUNT.md §2): the dialog
+        // warns «Клиника выключена» and only then sends `breakGlass: true`.
+        // A caller that did not see the warning gets 409 and nothing is
+        // minted. The clinic stays switched off for its staff and patients.
+        const inactiveClinic = !exists.active;
+        if (inactiveClinic && parsed.data.breakGlass !== true) {
+          return conflict("clinic_inactive");
+        }
 
         // End the previous grant before minting a new one — keeps the audit
         // history linear (a single live grant per actor at any moment).
@@ -146,7 +137,6 @@ export async function POST(request: Request): Promise<Response> {
           mode,
         );
 
-        const signed = signClinicOverride(clinicId);
         await platformAudit({
           request,
           userId,
@@ -160,27 +150,16 @@ export async function POST(request: Request): Promise<Response> {
             mode,
             expiresAt: grant.expiresAt.toISOString(),
             reason,
+            ...(inactiveClinic ? { inactiveClinic: true } : {}),
           },
         });
 
-        // Both cookies expire exactly with the grant lease. The override must
-        // NOT outlive the grant: auth.ts treats a present override + absent
-        // grant as no impersonation (fail-closed), so a longer-lived override
-        // would just be dead weight — and historically it kept impersonation
-        // alive (ungated) for up to 12h past the 60-min lease.
-        const leaseSeconds = Math.max(
-          60,
-          Math.round((grant.expiresAt.getTime() - Date.now()) / 1000),
-        );
-        const headers = new Headers();
-        headers.append(
-          "set-cookie",
-          cookieHeader(OVERRIDE_COOKIE_NAME, signed, leaseSeconds),
-        );
-        headers.append(
-          "set-cookie",
-          cookieHeader(GRANT_COOKIE_NAME, grant.grantId, leaseSeconds),
-        );
+        // Both cookies expire exactly with the grant lease (grant-cookies.ts).
+        const headers = leaseCookieHeaders({
+          clinicId,
+          grantId: grant.grantId,
+          expiresAt: grant.expiresAt,
+        });
         return Response.json(
           {
             ok: true,
@@ -197,13 +176,10 @@ export async function POST(request: Request): Promise<Response> {
 
       // Exit path — clear cookies, end the live grant (if any).
       await endLiveGrant(request, userId, readGrantCookie(request), "exit");
-      const headers = new Headers();
-      headers.append(
-        "set-cookie",
-        cookieHeader(OVERRIDE_COOKIE_NAME, "", 0),
+      return Response.json(
+        { ok: true, clinicId: null },
+        { status: 200, headers: clearLeaseCookieHeaders() },
       );
-      headers.append("set-cookie", cookieHeader(GRANT_COOKIE_NAME, "", 0));
-      return Response.json({ ok: true, clinicId: null }, { status: 200, headers });
     },
   );
 }

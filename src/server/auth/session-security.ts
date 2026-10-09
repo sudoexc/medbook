@@ -12,7 +12,9 @@
  *      kick. Hard cap regardless of activity.
  *   3. Concurrent-session — given a list of prior UserSessions for the
  *      same user, "kick all but the freshest" so a new login becomes the
- *      single live session. The helper returns the IDs to delete.
+ *      single live session. The helper returns the IDs to delete. The
+ *      platform owner (SUPER_ADMIN) keeps his 2 most recent ones besides the
+ *      new one (owner request 09.10.2026).
  */
 
 export const FORCED_REROTATE_MS = 8 * 60 * 60 * 1000; // 8h
@@ -89,16 +91,33 @@ export type SessionRow = {
 };
 
 /**
+ * How many earlier sessions a sign-in leaves alive, by role. The platform
+ * owner works from a laptop, a phone and a spare (owner request 09.10.2026,
+ * docs/design/OWNER-ACCOUNT.md §1): under "one session" a phone sign-in
+ * threw the laptop out. He keeps the new session plus 2 previous, 3 in all.
+ * Clinic staff stay at one session: a shared reception PC must not keep the
+ * previous person signed in elsewhere.
+ */
+export const SUPER_ADMIN_PRIOR_SESSIONS_KEPT = 2;
+
+export function priorSessionsKept(role: string | null | undefined): number {
+  return role === "SUPER_ADMIN" ? SUPER_ADMIN_PRIOR_SESSIONS_KEPT : 0;
+}
+
+/**
  * Given the set of UserSessions belonging to one user (typically read out
  * of the DB just before issuing a new one), return the IDs that should be
- * deleted so the freshest single row remains. The caller appends the new
- * session AFTER calling this helper.
+ * deleted. The caller appends the new session AFTER calling this helper.
  *
- * Implementation note: we keep the row with the most recent createdAt and
- * mark every other row as "kicked". The audit emitter logs each kicked id
- * with `CONCURRENT_SESSION_KICKED`.
+ * Implementation note: rows are ranked by createdAt, newest first; the
+ * first `priorSessionsKept(role)` stay (none for clinic staff) and every
+ * other row is "kicked". The audit emitter logs each kicked id with
+ * `CONCURRENT_SESSION_KICKED`.
  */
-export function pickSessionsToKick(rows: SessionRow[]): string[] {
+export function pickSessionsToKick(
+  rows: SessionRow[],
+  role?: string | null,
+): string[] {
   if (rows.length === 0) return [];
   // Defensive copy — never mutate caller's array.
   const sorted = [...rows].sort(
@@ -106,6 +125,6 @@ export function pickSessionsToKick(rows: SessionRow[]): string[] {
   );
   // Spec: "1 active session per user". A fresh login ALWAYS becomes the
   // single live session; therefore EVERY existing row is kicked, not just
-  // the older ones. The caller inserts the new row after this returns.
-  return sorted.map((r) => r.id);
+  // the older ones. The SUPER_ADMIN exception keeps his newest 2.
+  return sorted.slice(priorSessionsKept(role)).map((r) => r.id);
 }

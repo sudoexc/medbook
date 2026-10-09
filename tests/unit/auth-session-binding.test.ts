@@ -117,7 +117,9 @@ describe("jwt callback: sign-in", () => {
       token: {},
       user: { id: "u1", role: "DOCTOR", clinicId: "c1", mustChangePassword: true },
     });
-    expect(h.mint).toHaveBeenCalledWith("u1", "c1");
+    // The role decides how many earlier sessions survive (SUPER_ADMIN keeps
+    // 2, owner request 09.10.2026).
+    expect(h.mint).toHaveBeenCalledWith("u1", "c1", "DOCTOR");
     expect(token).toMatchObject({ sid: "s-new", sidUnbound: false, role: "DOCTOR" });
     expect(typeof token!.pwTempAt).toBe("number");
     // Sign-in itself is never re-validated against a row that is being made.

@@ -35,7 +35,16 @@ import {
   type ClinicEntryMode,
 } from "@/lib/clinic-entry"
 
-export type ClinicEntryTarget = { id: string; name: string }
+export type ClinicEntryTarget = {
+  id: string
+  name: string
+  /**
+   * The clinic is switched off (owner request 09.10.2026): the dialog warns
+   * that its staff and patients cannot see it, and the entry goes out with
+   * `breakGlass: true`.
+   */
+  inactive?: boolean
+}
 
 export interface ClinicEntryDialogProps {
   /** The clinic being entered; null keeps the dialog closed. */
@@ -101,7 +110,12 @@ function ClinicEntryForm({
     setBusy(true)
     setError(null)
     try {
-      await onEnter(target.id, { reason: check.reason, mode: check.mode })
+      await onEnter(target.id, {
+        reason: check.reason,
+        mode: check.mode,
+        // Sent only after the warning below was on screen.
+        ...(target.inactive ? { breakGlass: true } : {}),
+      })
       // Stays busy on success: the caller is already reloading the page.
     } catch (err) {
       setError(
@@ -127,6 +141,16 @@ function ClinicEntryForm({
           <AlertDialogTitle>{t("title", { clinic: target.name })}</AlertDialogTitle>
           <AlertDialogDescription>{t("description")}</AlertDialogDescription>
         </AlertDialogHeader>
+
+        {target.inactive ? (
+          <p
+            role="note"
+            data-inactive-clinic=""
+            className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm font-medium text-warning-text"
+          >
+            {t("inactiveWarning")}
+          </p>
+        ) : null}
 
         <div className="grid gap-2">
           <Label htmlFor={`${ids}-reason`}>{t("reasonLabel")}</Label>

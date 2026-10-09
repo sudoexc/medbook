@@ -80,8 +80,10 @@ export function installerBat(args: { server: string; token: string }): string {
   const ps =
     `[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; ` +
     `try { Invoke-WebRequest -UseBasicParsing '${script}' -OutFile '%DIR%\\agent.ps1' } catch {}; ` +
-    // «^&»: a bare & would end the batch echo line.
-    `^& '%DIR%\\agent.ps1'`;
+    // A bare &: this sits inside cmd's quoted region of the echo line (an
+    // odd number of " before it), where & is literal and ^ would be copied
+    // into start.vbs and break the PowerShell command (review 09.10.2026).
+    `& '%DIR%\\agent.ps1'`;
   const lines = [
     "@echo off",
     "chcp 65001 >nul",

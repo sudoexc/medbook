@@ -93,10 +93,18 @@ describe("the agent", () => {
     expect(bat).toContain("-WindowStyle Hidden");
     expect(bat).toContain("Start Menu\\Programs\\Startup\\NeuroFax Print.vbs");
     expect(bat).not.toContain("schtasks");
-    // A bare & would cut the batch echo line short.
+    // Every & in an echo line must sit inside cmd's quotes (after an odd
+    // number of "), where it is literal; a ^ there would be written into
+    // start.vbs as is and break the PowerShell command.
     for (const line of bat.split("\r\n").filter((l) => l.includes("echo "))) {
-      expect(line.replace(/\^&/g, "")).not.toContain("&");
+      expect(line).not.toContain("^");
+      let quotes = 0;
+      for (const ch of line) {
+        if (ch === '"') quotes++;
+        if (ch === "&") expect(quotes % 2, line).toBe(1);
+      }
     }
+    expect(bat).toContain("catch {}; & '%DIR%\\agent.ps1'");
   });
 
   it("the script long-polls, writes raw bytes to port 9100's host, reports back", () => {

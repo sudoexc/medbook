@@ -32,7 +32,7 @@ export const GET = createApiListHandler(
     const now = new Date();
     if (ctx.role === "DOCTOR") {
       const doctor = await doctorOf(ctx.userId);
-      if (!doctor) return ok({ call: null });
+      if (!doctor) return ok({ call: null, now: now.toISOString() });
       const row = await prisma.staffCall.findFirst({
         where: {
           doctorId: doctor.id,
@@ -44,7 +44,9 @@ export const GET = createApiListHandler(
         orderBy: { createdAt: "desc" },
         select: STAFF_CALL_SELECT,
       });
-      return ok({ call: row ? toStaffCallView(row) : null });
+      // `now`: the screens count «N мин назад» and the doctor's state on the
+      // server's clock; a clinic PC's own clock may be hours off.
+      return ok({ call: row ? toStaffCallView(row) : null, now: now.toISOString() });
     }
     const rows = await prisma.staffCall.findMany({
       where: { status: "OPEN", createdAt: { gte: staffCallOpenSince(now) } },
@@ -52,7 +54,7 @@ export const GET = createApiListHandler(
       take: 20,
       select: STAFF_CALL_SELECT,
     });
-    return ok({ calls: rows.map(toStaffCallView) });
+    return ok({ calls: rows.map(toStaffCallView), now: now.toISOString() });
   },
 );
 

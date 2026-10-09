@@ -12,13 +12,13 @@
 /** Who presses the button. */
 export const STAFF_CALL_CALLER_ROLES = ["DOCTOR"] as const;
 
-/** Whose screens the call takes over: the desk and the nurse. */
-export const STAFF_CALL_ALERT_ROLES = ["RECEPTIONIST", "NURSE"] as const;
-
 /**
- * Who may answer «Иду». The clinic's administrators too (they may be at the
- * desk), though the call does not take over their screens.
+ * Whose screens the call takes over: the desk, the nurse and the clinic's
+ * administrators (owner, 09.10.2026: «во всех акках ресепшна и тд»).
  */
+export const STAFF_CALL_ALERT_ROLES = ["RECEPTIONIST", "NURSE", "ADMIN"] as const;
+
+/** Who may answer «Иду»: everyone it rings for, and the platform admin. */
 export const STAFF_CALL_ANSWER_ROLES = ["RECEPTIONIST", "NURSE", "ADMIN", "SUPER_ADMIN"] as const;
 
 /** An unanswered call stops ringing after this long; the doctor may call again. */

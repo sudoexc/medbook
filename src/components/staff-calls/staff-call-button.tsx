@@ -20,7 +20,8 @@ import { useMyStaffCall } from "./use-staff-calls";
 export function StaffCallButton() {
   const t = useTranslations("staffCall");
   const { query, call, cancel } = useMyStaffCall();
-  const current = query.data ?? null;
+  const current = query.data?.value ?? null;
+  const skewMs = query.data?.skewMs ?? 0;
 
   // Re-evaluate the state as time passes (ringing ends, «идёт» fades).
   const [now, setNow] = React.useState(() => Date.now());
@@ -28,7 +29,8 @@ export function StaffCallButton() {
     const id = window.setInterval(() => setNow(Date.now()), 5_000);
     return () => window.clearInterval(id);
   }, []);
-  const state = doctorCallState(current, now);
+  // On the server's clock: a cabinet PC's own clock may be hours off.
+  const state = doctorCallState(current, now + skewMs);
 
   // The answer: a sound and a toast, once per call.
   const announced = React.useRef<string | null>(null);

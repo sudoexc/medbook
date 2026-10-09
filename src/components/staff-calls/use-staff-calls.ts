@@ -10,6 +10,18 @@ import type { StaffCallView } from "@/lib/staff-calls";
  * follow the `staff-call.updated` event and also poll, so a dropped stream
  * never leaves a call ringing or a doctor waiting without an answer.
  */
+/**
+ * The server's clock against this PC's (ms to add to Date.now()). A clinic
+ * PC with its clock hours off read a fresh call as expired and never showed
+ * it (09.10.2026): every time a screen compares with «now» goes through it.
+ */
+export type WithServerClock<T> = { value: T; skewMs: number };
+
+function skewOf(serverNow: string | undefined): number {
+  const t = serverNow ? Date.parse(serverNow) : NaN;
+  return Number.isFinite(t) ? t - Date.now() : 0;
+}
+
 export const staffCallKeys = {
   mine: ["staff-calls", "mine"] as const,
   open: ["staff-calls", "open"] as const,
@@ -50,26 +62,35 @@ function useStaffCallEvents(enabled: boolean) {
 export function useMyStaffCall() {
   const qc = useQueryClient();
   useStaffCallEvents(true);
-  const query = useQuery<StaffCallView | null, Error>({
+  const query = useQuery<WithServerClock<StaffCallView | null>, Error>({
     queryKey: staffCallKeys.mine,
     queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/staff-calls", { credentials: "include", signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return ((await res.json()) as { call: StaffCallView | null }).call;
+      const body = (await res.json()) as { call: StaffCallView | null; now?: string };
+      return { value: body.call, skewMs: skewOf(body.now) };
     },
     // While a call is out, check often: the answer must reach him even
     // when the live stream is down.
-    refetchInterval: (q) => (q.state.data ? 8_000 : 60_000),
+    refetchInterval: (q) => (q.state.data?.value ? 8_000 : 60_000),
     refetchOnWindowFocus: true,
     retry: false,
   });
   const call = useMutation<{ call: StaffCallView }, Error>({
     mutationFn: () => postJson("/api/crm/staff-calls"),
-    onSuccess: (r) => qc.setQueryData(staffCallKeys.mine, r.call),
+    onSuccess: (r) =>
+      qc.setQueryData<WithServerClock<StaffCallView | null>>(staffCallKeys.mine, (old) => ({
+        value: r.call,
+        skewMs: old?.skewMs ?? 0,
+      })),
   });
   const cancel = useMutation<{ call: StaffCallView }, Error, string>({
     mutationFn: (id) => postJson(`/api/crm/staff-calls/${encodeURIComponent(id)}/cancel`),
-    onSuccess: () => qc.setQueryData(staffCallKeys.mine, null),
+    onSuccess: () =>
+      qc.setQueryData<WithServerClock<StaffCallView | null>>(staffCallKeys.mine, (old) => ({
+        value: null,
+        skewMs: old?.skewMs ?? 0,
+      })),
   });
   return { query, call, cancel };
 }
@@ -78,12 +99,15 @@ export function useMyStaffCall() {
 export function useOpenStaffCalls(enabled: boolean) {
   const qc = useQueryClient();
   useStaffCallEvents(enabled);
-  const query = useQuery<StaffCallView[], Error>({
+  const query = useQuery<WithServerClock<StaffCallView[]>, Error>({
     queryKey: staffCallKeys.open,
     queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/staff-calls", { credentials: "include", signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return ((await res.json()) as { calls: StaffCallView[] }).calls;
+      const body = (await res.json()) as { calls?: StaffCallView[]; now?: string };
+      // A tab whose session became a doctor's (someone signed in as a
+      // doctor in this browser) gets `{ call }`: no calls to show here.
+      return { value: Array.isArray(body.calls) ? body.calls : [], skewMs: skewOf(body.now) };
     },
     enabled,
     refetchInterval: 15_000,

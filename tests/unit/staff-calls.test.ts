@@ -23,10 +23,11 @@ const NOW = Date.parse("2026-10-09T08:00:00.000Z");
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
 describe("who", () => {
-  it("the call takes over the desk's and the nurse's screens, not the admin's or the doctor's", () => {
+  it("the call takes over the desk's, the nurse's and the clinic admin's screens, not a doctor's", () => {
     expect(isStaffCallAlertRole("RECEPTIONIST")).toBe(true);
     expect(isStaffCallAlertRole("NURSE")).toBe(true);
-    for (const r of ["ADMIN", "SUPER_ADMIN", "DOCTOR", "CALL_OPERATOR", null]) {
+    expect(isStaffCallAlertRole("ADMIN")).toBe(true);
+    for (const r of ["SUPER_ADMIN", "DOCTOR", "CALL_OPERATOR", null]) {
       expect(isStaffCallAlertRole(r), String(r)).toBe(false);
     }
   });
@@ -118,3 +119,20 @@ describe("wiring", () => {
     for (const m of [ru, uz]) for (const v of Object.values(m.staffCall)) expect(v).not.toMatch(/[—–]/);
   });
 });
+
+// 09.10.2026: a desk PC with its clock hours off read a fresh call as
+// expired and never showed it. Times now come from the server.
+describe("the server's clock, not the PC's", () => {
+  it("the API sends its own now; the screens never re-filter calls by the PC clock", () => {
+    const api = read("src/app/api/crm/staff-calls/route.ts");
+    expect(api).toContain("return ok({ calls: rows.map(toStaffCallView), now: now.toISOString() });");
+    const overlay = read("src/components/staff-calls/global-staff-call-alerts.tsx");
+    expect(overlay).not.toContain("isStaffCallLive");
+    expect(overlay).toContain("const serverNow = now + (query.data?.skewMs ?? 0);");
+    const button = read("src/components/staff-calls/staff-call-button.tsx");
+    expect(button).toContain("doctorCallState(current, now + skewMs)");
+    const hooks = read("src/components/staff-calls/use-staff-calls.ts");
+    expect(hooks).toContain("value: Array.isArray(body.calls) ? body.calls : []");
+  });
+});
+

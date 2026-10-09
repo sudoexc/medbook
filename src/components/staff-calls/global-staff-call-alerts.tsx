@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { BellRingIcon, FootprintsIcon } from "lucide-react";
 
-import { STAFF_CALL_RING_EVERY_MS, isStaffCallLive, type StaffCallView } from "@/lib/staff-calls";
+import { STAFF_CALL_RING_EVERY_MS, type StaffCallView } from "@/lib/staff-calls";
 import { playNotificationSound } from "@/lib/notification-sound";
 
 import { StaffCallClosedError, useOpenStaffCalls } from "./use-staff-calls";
@@ -30,10 +30,13 @@ export function GlobalStaffCallAlerts({ enabled }: { enabled: boolean }) {
     return () => window.clearInterval(id);
   }, [enabled]);
 
+  // The server lists only calls still ringing, by its own clock; this PC's
+  // clock is used for nothing but «N мин назад», corrected by the skew.
   const calls = React.useMemo(
-    () => (query.data ?? []).filter((c) => isStaffCallLive(c, now)),
-    [query.data, now],
+    () => (query.data?.value ?? []).filter((c) => c.status === "OPEN"),
+    [query.data],
   );
+  const serverNow = now + (query.data?.skewMs ?? 0);
 
   // Ring for a new call at once, then again while any call is open.
   const rung = React.useRef(new Set<string>());
@@ -80,7 +83,7 @@ export function GlobalStaffCallAlerts({ enabled }: { enabled: boolean }) {
     >
       <div className="flex max-h-full w-full max-w-2xl flex-col gap-4 overflow-y-auto">
         {calls.map((c) => {
-          const min = Math.max(0, Math.floor((now - new Date(c.createdAt).getTime()) / 60_000));
+          const min = Math.max(0, Math.floor((serverNow - new Date(c.createdAt).getTime()) / 60_000));
           const pending = ack.isPending && ack.variables === c.id;
           return (
             <div

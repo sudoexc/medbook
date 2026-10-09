@@ -207,19 +207,19 @@ describe("the slip on an 80mm thermal printer", () => {
 });
 
 // Owner reports 08.10 and 09.10.2026: the desk's new tab stayed open after
-// printing; the hidden frame then lost Chrome's silent kiosk printing. The
-// desk opens a small window that closes itself once printed; the iPad keeps
-// the hidden frame (AirPrint).
+// printing, and a separate window was not wanted either. The desk prints
+// from a hidden frame; silent printing is Chrome's --kiosk-printing on the
+// desk PC. The iPad prints from its own hidden frame (AirPrint).
 describe("printing the slip from the desk and the iPad", () => {
   const read = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
 
-  it("the desk prints in its own small window that closes after printing", () => {
+  it("the desk prints from a hidden frame: no tab, no window («отдельное окно не нужно»)", () => {
     const open = read("src/components/ticket/open-ticket-print.ts");
-    expect(open).toContain("`/ticket/${encodeURIComponent(appointmentId)}?close=1`");
-    expect(open).toContain('"popup,width=440,height=680"');
-    const auto = read("src/app/ticket/[id]/_components/auto-print.tsx");
-    expect(auto).toContain('get("close") === "1"');
-    expect(auto).toContain('window.addEventListener("afterprint", onAfterPrint)');
+    expect(open).toContain('document.createElement("iframe")');
+    expect(open).toContain("frame.src = `/ticket/${encodeURIComponent(appointmentId)}`;");
+    expect(open).not.toContain("window.open(");
+    // One frame at a time, cleaned up.
+    expect(open).toContain("document.getElementById(FRAME_ID)?.remove();");
     for (const f of [
       "src/app/[locale]/crm/reception/_components/walkin-ticket-dialog.tsx",
       "src/app/[locale]/crm/reception/_components/doctor-queue-panel.tsx",

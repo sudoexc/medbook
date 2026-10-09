@@ -1,19 +1,37 @@
 /**
- * Prints a ticket from the desk PC: the stub opens in a small window, prints
- * itself (AutoPrint) and closes once the print is done (`?close=1`).
+ * Prints a ticket from the desk PC without opening anything: the stub loads
+ * in a hidden frame on the current page and prints itself (AutoPrint).
  *
- * Why a window and not the hidden frame the iPad uses: Chrome started with
- * `--kiosk-printing` (the desk's silent printing to the Xprinter) prints a
- * page's own window.print() at once, but a hidden frame's print brought the
- * dialog back (owner report 09.10.2026: «выходит окно и нажимаю ещё раз
- * печать»). The window used to stay open after printing; now it closes.
- * Called from a click, so the popup blocker lets it through; one named
- * window, so a second print reuses it.
+ * Silent printing (no dialog, straight to the Xprinter) is Chrome's own
+ * `--kiosk-printing` switch on the desk PC; no page can skip the dialog by
+ * itself. A separate window was tried on 09.10.2026 and the owner did not
+ * want it («отдельное окно мне не нужно»): with the switch off it changed
+ * nothing, with it on the frame prints just as silently.
+ *
+ * One frame at a time: a new print replaces the previous one, and the frame
+ * is removed a minute later.
  */
+const FRAME_ID = "neurofax-ticket-print";
+
 export function openTicketPrint(appointmentId: string): void {
-  window.open(
-    `/ticket/${encodeURIComponent(appointmentId)}?close=1`,
-    "neurofax-ticket-print",
-    "popup,width=440,height=680",
-  );
+  document.getElementById(FRAME_ID)?.remove();
+  const frame = document.createElement("iframe");
+  frame.id = FRAME_ID;
+  frame.title = "ticket";
+  frame.setAttribute("aria-hidden", "true");
+  frame.tabIndex = -1;
+  frame.src = `/ticket/${encodeURIComponent(appointmentId)}`;
+  Object.assign(frame.style, {
+    position: "fixed",
+    right: "0",
+    bottom: "0",
+    width: "0",
+    height: "0",
+    border: "0",
+    visibility: "hidden",
+  });
+  document.body.appendChild(frame);
+  window.setTimeout(() => {
+    if (document.getElementById(FRAME_ID) === frame) frame.remove();
+  }, 60_000);
 }

@@ -491,6 +491,8 @@ model Clinic {
   devTaskAttachments       DevTaskAttachment[]
   staffCalls               StaffCall[]
   doctorPauses             DoctorPause[]
+  printAgents              PrintAgent[]
+  printJobs                PrintJob[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4175,5 +4177,50 @@ model DoctorPause {
 
   @@index([doctorId, endedAt, startedAt])
   @@index([clinicId, startedAt])
+}
+
+/// A small program on a clinic PC that prints tickets straight to the
+/// network receipt printer (owner request 09.10.2026: the iPad cannot print
+/// to the Xprinter, and the desk had to confirm Chrome's print dialog). It
+/// asks the server for jobs with its token and writes ESC/POS to the printer.
+model PrintAgent {
+  id          String     @id @default(cuid())
+  clinicId    String
+  clinic      Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name        String     @default("Ресепшн")
+  /// sha256 of the token the program holds; the token itself is shown once.
+  tokenHash   String     @unique
+  printerHost String
+  printerPort Int        @default(9100)
+  /// ESC t code page for Cyrillic; 17 = PC866 on Xprinter / Epson.
+  codePage    Int        @default(17)
+  active      Boolean    @default(true)
+  lastSeenAt  DateTime?
+  createdAt   DateTime   @default(now())
+  jobs        PrintJob[]
+
+  @@index([clinicId, active])
+}
+
+/// One ticket to print. QUEUED until the agent takes it (SENT), then DONE or
+/// FAILED; a job nobody took within a couple of minutes is never printed late.
+model PrintJob {
+  id            String      @id @default(cuid())
+  clinicId      String
+  clinic        Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  agentId       String
+  agent         PrintAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  appointmentId String
+  status        String      @default("QUEUED")
+  /// The ESC/POS bytes, base64.
+  data          String      @db.Text
+  error         String?
+  createdById   String?
+  createdAt     DateTime    @default(now())
+  sentAt        DateTime?
+  doneAt        DateTime?
+
+  @@index([agentId, status, createdAt])
+  @@index([clinicId, createdAt])
 }
 

@@ -13,7 +13,7 @@ import type { FlowResult } from "@/lib/reception-tablet/flow";
 import type { TabletDoctor } from "../_hooks/use-tablet-data";
 import { doctorName } from "./doctor-tile";
 import { TouchButton } from "./tablet-ui";
-import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";
+import { useTicketPrinter } from "@/components/ticket/use-ticket-printer";
 
 /** The patient's live status page behind the slip's short code. */
 function useTicketQr(ticketCode: string | null): string | null {
@@ -47,13 +47,10 @@ export function TicketDone({
   const t = useTranslations("receptionTablet.done");
   const locale = useLocale();
   const qr = useTicketQr(result.ticketCode);
-  const [printJob, setPrintJob] = React.useState(0);
-  const [printing, setPrinting] = React.useState(false);
-  React.useEffect(() => {
-    if (!printing) return;
-    const id = window.setTimeout(() => setPrinting(false), 2_500);
-    return () => window.clearTimeout(id);
-  }, [printing, printJob]);
+  // Through the clinic's print agent when it runs (network printer, no
+  // dialog), otherwise AirPrint from the hidden frame (09.10.2026).
+  const printer = useTicketPrinter();
+  const printing = printer.busy;
 
   // The live list knows the real place once it refreshes; until then, the
   // count of those waiting when the ticket was issued.
@@ -128,8 +125,7 @@ export function TicketDone({
           size="lg"
           className="w-full"
           onClick={() => {
-            setPrintJob((j) => j + 1);
-            setPrinting(true);
+            void printer.print(result.appointmentId);
           }}
           disabled={printing}
         >
@@ -141,7 +137,7 @@ export function TicketDone({
         </TouchButton>
       </div>
 
-      <TicketPrintFrame appointmentId={result.appointmentId} job={printJob} />
+      {printer.frame}
     </div>
   );
 }

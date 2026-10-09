@@ -14,7 +14,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { ticketNumberFor } from "@/server/services/ticket-number";
-import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";
+import { useTicketPrinter } from "@/components/ticket/use-ticket-printer";
 import { useReorderQueue } from "@/app/[locale]/crm/appointments/_hooks/use-appointment";
 import type { TabletApptRow } from "@/lib/reception-tablet/doctor-day";
 import {
@@ -81,10 +81,9 @@ export function QueueScreen({
     setTapped([]);
   }, [doctor?.id]);
 
-  // One print at a time, tied to the row it was pressed for.
-  const [print, setPrint] = React.useState<{ id: string; n: number } | null>(null);
-  const reprint = (id: string) =>
-    setPrint((p) => ({ id, n: p?.id === id ? p.n + 1 : (p?.n ?? 0) + 1 }));
+  // Through the clinic's print agent when it runs, otherwise AirPrint.
+  const printer = useTicketPrinter();
+  const reprint = (id: string) => void printer.print(id);
 
   const busy = reorder.isPending;
   const save = (orderedIds: string[], after?: () => void) => {
@@ -315,7 +314,7 @@ export function QueueScreen({
         </BottomBar>
       ) : null}
 
-      {print ? <TicketPrintFrame appointmentId={print.id} job={print.n} /> : null}
+      {printer.frame}
     </div>
   );
 }

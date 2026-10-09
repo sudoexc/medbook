@@ -9357,5 +9357,10 @@
     "since": "{time} dan",
     "resumedToast": "Televizorda yana navbat",
     "failed": "Bo'lmadi, aloqani tekshiring"
+  },
+  "ticketPrint": {
+    "printed": "Talon chop etildi",
+    "printerFailed": "Printer javob bermadi, brauzer orqali chop etamiz",
+    "checkPrinter": "Printerni tekshiring: talon yuborildi, lekin javob yo'q"
   }
 }

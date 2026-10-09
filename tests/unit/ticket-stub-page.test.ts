@@ -213,28 +213,27 @@ describe("the slip on an 80mm thermal printer", () => {
 describe("printing the slip from the desk and the iPad", () => {
   const read = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
 
-  it("the desk prints from a hidden frame: no tab, no window («отдельное окно не нужно»)", () => {
-    const open = read("src/components/ticket/open-ticket-print.ts");
-    expect(open).toContain('document.createElement("iframe")');
-    expect(open).toContain("frame.src = `/ticket/${encodeURIComponent(appointmentId)}`;");
-    expect(open).not.toContain("window.open(");
-    // One frame at a time, cleaned up.
-    expect(open).toContain("document.getElementById(FRAME_ID)?.remove();");
+  it("every ticket print goes through the print agent first, the browser frame as fallback", () => {
+    const hook = read("src/components/ticket/use-ticket-printer.tsx");
+    expect(hook).toContain('fetch("/api/crm/print-jobs", {');
+    expect(hook).toContain("<TicketPrintFrame appointmentId={frame.id} job={frame.n} />");
+    // A job the agent did not take is cancelled before the browser prints.
+    expect(hook).toContain("if (cancelled) viaBrowser(appointmentId);");
     for (const f of [
       "src/app/[locale]/crm/reception/_components/walkin-ticket-dialog.tsx",
       "src/app/[locale]/crm/reception/_components/doctor-queue-panel.tsx",
       "src/app/[locale]/crm/appointments/_components/appointment-drawer.tsx",
+      "src/app/[locale]/crm/reception/tablet/_components/done-screen.tsx",
+      "src/app/[locale]/crm/reception/tablet/_components/queue-screen.tsx",
     ]) {
       const src = read(f);
-      expect(src, f).toContain("openTicketPrint(");
-      expect(src, f).not.toContain("<TicketPrintFrame");
+      expect(src, f).toContain("useTicketPrinter()");
+      expect(src, f).toContain("printer.frame");
+      expect(src, f).not.toContain("window.open(");
     }
   });
 
-  it("the iPad uses the same frame, and the frame matches the slip's page", () => {
-    const done = read("src/app/[locale]/crm/reception/tablet/_components/done-screen.tsx");
-    expect(done).toContain('import { TicketPrintFrame } from "@/components/ticket/ticket-print-frame";');
-    expect(done).not.toContain("function TicketPrintFrame");
+  it("the browser fallback frame matches the slip's page", () => {
     const frame = read("src/components/ticket/ticket-print-frame.tsx");
     expect(frame).toContain("@page { size: 80mm auto; margin: 0; }");
     expect(frame).toContain("key={job}");

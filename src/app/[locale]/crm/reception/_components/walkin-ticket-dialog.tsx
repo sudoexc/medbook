@@ -24,7 +24,7 @@ import {
   type PatientHit,
 } from "@/components/appointments/new-appointment-dialog/types";
 
-import { openTicketPrint } from "@/components/ticket/open-ticket-print";
+import { useTicketPrinter } from "@/components/ticket/use-ticket-printer";
 import { useActiveDoctors } from "../_hooks/use-reception-live";
 import {
   PhoneOwnerMismatchError,
@@ -95,6 +95,8 @@ export function WalkinTicketDialog({
   );
   const [doctorId, setDoctorId] = React.useState<string | null>(null);
   const [ticket, setTicket] = React.useState<WalkinTicket | null>(null);
+  // Through the clinic's print agent (no dialog), or from the browser.
+  const printer = useTicketPrinter();
   // The new patient's number belongs to a card with another name (audit
   // Q-03). The ticket waits for reception's «same person / other person».
   const [ownerConflict, setOwnerConflict] =
@@ -257,11 +259,13 @@ export function WalkinTicketDialog({
                 // the same link prints nothing for a stranger. Its own small
                 // window that closes after printing, so Chrome's kiosk
                 // printing stays silent (09.10.2026).
-                onClick={() => openTicketPrint(ticket.appointmentId)}
+                onClick={() => void printer.print(ticket.appointmentId)}
+                disabled={printer.busy}
               >
                 <PrinterIcon className="size-4" />
                 {t("result.print")}
               </Button>
+              {printer.frame}
               <div className="flex gap-2">
                 <Button type="button" variant="ghost" onClick={reset}>
                   <PlusIcon className="size-4" />

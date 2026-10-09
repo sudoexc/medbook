@@ -52,7 +52,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { cn } from "@/lib/utils";
 import { tashkentDateOf } from "@/lib/tashkent-time";
-import { openTicketPrint } from "@/components/ticket/open-ticket-print";
+import { useTicketPrinter } from "@/components/ticket/use-ticket-printer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -419,6 +419,7 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
       React.useState<AppointmentStatus | null>(null);
     // «Перепечатать талон» (owner request 08.10.2026): today's ticket only,
     // the stub refuses other days.
+    const printer = useTicketPrinter();
     const canReprint =
       tashkentDateOf(row.date) === clinicToday &&
       (row.queueStatus === "WAITING" ||
@@ -569,7 +570,7 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
               {t("openCard")}
             </DropdownMenuItem>
             {canReprint ? (
-              <DropdownMenuItem onClick={() => openTicketPrint(row.id)}>
+              <DropdownMenuItem onClick={() => void printer.print(row.id)}>
                 <PrinterIcon className="mr-2 size-3.5" />
                 {t("reprint")}
               </DropdownMenuItem>
@@ -618,6 +619,7 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        {printer.frame}
 
         <AlertDialog
           open={confirmTarget !== null}

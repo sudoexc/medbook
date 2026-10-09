@@ -55,7 +55,7 @@ import {
 // the channel row. The status select that used to live here is gone — see
 // `<AppointmentLifecycle>` for the replacement.
 import { MoneyText } from "@/components/atoms/money-text";
-import { openTicketPrint } from "@/components/ticket/open-ticket-print";
+import { useTicketPrinter } from "@/components/ticket/use-ticket-printer";
 import { tashkentDateOf, tashkentToday } from "@/lib/tashkent-time";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -157,6 +157,7 @@ export function AppointmentDrawer({
   // «Талон» reprints today's ticket of anyone in the queue (owner request
   // 08.10.2026), from whichever reception view opened this card. The stub
   // only prints for today, so the button shows only then.
+  const printer = useTicketPrinter();
   const canReprint =
     !!appt &&
     tashkentDateOf(appt.date) === tashkentToday() &&
@@ -289,7 +290,8 @@ export function AppointmentDrawer({
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                onClick={() => openTicketPrint(appt.id)}
+                onClick={() => void printer.print(appt.id)}
+                disabled={printer.busy}
               >
                 <PrinterIcon className="size-3.5" />
                 {t("reprintTicket")}
@@ -304,6 +306,7 @@ export function AppointmentDrawer({
               <XIcon className="size-4" />
             </Button>
           </div>
+          {printer.frame}
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">

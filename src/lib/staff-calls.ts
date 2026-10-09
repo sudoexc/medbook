@@ -24,8 +24,20 @@ export const STAFF_CALL_ANSWER_ROLES = ["RECEPTIONIST", "NURSE", "ADMIN", "SUPER
 /** An unanswered call stops ringing after this long; the doctor may call again. */
 export const STAFF_CALL_OPEN_MS = 10 * 60 * 1000;
 
-/** How long the doctor's screen keeps «Идёт к вам: …» after the answer. */
-export const STAFF_CALL_ACK_SHOWN_MS = 2 * 60 * 1000;
+/**
+ * How long the doctor's button says «Идёт к вам: …», counted from when his
+ * screen learned of the answer, before it is the plain yellow button again
+ * (owner, 09.10.2026: two minutes «висит долго»). The toast with the name
+ * stays a little longer.
+ */
+export const STAFF_CALL_ACK_SHOWN_MS = 3_000;
+
+/**
+ * How long the server keeps handing the doctor his answered call, so the
+ * news reaches a screen that polls late or reconnects (not how long it is
+ * shown).
+ */
+export const STAFF_CALL_ACK_KEPT_MS = 2 * 60 * 1000;
 
 /** The reception overlay rings again this often while a call is open. */
 export const STAFF_CALL_RING_EVERY_MS = 20 * 1000;
@@ -60,18 +72,21 @@ export function isStaffCallLive(
   return call.status === "OPEN" && now - new Date(call.createdAt).getTime() < STAFF_CALL_OPEN_MS;
 }
 
-/** What the doctor's button shows for his latest call. */
+/**
+ * What the doctor's button shows for his latest call: still ringing, or
+ * answered. `seenAckAt` is when this screen first saw the answer (its own
+ * clock, only compared with itself): «Идёт к вам» lasts
+ * STAFF_CALL_ACK_SHOWN_MS from then.
+ */
 export function doctorCallState(
-  call: Pick<StaffCallView, "status" | "createdAt" | "ackedAt"> | null,
-  now: number = Date.now(),
+  call: Pick<StaffCallView, "status" | "createdAt"> | null,
+  serverNow: number,
+  seenAckAt: number | null = null,
+  localNow: number = Date.now(),
 ): "idle" | "calling" | "coming" {
   if (!call) return "idle";
-  if (isStaffCallLive(call, now)) return "calling";
-  if (
-    call.status === "ACKED" &&
-    call.ackedAt &&
-    now - new Date(call.ackedAt).getTime() < STAFF_CALL_ACK_SHOWN_MS
-  ) {
+  if (isStaffCallLive(call, serverNow)) return "calling";
+  if (call.status === "ACKED" && seenAckAt !== null && localNow - seenAckAt < STAFF_CALL_ACK_SHOWN_MS) {
     return "coming";
   }
   return "idle";

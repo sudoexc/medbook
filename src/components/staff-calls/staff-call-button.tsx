@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { BellRingIcon, CheckCircle2Icon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { doctorCallState } from "@/lib/staff-calls";
+import { STAFF_CALL_ACK_SHOWN_MS, doctorCallState } from "@/lib/staff-calls";
 import { playNotificationSound } from "@/lib/notification-sound";
 
 import { useMyStaffCall } from "./use-staff-calls";
@@ -29,20 +29,39 @@ export function StaffCallButton() {
     const id = window.setInterval(() => setNow(Date.now()), 5_000);
     return () => window.clearInterval(id);
   }, []);
-  // On the server's clock: a cabinet PC's own clock may be hours off.
-  const state = doctorCallState(current, now + skewMs);
-
-  // The answer: a sound and a toast, once per call.
-  const announced = React.useRef<string | null>(null);
+  // When this screen first saw the answer, per call: the toast and sound
+  // once, then «Идёт к вам» for STAFF_CALL_ACK_SHOWN_MS.
+  const [seen, setSeen] = React.useState<{ id: string; at: number } | null>(null);
   React.useEffect(() => {
-    if (state !== "coming" || !current || announced.current === current.id) return;
-    announced.current = current.id;
+    if (current?.status !== "ACKED" || seen?.id === current.id) return;
+    setSeen({ id: current.id, at: Date.now() });
+    // A reload within the server's two minutes must not announce it again.
+    const key = "staff-call:announced";
+    try {
+      if (window.sessionStorage.getItem(key) === current.id) return;
+      window.sessionStorage.setItem(key, current.id);
+    } catch {
+      // Storage off: announcing twice is the lesser harm.
+    }
     playNotificationSound();
     toast.success(
       current.ackedByName ? t("coming", { name: current.ackedByName }) : t("comingNoName"),
-      { duration: 10_000 },
+      { duration: 6_000 },
     );
-  }, [state, current, t]);
+  }, [current, seen, t]);
+  const seenAckAt = seen && current && seen.id === current.id ? seen.at : null;
+
+  // On the server's clock: a cabinet PC's own clock may be hours off.
+  const state = doctorCallState(current, now + skewMs, seenAckAt, now);
+
+  // Back to the yellow button right when «Идёт к вам» ends, not at the
+  // next 5-second tick.
+  React.useEffect(() => {
+    if (state !== "coming" || seenAckAt === null) return;
+    const left = seenAckAt + STAFF_CALL_ACK_SHOWN_MS - Date.now();
+    const id = window.setTimeout(() => setNow(Date.now()), Math.max(0, left) + 50);
+    return () => window.clearTimeout(id);
+  }, [state, seenAckAt]);
 
   const press = () =>
     call.mutate(undefined, {

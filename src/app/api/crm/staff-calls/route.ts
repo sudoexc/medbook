@@ -10,7 +10,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import {
-  STAFF_CALL_ACK_SHOWN_MS,
+  STAFF_CALL_ACK_KEPT_MS,
   STAFF_CALL_ANSWER_ROLES,
   STAFF_CALL_CALLER_ROLES,
   staffCallOpenSince,
@@ -38,7 +38,7 @@ export const GET = createApiListHandler(
           doctorId: doctor.id,
           OR: [
             { status: "OPEN", createdAt: { gte: staffCallOpenSince(now) } },
-            { status: "ACKED", ackedAt: { gte: new Date(now.getTime() - STAFF_CALL_ACK_SHOWN_MS) } },
+            { status: "ACKED", ackedAt: { gte: new Date(now.getTime() - STAFF_CALL_ACK_KEPT_MS) } },
           ],
         },
         orderBy: { createdAt: "desc" },

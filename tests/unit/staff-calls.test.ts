@@ -46,21 +46,18 @@ describe("when", () => {
     expect(isStaffCallLive({ status: "CANCELLED", createdAt: ago(60_000) }, NOW)).toBe(false);
   });
 
-  it("the doctor's button: idle, calling, then «идёт» for a while", () => {
+  it("the doctor's button: idle, calling, then «идёт» for a few seconds from when he saw it", () => {
+    const local = 1_000_000;
     expect(doctorCallState(null, NOW)).toBe("idle");
-    expect(doctorCallState({ status: "OPEN", createdAt: ago(30_000), ackedAt: null }, NOW)).toBe("calling");
-    expect(
-      doctorCallState({ status: "ACKED", createdAt: ago(90_000), ackedAt: ago(30_000) }, NOW),
-    ).toBe("coming");
-    expect(
-      doctorCallState(
-        { status: "ACKED", createdAt: ago(STAFF_CALL_ACK_SHOWN_MS * 2), ackedAt: ago(STAFF_CALL_ACK_SHOWN_MS + 1) },
-        NOW,
-      ),
-    ).toBe("idle");
-    expect(doctorCallState({ status: "OPEN", createdAt: ago(STAFF_CALL_OPEN_MS + 1), ackedAt: null }, NOW)).toBe(
-      "idle",
-    );
+    expect(doctorCallState({ status: "OPEN", createdAt: ago(30_000) }, NOW)).toBe("calling");
+    const acked = { status: "ACKED" as const, createdAt: ago(90_000) };
+    expect(doctorCallState(acked, NOW, local - 1_000, local)).toBe("coming");
+    expect(doctorCallState(acked, NOW, local - STAFF_CALL_ACK_SHOWN_MS - 1, local)).toBe("idle");
+    // Not yet seen on this screen: nothing to show on the button.
+    expect(doctorCallState(acked, NOW, null, local)).toBe("idle");
+    expect(doctorCallState({ status: "OPEN", createdAt: ago(STAFF_CALL_OPEN_MS + 1) }, NOW)).toBe("idle");
+    // Owner, 09.10.2026: two minutes «висит долго».
+    expect(STAFF_CALL_ACK_SHOWN_MS).toBeLessThanOrEqual(5_000);
   });
 });
 
@@ -130,7 +127,7 @@ describe("the server's clock, not the PC's", () => {
     expect(overlay).not.toContain("isStaffCallLive");
     expect(overlay).toContain("const serverNow = now + (query.data?.skewMs ?? 0);");
     const button = read("src/components/staff-calls/staff-call-button.tsx");
-    expect(button).toContain("doctorCallState(current, now + skewMs)");
+    expect(button).toContain("doctorCallState(current, now + skewMs, seenAckAt, now)");
     const hooks = read("src/components/staff-calls/use-staff-calls.ts");
     expect(hooks).toContain("value: Array.isArray(body.calls) ? body.calls : []");
   });

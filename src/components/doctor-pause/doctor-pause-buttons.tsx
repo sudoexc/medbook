@@ -76,7 +76,7 @@ export function DoctorPauseButtons() {
         <PlayIcon className="size-4 text-info" />
         <span>
           {pause.kind === "LUNCH" ? t("endLunch") : t("endBreak")}
-          <span className="ml-1.5 hidden font-normal text-muted-foreground xl:inline">
+          <span className="ml-1.5 hidden font-normal text-muted-foreground 2xl:inline">
             {t("since", { time: since(pause.startedAt) })}
           </span>
         </span>
@@ -101,7 +101,7 @@ export function DoctorPauseButtons() {
           className="motion-press inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-xl border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
         >
           <Icon className="size-4 text-muted-foreground" />
-          <span className="hidden xl:inline">{label}</span>
+          <span className="hidden 2xl:inline">{label}</span>
         </button>
       ))}
     </div>

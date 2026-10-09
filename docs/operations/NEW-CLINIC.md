@@ -38,9 +38,10 @@
 ```bash
 # на проде — через worker-контейнер
 ssh root@167.233.142.75 'cd /opt/neurofax && \
-  docker compose exec -T -e SUPER_PASS="<надёжный-пароль>" worker \
+  docker compose exec -T -e SUPER_PASS="<надёжный-пароль>" -e APPLY=1 worker \
   npx tsx scripts/bootstrap-super-admin.ts'
-# создаёт/обновляет пользователя super@neurofax.uz с ролью SUPER_ADMIN
+# создаёт пользователя super@neurofax.uz с ролью SUPER_ADMIN (или задаёт
+# пароль существующему); --email/--name для своей почты; без APPLY=1 только план
 ```
 
 ## 2. Путь A: через админ-консоль SUPER_ADMIN

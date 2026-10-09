@@ -8,9 +8,11 @@
  *
  * The average check is the analytics «Путь пациента» figure for the last
  * 30 days and follows its access: ADMIN sees the clinic, a DOCTOR his own
- * visits, other roles do not get it.
+ * visits, other roles do not get it. The platform owner inside a clinic sees
+ * it as its admin does (owner request 09.10.2026).
  */
 import { createApiListHandler } from "@/lib/api-handler";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
 import { loadPatientCounts, type PatientTiles } from "@/server/patient/list-tiles";
@@ -38,7 +40,7 @@ export const GET = createApiListHandler(
       paymentsTracked: false,
       value: null,
     };
-    if (ctx.role === "ADMIN" || ctx.role === "DOCTOR") {
+    if (isClinicAdmin(ctx.role) || ctx.role === "DOCTOR") {
       avgCheck.visible = true;
       avgCheck.paymentsTracked = (await paymentsRecordedSince(ctx.clinicId)) !== null;
       // Nothing to average while payments are not recorded: the strip says

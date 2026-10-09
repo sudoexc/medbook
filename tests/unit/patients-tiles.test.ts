@@ -181,6 +181,18 @@ describe("GET /api/crm/patients/tiles", () => {
     );
   });
 
+  it("the owner inside a clinic gets the clinic's figure, as its admin does (owner request 09.10.2026)", async () => {
+    h.role = "SUPER_ADMIN";
+    h.tracked = new Date("2026-09-01T00:00:00.000Z");
+    mountRoute();
+    const body = await get();
+    expect(body.avgCheck).toEqual({ visible: true, paymentsTracked: true, value: 180_000_00 });
+    expect(h.journey).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ doctorId: null }),
+    );
+  });
+
   it("reception does not get clinic money", async () => {
     h.role = "RECEPTIONIST";
     h.tracked = new Date("2026-09-01T00:00:00.000Z");

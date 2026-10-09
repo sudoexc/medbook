@@ -4,6 +4,7 @@ import { LockIcon } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { canWorkActionCenter } from "@/lib/actions/roles";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -44,7 +45,9 @@ export default async function ActionCenterPage() {
   }
   const flags = await getFeatureFlagsForCurrentSession();
   const clinicId = session?.user?.clinicId ?? null;
-  const isAdmin = role === "ADMIN";
+  // The owner inside a clinic broadcasts as its admin (owner request
+  // 09.10.2026); the routes behind it let SUPER_ADMIN through.
+  const isAdmin = isClinicAdmin(role);
   let botConfigured = false;
   if (flags.hasTelegramInbox && isAdmin && clinicId) {
     const clinic = await runWithTenant({ kind: "SYSTEM" }, () =>

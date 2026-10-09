@@ -1,5 +1,9 @@
 /**
- * POST /api/crm/billing/upgrade — ADMIN-only plan upgrade.
+ * POST /api/crm/billing/upgrade — clinic admin plan upgrade.
+ *
+ * The clinic's ADMIN, or the platform owner inside the clinic (owner request
+ * 09.10.2026, docs/design/OWNER-ACCOUNT.md §0: SUPER_ADMIN used to get 403
+ * here). A read only visit is refused like on createApiHandler.
  *
  * Body: `{ targetPlanSlug: "basic" | "pro" | "enterprise" }`
  *
@@ -13,6 +17,8 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
 import { prisma } from "@/lib/prisma";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
+import { assertNotViewOnly, impersonationStampFor } from "@/lib/view-only-guard";
 import { err, ok } from "@/server/http";
 import { createUpgradeInvoice } from "@/server/billing/invoice";
 
@@ -25,8 +31,18 @@ const BodySchema = z.object({
 export async function POST(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
+  if (!isClinicAdmin(session.user.role)) return err("Forbidden", 403);
   if (!session.user.clinicId) return err("ClinicNotSelected", 400);
+
+  const ctx: TenantContext = {
+    kind: "TENANT",
+    clinicId: session.user.clinicId,
+    userId: session.user.id,
+    role: session.user.role,
+    impersonation: impersonationStampFor(session.user),
+  };
+  const viewOnly = await assertNotViewOnly(request, ctx);
+  if (viewOnly) return viewOnly;
 
   let parsed: z.infer<typeof BodySchema>;
   try {
@@ -36,13 +52,6 @@ export async function POST(request: Request): Promise<Response> {
       issues: (e as { issues?: unknown }).issues,
     });
   }
-
-  const ctx: TenantContext = {
-    kind: "TENANT",
-    clinicId: session.user.clinicId,
-    userId: session.user.id,
-    role: session.user.role,
-  };
 
   // Resolve current locale from the URL query so the simulate-pay link
   // matches the user's session. Falls back to "ru".

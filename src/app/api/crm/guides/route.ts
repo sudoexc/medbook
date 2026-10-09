@@ -16,6 +16,7 @@ import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import {
   applyClinicOverlay,
   loadClinicOverlays,
@@ -35,7 +36,9 @@ export const GET = createApiListHandler(
     const includeHidden =
       new URL(request.url).searchParams.get("includeHidden") === "1" &&
       ctx.kind === "TENANT" &&
-      ctx.role === "ADMIN";
+      // The clinic's admin manages the hidden entries; the owner inside a
+      // clinic sees them as its admin does (owner request 09.10.2026).
+      isClinicAdmin(ctx.role);
     const overlays = await loadClinicOverlays(clinicId, "GUIDE");
 
     const visible = await prisma.diagnosisGuide.findMany({

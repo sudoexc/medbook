@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { auth } from "@/lib/auth";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { getFeatureFlagsForCurrentSession } from "@/server/platform/current-flags";
@@ -39,7 +40,9 @@ export default async function TelegramInboxPage() {
     botConfigured = Boolean(clinic?.tgBotToken);
   }
 
-  const isAdmin = session?.user?.role === "ADMIN";
+  // The owner inside a clinic manages it as its admin (owner request
+  // 09.10.2026); the routes behind these buttons let SUPER_ADMIN through.
+  const isAdmin = isClinicAdmin(session?.user?.role);
 
   return (
     <TelegramPageClient

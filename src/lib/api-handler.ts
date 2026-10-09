@@ -18,14 +18,12 @@ import { auth } from "./auth";
 import { runWithTenant } from "./tenant-context";
 import type { ImpersonationStamp, Role, TenantContext } from "./tenant-context";
 import { readActiveBranchFromCookieHeader } from "@/server/platform/branch-cookie";
-import { AUDIT_ACTION } from "./audit-actions";
-import { isViewOnlySafe, viewOnlyBlockResponse } from "./view-only";
+import { assertNotViewOnly } from "./view-only-guard";
 import {
   is2faDisabled,
   isTotpEnrollmentExemptPath,
 } from "@/server/auth/security-policy";
 import { mfaRequiredResponse, owesTotpEnrolment } from "@/server/auth/mfa-gate";
-import { clientIpForAudit } from "./client-ip";
 
 // Re-export the pure helper so existing imports `from "@/lib/api-handler"`
 // still resolve (the unit tests import it directly from `./view-only`).
@@ -104,42 +102,6 @@ function buildContext(
     ctx.branchId = branchId;
   }
   return ctx;
-}
-
-/**
- * Phase 19 Wave 4 — VIEW_ONLY write-block. Best-effort audit emit when a
- * mutating method gets blocked. Audit failure must not turn 403 → 500, so
- * we swallow exceptions and just log.
- */
-async function emitViewAsBlocked(
-  request: Request,
-  ctx: TenantContext,
-): Promise<void> {
-  if (ctx.kind !== "TENANT" || !ctx.impersonation) return;
-  try {
-    const { prisma } = await import("./prisma");
-    const url = new URL(request.url);
-    await prisma.auditLog.create({
-      data: {
-        clinicId: ctx.clinicId,
-        actorId: ctx.userId,
-        actorRole: "SUPER_ADMIN",
-        actorLabel: "platform",
-        action: AUDIT_ACTION.SUPER_ADMIN_VIEW_AS_BLOCKED,
-        entityType: "ImpersonationGrant",
-        entityId: ctx.impersonation.grantId,
-        meta: {
-          method: request.method,
-          path: url.pathname,
-          clinicId: ctx.clinicId,
-        } as never,
-        ip: clientIpForAudit(request),
-        userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
-      },
-    });
-  } catch (e) {
-    console.error("[api-handler] SUPER_ADMIN_VIEW_AS_BLOCKED audit failed", e);
-  }
 }
 
 /**
@@ -308,14 +270,10 @@ export function createApiHandler<TBody = unknown>(
     // Phase 19 W4 — VIEW_ONLY write-block. Reject every mutating method when
     // the SUPER_ADMIN entered with mode=VIEW_ONLY. Audit one row per blocked
     // attempt so support can see the full trail without opening telemetry.
-    if (
-      ctx.kind === "TENANT" &&
-      ctx.impersonation?.mode === "VIEW_ONLY" &&
-      !isViewOnlySafe(request)
-    ) {
-      await emitViewAsBlocked(request, ctx);
-      return viewOnlyBlockResponse(ctx.impersonation.grantId);
-    }
+    // The raw multipart / stream routes call the same guard (owner request
+    // 09.10.2026, src/lib/view-only-guard.ts).
+    const viewOnly = await assertNotViewOnly(request, ctx);
+    if (viewOnly) return viewOnly;
 
     const mfaResp = await enforceTotpEnrollment(request, ctx);
     if (mfaResp) return mfaResp;
@@ -404,14 +362,8 @@ export function createApiListHandler(
     // GET-only handler — VIEW_ONLY does not need to block here (every method
     // routed through this wrapper is read-only by construction), but we still
     // gate on isViewOnlySafe so a future non-GET caller doesn't slip through.
-    if (
-      ctx.kind === "TENANT" &&
-      ctx.impersonation?.mode === "VIEW_ONLY" &&
-      !isViewOnlySafe(request)
-    ) {
-      await emitViewAsBlocked(request, ctx);
-      return viewOnlyBlockResponse(ctx.impersonation.grantId);
-    }
+    const viewOnly = await assertNotViewOnly(request, ctx);
+    if (viewOnly) return viewOnly;
 
     const mfaResp = await enforceTotpEnrollment(request, ctx);
     if (mfaResp) return mfaResp;

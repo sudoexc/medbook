@@ -19,6 +19,7 @@
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { ok, err, notFound } from "@/server/http";
 import { findOrCreateConversation } from "@/server/conversations/find-or-create";
 import type { ActorRole } from "@/server/realtime/envelope";
@@ -35,8 +36,11 @@ export const POST = createApiHandler(
   async ({ body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
+    // The platform owner inside a clinic acts as its admin (owner request
+    // 09.10.2026), as in medical-record-events.ts; he used to land here as
+    // RECEPTIONIST.
     const initiatorRole: ActorRole =
-      ctx.role === "ADMIN"
+      isClinicAdmin(ctx.role)
         ? "ADMIN"
         : ctx.role === "RECEPTIONIST"
           ? "RECEPTIONIST"

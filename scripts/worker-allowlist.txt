@@ -78,7 +78,12 @@ seed-neurofax-real.ts
 _catalog-plan.ts
 
 # Accounts and bots
+# The owner's SUPER_ADMIN account and its break-glass (owner request
+# 09.10.2026, docs/design/OWNER-ACCOUNT.md §1): DRY RUN by default, APPLY=1
+# writes, SUPER_ADMIN accounts only.
 bootstrap-super-admin.ts
+owner-break-glass.ts
+_owner-account-plan.ts
 set-start-page.ts
 _seed-passwords.ts
 audit-known-passwords.ts

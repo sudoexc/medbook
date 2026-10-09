@@ -4,12 +4,18 @@
  * Routes:
  *   GET  /api/crm/analytics/reports/[id]/schedules
  *   POST /api/crm/analytics/reports/[id]/schedules
+ *
+ * Clinic admins: the clinic's ADMIN or the platform owner inside it (owner
+ * request 09.10.2026, docs/design/OWNER-ACCOUNT.md §0). A read only visit
+ * may list, not create (the same guard as createApiHandler).
  */
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
-import { runWithTenant } from "@/lib/tenant-context";
+import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
+import { assertNotViewOnly, impersonationStampFor } from "@/lib/view-only-guard";
 import { computeNextRunAt } from "@/server/analytics/cadence";
 import { CreateScheduleBodySchema } from "@/server/analytics/schedule-validation";
 import { err, notFound, ok } from "@/server/http";
@@ -27,7 +33,7 @@ function reportIdFromUrl(request: Request): string {
 export async function GET(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
+  if (!isClinicAdmin(session.user.role)) return err("Forbidden", 403);
   if (!session.user.clinicId) return err("ClinicNotSelected", 400);
 
   const reportId = reportIdFromUrl(request);
@@ -37,6 +43,7 @@ export async function GET(request: Request): Promise<Response> {
       clinicId: session.user.clinicId,
       userId: session.user.id,
       role: session.user.role,
+      impersonation: impersonationStampFor(session.user),
     },
     async () => {
       const saved = await prisma.savedReport.findFirst({
@@ -80,8 +87,18 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
+  if (!isClinicAdmin(session.user.role)) return err("Forbidden", 403);
   if (!session.user.clinicId) return err("ClinicNotSelected", 400);
+
+  const ctx: Extract<TenantContext, { kind: "TENANT" }> = {
+    kind: "TENANT",
+    clinicId: session.user.clinicId,
+    userId: session.user.id,
+    role: session.user.role,
+    impersonation: impersonationStampFor(session.user),
+  };
+  const viewOnly = await assertNotViewOnly(request, ctx);
+  if (viewOnly) return viewOnly;
 
   let json: unknown;
   try {
@@ -95,12 +112,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const reportId = reportIdFromUrl(request);
-  const ctx = {
-    kind: "TENANT" as const,
-    clinicId: session.user.clinicId,
-    userId: session.user.id,
-    role: session.user.role,
-  };
 
   return runWithTenant(ctx, async () => {
     const saved = await prisma.savedReport.findFirst({

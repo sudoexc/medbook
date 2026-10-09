@@ -510,7 +510,8 @@ export const AUDIT_ACTION = {
   //   clinic or signed out, ending a live grant (audit G5-09: one row per
   //   ended grant, none when nothing was live). `entityType:
   //   "ImpersonationGrant"`. `meta` carries `{ clinicId, durationMs, via:
-  //   "exit" | "switch" | "sign_out" }` (sign-out: owner request 09.10.2026).
+  //   "exit" | "switch" | "sign_out" | "break_glass" }` (sign-out and
+  //   break-glass: owner request 09.10.2026).
   //
   //   SUPER_ADMIN_IMPERSONATE_EXTENDED — «Продлить» in the banner gave the
   //   live grant a fresh 60 min lease, capped at 8 h from its start (owner
@@ -533,6 +534,18 @@ export const AUDIT_ACTION = {
   SUPER_ADMIN_IMPERSONATE_EXTENDED: "SUPER_ADMIN_IMPERSONATE_EXTENDED",
   SUPER_ADMIN_IMPERSONATE_EXPIRED: "SUPER_ADMIN_IMPERSONATE_EXPIRED",
   SUPER_ADMIN_VIEW_AS_BLOCKED: "SUPER_ADMIN_VIEW_AS_BLOCKED",
+  //
+  //   PLATFORM_BREAK_GLASS — the owner lost access and
+  //   `scripts/owner-break-glass.ts` was run on the server (owner request
+  //   09.10.2026, docs/design/OWNER-ACCOUNT.md §1, §5): new password, 2FA
+  //   wiped, every session ended, live clinic visits closed. `clinicId:
+  //   null`, `actorId: null`, `actorLabel: "ops:owner-break-glass"`,
+  //   `entityType: "User"`, `entityId: <SUPER_ADMIN id>`. `meta` carries
+  //   `{ email, passwordSource: "env" | "generated", mustChangePassword,
+  //   totpCleared, reactivated, sessionsEnded, grantsEnded: string[] }`.
+  //   Each closed visit also gets its SUPER_ADMIN_IMPERSONATE_ENDED row with
+  //   `via: "break_glass"`.
+  PLATFORM_BREAK_GLASS: "PLATFORM_BREAK_GLASS",
   //
   //   CLINIC_SUSPENDED / CLINIC_RESUMED / CLINIC_TRIAL_EXTENDED — bulk
   //   admin ops surfaced from /admin/clinics row context-menu. `entityType:

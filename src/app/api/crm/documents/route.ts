@@ -24,6 +24,7 @@ import {
   newCorrelationId,
   publishViaOutbox,
 } from "@/server/realtime/outbox";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import type { ActorRole, Surface } from "@/server/realtime/envelope";
 import { withStaffFileUrl } from "@/lib/storage-ref";
 import {
@@ -183,7 +184,7 @@ export const POST = createApiHandler(
         ? "DOCTOR"
         : ctx.role === "RECEPTIONIST"
           ? "RECEPTIONIST"
-          : ctx.role === "ADMIN"
+          : isClinicAdmin(ctx.role) // the owner inside a clinic too (09.10.2026)
             ? "ADMIN"
             : "SYSTEM"; // NURSE has no ActorRole; real role rides in `label`
     const surface: Surface = ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";

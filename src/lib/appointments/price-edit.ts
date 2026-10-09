@@ -13,6 +13,8 @@
  * Client-safe: no server imports.
  */
 
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
+
 /** Roles allowed to override an appointment's price. */
 export const PRICE_EDIT_ROLES: ReadonlySet<string> = new Set(["ADMIN", "RECEPTIONIST"]);
 
@@ -39,7 +41,12 @@ export function priceFieldsIn(body: PriceFields): string[] {
   return fields;
 }
 
-/** May this role override a price? Unknown roles may not. */
+/**
+ * May this role override a price? Unknown roles may not. The administrator
+ * includes the platform owner inside a clinic (owner request 09.10.2026): the
+ * CRM shows him the admin's screens, price fields included.
+ */
 export function canEditPrice(role: string | null | undefined): boolean {
-  return role !== null && role !== undefined && PRICE_EDIT_ROLES.has(role);
+  if (role === null || role === undefined) return false;
+  return isClinicAdmin(role) || PRICE_EDIT_ROLES.has(role);
 }

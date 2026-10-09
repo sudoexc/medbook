@@ -23,6 +23,7 @@ import { runWithTenant, type Role, type TenantContext } from "@/lib/tenant-conte
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { assertNotViewOnly } from "@/lib/view-only-guard";
 import { ok, err, forbidden } from "@/server/http";
 import { checkUpload } from "@/server/storage/safe-file";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
@@ -62,7 +63,7 @@ function buildCtx(user: {
   return ctx;
 }
 
-async function resolveCtx(): Promise<TenantOnly | Response> {
+async function resolveCtx(request: Request): Promise<TenantOnly | Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
   const user = session.user;
@@ -74,17 +75,15 @@ async function resolveCtx(): Promise<TenantOnly | Response> {
     impersonation: user.impersonation ?? null,
   });
   if (!ctx) return forbidden();
-  if (ctx.impersonation?.mode === "VIEW_ONLY") {
-    return Response.json(
-      { error: "ViewAsReadOnly", grantId: ctx.impersonation.grantId },
-      { status: 403 },
-    );
-  }
+  // Both methods write. The shared guard answers like createApiHandler and
+  // journals SUPER_ADMIN_VIEW_AS_BLOCKED (owner request 09.10.2026).
+  const viewOnly = await assertNotViewOnly(request, ctx);
+  if (viewOnly) return viewOnly;
   return ctx;
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const ctx = await resolveCtx();
+  const ctx = await resolveCtx(request);
   if (ctx instanceof Response) return ctx;
 
   return runWithTenant(ctx, async () => {
@@ -152,7 +151,7 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 export async function DELETE(request: Request): Promise<Response> {
-  const ctx = await resolveCtx();
+  const ctx = await resolveCtx(request);
   if (ctx instanceof Response) return ctx;
 
   return runWithTenant(ctx, async () => {

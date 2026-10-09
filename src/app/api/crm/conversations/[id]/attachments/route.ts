@@ -12,6 +12,13 @@
  * so Next.js serves it back at `/uploads/chat/...` — that URL is what we hand to
  * Telegram's sendPhoto/sendDocument, which means dev only works once the bot can
  * reach the machine (tunnel, deploy, etc.).
+ *
+ * Multipart, so it is not on createApiHandler. It used to skip the VIEW_ONLY
+ * block with it: a SUPER_ADMIN in a read only visit could upload into a
+ * clinic's chat (owner request 09.10.2026, docs/design/OWNER-ACCOUNT.md §0).
+ * The context now carries the impersonation stamp and `assertNotViewOnly`
+ * refuses the upload, with the wrapper's 403 and audit row, before the
+ * thread is read or a byte is stored.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -20,6 +27,7 @@ import { randomUUID } from "node:crypto";
 import { auth } from "@/lib/auth";
 import { runWithTenant, type TenantContext, type Role } from "@/lib/tenant-context";
 import { prisma } from "@/lib/prisma";
+import { assertNotViewOnly, impersonationStampFor } from "@/lib/view-only-guard";
 import { ok, err, notFound, forbidden } from "@/server/http";
 import { checkUpload } from "@/server/storage/safe-file";
 import { conversationAccess } from "@/server/conversations/access";
@@ -59,7 +67,10 @@ export async function POST(request: Request): Promise<Response> {
     clinicId: user.clinicId,
     userId: user.id,
     role: user.role,
+    impersonation: impersonationStampFor(user),
   };
+  const viewOnly = await assertNotViewOnly(request, ctx);
+  if (viewOnly) return viewOnly;
 
   return runWithTenant(ctx, async () => {
     const conversationId = conversationIdFromUrl(request);

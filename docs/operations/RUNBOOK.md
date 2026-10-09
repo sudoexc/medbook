@@ -286,6 +286,59 @@ Pro, `DEPLOY.md` §3 шаг 0. Планировщик её не трогает, 
 подписку (если её срок уже прошёл, то PAST_DUE с новым льготным периодом),
 или перевести её на ACTIVE.
 
+### 3.8 Потерял доступ владельца
+
+Симптом: владелец платформы (SUPER_ADMIN) не может войти. Забыл пароль,
+потерял телефон с 2FA вместе с recovery-кодами, или аккаунт выключен.
+
+Сначала простое. Если 2FA включена и recovery-коды на руках, войти с ними.
+Если есть второй SUPER_ADMIN, сбросить пароль основного из пульта. После 6
+неверных паролей подряд вход по этой почте с этого адреса закрыт на 15 минут
+и открывается сам.
+
+Если не помогло, на сервере запускается `scripts/owner-break-glass.ts`
+(owner request 09.10.2026, `docs/design/OWNER-ACCOUNT.md` §1 и §5). Он
+работает только с аккаунтом SUPER_ADMIN, почту клинического аккаунта
+отклоняет. В одной транзакции: новый пароль, 2FA стёрта, аккаунт включён,
+если был выключен, все сессии завершены, живые входы в клиники закрыты, в
+аудите строка `PLATFORM_BREAK_GLASS`. Из веба этого пути нет.
+
+Скрипт берётся из `/opt/neurofax/scripts` хоста (том `-v`), поэтому он
+работает и со старым образом worker. Нужно лишь, чтобы код со скриптом уже
+был в `/opt/neurofax` (`ops/pull-keep-prod-configs.sh`, `DEPLOY.md`). `-T`
+обязателен: скрипт идёт файлом, не через stdin.
+
+```bash
+cd /opt/neurofax
+# 1. DRY RUN: аккаунт, 2FA, сколько сессий и входов закроется. Ничего не пишет.
+docker compose run --rm -T -v /opt/neurofax/scripts:/app/scripts worker \
+  npx tsx scripts/owner-break-glass.ts --email <почта владельца>
+
+# 2a. Применить со сгенерированным паролем: печатается один раз,
+#     при входе форма сама попросит его сменить.
+docker compose run --rm -T -v /opt/neurofax/scripts:/app/scripts -e APPLY=1 worker \
+  npx tsx scripts/owner-break-glass.ts --email <почта владельца>
+
+# 2b. Или свой пароль (от 12 символов), чтобы он не попал в историю shell:
+read -rs NEW_PASSWORD; export NEW_PASSWORD
+docker compose run --rm -T -v /opt/neurofax/scripts:/app/scripts -e APPLY=1 -e NEW_PASSWORD worker \
+  npx tsx scripts/owner-break-glass.ts --email <почта владельца>
+unset NEW_PASSWORD
+```
+
+Проверка: владелец входит, а в журнале есть строка.
+
+```bash
+docker compose exec -T postgres psql -U medbook -d medbook -tc \
+  "SELECT \"createdAt\", meta FROM \"AuditLog\" WHERE action = 'PLATFORM_BREAK_GLASS' ORDER BY \"createdAt\" DESC LIMIT 1;"
+```
+
+После входа: сменить пароль, если он был сгенерирован, и заново включить
+2FA, если она была. Завести аккаунт владельца или сменить ему пароль без
+сброса 2FA можно `scripts/bootstrap-super-admin.ts --email <почта> --name
+"<имя>"` с `SUPER_PASS`: тоже DRY RUN по умолчанию, `APPLY=1` пишет, имя
+существующего аккаунта не меняет, клинические аккаунты не трогает.
+
 ---
 
 ## 3.5 Мониторинг

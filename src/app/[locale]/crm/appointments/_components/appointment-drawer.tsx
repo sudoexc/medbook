@@ -78,6 +78,7 @@ import {
   actionsFor,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
 import { RISK_TODAY_KEY } from "../../action-center/_hooks/use-risk-today";
 
@@ -138,8 +139,9 @@ export function AppointmentDrawer({
   const [caseSelectorOpen, setCaseSelectorOpen] = React.useState(false);
   const [paymentOpen, setPaymentOpen] = React.useState(false);
   // Money is taken where the visit is (audit AN-02): a payment from here is
-  // filed under this visit. Same roles as POST /api/crm/payments.
-  const canTakePayment = role === "ADMIN" || role === "RECEPTIONIST";
+  // filed under this visit. Same roles as POST /api/crm/payments, where the
+  // owner inside a clinic counts as its admin (owner request 09.10.2026).
+  const canTakePayment = isClinicAdmin(role) || role === "RECEPTIONIST";
 
   const open = Boolean(appointmentId);
 

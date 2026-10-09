@@ -393,7 +393,8 @@ Action Center (Phase 13): атомарная системная рекоменд
 | `seed-notification-templates.ts` | 8 дефолтных шаблонов уведомлений каждой клинике; существующие `(clinicId, key)` не перезаписывает (правки админа выживают) |
 | `seed-labs-reminders-dev.ts` | Dev-only (при `NODE_ENV=production` отказ): Reminder + LabResult одной клинике (`CLINIC_SLUG`) только для пациентов с тегом `demo-seed`, каждая строка помечена `[demo-seed:labs-reminders-dev]`; скипает врача, у которого помеченные уже есть |
 | `total-stress-seed.ts` | Стресс-объём для neurofax (~30 пациентов, ~150 записей во всех статусах, платежи); идемпотентен по префиксу `STRESS-` |
-| `bootstrap-super-admin.ts` | Апсерт `super@neurofax.uz` (SUPER_ADMIN), пароль из env `SUPER_PASS` |
+| `bootstrap-super-admin.ts` | Аккаунт владельца SUPER_ADMIN: `--email` (по умолчанию `super@neurofax.uz`), `--name` для нового, пароль из env `SUPER_PASS`; имя существующего не меняет, клинические аккаунты отклоняет; DRY RUN по умолчанию, `APPLY=1` пишет |
+| `owner-break-glass.ts` | Владелец потерял доступ (RUNBOOK §3.8): новый пароль, 2FA стёрта, сессии и живые входы в клиники закрыты, аудит `PLATFORM_BREAK_GLASS`; только SUPER_ADMIN; DRY RUN по умолчанию, `APPLY=1` пишет |
 | `upsert-dev-admin.ts` | Dev-шорткат `1@1.uz` / пароль «1», ADMIN клиники neurofax |
 | `_live-queue-seed.ts` | Не самостоятельный скрипт — общий билдер живой очереди, используется mega/today-live сидами |
 

@@ -43,6 +43,7 @@ import {
   stripDoseFromName,
   type FormularyEntry,
 } from "@/server/catalog/formulary";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { ok, parseQuery } from "@/server/http";
 import { QueryDrugSchema } from "@/server/schemas/drug";
 import type { DrugCategory, PregnancyCategory } from "@/generated/prisma/client";
@@ -87,7 +88,9 @@ export const GET = createApiListHandler(
     const includeHidden =
       new URL(request.url).searchParams.get("includeHidden") === "1" &&
       ctx.kind === "TENANT" &&
-      ctx.role === "ADMIN";
+      // The clinic's admin manages the hidden entries; the owner inside a
+      // clinic sees them as its admin does (owner request 09.10.2026).
+      isClinicAdmin(ctx.role);
 
     const where: Record<string, unknown> = { active: q.active ?? true };
     if (q.category) where.category = q.category;

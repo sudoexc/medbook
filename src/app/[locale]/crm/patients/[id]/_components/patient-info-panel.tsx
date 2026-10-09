@@ -24,6 +24,7 @@ import {
   usePatchPatient,
 } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { useCurrentRole } from "../_hooks/use-current-role";
 import { TagEditor } from "./tag-editor";
 import { EditPatientDialog } from "./edit-patient-dialog";
@@ -60,10 +61,11 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
   const [nowMs] = React.useState(() => Date.now());
   const [editOpen, setEditOpen] = React.useState(false);
   // Same roles as PATCH /api/crm/patients/[id]: a nurse or a call operator
-  // would only meet a refusal behind the button.
+  // would only meet a refusal behind the button. The owner inside a clinic
+  // edits as its admin (owner request 09.10.2026).
   const role = useCurrentRole();
   const canEdit =
-    role === "ADMIN" || role === "RECEPTIONIST" || role === "DOCTOR";
+    isClinicAdmin(role) || role === "RECEPTIONIST" || role === "DOCTOR";
 
   const patch = usePatchPatient(patient.id);
   const save = React.useCallback(

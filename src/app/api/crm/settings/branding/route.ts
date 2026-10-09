@@ -24,6 +24,7 @@ import { runWithTenant, type Role, type TenantContext } from "@/lib/tenant-conte
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { assertNotViewOnly } from "@/lib/view-only-guard";
 import { ok, err, forbidden } from "@/server/http";
 import { checkUpload } from "@/server/storage/safe-file";
 import { ensureFeature } from "@/server/platform/feature-guard";
@@ -122,13 +123,10 @@ export async function PATCH(request: Request): Promise<Response> {
 
     // Block VIEW_ONLY impersonation — defence-in-depth (the API wrapper
     // already does this, but this route bypasses createApiHandler because
-    // it accepts multipart, so we replicate the check inline).
-    if (ctx.impersonation?.mode === "VIEW_ONLY") {
-      return Response.json(
-        { error: "ViewAsReadOnly", grantId: ctx.impersonation.grantId },
-        { status: 403 },
-      );
-    }
+    // it accepts multipart). The shared guard also writes the wrapper's
+    // SUPER_ADMIN_VIEW_AS_BLOCKED row (owner request 09.10.2026).
+    const viewOnly = await assertNotViewOnly(request, ctx);
+    if (viewOnly) return viewOnly;
 
     const before = await prisma.clinic.findUnique({
       where: { id: ctx.clinicId },

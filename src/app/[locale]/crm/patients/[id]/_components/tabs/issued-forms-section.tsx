@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatDate, type Locale } from "@/lib/format";
 
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { canViewMedical, useCurrentRole } from "../../_hooks/use-current-role";
 import {
   issuedFormPrintHref,
@@ -41,9 +42,10 @@ export function IssuedFormsSection({ patientId }: { patientId: string }) {
   const role = useCurrentRole();
   // Same roles the list routes serve (a refusal just leaves it hidden);
   // ADMIN alone may cancel here (the routes also let the issuing doctor,
-  // who works in his cabinet).
+  // who works in his cabinet), the owner inside a clinic as its admin
+  // (owner request 09.10.2026).
   const canSee = canViewMedical(role);
-  const canCancel = role === "ADMIN";
+  const canCancel = isClinicAdmin(role);
   const forms = useIssuedForms(patientId, canSee);
   const cancel = useCancelIssuedForm(patientId);
   const [target, setTarget] = React.useState<IssuedForm | null>(null);

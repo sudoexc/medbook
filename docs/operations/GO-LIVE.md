@@ -117,11 +117,14 @@
 
 ### 3.0 Предусловие: SUPER_ADMIN существует
 
-На проде уже есть `super@neurofax.uz`. Если вдруг нет:
+На проде уже есть `super@neurofax.uz`. Если вдруг нет (без `APPLY=1`
+скрипт только показывает план; `--email` и `--name` задают аккаунт
+владельца, по умолчанию `super@neurofax.uz`; клинический аккаунт он не
+трогает, имя существующего не меняет):
 
 ```bash
 ssh root@167.233.142.75 'cd /opt/neurofax && \
-  docker compose exec -T -e SUPER_PASS="<надёжный-пароль>" worker \
+  docker compose exec -T -e SUPER_PASS="<надёжный-пароль>" -e APPLY=1 worker \
   npx tsx scripts/bootstrap-super-admin.ts'
 ```
 

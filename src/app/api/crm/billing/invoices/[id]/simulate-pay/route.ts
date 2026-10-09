@@ -6,7 +6,9 @@
  *      misconfigured prod env can never accidentally re-enable this route.
  *   2. `NEXT_PUBLIC_BILLING_STUB === "1"` — explicit per-env opt-in for
  *      QA / staging surfaces (also drives the UI button visibility).
- *   3. Admin role — same boundary the rest of the billing surface uses.
+ *   3. Admin role — same boundary the rest of the billing surface uses
+ *      (the clinic's ADMIN or the platform owner inside it, owner request
+ *      09.10.2026; a read only visit is refused like on createApiHandler).
  *
  * Returns 404 (not 403) on any miss so the route looks nonexistent in
  * prod. `markInvoicePaid` is called with a synthetic paymentRef so QA
@@ -15,6 +17,8 @@
 import { auth } from "@/lib/auth";
 import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
 import { prisma } from "@/lib/prisma";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
+import { assertNotViewOnly, impersonationStampFor } from "@/lib/view-only-guard";
 import { err, notFound, ok } from "@/server/http";
 import { markInvoicePaid } from "@/server/billing/invoice";
 
@@ -36,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
+  if (!isClinicAdmin(session.user.role)) return err("Forbidden", 403);
   if (!session.user.clinicId) return err("ClinicNotSelected", 400);
 
   const id = idFromUrl(request);
@@ -45,7 +49,10 @@ export async function POST(request: Request): Promise<Response> {
     clinicId: session.user.clinicId,
     userId: session.user.id,
     role: session.user.role,
+    impersonation: impersonationStampFor(session.user),
   };
+  const viewOnly = await assertNotViewOnly(request, ctx);
+  if (viewOnly) return viewOnly;
 
   return runWithTenant(ctx, async () => {
     const invoice = await prisma.invoice.findFirst({

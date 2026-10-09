@@ -18,6 +18,7 @@ import {
 } from "@/server/conversations/link-patient";
 import { threadProfileName } from "@/lib/patients/telegram-card";
 import { conversationAccess } from "@/server/conversations/access";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import {
   doctorReadClearsSharedUnread,
   doctorUnreadByConversation,
@@ -26,9 +27,14 @@ import {
 /**
  * Who may confirm that a chat's Telegram account is a card's own: the roles
  * that can hand a patient the card's invite link (the same access to the
- * card in the Mini App).
+ * card in the Mini App). The clinic admin includes the platform owner inside
+ * the clinic (owner request 09.10.2026).
  */
 const TELEGRAM_CONFIRM_ROLES = new Set(["ADMIN", "RECEPTIONIST", "DOCTOR"]);
+
+function canConfirmTelegram(role: string): boolean {
+  return isClinicAdmin(role) || TELEGRAM_CONFIRM_ROLES.has(role);
+}
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -101,7 +107,7 @@ export const PATCH = createApiHandler(
     if (!before) return notFound();
     const { markRead, markAnswered, linkTelegram, ...rest } = body;
     if (linkTelegram) {
-      if (ctx.kind !== "TENANT" || !TELEGRAM_CONFIRM_ROLES.has(ctx.role)) {
+      if (ctx.kind !== "TENANT" || !canConfirmTelegram(ctx.role)) {
         return err("forbidden", 403, { reason: "telegram_link_role" });
       }
       if (!threadTelegramId(before)) {
@@ -130,7 +136,7 @@ export const PATCH = createApiHandler(
         // A binding staff confirmed is undone by the roles that confirm.
         if (
           plan.confirmed &&
-          (ctx.kind !== "TENANT" || !TELEGRAM_CONFIRM_ROLES.has(ctx.role))
+          (ctx.kind !== "TENANT" || !canConfirmTelegram(ctx.role))
         ) {
           return err("forbidden", 403, { reason: "telegram_link_role" });
         }

@@ -19,6 +19,7 @@ import { ImpersonationBanner } from "@/components/layout/impersonation-banner"
 import { TrialBanner } from "@/components/layout/trial-banner"
 import { QueryProvider } from "@/components/providers/query-provider"
 import { CrmRoleProvider } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role"
+import { clinicViewRole } from "@/lib/permissions/clinic-admin"
 import { prisma } from "@/lib/prisma"
 import { runWithTenant } from "@/lib/tenant-context"
 import { shouldRedirectDoctorToCabinet } from "@/lib/doctor-cabinet"
@@ -233,7 +234,11 @@ export default async function CrmLayout({
             flags={flags}
           />
           <main className="min-h-0 flex-1 overflow-y-auto bg-surface">
-            <CrmRoleProvider role={session?.user?.role ?? "ADMIN"}>
+            {/* The owner inside a clinic gets the clinic admin's screens, as
+                the sidebar above (owner request 09.10.2026, design §0): the
+                client gates ask for the ADMIN role. VIEW_ONLY still refuses
+                every write on the server. */}
+            <CrmRoleProvider role={clinicViewRole(session?.user?.role ?? "ADMIN")}>
               {children}
             </CrmRoleProvider>
           </main>

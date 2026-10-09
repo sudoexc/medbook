@@ -1,11 +1,17 @@
 /**
  * Phase 18 Wave 4 — update / delete a single ScheduledReport.
+ *
+ * Clinic admins: the clinic's ADMIN or the platform owner inside it (owner
+ * request 09.10.2026, docs/design/OWNER-ACCOUNT.md §0). Both methods write,
+ * so a read only visit is refused as on createApiHandler.
  */
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
-import { runWithTenant } from "@/lib/tenant-context";
+import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
+import { assertNotViewOnly, impersonationStampFor } from "@/lib/view-only-guard";
 import { computeNextRunAt } from "@/server/analytics/cadence";
 import {
   UpdateScheduleBodySchema,
@@ -26,11 +32,30 @@ function idsFromUrl(request: Request): { reportId: string; scheduleId: string } 
   };
 }
 
-export async function PATCH(request: Request): Promise<Response> {
+type TenantOnly = Extract<TenantContext, { kind: "TENANT" }>;
+
+/** The caller's clinic admin context, or the refusal to send. */
+async function clinicAdminContext(
+  request: Request,
+): Promise<TenantOnly | Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
+  if (!isClinicAdmin(session.user.role)) return err("Forbidden", 403);
   if (!session.user.clinicId) return err("ClinicNotSelected", 400);
+  const ctx: TenantOnly = {
+    kind: "TENANT",
+    clinicId: session.user.clinicId,
+    userId: session.user.id,
+    role: session.user.role,
+    impersonation: impersonationStampFor(session.user),
+  };
+  const viewOnly = await assertNotViewOnly(request, ctx);
+  return viewOnly ?? ctx;
+}
+
+export async function PATCH(request: Request): Promise<Response> {
+  const ctx = await clinicAdminContext(request);
+  if (ctx instanceof Response) return ctx;
 
   const { reportId, scheduleId } = idsFromUrl(request);
   let json: unknown;
@@ -45,12 +70,7 @@ export async function PATCH(request: Request): Promise<Response> {
   }
 
   return runWithTenant(
-    {
-      kind: "TENANT",
-      clinicId: session.user.clinicId,
-      userId: session.user.id,
-      role: session.user.role,
-    },
+    ctx,
     async () => {
       const existing = await prisma.scheduledReport.findFirst({
         where: { id: scheduleId, savedReportId: reportId },
@@ -166,19 +186,12 @@ export async function PATCH(request: Request): Promise<Response> {
 }
 
 export async function DELETE(request: Request): Promise<Response> {
-  const session = await auth();
-  if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
-  if (!session.user.clinicId) return err("ClinicNotSelected", 400);
+  const ctx = await clinicAdminContext(request);
+  if (ctx instanceof Response) return ctx;
 
   const { reportId, scheduleId } = idsFromUrl(request);
   return runWithTenant(
-    {
-      kind: "TENANT",
-      clinicId: session.user.clinicId,
-      userId: session.user.id,
-      role: session.user.role,
-    },
+    ctx,
     async () => {
       const existing = await prisma.scheduledReport.findFirst({
         where: { id: scheduleId, savedReportId: reportId },

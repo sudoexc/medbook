@@ -8,6 +8,10 @@
  *
  * Supports `?format=csv` like the transient runner, and `?locale=ru|uz`
  * for the language of headers and names (audit AN-09).
+ *
+ * Clinic admins: the clinic's ADMIN or the platform owner inside it (owner
+ * request 09.10.2026, docs/design/OWNER-ACCOUNT.md §0). A POST that bumps
+ * `lastRunAt`, so a read only visit is refused as on createApiHandler.
  */
 import { auth } from "@/lib/auth";
 import { contentDisposition } from "@/lib/content-disposition";
@@ -15,6 +19,8 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
+import { assertNotViewOnly, impersonationStampFor } from "@/lib/view-only-guard";
 import { csvFilename, formatCsv } from "@/server/analytics/csv";
 import { formatReportPdf, pdfFilename } from "@/server/analytics/pdf";
 import { parseReportConfig } from "@/server/analytics/report-config";
@@ -36,7 +42,7 @@ function idFromUrl(request: Request): string {
 export async function POST(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
+  if (!isClinicAdmin(session.user.role)) return err("Forbidden", 403);
   if (!session.user.clinicId) return err("ClinicNotSelected", 400);
 
   const id = idFromUrl(request);
@@ -45,7 +51,10 @@ export async function POST(request: Request): Promise<Response> {
     clinicId: session.user.clinicId,
     userId: session.user.id,
     role: session.user.role,
+    impersonation: impersonationStampFor(session.user),
   };
+  const viewOnly = await assertNotViewOnly(request, ctx);
+  if (viewOnly) return viewOnly;
 
   const url = new URL(request.url);
   const formatParam = url.searchParams.get("format");

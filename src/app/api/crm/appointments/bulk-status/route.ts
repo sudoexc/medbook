@@ -16,6 +16,7 @@ import {
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { applyWaitingIntake, type PrismaTx } from "@/server/appointments/intake";
 import { allocateQueueOrder } from "@/server/appointments/queue-order";
@@ -224,7 +225,8 @@ export const POST = createApiHandler(
       // outbox rows commit together inside this transaction.
       if (ctx.kind === "TENANT") {
         const kind = "statusChanged" as const;
-        const actorRole = ctx.role === "ADMIN" ? "ADMIN" : "RECEPTIONIST";
+        // The owner inside a clinic acts as its admin (owner request 09.10.2026).
+        const actorRole = isClinicAdmin(ctx.role) ? "ADMIN" : "RECEPTIONIST";
         const actorUserId = ctx.userId || null;
         for (const before of existing) {
           await emitAppointmentChangeViaOutbox({

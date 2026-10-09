@@ -29,6 +29,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import type { TenantContext } from "@/lib/tenant-context";
 import {
   recomputeAppointmentPrice,
@@ -97,8 +98,9 @@ export function staffCaseActor(
 ): CaseAttachAuditActor {
   const userId = ctx.kind === "TENANT" ? ctx.userId : null;
   const role = ctx.kind === "TENANT" ? ctx.role : null;
+  // The owner inside a clinic acts as its admin (owner request 09.10.2026).
   const actorRole: ActorRole =
-    role === "DOCTOR" ? "DOCTOR" : role === "ADMIN" ? "ADMIN" : "RECEPTIONIST";
+    role === "DOCTOR" ? "DOCTOR" : isClinicAdmin(role) ? "ADMIN" : "RECEPTIONIST";
   const surface: Surface =
     role === "DOCTOR"
       ? "DOCTOR_CABINET"

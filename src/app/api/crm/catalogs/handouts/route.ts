@@ -12,6 +12,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import {
   applyClinicOverlay,
   loadClinicOverlays,
@@ -28,7 +29,9 @@ export const GET = createApiListHandler(
     const includeHidden =
       url.searchParams.get("includeHidden") === "1" &&
       ctx.kind === "TENANT" &&
-      ctx.role === "ADMIN";
+      // The clinic's admin manages the hidden entries; the owner inside a
+      // clinic sees them as its admin does (owner request 09.10.2026).
+      isClinicAdmin(ctx.role);
 
     const where: Record<string, unknown> = {
       active: true,

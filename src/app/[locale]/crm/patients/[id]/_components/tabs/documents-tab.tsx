@@ -57,6 +57,7 @@ import { uploadDocumentFile } from "@/lib/document-upload-client";
 import { tashkentToday } from "@/lib/tashkent-time";
 
 import type { Patient } from "../../_hooks/use-patient";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import { useCurrentRole } from "../../_hooks/use-current-role";
 import {
   documentDownloadHref,
@@ -121,9 +122,10 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   const remove = useDeleteDocument(patient.id);
   const saveSignature = useSaveSignature(patient.id);
   const voidDocument = useVoidDocument(patient.id);
-  // CD-09: a signed record is never deleted; ADMIN voids a misfiled one.
+  // CD-09: a signed record is never deleted; ADMIN voids a misfiled one
+  // (the owner inside a clinic too, owner request 09.10.2026).
   // Cosmetic: the void route answers 403 to anyone else.
-  const canVoid = useCurrentRole() === "ADMIN";
+  const canVoid = isClinicAdmin(useCurrentRole());
   const [voidTarget, setVoidTarget] = React.useState<PatientDocument | null>(
     null,
   );

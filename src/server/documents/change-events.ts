@@ -10,6 +10,7 @@ import {
   type OutboxTx,
 } from "@/server/realtime/outbox";
 import type { ActorRole, Surface } from "@/server/realtime/envelope";
+import { isClinicAdmin } from "@/lib/permissions/clinic-admin";
 import type { TenantContext } from "@/lib/tenant-context";
 
 export async function publishDocumentChange(
@@ -20,8 +21,9 @@ export async function publishDocumentChange(
 ): Promise<void> {
   const userId = ctx.kind === "TENANT" ? ctx.userId : null;
   const role = ctx.kind === "TENANT" ? ctx.role : null;
+  // The owner inside a clinic acts as its admin (owner request 09.10.2026).
   const actorRole: ActorRole =
-    role === "DOCTOR" ? "DOCTOR" : role === "ADMIN" ? "ADMIN" : "SYSTEM";
+    role === "DOCTOR" ? "DOCTOR" : isClinicAdmin(role) ? "ADMIN" : "SYSTEM";
   const surface: Surface = role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
   await publishViaOutbox(tx, {
     correlationId: newCorrelationId(),

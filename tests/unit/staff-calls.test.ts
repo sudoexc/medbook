@@ -97,8 +97,13 @@ describe("wiring", () => {
     expect(read("src/app/[locale]/crm/layout.tsx")).toContain(
       "<GlobalStaffCallAlerts enabled={isStaffCallAlertRole(session?.user?.role)} />",
     );
-    // Above the iPad page (z-40) and everything else.
-    expect(read("src/components/staff-calls/global-staff-call-alerts.tsx")).toContain("fixed inset-0 z-[200]");
+    // Above the iPad page (z-40) and everything else, in its own layer:
+    // «Иду» must not close a desk dialog left open (review 09.10.2026).
+    const overlay = read("src/components/staff-calls/global-staff-call-alerts.tsx");
+    expect(overlay).toContain("fixed inset-0 z-[200]");
+    expect(overlay).toContain("return createPortal(");
+    expect(overlay).toContain("document.body,");
+    expect(overlay).toContain("onPointerDown={keep}");
   });
 
   it("the migration is additive", () => {

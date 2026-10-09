@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { BellRingIcon, FootprintsIcon } from "lucide-react";
@@ -47,7 +48,7 @@ export function GlobalStaffCallAlerts({ enabled }: { enabled: boolean }) {
     return () => window.clearInterval(id);
   }, [open]);
 
-  if (!enabled || !open) return null;
+  if (!enabled || !open || typeof document === "undefined") return null;
 
   const answer = (c: StaffCallView) =>
     ack.mutate(c.id, {
@@ -61,11 +62,20 @@ export function GlobalStaffCallAlerts({ enabled }: { enabled: boolean }) {
       },
     });
 
-  return (
+  // A portal straight into <body>, mounted when the call comes in, and
+  // presses kept to itself: a desk dialog left open (a booking, a payment)
+  // must not take «Иду» for a click outside it and close with what was
+  // typed in it (review 09.10.2026). Its dismiss logic ignores layers
+  // added after it opened, and the stopped events never reach it.
+  const keep = (e: React.SyntheticEvent) => e.stopPropagation();
+  return createPortal(
     <div
       role="alertdialog"
       aria-modal="true"
       aria-label={t("overlayTitle")}
+      onPointerDown={keep}
+      onMouseDown={keep}
+      onTouchStart={keep}
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-6"
     >
       <div className="flex max-h-full w-full max-w-2xl flex-col gap-4 overflow-y-auto">
@@ -106,6 +116,7 @@ export function GlobalStaffCallAlerts({ enabled }: { enabled: boolean }) {
           );
         })}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -59,7 +59,7 @@ export function StaffCallButton() {
           onClick={press}
           disabled={call.isPending}
           title={t("callAgain")}
-          className="motion-press inline-flex h-10 items-center gap-2 rounded-xl border-2 border-warning bg-warning/15 px-3.5 text-sm font-semibold text-warning-text"
+          className="motion-press inline-flex h-10 shrink-0 whitespace-nowrap items-center gap-2 rounded-xl border-2 border-warning bg-warning/15 px-3.5 text-sm font-semibold text-warning-text"
         >
           <BellRingIcon className="size-4 animate-pulse" />
           <span className="hidden sm:inline">{t("calling")}</span>
@@ -85,7 +85,7 @@ export function StaffCallButton() {
         onClick={press}
         disabled={call.isPending}
         title={t("callAgain")}
-        className="motion-press inline-flex h-10 max-w-[18rem] items-center gap-2 rounded-xl border-2 border-success bg-success/15 px-3.5 text-sm font-semibold text-success"
+        className="motion-press inline-flex h-10 shrink-0 whitespace-nowrap max-w-[18rem] items-center gap-2 rounded-xl border-2 border-success bg-success/15 px-3.5 text-sm font-semibold text-success"
       >
         <CheckCircle2Icon className="size-4 shrink-0" />
         <span className="hidden truncate sm:inline">
@@ -101,7 +101,7 @@ export function StaffCallButton() {
       onClick={press}
       disabled={call.isPending}
       className={cn(
-        "motion-press inline-flex h-10 items-center gap-2 rounded-xl bg-warning px-3.5 text-sm font-semibold text-warning-foreground shadow-sm transition-colors hover:bg-warning/90 disabled:opacity-60",
+        "motion-press inline-flex h-10 shrink-0 whitespace-nowrap items-center gap-2 rounded-xl bg-warning px-3.5 text-sm font-semibold text-warning-foreground shadow-sm transition-colors hover:bg-warning/90 disabled:opacity-60",
       )}
     >
       <BellRingIcon className="size-4" />

@@ -83,7 +83,7 @@ export function DoctorTopbar({
         type="button"
         disabled={!doctorId}
         onClick={() => setAddOpen(true)}
-        className="motion-press inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
+        className="motion-press inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
       >
         <PlusIcon className="size-4" />
         <span className="hidden sm:inline">{t("topbar.addToQueue")}</span>

@@ -9195,7 +9195,9 @@
     "aheadCount": "{count} kishi",
     "booked": "Yozilgan qabul:",
     "scan": "Navbatni kuzatish uchun skanerlang",
-    "thanks": "Tashrifingiz uchun rahmat!"
+    "thanks": "Tashrifingiz uchun rahmat!",
+    "botTitle": "Hujjatlaringiz Telegramda",
+    "botScan": "QR kodni skanerlang, shifokor xulosasi va tayinlovlari Telegramingizga keladi"
   },
   "devTasks": {
     "title": "Topshiriqlar",

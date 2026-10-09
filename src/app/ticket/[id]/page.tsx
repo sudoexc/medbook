@@ -20,6 +20,7 @@ import {
   resolveTicketStubRequest,
   ticketStubVerdict,
 } from "@/server/appointments/public-ticket";
+import { mintOrReuseInviteUrl } from "@/server/telegram/invite-token";
 import ru from "@/messages/ru.json";
 import uz from "@/messages/uz.json";
 import { AutoPrint } from "./_components/auto-print";
@@ -118,6 +119,7 @@ export default async function TicketPage({
           time: true,
           channel: true,
           doctorId: true,
+          patientId: true,
           patient: { select: { fullName: true, preferredLang: true } },
           doctor: {
             select: {
@@ -139,6 +141,7 @@ export default async function TicketPage({
               phone: true,
               addressRu: true,
               addressUz: true,
+              tgBotUsername: true,
             },
           },
         },
@@ -185,10 +188,26 @@ export default async function TicketPage({
   // status page answers it on the appointment's own day only. The page
   // opens in the stub's language (UX-06).
   const statusUrl = `${baseUrl}/q/${queueTicketToken(appointmentId)}?lang=${locale}`;
+  // The QR leads to the clinic's Telegram bot (owner request 09.10.2026):
+  // the patient scans it in the hall and the doctor's conclusion and
+  // prescriptions reach their Telegram. A patient not linked yet gets the
+  // invite deep link the conclusion prints too (mintOrReuseInviteUrl: it
+  // links nothing until Telegram vouches for the card's own phone, so a
+  // slip left behind links no stranger); a linked one gets the bot itself.
+  // A clinic without a bot keeps the queue status link.
+  const botUsername = appointment.clinic.tgBotUsername;
+  const invite = botUsername
+    ? await runUnscoped(
+        "public ticket stub: Telegram invite for the resolved patient",
+        () =>
+          mintOrReuseInviteUrl({ patientId: appointment.patientId, createdByUserId: null }),
+      ).catch(() => null)
+    : null;
+  const botUrl = botUsername ? (invite?.url ?? `https://t.me/${botUsername}`) : null;
   // Self-hosted QR (the `qrcode` package, same one the PDFs/mini-app use) —
-  // no third-party `api.qrserver.com` round-trip, which both leaks the queue
-  // URL and is unreliable from a VPS behind SNI/DPI filtering.
-  const qrUrl = await QRCode.toDataURL(statusUrl, { width: 200, margin: 1 });
+  // no third-party `api.qrserver.com` round-trip, which both leaks the URL
+  // and is unreliable from a VPS behind SNI/DPI filtering.
+  const qrUrl = await QRCode.toDataURL(botUrl ?? statusUrl, { width: 200, margin: 1 });
   // Clinic wall-clock (audit Q-11): this is a server component and the server
   // runs UTC, so the bare toLocale*String printed a 09:15 walk-in as 04:15.
   const issuedAt = formatClinicDateTime(appointment.date, locale);
@@ -316,9 +335,16 @@ export default async function TicketPage({
           height={150}
           style={{ display: "inline-block" }}
         />
-        <div style={{ fontSize: "13px", marginTop: "1.5mm" }}>
-          {t("scan")}
-        </div>
+        {botUrl ? (
+          <>
+            <div style={{ fontSize: "17px", fontWeight: "bold", marginTop: "1.5mm" }}>
+              {t("botTitle")}
+            </div>
+            <div style={{ fontSize: "13px", marginTop: "1mm" }}>{t("botScan")}</div>
+          </>
+        ) : (
+          <div style={{ fontSize: "13px", marginTop: "1.5mm" }}>{t("scan")}</div>
+        )}
       </div>
 
       {/* Footer */}

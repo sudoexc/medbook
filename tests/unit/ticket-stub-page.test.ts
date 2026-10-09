@@ -229,3 +229,30 @@ describe("printing the slip from the desk and the iPad", () => {
     expect(frame).toContain("if (job === 0) return null;");
   });
 });
+
+// Owner request 09.10.2026: the slip's QR leads to the clinic's Telegram bot
+// («отсканируйте, чтобы получать свои документы»), not the queue page.
+describe("the slip's QR leads to the clinic's bot", () => {
+  const msg = (lang: string) =>
+    JSON.parse(readFileSync(path.join(process.cwd(), `src/messages/${lang}.json`), "utf8")) as {
+      ticketStub: { botTitle: string; botScan: string };
+    };
+  const ru = msg("ru");
+  const uz = msg("uz");
+  const src = readFileSync(path.join(process.cwd(), "src/app/ticket/[id]/page.tsx"), "utf8");
+
+  it("an unlinked patient gets the invite deep link, a linked one the bot, no bot keeps the queue link", () => {
+    expect(src).toContain("mintOrReuseInviteUrl({ patientId: appointment.patientId, createdByUserId: null })");
+    expect(src).toContain("const botUrl = botUsername ? (invite?.url ?? `https://t.me/${botUsername}`) : null;");
+    expect(src).toContain("QRCode.toDataURL(botUrl ?? statusUrl,");
+    expect(src).toContain('{t("botTitle")}');
+  });
+
+  it("says so in both languages, without dashes", () => {
+    for (const m of [ru, uz]) {
+      expect(m.ticketStub.botTitle).toMatch(/Telegram/);
+      expect(m.ticketStub.botScan).toMatch(/QR/);
+      expect(`${m.ticketStub.botTitle} ${m.ticketStub.botScan}`).not.toMatch(/[—–]/);
+    }
+  });
+});

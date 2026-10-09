@@ -6,7 +6,7 @@
  * from the TV: he did not understand he was the one being called.
  *
  * Acceptance pinned here:
- *   - the TV boards show their static labels in both languages;
+ *   - the TV boards show their static labels in Russian (owner, 09.10.2026);
  *   - the call is announced in the patient's language when known, with an
  *     uz-UZ voice when the box has one, falling back to ru-RU;
  *   - `queue.called` carries that language through the public stream;
@@ -189,8 +189,10 @@ describe("the TV call, in the patient's language", () => {
   });
 });
 
-describe("the TV boards show their labels in both languages", () => {
-  it("the call takeover reads in Russian and Uzbek", async () => {
+// Owner 09.10.2026: the TVs show Russian only (the bundles stay complete,
+// the announcement still speaks the patient's language).
+describe("the TV boards show their labels in Russian", () => {
+  it("the call takeover reads in Russian, no Uzbek line", async () => {
     const { TvI18nProvider } = await import("@/app/tv/_i18n");
     const { CallTakeover } = await import("@/app/tv/_shared");
     const html = renderToStaticMarkup(
@@ -204,9 +206,9 @@ describe("the TV boards show their labels in both languages", () => {
       }),
     );
     expect(html).toContain("Пройдите в кабинет");
-    expect(html).toContain("Kabinetga kiring");
+    expect(html).not.toContain("Kabinetga kiring");
     expect(html).toContain("Талон");
-    expect(html).toContain("Talon");
+    expect(html).not.toContain("Talon");
   });
 
   it("every TV and /q label exists in both languages, without dashes", () => {

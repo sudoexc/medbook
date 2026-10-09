@@ -56,16 +56,16 @@ export function useTvTranslators(): TvTranslators {
 }
 
 /**
- * A static label in both languages: Russian, then Uzbek. `stacked` puts the
- * Uzbek line under the Russian one (big headings, narrow portrait rows);
- * inline it follows after a dot, a shade lighter.
+ * A static label on the waiting-room TVs. Russian only since 09.10.2026
+ * (owner: «в тв режиме оставь один язык русский, убери узбекский»): two
+ * lines of every label made the board busy and smaller to read across the
+ * hall. The Uzbek bundle stays (the call announcement still speaks the
+ * patient's language); the props stay so the boards need no rewrite.
  */
 export function Bi({
   k,
   values,
   stacked = false,
-  uzClassName = "",
-  uzStyle,
 }: {
   k: string;
   values?: Record<string, string>;
@@ -75,24 +75,5 @@ export function Bi({
 }) {
   const t = useTvTranslators();
   const ru = t.ru(k, values);
-  const uz = t.uz(k, values);
-  if (stacked) {
-    return (
-      <>
-        <span className="block">{ru}</span>
-        <span className={`block ${uzClassName}`} style={uzStyle}>
-          {uz}
-        </span>
-      </>
-    );
-  }
-  return (
-    <>
-      {ru}
-      <span className={uzClassName} style={{ opacity: 0.75, ...uzStyle }}>
-        {" · "}
-        {uz}
-      </span>
-    </>
-  );
+  return stacked ? <span className="block">{ru}</span> : <>{ru}</>;
 }

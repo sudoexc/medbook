@@ -290,6 +290,7 @@ export const PATCH = createApiHandler(
               timesOfDay: true,
               mealRelation: true,
               durationDays: true,
+              ongoing: true,
               instructionRu: true,
               instructionUz: true,
               remindPatient: true,
@@ -415,7 +416,9 @@ export const PATCH = createApiHandler(
               dose: r.dose,
               timesOfDay: r.timesOfDay,
               mealRelation: r.mealRelation,
-              durationDays: r.durationDays ?? null,
+              // «Постоянно» has no day count (CHECK in the migration).
+              durationDays: r.ongoing ? null : (r.durationDays ?? null),
+              ongoing: r.ongoing ?? false,
               instructionRu: r.instructionRu ?? null,
               instructionUz: r.instructionUz ?? null,
               remindPatient: r.remindPatient,

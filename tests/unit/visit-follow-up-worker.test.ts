@@ -73,6 +73,8 @@ vi.mock("@/lib/prisma", () => {
       findUnique: vi.fn(async () => null),
       upsert: vi.fn(async () => ({ id: "rx_1" })),
       updateMany: vi.fn(async () => ({ count: 0 })),
+      // The supersede pass: no course of another visit.
+      findMany: vi.fn(async () => []),
     },
     visitNoteRevision: {
       findFirst: vi.fn(async () => null),

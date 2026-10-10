@@ -444,6 +444,7 @@ export const uzDict = {
       "Push-eslatmalar klinika tomonidan vaqtincha o‘chirilgan, ammo jadval dolzarb.",
     nextDose: "Keyingi qabul: {date}, {time}",
     daysLeft: "qoldi {n} kun",
+    ongoing: "doimiy",
     statusPaused: "Pauza",
     snoozedBadge: "Keyinga qoldirilgan",
     visitLabel: "Tashrif {date}",

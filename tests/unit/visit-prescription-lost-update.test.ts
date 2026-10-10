@@ -48,6 +48,7 @@ function draft(
     timesOfDay: [],
     mealRelation: "NO_MATTER",
     durationDays: null,
+    ongoing: false,
     instructionRu: null,
     instructionUz: null,
     remindPatient: true,

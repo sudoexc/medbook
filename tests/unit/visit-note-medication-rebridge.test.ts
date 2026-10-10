@@ -172,6 +172,10 @@ vi.mock("@/lib/prisma", () => {
         return { count };
       },
     ),
+    // The supersede pass (course-supersede.ts) reads the patient's other
+    // courses: none from another visit here.
+    findMany: vi.fn(async () => []),
+    update: vi.fn(async () => ({})),
     // Present so an accidental hard-delete would be observable, not silent.
     delete: vi.fn(async (args: unknown) => {
       state.prescriptionDeletes.push(args);
@@ -215,6 +219,7 @@ vi.mock("@/lib/prisma", () => {
     visitPrescription: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async () => ({ count: 0 })),
+      findMany: vi.fn(async () => []),
     },
     // G1-01 — a signed-note correction is recorded as revisions.
     visitNoteRevision: {

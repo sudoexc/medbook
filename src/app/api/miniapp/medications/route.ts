@@ -20,6 +20,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   daysRemaining,
+  isOngoingSchedule,
   nextTickAt,
   parseSchedule,
 } from "@/lib/patient-experience/medication-schedule";
@@ -94,6 +95,8 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
         times: sched?.times ?? [],
         days: sched?.days ?? null,
         startsAt: sched?.startsAt.toISOString() ?? null,
+        // «Постоянно»: the doctor wrote it for life, no days to count down.
+        ongoing: isOngoingSchedule(rx.schedule),
       },
       notes: hydrated.notes ?? null,
       status: rx.status,

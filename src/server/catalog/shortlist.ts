@@ -245,6 +245,8 @@ export type StructuredDrugUse = {
   timesOfDay?: readonly string[] | null;
   mealRelation?: string | null;
   durationDays?: number | null;
+  /** «Постоянно» (10.10.2026). */
+  ongoing?: boolean | null;
   at: Date;
 };
 
@@ -271,6 +273,12 @@ export type DrugShortItem = {
   lastTimesOfDay: string[];
   lastMealRelation: string | null;
   lastDurationDays: number | null;
+  /**
+   * «Постоянно» was written with that dose (doctor's request 10.10.2026):
+   * a pick of his amlodipine comes back «постоянно». Present only when
+   * true, so every other item keeps its exact shape.
+   */
+  lastOngoing?: true;
   pinned: boolean;
   /**
    * Only ever written as a text line, which the catalog matcher placed on
@@ -324,6 +332,8 @@ function accumulateDrugUses(
       cur.lastTimesOfDay = [...(use.timesOfDay ?? [])];
       cur.lastMealRelation = use.mealRelation ?? null;
       cur.lastDurationDays = use.durationDays ?? null;
+      if (use.ongoing) cur.lastOngoing = true;
+      else delete cur.lastOngoing;
     };
     const cur = acc.get(key);
     if (cur) {
@@ -633,6 +643,7 @@ function toDrugItem(a: DrugShortItem): DrugShortItem {
     lastTimesOfDay: [...a.lastTimesOfDay],
     lastMealRelation: a.lastMealRelation,
     lastDurationDays: a.lastDurationDays,
+    ...(a.lastOngoing ? { lastOngoing: true as const } : {}),
     pinned: a.pinned,
     ...(a.lineOnly ? { lineOnly: true as const } : {}),
   };

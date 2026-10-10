@@ -97,6 +97,7 @@ export const GET = createApiListHandler(
               timesOfDay: true,
               mealRelation: true,
               durationDays: true,
+              ongoing: true,
             },
             orderBy: { sortOrder: "asc" },
           },

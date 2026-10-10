@@ -380,6 +380,11 @@ export function PrescriptionsPanel() {
     },
     [],
   );
+  // A row the text card could not dose («Конкор 5 мг — ¼ утром», 10.10.2026)
+  // goes to the same dose prompt instead of being saved with a guess.
+  const draftPickRef = React.useRef<
+    ((draft: VisitPrescriptionDraft) => void) | null
+  >(null);
 
   /**
    * Legacy chip arrays are saved replace-all, so building the payload from
@@ -502,6 +507,7 @@ export function PrescriptionsPanel() {
         onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
         onOpenCatalog={() => setCatalogOpen(true)}
         catalogPickRef={catalogPickRef}
+        draftPickRef={draftPickRef}
         // A drug waiting in the dose prompt holds «Завершить приём» and
         // «Предпросмотр» until it is added or cancelled.
         registerDraftFlush={registerDraftFlush}
@@ -524,16 +530,25 @@ export function PrescriptionsPanel() {
         note={note}
         disabled={isFinalized}
         onAdopt={(drafts) => {
-          // Same lost-update guard as every other replace-all save:
-          // compose on the live cache row (the patch hook folds the
-          // result back in at once), so two quick «+» clicks both land.
-          const live = liveNote() ?? note;
-          applyPatch({
-            visitPrescriptions: [
-              ...toPrescriptionDrafts(live.visitPrescriptions ?? []),
-              ...drafts,
-            ],
-          });
+          // A row without a dose (a part of a tablet the parser could not
+          // count) is never saved: the first one goes to the constructor's
+          // dose prompt, which holds one pick at a time; the others stay
+          // on the card for another click.
+          const ready = drafts.filter((d) => d.dose.trim());
+          const needsDose = drafts.find((d) => !d.dose.trim());
+          if (ready.length > 0) {
+            // Same lost-update guard as every other replace-all save:
+            // compose on the live cache row (the patch hook folds the
+            // result back in at once), so two quick «+» clicks both land.
+            const live = liveNote() ?? note;
+            applyPatch({
+              visitPrescriptions: [
+                ...toPrescriptionDrafts(live.visitPrescriptions ?? []),
+                ...ready,
+              ],
+            });
+          }
+          if (needsDose) draftPickRef.current?.(needsDose);
         }}
       />
 

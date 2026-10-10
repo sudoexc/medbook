@@ -28,6 +28,11 @@ export type PrescriptionLikeRow = {
   timesOfDay: readonly string[];
   mealRelation: string;
   durationDays?: number | null;
+  /**
+   * «Постоянно» (doctor's request 10.10.2026): taken with no end, for life.
+   * Wins over a day count if both are somehow set.
+   */
+  ongoing?: boolean | null;
   instructionRu?: string | null;
   instructionUz?: string | null;
 };
@@ -101,20 +106,23 @@ export function formatMealLabel(
 export function formatDurationDays(
   durationDays: number | null | undefined,
   locale: PrescriptionLocale,
+  ongoing?: boolean | null,
 ): string {
+  if (ongoing) return locale === "uz" ? "doimiy" : "постоянно";
   if (durationDays == null) return "";
   return locale === "uz" ? `${durationDays} kun` : `${durationDays} дн.`;
 }
 
 /**
  * The part of the line after the name: «1 таб., утром и вечером, после еды,
- * 10 дн.». Empty when the row has none of it. The visit screen's picker
- * shows it under a drug as the doctor's usual way of writing it.
+ * 10 дн.» («…, постоянно» for a lifelong course). Empty when the row has none
+ * of it. The visit screen's picker shows it under a drug as the doctor's
+ * usual way of writing it.
  */
 export function formatPrescriptionSchedule(
   row: Pick<
     PrescriptionLikeRow,
-    "dose" | "timesOfDay" | "mealRelation" | "durationDays"
+    "dose" | "timesOfDay" | "mealRelation" | "durationDays" | "ongoing"
   >,
   locale: PrescriptionLocale,
 ): string {
@@ -123,7 +131,7 @@ export function formatPrescriptionSchedule(
     (t) => TIME_LABELS[locale][t],
   );
   const meal = formatMealLabel(row.mealRelation, locale);
-  const duration = formatDurationDays(row.durationDays, locale);
+  const duration = formatDurationDays(row.durationDays, locale, row.ongoing);
   return [dose, joinHuman(times, locale), meal, duration]
     .filter(Boolean)
     .join(", ");
@@ -206,8 +214,15 @@ const COUNTED_UNITS: CountedUnit[] = [
   { re: /^(?:доз[аыу]?|доз|doza\p{L}*)$/iu, ru: ["дозе", "дозы", "доз", "дозы"], uz: "doza" },
 ];
 
-/** An amount with its unit: «1 таб.», «½ таблетки», «1-2 таб.», «400 мг». */
-const AMOUNT = /^((?:½|¼|\d+(?:[.,]\d+)?)(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?)\s*(.*)$/u;
+/**
+ * One number of a dose: whole or decimal («1», «0,25»), a fraction sign
+ * («½», «¼», «¾», doctor's request 10.10.2026: a quarter tablet), a fraction
+ * typed with a slash («1/4») or a whole with a fraction sign («1½»).
+ */
+const NUM = String.raw`(?:\d+\s?[½¼¾]|[½¼¾]|\d+\/\d+|\d+(?:[.,]\d+)?)`;
+
+/** An amount with its unit: «1 таб.», «¼ таблетки», «1-2 таб.», «400 мг». */
+const AMOUNT = new RegExp(String.raw`^(${NUM}(?:\s*[-–]\s*${NUM})?)\s*(.*)$`, "u");
 
 /** «мг», «мл», «ЕД»: abbreviations read the same after «по». */
 const ABBREVIATION = /^(?:мг|г|мкг|мл|л|ед|ме|mg|g|mcg|ml|iu|%)$|\.$/iu;
@@ -256,10 +271,14 @@ function whenWithMeal(times: string[], meal: string, locale: PrescriptionLocale)
 /**
  * «по 1 таблетке 2 раза в день: утром после еды и вечером после еды, курс
  * 10 дней»; «1 tabletka, kuniga 2 marta: ertalab ovqatdan keyin va
- * kechqurun ovqatdan keyin, 10 kun davomida». Empty when the row has none.
+ * kechqurun ovqatdan keyin, 10 kun davomida». A lifelong course ends «,
+ * постоянно» / «, doimiy ravishda». Empty when the row has none.
  */
 export function formatPatientSchedule(
-  row: Pick<PrescriptionLikeRow, "dose" | "timesOfDay" | "mealRelation" | "durationDays">,
+  row: Pick<
+    PrescriptionLikeRow,
+    "dose" | "timesOfDay" | "mealRelation" | "durationDays" | "ongoing"
+  >,
   locale: PrescriptionLocale,
 ): string {
   const dose = row.dose.trim();
@@ -272,7 +291,11 @@ export function formatPatientSchedule(
 
   if (locale === "uz") {
     const intake = n >= 2 ? `kuniga ${n} marta: ${when}` : when;
-    const course = row.durationDays != null ? `${row.durationDays} kun davomida` : "";
+    const course = row.ongoing
+      ? "doimiy ravishda"
+      : row.durationDays != null
+        ? `${row.durationDays} kun davomida`
+        : "";
     return [dose ? uzDosePart(dose) : "", intake, course].filter(Boolean).join(", ");
   }
 
@@ -280,9 +303,10 @@ export function formatPatientSchedule(
     n >= 2 ? `${n} ${ruPlural(n, "раз", "раза", "раз")} в день: ${when}` : when;
   const amount = dose ? ruDosePart(dose) : "";
   // A bare number («1», «1-2») next to «2 раза» would read as one number.
-  const sep = /[\d½¼]$/u.test(amount) && /^\d/.test(intake) ? ", " : " ";
-  const course =
-    row.durationDays != null
+  const sep = /[\d½¼¾]$/u.test(amount) && /^\d/.test(intake) ? ", " : " ";
+  const course = row.ongoing
+    ? "постоянно"
+    : row.durationDays != null
       ? `курс ${row.durationDays} ${ruPlural(row.durationDays, "день", "дня", "дней")}`
       : "";
   const head = amount && intake ? `${amount}${sep}${intake}` : amount || intake;

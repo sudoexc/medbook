@@ -14,14 +14,19 @@ const HHmm = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "invalid_time");
 
-export const PrescriptionScheduleSchema = z.object({
-  times: z.array(HHmm).min(1, "times_required").max(8, "times_too_many"),
-  // `days` is total active duration. Null = open-ended (chronic). Capped at
-  // 365 — a longer course should be re-issued anyway.
-  days: z.number().int().min(1).max(365).optional().nullable(),
-  // ISO start. If omitted, the API handler stamps `now()`.
-  startsAt: z.string().datetime().optional().nullable(),
-});
+export const PrescriptionScheduleSchema = z
+  .object({
+    times: z.array(HHmm).min(1, "times_required").max(8, "times_too_many"),
+    // `days` is total active duration. Null = open-ended (chronic). Capped at
+    // 365 — a longer course should be re-issued anyway.
+    days: z.number().int().min(1).max(365).optional().nullable(),
+    // ISO start. If omitted, the API handler stamps `now()`.
+    startsAt: z.string().datetime().optional().nullable(),
+    // «Постоянно» (10.10.2026): taken for life. Kept on an edit so the
+    // patient's Mini App still says so; it wins over `days`.
+    ongoing: z.boolean().optional(),
+  })
+  .transform((s) => (s.ongoing ? { ...s, days: null } : s));
 
 export const PrescriptionStatusEnum = z.enum([
   "ACTIVE",

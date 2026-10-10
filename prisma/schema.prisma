@@ -1227,8 +1227,8 @@ model ClinicalProtocol {
   /**
    * Ф3 — structured prescription drafts, the VisitPrescriptionDraft shape:
    * [{drugId?, displayName, form?, strength?, dose, timesOfDay[],
-   * mealRelation, durationDays?, instructionRu?, instructionUz?,
-   * remindPatient}]. Applying a protocol appends these as
+   * mealRelation, durationDays?, ongoing?, instructionRu?, instructionUz?,
+   * remindPatient}]. ongoing = «постоянно», durationDays then null. Applying a protocol appends these as
    * VisitPrescription rows; «сохранить как протокол» writes them back.
    */
   prescriptionItems     Json?
@@ -1423,7 +1423,8 @@ model DoctorFavorite {
   // plus one); the arsenal page's drag writes 0..n-1 in one batch.
   sortOrder  Int               @default(0)
   // The doctor's usual schema for a DRUG pin («Мой арсенал», 03.10.2026):
-  // form, strength, dose, times of day, meal relation, days, instruction,
+  // form, strength, dose, times of day, meal relation, days or «постоянно»
+  // (ongoing, 10.10.2026), instruction,
   // applied by one click from «Мои». Null = none set: the pick then takes
   // what he wrote last time, as before. Shape: src/lib/arsenal.ts, read
   // tolerantly (unknown values dropped), never trusted as stored.
@@ -2387,6 +2388,12 @@ model VisitPrescription {
   timesOfDay    String[]     @default([])
   mealRelation  MealRelation @default(NO_MATTER)
   durationDays  Int?
+  // «Постоянно» (doctor's request 10.10.2026): taken with no end, for life
+  // (blood pressure, epilepsy). durationDays is then null (CHECK in the
+  // migration). The bridge writes an open-ended course (schedule {days: null,
+  // ongoing: true}) that keeps reminding until a correction withdraws it or
+  // a later visit's course of the same drug replaces it.
+  ongoing       Boolean      @default(false)
   // What the patient reads (handout, print, reminders): written by the
   // doctor. Never pre-filled from Drug.defaultDosing, which is reference
   // text for the doctor (audit G4-06).
@@ -3368,7 +3375,9 @@ model Prescription {
   drugName           String
   // Free-text "500mg 2 раза в день" — no structured RxNorm / formulary yet.
   dosage             String
-  // { times: ['09:00','21:00'], days: 30, startsAt: ISO } — kept flexible
+  // { times: ['09:00','21:00'], days: 30, startsAt: ISO, ongoing?: true } —
+  // days null = open-ended; ongoing = the doctor's «постоянно» (taken for
+  // life, 10.10.2026), written only when true. Kept flexible
   // because Wave 3 may add fields like `daysOfWeek` / `mealRelation` without
   // requiring a schema migration each time.
   schedule           Json

@@ -809,6 +809,27 @@ export const GET = createApiListHandler(
       height: 6px;
       border-radius: 999px;
       background: var(--brand);
+    }
+    /* The diagnosis is the largest line and the prescriptions follow in the
+       same bold black, a step smaller (doctor 10.10.2026). */
+    .md-dx {
+      font-size: 18px;
+      font-weight: 700;
+      color: #000;
+    }
+    .md-dx-more {
+      font-size: 15px;
+      font-weight: 600;
+      color: #000;
+    }
+    .md-rx li {
+      font-size: 15px;
+      font-weight: 700;
+      color: #000;
+      line-height: 1.45;
+    }
+    .md-rx li::before {
+      top: 10px;
     }`;
 
     // ── Patient-facing handout fragment (standalone page + package) ───
@@ -1396,23 +1417,35 @@ export const GET = createApiListHandler(
       margin: 14px 0;
     }
     /* The doctor reads these from across the desk and the patient takes
-       them home: larger than the rest (owner report 09.10.2026). */
+       them home: larger than the rest (owner report 09.10.2026). The
+       diagnosis is the largest line; the prescriptions follow in the same
+       bold black, one step smaller, one per line (doctor 10.10.2026). */
     section.block-dx > div {
-      font-size: 16px;
-      font-weight: 600;
-      line-height: 1.45;
+      font-size: 19px;
+      font-weight: 700;
+      color: #000;
+      line-height: 1.4;
     }
     section.block-dx .diagnosis-more {
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 16px;
+      font-weight: 600;
     }
     section.block-dx h3,
     section.block-rx h3 {
       font-size: 13px;
     }
+    section.block-rx .chips {
+      display: block;
+    }
     section.block-rx .chips li {
-      font-size: 14px;
-      padding: 5px 12px;
+      background: none;
+      border: 0;
+      border-radius: 0;
+      padding: 3px 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #000;
+      line-height: 1.45;
     }
     section.block h3 {
       margin: 0 0 6px 0;

@@ -28,6 +28,8 @@ export type PrescriptionComparable = {
   timesOfDay: string[];
   mealRelation: string;
   durationDays?: number | null;
+  /** «Постоянно» (10.10.2026): the course never ends, so it is a change. */
+  ongoing?: boolean | null;
   instructionRu?: string | null;
   instructionUz?: string | null;
   remindPatient: boolean;
@@ -50,6 +52,7 @@ function fingerprint(row: PrescriptionComparable): string {
     row.timesOfDay,
     row.mealRelation,
     row.durationDays ?? null,
+    !!row.ongoing,
     row.instructionRu ?? "",
     row.instructionUz ?? "",
     row.remindPatient,

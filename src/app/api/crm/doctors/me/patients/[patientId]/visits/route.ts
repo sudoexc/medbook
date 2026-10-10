@@ -159,6 +159,7 @@ export const GET = createApiListHandler(
                 displayName: true,
                 dose: true,
                 strength: true,
+                ongoing: true,
               },
               orderBy: { sortOrder: "asc" },
             },
@@ -275,6 +276,7 @@ export const GET = createApiListHandler(
           name: m.displayName,
           dose: m.dose,
           strength: m.strength,
+          ongoing: m.ongoing,
         })),
       };
     });

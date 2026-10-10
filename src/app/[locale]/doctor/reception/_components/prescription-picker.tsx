@@ -691,6 +691,7 @@ function usualLine(item: DrugShortItem, locale: PrescriptionLocale): string {
         timesOfDay: schema.timesOfDay,
         mealRelation: schema.mealRelation ?? "NO_MATTER",
         durationDays: schema.durationDays,
+        ongoing: schema.ongoing,
       },
       locale,
     );
@@ -702,6 +703,7 @@ function usualLine(item: DrugShortItem, locale: PrescriptionLocale): string {
       timesOfDay: item.lastTimesOfDay ?? [],
       mealRelation: item.lastMealRelation ?? "NO_MATTER",
       durationDays: item.lastDurationDays ?? null,
+      ongoing: item.lastOngoing,
     },
     locale,
   );

@@ -24,6 +24,11 @@ export type MedicationsPrescription = {
     times: string[];
     days: number | null;
     startsAt: string | null;
+    /**
+     * «Постоянно»: taken for life (10.10.2026). Optional: a server on the
+     * previous build omits it.
+     */
+    ongoing?: boolean;
   };
   notes: string | null;
   status: "ACTIVE" | "PAUSED" | "COMPLETED" | "CANCELLED";

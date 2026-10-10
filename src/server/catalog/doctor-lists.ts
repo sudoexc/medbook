@@ -84,6 +84,7 @@ export type DrugUsualEntry = Pick<
   | "lastTimesOfDay"
   | "lastMealRelation"
   | "lastDurationDays"
+  | "lastOngoing"
 >;
 
 /** One pin of the drug arsenal, for the arsenal page. */
@@ -247,6 +248,7 @@ export async function loadDoctorDrugLists(args: {
         timesOfDay: true,
         mealRelation: true,
         durationDays: true,
+        ongoing: true,
         drugId: true,
         visitNote: { select: { createdAt: true } },
       },
@@ -286,6 +288,7 @@ export async function loadDoctorDrugLists(args: {
         timesOfDay: s.timesOfDay,
         mealRelation: s.mealRelation,
         durationDays: s.durationDays,
+        ongoing: s.ongoing,
         at: s.visitNote.createdAt,
       })),
       clinicId,
@@ -408,6 +411,7 @@ export async function loadDoctorDrugLists(args: {
       lastTimesOfDay: used?.lastTimesOfDay ?? [],
       lastMealRelation: used?.lastMealRelation ?? null,
       lastDurationDays: used?.lastDurationDays ?? null,
+      ...(used?.lastOngoing ? { lastOngoing: true as const } : {}),
       pinned: pinnedSet.has(f.drugId),
       strengths: f.strengths,
       drug,
@@ -437,6 +441,7 @@ export async function loadDoctorDrugLists(args: {
       lastTimesOfDay: u.lastTimesOfDay,
       lastMealRelation: u.lastMealRelation,
       lastDurationDays: u.lastDurationDays,
+      ...(u.lastOngoing ? { lastOngoing: true as const } : {}),
     };
   }
 

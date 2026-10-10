@@ -26,13 +26,38 @@ export type PrescriptionScheduleShape = {
   days?: number | null;
   /** ISO timestamp when the schedule starts. Null = `createdAt`. */
   startsAt?: string | null;
+  /**
+   * «Постоянно» (doctor's request 10.10.2026): taken for life, so `days` is
+   * null. Written only when true. Reminding needs nothing more (a null
+   * `days` is already open-ended); the flag lets the Mini App say
+   * «постоянно» and the drug check tell lifelong from «not specified».
+   */
+  ongoing?: boolean;
 };
 
 export type ParsedSchedule = {
   times: string[];
   days: number | null;
   startsAt: Date;
+  /**
+   * True only for a lifelong course: the flag set and no day count.
+   * `parseSchedule` always sets it; optional for hand-built schedules.
+   */
+  ongoing?: boolean;
 };
+
+/**
+ * Whether a stored `schedule` blob is a lifelong («постоянно») course: the
+ * flag set and no day count. Works on a course without reminder times too,
+ * which `parseSchedule` rejects.
+ */
+export function isOngoingSchedule(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const obj = raw as Record<string, unknown>;
+  const hasDays =
+    typeof obj.days === "number" && Number.isFinite(obj.days) && obj.days > 0;
+  return obj.ongoing === true && !hasDays;
+}
 
 /**
  * Parse a Prisma JSON `schedule` blob. Tolerates partial / malformed input by
@@ -65,7 +90,7 @@ export function parseSchedule(
       ? new Date(obj.startsAt)
       : fallbackStart;
   if (Number.isNaN(startsAt.getTime())) return null;
-  return { times, days, startsAt };
+  return { times, days, startsAt, ongoing: obj.ongoing === true && days === null };
 }
 
 /**

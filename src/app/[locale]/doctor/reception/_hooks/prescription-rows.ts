@@ -61,11 +61,16 @@ const MEAL_RELATIONS: ReadonlySet<string> = new Set<VisitPrescriptionMealRelatio
  * build no longer knows must not reach the replace-all save.
  */
 function scheduleOf(
-  item: Pick<DrugShortItem, "lastTimesOfDay" | "lastMealRelation" | "lastDurationDays">,
-): Pick<VisitPrescriptionDraft, "timesOfDay" | "mealRelation" | "durationDays"> {
+  item: Pick<
+    DrugShortItem,
+    "lastTimesOfDay" | "lastMealRelation" | "lastDurationDays" | "lastOngoing"
+  >,
+): Pick<VisitPrescriptionDraft, "timesOfDay" | "mealRelation" | "durationDays" | "ongoing"> {
   const times = item.lastTimesOfDay ?? [];
   const meal = item.lastMealRelation;
   const days = item.lastDurationDays;
+  // «Постоянно» comes back as he wrote it, and never with a day count.
+  const ongoing = item.lastOngoing === true;
   return {
     timesOfDay: TIME_ORDER.filter((t) => times.includes(t)),
     mealRelation:
@@ -73,9 +78,11 @@ function scheduleOf(
         ? (meal as VisitPrescriptionMealRelation)
         : "NO_MATTER",
     durationDays:
+      !ongoing &&
       typeof days === "number" && Number.isInteger(days) && days >= 1 && days <= 365
         ? days
         : null,
+    ongoing,
   };
 }
 
@@ -120,6 +127,7 @@ export function draftFromDrug(
     timesOfDay: [],
     mealRelation: "NO_MATTER",
     durationDays: null,
+    ongoing: false,
     instructionRu: null,
     instructionUz: null,
     remindPatient: true,
@@ -211,6 +219,7 @@ export function draftFromArsenalSchema(
     lastTimesOfDay: schema.timesOfDay,
     lastMealRelation: schema.mealRelation,
     lastDurationDays: schema.durationDays,
+    lastOngoing: schema.ongoing,
   });
   // A schema dose that is one of the drug's strengths copied over («500
   // мг/4 мл» from the old constructor) is no dose: the row goes through the
@@ -358,6 +367,7 @@ export function shortItemFromDrug(
     lastTimesOfDay: usual?.lastTimesOfDay ?? [],
     lastMealRelation: usual?.lastMealRelation ?? null,
     lastDurationDays: usual?.lastDurationDays ?? null,
+    lastOngoing: usual?.lastOngoing ?? false,
     pinned: opts.pinned ?? false,
     strengths: opts.strengths ?? [],
     drug,

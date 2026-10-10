@@ -23,9 +23,11 @@ import {
 export type QuickDoseLocale = "ru" | "uz";
 
 const BY_FORM: Record<string, Record<QuickDoseLocale, string[]>> = {
+  // A quarter as well as a half (doctor's request 10.10.2026: Конкор,
+  // Варфарин are split in four).
   TAB: {
-    ru: ["1 таб.", "2 таб.", "½ таб."],
-    uz: ["1 tabletka", "2 tabletka", "½ tabletka"],
+    ru: ["1 таб.", "2 таб.", "½ таб.", "¼ таб."],
+    uz: ["1 tabletka", "2 tabletka", "½ tabletka", "¼ tabletka"],
   },
   CAP: {
     ru: ["1 капс.", "2 капс."],

@@ -43,6 +43,12 @@ export type RevisionPrescription = {
   timesOfDay: string[];
   mealRelation: string;
   durationDays: number | null;
+  /**
+   * «Постоянно» (10.10.2026). Present only when true: a row without it
+   * snapshots exactly as before the field existed, so earlier revisions
+   * still compare equal to it.
+   */
+  ongoing?: true;
   instructionRu: string | null;
   instructionUz: string | null;
   remindPatient: boolean;
@@ -104,7 +110,8 @@ type NoteLike = {
   patientHandoutMarkdown?: string | null;
 };
 
-type RowLike = Partial<RevisionPrescription> & {
+type RowLike = Omit<Partial<RevisionPrescription>, "ongoing"> & {
+  ongoing?: boolean | null;
   displayName: string;
   dose: string;
   sortOrder?: number;
@@ -138,6 +145,7 @@ export function revisionContentOf(
       timesOfDay: [...(r.timesOfDay ?? [])],
       mealRelation: r.mealRelation ?? "NO_MATTER",
       durationDays: r.durationDays ?? null,
+      ...(r.ongoing ? { ongoing: true as const } : {}),
       instructionRu: r.instructionRu ?? null,
       instructionUz: r.instructionUz ?? null,
       remindPatient: r.remindPatient ?? true,

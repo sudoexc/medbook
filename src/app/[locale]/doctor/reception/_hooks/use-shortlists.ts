@@ -55,6 +55,8 @@ export type DrugShortItem = {
   lastTimesOfDay?: string[];
   lastMealRelation?: string | null;
   lastDurationDays?: number | null;
+  /** «Постоянно» was written with that last dose (10.10.2026). */
+  lastOngoing?: boolean;
   pinned: boolean;
   strengths: string[];
   drug: DrugSearchHit | null;
@@ -82,6 +84,7 @@ export type DrugUsual = Pick<
   | "lastTimesOfDay"
   | "lastMealRelation"
   | "lastDurationDays"
+  | "lastOngoing"
 >;
 
 export type DrugShortlist = {

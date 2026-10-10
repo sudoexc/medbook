@@ -65,6 +65,8 @@ const SchemaInput = z
       .nullable()
       .optional(),
     durationDays: z.number().int().min(1).max(SCHEMA_LIMITS.maxDays).nullable().optional(),
+    // «Постоянно» (10.10.2026); with a day count too, the days are dropped.
+    ongoing: z.boolean().optional(),
     instructionRu: z.string().max(SCHEMA_LIMITS.instruction).nullable().optional(),
     instructionUz: z.string().max(SCHEMA_LIMITS.instruction).nullable().optional(),
   })

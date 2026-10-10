@@ -11,8 +11,9 @@
  *
  * Both must agree on block structure, so the line-walking lives here once.
  * Inline emphasis is handled per-surface: HTML keeps `<strong>`/`<em>`; the
- * PDF strips the markers because the bundled DejaVuSans has no bold/italic
- * face (a patient handout reads fine without weighted runs).
+ * PDF strips the markers. The diagnosis and the prescription list are set
+ * larger and bold on both (handoutBlockRoles; the PDF has a bold face for
+ * exactly these, 10.10.2026).
  *
  * Supported subset (everything the deterministic composer emits):
  *   - `# Heading 1` / `## Heading 2` at the start of a line
@@ -20,6 +21,7 @@
  *   - blank-line-separated paragraphs (soft-wrapped lines joined by a space)
  *   - `**bold**`, `_italic_` inline (no nesting)
  */
+import { handoutParagraphRole } from "@/lib/catalogs/handout-composer";
 
 export type HandoutBlock =
   | { kind: "h1"; text: string }
@@ -123,21 +125,50 @@ export function renderHandoutHtml(markdown: string | null): string {
   const blocks = parseHandoutBlocks(markdown);
   if (blocks.length === 0) return `<p class="empty">—</p>`;
 
+  const roles = handoutBlockRoles(blocks);
   const out: string[] = [];
-  for (const b of blocks) {
+  blocks.forEach((b, i) => {
     if (b.kind === "h1") {
       out.push(`<h1 class="md-h1">${inlineToHtml(b.text)}</h1>`);
     } else if (b.kind === "h2") {
       out.push(`<h2 class="md-h2">${inlineToHtml(b.text)}</h2>`);
     } else if (b.kind === "bullets") {
+      const rx = roles[i] === "rx" ? " md-rx" : "";
       out.push(
-        `<ul class="md-list">${b.items
+        `<ul class="md-list${rx}">${b.items
           .map((it) => `<li>${inlineToHtml(it)}</li>`)
           .join("")}</ul>`,
       );
     } else {
-      out.push(`<p>${inlineToHtml(b.text)}</p>`);
+      const role = roles[i];
+      const cls = role === "dx" ? ` class="md-dx"` : role === "dx-more" ? ` class="md-dx-more"` : "";
+      out.push(`<p${cls}>${inlineToHtml(b.text)}</p>`);
     }
-  }
+  });
   return out.join("\n");
+}
+
+/**
+ * Which blocks of a composed handout carry the diagnosis and the
+ * prescriptions, so the HTML print and the bot PDF set them larger and bold
+ * (doctor 10.10.2026): the diagnosis paragraphs, and the bullet list right
+ * after the prescriptions header. Everything else is null.
+ */
+export function handoutBlockRoles(
+  blocks: HandoutBlock[],
+): Array<"dx" | "dx-more" | "rx" | null> {
+  return blocks.map((b, i) => {
+    if (b.kind === "paragraph") {
+      const role = handoutParagraphRole(b.text);
+      return role === "dx" || role === "dx-more" ? role : null;
+    }
+    if (b.kind === "bullets") {
+      const prev = blocks[i - 1];
+      return prev?.kind === "paragraph" &&
+        handoutParagraphRole(prev.text) === "rx-header"
+        ? "rx"
+        : null;
+    }
+    return null;
+  });
 }

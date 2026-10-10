@@ -23,6 +23,7 @@
  * Hard rule: only `patientHandoutMarkdown` is ever rendered. The clinical
  * `bodyMarkdown` must never reach the patient.
  */
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { formatDate } from "@/lib/format";
@@ -34,6 +35,16 @@ import { uploadObject } from "@/server/storage/minio";
 import { renderConclusionPdf } from "@/server/visit-notes/conclusion-pdf";
 import { serializePrescriptionForWrite } from "@/server/prescription/cipher-fields";
 import { syncFollowUpAction } from "@/server/visit-notes/follow-up-action";
+import {
+  STOPPED_BY_NOTE_KEY,
+  SUPERSEDED_BY_NOTE_KEY,
+  courseMark,
+  ownCourseState,
+  planCourseSupersede,
+  type DrugIdentity,
+  type SupersedeCandidate,
+} from "@/server/visit-notes/course-supersede";
+import { resolveLineDrugIds } from "@/server/visit-notes/legacy-line-drugs";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import {
@@ -112,6 +123,7 @@ type SweepNote = {
     timesOfDay: string[];
     mealRelation: string;
     durationDays: number | null;
+    ongoing: boolean;
     instructionRu: string | null;
     instructionUz: string | null;
   }>;
@@ -392,6 +404,7 @@ export async function runVisitNoteHandoutTick(
             timesOfDay: true,
             mealRelation: true,
             durationDays: true,
+            ongoing: true,
             instructionRu: true,
             instructionUz: true,
           },
@@ -497,20 +510,23 @@ export function resolveSlotTimes(raw: unknown): Record<string, string> {
 /**
  * Translate a VisitPrescription's slots into the reminder-worker schedule
  * shape `{times, days, startsAt}`. Slot order is canonical (morning→night)
- * regardless of the input array order. Pure — unit-tested.
+ * regardless of the input array order. A lifelong («постоянно») row has no
+ * day count and carries `ongoing: true`, written only then, so every other
+ * schedule keeps its exact shape. Pure — unit-tested.
  */
 export function buildBridgeSchedule(
-  vp: { timesOfDay: string[]; durationDays: number | null },
+  vp: { timesOfDay: string[]; durationDays: number | null; ongoing?: boolean | null },
   slotTimes: Record<string, string>,
   startsAt: Date,
-): { times: string[]; days: number | null; startsAt: string } {
+): { times: string[]; days: number | null; startsAt: string; ongoing?: true } {
   const times = SLOT_ORDER.filter((s) => vp.timesOfDay.includes(s)).map(
     (s) => slotTimes[s],
   );
   return {
     times,
-    days: vp.durationDays ?? null,
+    days: vp.ongoing ? null : (vp.durationDays ?? null),
     startsAt: startsAt.toISOString(),
+    ...(vp.ongoing ? { ongoing: true as const } : {}),
   };
 }
 
@@ -520,6 +536,13 @@ type BridgeNote = {
   patientId: string;
   doctorId: string;
   finalizedAt: Date | null;
+  /**
+   * The first signature, never moved by a revert and re-sign: the visit's
+   * place among the patient's visits for the supersede pass.
+   */
+  firstFinalizedAt?: Date | null;
+  /** The visit's text prescription lines: they name drugs too. */
+  prescriptions?: string[];
   /** The version this pass read; the stamp lands only on it (see below). */
   updatedAt: Date;
   followUpDays: number | null;
@@ -528,11 +551,17 @@ type BridgeNote = {
   patient: { fullName: string; preferredLang: string };
   doctor: { nameRu: string } | null;
   visitPrescriptions: Array<{
+    /** Catalog drug: a later visit's course of it supersedes this one's. */
+    drugId?: string | null;
     displayName: string;
+    /** TAB, GEL…: another form of the substance is another course. */
+    form?: string | null;
     strength: string | null;
     dose: string;
     timesOfDay: string[];
     durationDays: number | null;
+    /** «Постоянно»: the course has no end. */
+    ongoing?: boolean;
     instructionRu: string | null;
     instructionUz: string | null;
     remindPatient: boolean;
@@ -551,7 +580,18 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
   const slotTimes = resolveSlotTimes(clinic?.medicationSlotTimes);
   const locale = note.patient.preferredLang === "UZ" ? "uz" : "ru";
   const startsAt = note.finalizedAt ?? now;
+  // Which visit is newer: the first signature. `finalizedAt` is cleared by a
+  // revert and set to «now» by the re-signature, which would make a visit of
+  // last Monday newer than Thursday's and complete Thursday's current dose.
+  const signedAt = note.firstFinalizedAt ?? note.finalizedAt ?? now;
   const rows = note.visitPrescriptions.filter((vp) => vp.remindPatient);
+  // The text lines' catalog drugs, by the print's own matcher: a lifelong
+  // course continued as a line «Нормодипин 5 мг» is not stopped.
+  const textLines = note.prescriptions ?? [];
+  const lineDrugIds =
+    textLines.length > 0
+      ? await resolveLineDrugIds(textLines, { clinicId: note.clinicId })
+      : [];
 
   const correlationId = newCorrelationId();
   await prisma.$transaction(async (tx) => {
@@ -560,6 +600,78 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
     // off) during an in-window correction, and must stop reminding — see the
     // cancellation pass after the upserts.
     const keptSortOrders = new Set(rows.map((vp) => vp.sortOrder));
+
+    // Courses of this patient's OTHER visits, for the supersede pass below
+    // and for this note's own rows: every ACTIVE one (a newer visit's too),
+    // and the COMPLETED ones this note marked. Read before the upserts,
+    // which only touch this note's courses.
+    const candidateRows = await tx.prescription.findMany({
+      where: {
+        clinicId: note.clinicId,
+        patientId: note.patientId,
+        caseId: null,
+        AND: [{ visitNoteId: { not: null } }, { visitNoteId: { not: note.id } }],
+        OR: [
+          { status: "ACTIVE" },
+          {
+            status: "COMPLETED",
+            schedule: { path: [SUPERSEDED_BY_NOTE_KEY], equals: note.id },
+          },
+          {
+            status: "COMPLETED",
+            schedule: { path: [STOPPED_BY_NOTE_KEY], equals: note.id },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+        schedule: true,
+        drugName: true,
+        visitNoteId: true,
+        visitNoteSortOrder: true,
+        visitNote: {
+          select: { firstFinalizedAt: true, finalizedAt: true, doctorId: true },
+        },
+      },
+    });
+    let candidates: SupersedeCandidate[] = [];
+    if (candidateRows.length > 0) {
+      const noteIds = Array.from(
+        new Set(candidateRows.map((c) => c.visitNoteId).filter((v): v is string => !!v)),
+      );
+      const sources = await tx.visitPrescription.findMany({
+        where: { visitNoteId: { in: noteIds } },
+        select: {
+          visitNoteId: true,
+          sortOrder: true,
+          drugId: true,
+          displayName: true,
+          form: true,
+        },
+      });
+      const sourceOf = new Map<string, (typeof sources)[number]>(
+        sources.map((s) => [`${s.visitNoteId}:${s.sortOrder}`, s]),
+      );
+      candidates = candidateRows.map((c) => ({
+        id: c.id,
+        status: c.status,
+        schedule: c.schedule,
+        drugName: c.drugName,
+        noteId: c.visitNoteId ?? "",
+        noteDoctorId: c.visitNote?.doctorId ?? null,
+        noteSignedAt: c.visitNote
+          ? (c.visitNote.firstFinalizedAt ?? c.visitNote.finalizedAt ?? null)
+          : null,
+        source: sourceOf.get(`${c.visitNoteId}:${c.visitNoteSortOrder}`) ?? null,
+      }));
+    }
+
+    // Rows whose own course reminds: only they replace an older course of
+    // the drug. A row with no time of day (a parsed line «Амлодипин —
+    // постоянно») gets a course that never reminds; completing the older
+    // reminding one for it would silently end a lifelong drug's reminders.
+    const replacing: DrugIdentity[] = [];
 
     for (const vp of rows) {
       const schedule = buildBridgeSchedule(vp, slotTimes, startsAt);
@@ -575,6 +687,7 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
       });
       const remindersEnabled =
         Boolean(clinic?.medicationRemindersEnabled) && schedule.times.length > 0;
+      if (schedule.times.length > 0) replacing.push(vp);
 
       const where = {
         visitNoteId_visitNoteSortOrder: {
@@ -584,9 +697,20 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
       };
       const existingRow = await tx.prescription.findUnique({
         where,
-        select: { id: true, status: true },
+        select: { id: true, status: true, schedule: true, drugName: true },
       });
       const existing = existingRow;
+      // Status and supersede mark of this note's own course: see
+      // ownCourseState. The schedule is rewritten on every pass, so a mark
+      // another note set must be carried into it, or that note could never
+      // bring the course back.
+      const own = ownCourseState({
+        row: vp,
+        existing: existingRow,
+        signedAt,
+        candidates,
+      });
+      const storedSchedule = { ...schedule, ...own.mark } as Prisma.InputJsonValue;
       const row = await tx.prescription.upsert({
         where,
         create: {
@@ -598,25 +722,24 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
           doctorId: note.doctorId,
           drugName: vp.displayName,
           dosage,
-          schedule,
+          schedule: storedSchedule,
           notes,
-          status: "ACTIVE",
+          status: own.status ?? "ACTIVE",
           remindersEnabled,
         },
         update: {
           drugName: vp.displayName,
           dosage,
-          schedule,
+          schedule: storedSchedule,
           notes,
           remindersEnabled,
           // Re-activate on re-bridge: a course cancelled by an earlier
           // correction and then restored by the doctor must come back to the
-          // patient's dashboard instead of staying invisibly CANCELLED.
-          // COMPLETED/PAUSED are the patient's or reception's business and are
-          // left alone — only our own cancellation is reversed.
-          ...(existingRow?.status === "CANCELLED"
-            ? { status: "ACTIVE" }
-            : {}),
+          // patient's dashboard instead of staying invisibly CANCELLED (and
+          // a key whose row is now another drug starts that drug over).
+          // PAUSED and COMPLETED without our mark are the patient's or
+          // reception's business and are left alone.
+          ...(own.status ? { status: own.status } : {}),
         },
       });
 
@@ -680,6 +803,60 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
       where: staleWhere as never,
       data: { status: "CANCELLED", remindersEnabled: false },
     });
+    // A course of this note that a newer note completed (marked) and whose
+    // row is now gone: cancelled too. Left COMPLETED with the mark, the
+    // newer note would bring it back to ACTIVE once it drops the drug, and
+    // the patient would be reminded of a drug neither visit prescribes.
+    const markedGone = (
+      await tx.prescription.findMany({
+        where: {
+          visitNoteId: note.id,
+          status: "COMPLETED",
+          ...(keptSortOrders.size > 0
+            ? { visitNoteSortOrder: { notIn: Array.from(keptSortOrders) } }
+            : {}),
+        },
+        select: { id: true, schedule: true },
+      })
+    ).filter((p) => courseMark(p.schedule) != null);
+    if (markedGone.length > 0) {
+      await tx.prescription.updateMany({
+        where: { id: { in: markedGone.map((p) => p.id) } },
+        data: { status: "CANCELLED", remindersEnabled: false },
+      });
+    }
+
+    // ── Supersede pass (10.10.2026) ──────────────────────────────────────
+    // The same drug written again at a later visit replaces the earlier
+    // visit's course: a lifelong («постоянно») course re-prescribed at every
+    // control visit must not pile up one never-ending reminder per visit,
+    // and an old dose must stop reminding once a new one is written. A
+    // lifelong course this doctor no longer names stops, as the print says.
+    // See course-supersede.ts. Reconciled like the rest of the bridge: a
+    // course this note marked comes back if a correction removed the reason.
+    if (candidates.length > 0) {
+      const plan = planCourseSupersede({
+        noteId: note.id,
+        signedAt,
+        doctorId: note.doctorId,
+        replacing,
+        rows: note.visitPrescriptions,
+        lines: textLines.map((text, i) => ({ text, drugId: lineDrugIds[i] ?? null })),
+        candidates,
+      });
+      for (const c of plan.complete) {
+        await tx.prescription.update({
+          where: { id: c.id },
+          data: { status: "COMPLETED", schedule: c.schedule as Prisma.InputJsonValue },
+        });
+      }
+      for (const c of plan.restore) {
+        await tx.prescription.update({
+          where: { id: c.id },
+          data: { status: "ACTIVE", schedule: c.schedule as Prisma.InputJsonValue },
+        });
+      }
+    }
   });
 
   // Follow-up reception task, outside the row transaction: it is idempotent
@@ -731,20 +908,25 @@ export async function runMedicationBridgeTick(
         patientId: true,
         doctorId: true,
         finalizedAt: true,
+        firstFinalizedAt: true,
         updatedAt: true,
         followUpDays: true,
         followUpDate: true,
         followUpNote: true,
+        prescriptions: true,
         patient: { select: { fullName: true, preferredLang: true } },
         doctor: { select: { nameRu: true } },
         visitPrescriptions: {
           orderBy: { sortOrder: "asc" },
           select: {
+            drugId: true,
             displayName: true,
+            form: true,
             strength: true,
             dose: true,
             timesOfDay: true,
             durationDays: true,
+            ongoing: true,
             instructionRu: true,
             instructionUz: true,
             remindPatient: true,

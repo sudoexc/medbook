@@ -29,6 +29,8 @@ export type TreatmentDiffRow = {
   timesOfDay: readonly string[];
   mealRelation: string;
   durationDays?: number | null;
+  /** «Постоянно»: taken with no end (10.10.2026). */
+  ongoing?: boolean | null;
 };
 
 /**
@@ -54,9 +56,32 @@ function normText(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+const FRACTION_SIGNS: Record<string, number> = { "½": 0.5, "¼": 0.25, "¾": 0.75 };
+
+/**
+ * The first amount of a dose, fractions understood (doctor's request
+ * 10.10.2026: a quarter tablet): «¼ таб.» 0.25, «1/4» 0.25, «1½» 1.5,
+ * «0,25» 0.25, «1 таб.» 1. So «1 таб. → ¼ таб.» reads as a lower dose.
+ *
+ * A slash is a tablet split only as one: a single digit over 2, 3 or 4,
+ * smaller than it («1/4», «2/3», «3/4»). Anything else with a slash is a
+ * combination strength («Эксфорж 5/160 мг», «160/12,5 мг») and reads its
+ * first number, as before the split was understood: dividing it printed
+ * «↓ доза» on «5/80 → 5/160 мг», an increase.
+ */
 function firstNumber(value: string): number | null {
-  const m = value.replace(",", ".").match(/\d+(?:\.\d+)?/);
-  return m ? Number.parseFloat(m[0]) : null;
+  const m =
+    /(\d+)?\s?([½¼¾])|(?<![\d.,])([1-3])\/([2-4])(?![\d.,])|(\d+(?:[.,]\d+)?)/u.exec(
+      value,
+    );
+  if (!m) return null;
+  if (m[2]) return (m[1] ? Number(m[1]) : 0) + FRACTION_SIGNS[m[2]];
+  if (m[3]) {
+    const num = Number(m[3]);
+    const den = Number(m[4]);
+    return num < den ? num / den : num;
+  }
+  return Number.parseFloat(m[5].replace(",", "."));
 }
 
 /** Words of a name or line: case, ё, punctuation and ® folded away. */
@@ -106,6 +131,26 @@ function lineNamesRow(line: LineRef, row: TreatmentDiffRow): boolean {
       name.length <= line.words.length &&
       name.every((w, i) => line.words[i] === w),
   );
+}
+
+/**
+ * Does this text line name the drug? The rule the diff continues a drug by
+ * (VW-05), for the medication bridge: a lifelong course is stopped only when
+ * its doctor's next visit names the drug nowhere, the same «отменено» the
+ * print reports.
+ */
+export function lineNamesDrug(
+  line: string | TreatmentDiffLine,
+  drug: { drugId?: string | null; displayName: string },
+): boolean {
+  const [ref] = toLineRefs([line]);
+  return lineNamesRow(ref!, {
+    drugId: drug.drugId ?? null,
+    displayName: drug.displayName,
+    dose: "",
+    timesOfDay: [],
+    mealRelation: "",
+  });
 }
 
 function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
@@ -191,7 +236,8 @@ export function diffTreatments(
     const scheduleChanged =
       !sameStringSet(before.timesOfDay, row.timesOfDay) ||
       before.mealRelation !== row.mealRelation ||
-      (before.durationDays ?? null) !== (row.durationDays ?? null);
+      (before.durationDays ?? null) !== (row.durationDays ?? null) ||
+      !!before.ongoing !== !!row.ongoing;
     if (scheduleChanged) {
       changed.push({ kind: "SCHEDULE_CHANGED", name: row.displayName });
     }

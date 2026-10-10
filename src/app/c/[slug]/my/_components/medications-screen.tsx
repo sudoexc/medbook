@@ -176,11 +176,15 @@ function ScheduleRow({
             {rx.dosage}
           </div>
         </div>
-        {rx.daysRemaining != null && (
+        {rx.schedule.ongoing ? (
+          <span className="text-xs" style={{ color: "var(--tg-hint)" }}>
+            {t.medications.ongoing}
+          </span>
+        ) : rx.daysRemaining != null ? (
           <span className="text-xs" style={{ color: "var(--tg-hint)" }}>
             {t.medications.daysLeft.replace("{n}", String(rx.daysRemaining))}
           </span>
-        )}
+        ) : null}
       </div>
       <div className="text-sm" style={{ color: "var(--tg-hint)" }}>
         {(rx.schedule.times ?? []).join(" · ") || "—"}

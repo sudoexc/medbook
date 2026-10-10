@@ -92,6 +92,12 @@ export type DrugArsenalSchema = {
   timesOfDay: PrescriptionTimeOfDay[];
   mealRelation: PrescriptionMealRelation | null;
   durationDays: number | null;
+  /**
+   * «Постоянно» (doctor's request 10.10.2026): taken for life, durationDays
+   * then null. Present only when true, so a schema without it is stored and
+   * compared exactly as before the field existed.
+   */
+  ongoing?: true;
   instructionRu: string | null;
   instructionUz: string | null;
 };
@@ -170,7 +176,9 @@ export function parseDrugArsenalSchema(raw: unknown): DrugArsenalSchema | null {
       typeof o.mealRelation === "string" && MEAL_RELATIONS.has(o.mealRelation)
         ? (o.mealRelation as PrescriptionMealRelation)
         : null,
-    durationDays: days,
+    // «Постоянно» has no day count: it wins if both were sent.
+    durationDays: o.ongoing === true ? null : days,
+    ...(o.ongoing === true ? { ongoing: true as const } : {}),
     instructionRu: text(o.instructionRu, SCHEMA_LIMITS.instruction),
     instructionUz: text(o.instructionUz, SCHEMA_LIMITS.instruction),
   };
@@ -185,6 +193,8 @@ export type DrugUsualFields = {
   lastTimesOfDay?: readonly string[];
   lastMealRelation?: string | null;
   lastDurationDays?: number | null;
+  /** «Постоянно» was written with that last dose. */
+  lastOngoing?: boolean;
 };
 
 /**
@@ -203,6 +213,7 @@ export function schemaFromUsual(u: DrugUsualFields): DrugArsenalSchema {
       timesOfDay: u.lastTimesOfDay,
       mealRelation: u.lastMealRelation,
       durationDays: u.lastDurationDays,
+      ongoing: u.lastOngoing === true,
     }) ?? EMPTY_DRUG_SCHEMA
   );
 }
@@ -218,6 +229,7 @@ export function isEmptyDrugSchema(s: DrugArsenalSchema | null | undefined): bool
     // «Не важно» is the row default: on its own it says nothing.
     (s.mealRelation === null || s.mealRelation === "NO_MATTER") &&
     s.durationDays === null &&
+    !s.ongoing &&
     !s.instructionRu &&
     !s.instructionUz
   );

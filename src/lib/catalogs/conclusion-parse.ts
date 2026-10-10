@@ -29,6 +29,18 @@ export type ParsedPrescription = {
   instruction: string | null;
   /** Days parsed from «курс 10 дней» / «курс 1 месяц» / «не более 5 дней». */
   durationDays: number | null;
+  /**
+   * «постоянно», «пожизненно», «бессрочно»: taken with no end (doctor's
+   * request 10.10.2026). durationDays is then null. Never set together with
+   * an explicit course in the same line.
+   */
+  ongoing: boolean;
+  /**
+   * How many tablets or capsules at a time, in the constructor's chip
+   * spelling: «по 1/4 таблетки» → «¼ таб.», «по 2 капсулы» → «2 капс.».
+   * Null when the line counts nothing (drops, ml, a dose in mg only).
+   */
+  count: string | null;
   mealRelation: ParsedMealRelation;
   /** The exact source line — lets the UI show provenance and dedup. */
   sourceLine: string;
@@ -59,7 +71,7 @@ const PRN_RE =
 // NB: no `\b` anywhere — JS word boundaries are ASCII-only and silently
 // never match next to Cyrillic letters.
 const SCHEDULE_MARKERS =
-  /(по\s+\d|по\s+одн|таблет|капсул|пакетик|ампул|свеч|капл[ияе]|рассасыва|разжёвыва|разжевыва|внутримышечно|внутривенно|подкожно|внутрь|раза?\s+в\s+(?:день|сутки|неделю)|утром|на ночь|перед сном)/i;
+  /(по\s+\d|по\s+одн|по\s+[½¼¾]|по\s+(?:половин|четверт)|таблет|капсул|пакетик|ампул|свеч|капл[ияе]|рассасыва|разжёвыва|разжевыва|внутримышечно|внутривенно|подкожно|внутрь|раза?\s+в\s+(?:день|сутки|неделю)|утром|на ночь|перед сном)/i;
 
 // Cyrillic-safe boundary: the unit must not be followed by another letter
 // («мг» yes, «мгновенно» no).
@@ -78,17 +90,46 @@ const DOSE_SPLIT_RE =
 // Strength-less lines need dosing-FORM evidence, not just a time of day —
 // «Вечером — тёплая ванна перед сном» must never become a medication.
 const STRONG_FORM_MARKERS =
-  /(по\s+\d|по\s+одн|таблет|капсул|пакетик|ампул|свеч|капл[ияе]|рассасыва|разжёвыва|разжевыва|внутримышечно|внутривенно|подкожно|внутрь)/i;
+  /(по\s+\d|по\s+одн|по\s+[½¼¾]|по\s+(?:половин|четверт)|таблет|капсул|пакетик|ампул|свеч|капл[ияе]|рассасыва|разжёвыва|разжевыва|внутримышечно|внутривенно|подкожно|внутрь)/i;
+
+// «постоянно», «пожизненно», «бессрочно», «на постоянной основе»,
+// «постоянный приём»; uz «doimiy (ravishda)», «umrbod». Only as a clause
+// of its own: at the start, after «,» / «;» or a space, optionally led by
+// «принимать» / «далее», and followed by the end, «,», «.» or «;». So
+// «при постоянно повышенном давлении» (a condition), «утром постоянно
+// контролировать АД» (advice) and «не постоянно» (negated) never count,
+// and stripping the match never cuts a word out of the doctor's sentence.
+// «длительно» is not in the set: it says long term, not for life, and a
+// wrong «постоянно» is a reminder that never stops; it stays in the
+// instruction for the doctor to read. «регулярно» says nothing about an end.
+const ONGOING_RE =
+  /(?:^|[,;]\s*|\s+)(?:(?:принимать|далее)\s+)?(?<!(?:^|[^\p{L}])(?:не|при)\s+)(?:постоянно|пожизненно|бессрочно|на\s+постоянной\s+основе|постоянный\s+при[её]м|doimiy(?:\s+ravishda)?|umrbod)(?=\s*(?:[,.;]|$))/iu;
 
 function parseDuration(tail: string): {
   durationDays: number | null;
+  ongoing: boolean;
   cleaned: string;
 } {
-  // «курс 10 дней», «курс 1 месяц», «курсом 2 недели», «не более 5 дней»
+  // «курс 10 дней», «курс 1 месяц», «курсом 2 недели», «не более 5 дней».
+  // Read first: a line with an explicit course is never lifelong, even if
+  // it also says «постоянно» («курс 30 дней, далее постоянно»). The days
+  // stay structured and the rest of the line stays in the instruction, so
+  // the doctor decides on the parsed card.
   const m = tail.match(
     /(?:,\s*)?(?:курс(?:ом)?|в течение|не более)\s+(\d+)\s*(дн|нед|мес)[а-яё.]*/iu,
   );
-  if (!m) return { durationDays: null, cleaned: tail };
+  if (!m) {
+    // A lifelong course: no day count, the clause leaves the instruction.
+    const ongoing = ONGOING_RE.exec(tail);
+    if (ongoing) {
+      return {
+        durationDays: null,
+        ongoing: true,
+        cleaned: tail.replace(ongoing[0], "").trim(),
+      };
+    }
+    return { durationDays: null, ongoing: false, cleaned: tail };
+  }
   const n = Number(m[1]);
   const unit = m[2]!.toLowerCase();
   // Clamp to the server schema's max (365) — one «курс 18 месяцев» line
@@ -101,7 +142,66 @@ function parseDuration(tail: string): {
   // text but still surface the number as the duration.
   const isCap = /не более/i.test(m[0]);
   const cleaned = isCap ? tail : tail.replace(m[0], "").trim();
-  return { durationDays: days, cleaned };
+  return { durationDays: days, ongoing: false, cleaned };
+}
+
+/** One number of a count: «1», «0,25», «¼», «1/4», «1½». */
+const COUNT_NUM = String.raw`(?:\d+\s?[½¼¾]|[½¼¾]|\d+\/\d+|\d+(?:[.,]\d+)?)`;
+
+// «по 1 таблетке», «по 1/4 таблетки», «по ½ таб.», «по 1-2 капсулы», «по
+// половине таблетки», «по четверти таблетки», and the same written without
+// «по» or without a space before the unit: «1/4 таб. утром», «0,25
+// таблетки», «по 1/4таб», «по 1/4 т.». Missing one of those spellings put
+// the strength in «Доза», four times a quarter. The amount must stand on
+// its own (start, «по», a space or punctuation before it), and a pack size
+// («курс 10 таблеток», «упаковка 30 таб.») is not a dose.
+const COUNT_RE = new RegExp(
+  String.raw`(?:^|по\s+|[\s,;:—–-])(?<!(?:курс|курсом|упаковк\p{L}*|№)\s*)(${COUNT_NUM}(?:\s*[-–]\s*${COUNT_NUM})?|половин\p{L}*|четверт\p{L}*)\s*(таб|капс|т\.)\p{L}*\.?`,
+  "iu",
+);
+
+/** The usual fractions in the chips' spelling: «1/4» and «0,25» are «¼». */
+const FRACTION_SPELLING: Record<string, string> = {
+  "1/2": "½",
+  "0.5": "½",
+  "1/4": "¼",
+  "0.25": "¼",
+  "3/4": "¾",
+  "0.75": "¾",
+};
+
+function countAmount(raw: string): string {
+  const a = raw.trim().toLowerCase();
+  if (a.startsWith("половин")) return "½";
+  if (a.startsWith("четверт")) return "¼";
+  return a
+    .split(/\s*([-–])\s*/)
+    .map((part) => {
+      if (part === "-" || part === "–") return "-";
+      const key = part.replace(",", ".").replace(/\s+/g, "");
+      return FRACTION_SPELLING[key] ?? part.replace(/\s+(?=[½¼¾])/u, "");
+    })
+    .join("");
+}
+
+/**
+ * How many tablets or capsules the line gives at a time, as the
+ * constructor's chip writes it («¼ таб.», «2 капс.»), or null.
+ */
+function parseCount(tail: string): string | null {
+  const m = COUNT_RE.exec(tail);
+  if (!m) return null;
+  const unit = m[2]!.toLowerCase() === "капс" ? "капс." : "таб.";
+  return `${countAmount(m[1]!)} ${unit}`;
+}
+
+/**
+ * A part of a tablet written in the line («¼», «1/4», «0,25», «1½»). When
+ * the count was not read, such a line must not be dosed with the strength:
+ * «Конкор 5 мг — ¼ …» dosed «5 мг» is four times the dose.
+ */
+export function hasFractionalAmount(text: string | null | undefined): boolean {
+  return /[½¼¾]|(?<![\d.,])\d\/\d(?![\d.,])|(?<![\d.,])0[.,]\d+/u.test(text ?? "");
 }
 
 function parseMeal(tail: string): ParsedMealRelation {
@@ -174,7 +274,7 @@ export function parseConclusionPrescriptions(
     if (!/^[A-Za-zА-ЯЁа-яё]/u.test(name)) continue;
     if (/^по\b/i.test(name) || NON_DRUG_STARTERS.test(name)) continue;
 
-    const { durationDays, cleaned } = parseDuration(tail);
+    const { durationDays, ongoing, cleaned } = parseDuration(tail);
     const key = name.toLowerCase().replace(/\s*\(.*\)\s*/g, "").trim();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -184,6 +284,8 @@ export function parseConclusionPrescriptions(
       strength,
       instruction: tidy(cleaned) || null,
       durationDays,
+      ongoing,
+      count: parseCount(tail),
       mealRelation: parseMeal(tail),
       sourceLine: line,
     });

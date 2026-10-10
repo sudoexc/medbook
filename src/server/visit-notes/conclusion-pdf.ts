@@ -13,9 +13,9 @@
  * duplicated here rather than shared to keep this module independent of the
  * analytics export path.
  *
- * Inline emphasis is intentionally flattened to plain text: the repo ships
- * only the regular weight, so a faux-bold would look worse than clean prose
- * on a patient handout.
+ * Inline emphasis is flattened to plain text. The one place weight is used is
+ * the diagnosis and the prescription list, which the doctor wants larger and
+ * bold (10.10.2026): DejaVuSans-Bold is bundled for exactly that.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -24,6 +24,7 @@ import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 
 import {
+  handoutBlockRoles,
   parseHandoutBlocks,
   stripInlineMarkers,
 } from "@/server/visit-notes/render-handout";
@@ -101,6 +102,21 @@ async function loadDejaVuSans(): Promise<Buffer> {
   return fontBytesPromise;
 }
 
+let boldBytesPromise: Promise<Buffer> | null = null;
+async function loadDejaVuSansBold(): Promise<Buffer> {
+  if (!boldBytesPromise) {
+    const fontPath = path.join(
+      process.cwd(),
+      "src",
+      "server",
+      "fonts",
+      "DejaVuSans-Bold.ttf",
+    );
+    boldBytesPromise = fs.readFile(fontPath);
+  }
+  return boldBytesPromise;
+}
+
 function sanitizeBrand(color: string | null | undefined): string {
   return color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : "#3DD5C0";
 }
@@ -139,6 +155,7 @@ export async function renderConclusionPdf(
   const brand = sanitizeBrand(input.brandColor);
   const generatedAt = input.generatedAt ?? new Date();
   const fontBytes = await loadDejaVuSans();
+  const boldBytes = await loadDejaVuSansBold();
 
   const doc = new PDFDocument({
     size: "A4",
@@ -154,6 +171,7 @@ export async function renderConclusionPdf(
   // Register + select DejaVuSans before any text so pdfkit never touches the
   // Latin-only Helvetica .afm (which would also break in a bundled runtime).
   doc.registerFont("body", fontBytes);
+  doc.registerFont("bold", boldBytes);
   doc.font("body");
 
   const chunks: Buffer[] = [];
@@ -200,7 +218,38 @@ export async function renderConclusionPdf(
 
   // Handout body — block by block, inline markers flattened to plain text.
   const blocks = parseHandoutBlocks(input.handoutMarkdown);
-  for (const block of blocks) {
+  const roles = handoutBlockRoles(blocks);
+  for (const [i, block] of blocks.entries()) {
+    const role = roles[i];
+    if (role === "dx" || role === "dx-more") {
+      // The diagnosis: the largest line of the body, bold black.
+      doc
+        .font("bold")
+        .fontSize(role === "dx" ? 14 : 12)
+        .fillColor("#000000")
+        .text(stripInlineMarkers(block.kind === "paragraph" ? block.text : ""), {
+          width: usableWidth,
+        });
+      doc.font("body");
+      doc.moveDown(0.35);
+      continue;
+    }
+    if (role === "rx" && block.kind === "bullets") {
+      // The prescriptions: bold black, a step below the diagnosis.
+      doc.font("bold");
+      for (const item of block.items) {
+        doc
+          .fontSize(12.5)
+          .fillColor("#000000")
+          .text(`•  ${stripInlineMarkers(item)}`, {
+            width: usableWidth,
+            indent: 6,
+          });
+      }
+      doc.font("body");
+      doc.moveDown(0.25);
+      continue;
+    }
     if (block.kind === "h1") {
       doc.moveDown(0.3);
       doc

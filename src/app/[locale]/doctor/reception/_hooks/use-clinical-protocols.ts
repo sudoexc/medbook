@@ -48,7 +48,9 @@ export function protocolItemToDraft(
     dose: item.dose,
     timesOfDay: item.timesOfDay ?? [],
     mealRelation: item.mealRelation ?? "NO_MATTER",
-    durationDays: item.durationDays ?? null,
+    // «Постоянно» comes back as the protocol has it, never with days.
+    durationDays: item.ongoing ? null : (item.durationDays ?? null),
+    ongoing: item.ongoing ?? false,
     instructionRu: item.instructionRu ?? null,
     instructionUz: item.instructionUz ?? null,
     remindPatient: item.remindPatient ?? true,

@@ -15,7 +15,15 @@
  * course with a duration counts until its last day, one without a duration
  * for a year when its drug is taken long term and for a month otherwise,
  * and a questionnaire for a month.
+ *
+ * A course the doctor wrote «постоянно» (schedule `ongoing`, 10.10.2026) is
+ * the exception: taken for life, it counts for as long as it is ACTIVE,
+ * whatever its drug, the way it keeps reminding the patient. It stops when
+ * a later visit's course of the same drug supersedes it or a correction
+ * withdraws it.
  */
+import { isOngoingSchedule } from "@/lib/patient-experience/medication-schedule";
+
 import { drugInClass, type DrugClass, type RuleDrug } from "./interaction-rules";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -128,6 +136,8 @@ export function isCourseCurrent(
       : null;
   // A course set to start later is planned therapy: it counts.
   if (start.getTime() > now.getTime()) return true;
+  // «Постоянно»: no end while it is ACTIVE.
+  if (days === null && isOngoingSchedule(course.schedule)) return true;
   const openDays = longTerm ? OPEN_COURSE_MAX_DAYS : OPEN_SHORT_COURSE_DAYS;
   const end = start.getTime() + (days ?? openDays) * DAY_MS;
   return now.getTime() < end;

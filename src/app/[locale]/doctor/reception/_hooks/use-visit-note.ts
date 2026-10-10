@@ -35,6 +35,12 @@ export type VisitPrescriptionRow = {
   timesOfDay: VisitPrescriptionTimeOfDay[];
   mealRelation: VisitPrescriptionMealRelation;
   durationDays: number | null;
+  /**
+   * «Постоянно» (doctor's request 10.10.2026): taken with no end, for life.
+   * Never together with a day count: the chips and the server keep
+   * durationDays null while it is on.
+   */
+  ongoing: boolean;
   instructionRu: string | null;
   instructionUz: string | null;
   remindPatient: boolean;

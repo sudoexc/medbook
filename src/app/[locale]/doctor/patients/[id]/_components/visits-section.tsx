@@ -301,6 +301,12 @@ function VisitEntry({
                   {m.dose ? (
                     <span className="text-muted-foreground"> · {m.dose}</span>
                   ) : null}
+                  {m.ongoing ? (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {t("visits.medOngoing")}
+                    </span>
+                  ) : null}
                 </li>
               ))}
               {/* Quick-entry lane: free text the doctor typed under the

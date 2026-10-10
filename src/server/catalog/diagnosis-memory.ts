@@ -102,6 +102,8 @@ function scheduleKey(s: Schedule): string {
     [...(s.timesOfDay ?? [])].sort(),
     s.mealRelation ?? null,
     s.durationDays ?? null,
+    // «Постоянно» is a way of writing it of its own, not «days not set».
+    !!s.ongoing,
   ]);
 }
 
@@ -275,6 +277,7 @@ export function buildDiagnosisMemory(args: {
         lastTimesOfDay: [...(usual.timesOfDay ?? [])],
         lastMealRelation: usual.mealRelation ?? null,
         lastDurationDays: usual.durationDays ?? null,
+        ...(usual.ongoing ? { lastOngoing: true as const } : {}),
         pinned: false,
       };
     });

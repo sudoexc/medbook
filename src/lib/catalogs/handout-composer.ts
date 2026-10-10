@@ -180,6 +180,26 @@ export function handoutSectionTitle(
 }
 
 /**
+ * What a paragraph of a composed handout is, for the renderers that print
+ * the diagnosis and the prescriptions larger and bold (doctor 10.10.2026):
+ * «dx» is the diagnosis line, «dx-more» the other diagnoses, «rx-header» the
+ * paragraph the prescription list follows. Matched by the composer's own
+ * labels in either language; null for anything else, including hand-written
+ * text, which keeps its normal look.
+ */
+export function handoutParagraphRole(
+  text: string,
+): "dx" | "dx-more" | "rx-header" | null {
+  const t = text.trim();
+  for (const s of [STRINGS.ru, STRINGS.uz]) {
+    if (t.startsWith(`${s.diagnosis} `)) return "dx";
+    if (t.startsWith(`${s.additionalDiagnoses} `)) return "dx-more";
+    if (t === s.prescriptions) return "rx-header";
+  }
+  return null;
+}
+
+/**
  * Compose a patient handout in Markdown from the structured visit note.
  * Returns an empty string when there's nothing meaningful to print
  * (no complaints + no prescriptions + no advice + no diagnosis + no guide).

@@ -164,6 +164,14 @@ type Props = {
     ((drug: CatalogPickDrug, term: string) => void) | null
   >;
   /**
+   * Filled by the constructor: how a ready draft from outside (the text
+   * card's row it could not dose) enters through the same «dose first»
+   * step. A draft with a dose is saved as is.
+   */
+  draftPickRef?: React.MutableRefObject<
+    ((draft: VisitPrescriptionDraft) => void) | null
+  >;
+  /**
    * The reception's flush registry (the visit screen). A pick waiting in
    * the dose prompt is local state the sign flow cannot see: the constructor
    * registers a check that refuses «Завершить приём» and «Предпросмотр»
@@ -207,6 +215,7 @@ export function PrescriptionConstructor({
   onRemoveLegacyChip,
   onOpenCatalog,
   catalogPickRef,
+  draftPickRef,
   registerDraftFlush,
   standalone,
   saving,
@@ -388,6 +397,14 @@ export function PrescriptionConstructor({
     };
   }, [catalogPickRef, addFromCatalog]);
 
+  React.useEffect(() => {
+    if (!draftPickRef) return;
+    draftPickRef.current = (draft) => addDraft(draft);
+    return () => {
+      draftPickRef.current = null;
+    };
+  }, [draftPickRef, addDraft]);
+
   /**
    * His own text line with nothing to structure («Мексидол 5,0 в/м №10»):
    * it goes in exactly as he wrote it. A manual row of his with a dose of
@@ -477,6 +494,7 @@ export function PrescriptionConstructor({
         timesOfDay: [],
         mealRelation: "NO_MATTER",
         durationDays: null,
+        ongoing: false,
         instructionRu: null,
         instructionUz: null,
         remindPatient: true,
@@ -1184,16 +1202,21 @@ function PrescriptionRowItem({
             </div>
           </LabeledRow>
 
-          {/* Duration */}
+          {/* Duration: a day count, or «Постоянно» for a drug taken for life
+              (doctor's request 10.10.2026: blood pressure, epilepsy). The
+              two never stand together: a day chip or a typed count turns
+              «Постоянно» off, «Постоянно» clears the days. */}
           <LabeledRow label={t("rx.duration")}>
             <div className="flex flex-wrap items-center gap-1">
               {DURATION_PICKS.map((d) => (
                 <SegChip
                   key={d}
-                  active={row.durationDays === d}
+                  active={!row.ongoing && row.durationDays === d}
                   onClick={() =>
                     onChange((cur) => ({
-                      durationDays: cur.durationDays === d ? null : d,
+                      durationDays:
+                        !cur.ongoing && cur.durationDays === d ? null : d,
+                      ongoing: false,
                     }))
                   }
                 >
@@ -1201,17 +1224,31 @@ function PrescriptionRowItem({
                 </SegChip>
               ))}
               <CommitInput
-                value={row.durationDays != null ? String(row.durationDays) : ""}
+                value={
+                  !row.ongoing && row.durationDays != null
+                    ? String(row.durationDays)
+                    : ""
+                }
                 placeholder="—"
                 onCommit={(v) => {
                   const n = parseInt(v, 10);
-                  onChange({
-                    durationDays:
-                      Number.isFinite(n) && n >= 1 && n <= 365 ? n : null,
-                  });
+                  onChange(
+                    Number.isFinite(n) && n >= 1 && n <= 365
+                      ? { durationDays: n, ongoing: false }
+                      : { durationDays: null },
+                  );
                 }}
                 className="w-16 text-center"
               />
+              <SegChip
+                active={row.ongoing}
+                title={t("rx.ongoingHint")}
+                onClick={() =>
+                  onChange((cur) => ({ ongoing: !cur.ongoing, durationDays: null }))
+                }
+              >
+                {t("rx.ongoing")}
+              </SegChip>
             </div>
           </LabeledRow>
 
@@ -1454,10 +1491,12 @@ function LabeledRow({
 function SegChip({
   active,
   onClick,
+  title,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  title?: string;
   children: React.ReactNode;
 }) {
   const big = React.useContext(BigUi);
@@ -1465,6 +1504,8 @@ function SegChip({
     <button
       type="button"
       onClick={onClick}
+      title={title}
+      aria-pressed={active}
       className={cn(
         "inline-flex items-center rounded-md border font-medium transition-colors",
         big ? "h-9 px-3 text-sm" : "h-6 px-2 text-[11px]",

@@ -444,6 +444,8 @@ export const ruDict = {
       "Push-напоминания временно отключены администрацией клиники, но расписание актуально.",
     nextDose: "Следующий приём: {date} в {time}",
     daysLeft: "осталось {n} д.",
+    // A course the doctor wrote «постоянно»: no end to count down to.
+    ongoing: "постоянно",
     statusPaused: "Пауза",
     snoozedBadge: "Отложено",
     visitLabel: "Визит {date}",

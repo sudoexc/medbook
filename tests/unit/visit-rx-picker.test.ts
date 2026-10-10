@@ -391,8 +391,16 @@ describe("quickDoseOptions: the dose prompt answered with a click", () => {
       "1 таб.",
       "2 таб.",
       "½ таб.",
+      "¼ таб.",
       "50 мг",
       "150 мг",
+    ]);
+    // A quarter as well as a half (doctor's request 10.10.2026).
+    expect(quickDoseOptions("TAB", [], "uz")).toEqual([
+      "1 tabletka",
+      "2 tabletka",
+      "½ tabletka",
+      "¼ tabletka",
     ]);
     expect(quickDoseOptions("DROPS_EYE", [], "uz")).toEqual(["1 tomchi", "2 tomchi"]);
     expect(quickDoseOptions(null, [], "ru").length).toBeGreaterThan(0);

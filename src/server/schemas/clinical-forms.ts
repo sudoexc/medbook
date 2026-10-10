@@ -7,19 +7,23 @@
  */
 import { z } from "zod";
 
-const RxItemSchema = z.object({
-  // The DrugCatalog id (cuid). Optional — doctors can hand-write items
-  // for compounded preparations, herbal mixes, etc. that aren't in the
-  // catalog yet. UI must require drugName when drugId is absent.
-  drugId: z.string().trim().nullish(),
-  // Snapshot of drug name at issue time. Survives catalog edits/removals.
-  drugName: z.string().trim().min(1),
-  dose: z.string().trim().min(1),
-  route: z.string().trim().nullish(),
-  frequency: z.string().trim().min(1),
-  durationDays: z.coerce.number().int().min(1).max(365).nullish(),
-  instructions: z.string().trim().nullish(),
-});
+const RxItemSchema = z
+  .object({
+    // The DrugCatalog id (cuid). Optional — doctors can hand-write items
+    // for compounded preparations, herbal mixes, etc. that aren't in the
+    // catalog yet. UI must require drugName when drugId is absent.
+    drugId: z.string().trim().nullish(),
+    // Snapshot of drug name at issue time. Survives catalog edits/removals.
+    drugName: z.string().trim().min(1),
+    dose: z.string().trim().min(1),
+    route: z.string().trim().nullish(),
+    frequency: z.string().trim().min(1),
+    durationDays: z.coerce.number().int().min(1).max(365).nullish(),
+    // «Постоянно» (10.10.2026): taken for life, so no day count.
+    ongoing: z.boolean().optional(),
+    instructions: z.string().trim().nullish(),
+  })
+  .transform((it) => (it.ongoing ? { ...it, durationDays: null } : it));
 
 export const CreateEPrescriptionSchema = z.object({
   patientId: z.string().min(1),

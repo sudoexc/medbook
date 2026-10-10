@@ -664,6 +664,7 @@ function schemaLine(
       timesOfDay: schema.timesOfDay,
       mealRelation: schema.mealRelation ?? "NO_MATTER",
       durationDays: schema.durationDays,
+      ongoing: schema.ongoing,
     },
     locale,
   );
@@ -795,15 +796,19 @@ function DrugSchemaEditor({
         </div>
       </Field>
 
+      {/* Days, or «Постоянно» (doctor's request 10.10.2026), never both. */}
       <Field label={tRx("duration")}>
         <div className="flex flex-wrap items-center gap-1.5">
           {DAY_PICKS.map((d) => (
             <Chip
               key={d}
-              active={!daysText && s.durationDays === d}
+              active={!s.ongoing && !daysText && s.durationDays === d}
               onClick={() => {
                 setDaysText("");
-                set({ durationDays: s.durationDays === d && !daysText ? null : d });
+                set({
+                  durationDays: !s.ongoing && s.durationDays === d && !daysText ? null : d,
+                  ongoing: undefined,
+                });
               }}
             >
               {d}
@@ -816,12 +821,23 @@ function DrugSchemaEditor({
               const v = e.target.value.replace(/\D/g, "").slice(0, 3);
               setDaysText(v);
               const n = parseInt(v, 10);
-              set({ durationDays: Number.isFinite(n) && n >= 1 && n <= 365 ? n : null });
+              const valid = Number.isFinite(n) && n >= 1 && n <= 365;
+              set(valid ? { durationDays: n, ongoing: undefined } : { durationDays: null });
             }}
             placeholder={t("schema.otherDays")}
             aria-label={tRx("duration")}
             className="h-11 w-24 rounded-lg border border-border bg-background px-3 text-center text-[15px] text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
+          <Chip
+            active={!!s.ongoing}
+            title={tRx("ongoingHint")}
+            onClick={() => {
+              setDaysText("");
+              set(s.ongoing ? { ongoing: undefined } : { ongoing: true, durationDays: null });
+            }}
+          >
+            {tRx("ongoing")}
+          </Chip>
         </div>
       </Field>
 
@@ -886,16 +902,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Chip({
   active,
   onClick,
+  title,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={title}
       aria-pressed={active}
       className={cn(
         "inline-flex h-10 items-center rounded-lg border px-3.5 text-[15px] font-medium transition-colors",
@@ -1437,6 +1456,7 @@ function drugSub(item: DrugShortItem, locale: PrescriptionLocale): string {
         timesOfDay: item.lastTimesOfDay ?? [],
         mealRelation: item.lastMealRelation ?? "NO_MATTER",
         durationDays: item.lastDurationDays ?? null,
+        ongoing: item.lastOngoing,
       },
       locale,
     );

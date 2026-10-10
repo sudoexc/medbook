@@ -42,6 +42,8 @@ export type DoctorPatientVisitRow = {
     name: string;
     dose: string;
     strength: string | null;
+    /** «Постоянно»: taken for life (10.10.2026). Optional on older servers. */
+    ongoing?: boolean;
   }[];
 };
 

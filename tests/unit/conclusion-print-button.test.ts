@@ -38,7 +38,14 @@ describe("the sheet", () => {
   it("diagnoses and prescriptions print larger than the rest", () => {
     expect(route).toContain('<section class="block block-dx">');
     expect(route).toContain('<section class="block block-rx">');
-    expect(route).toMatch(/section\.block-dx > div \{\s*font-size: 16px;/);
-    expect(route).toMatch(/section\.block-rx \.chips li \{\s*font-size: 14px;/);
+    // The diagnosis is the largest, the prescriptions follow in the same bold
+    // black one step smaller, one per line (doctor 10.10.2026).
+    expect(route).toMatch(
+      /section\.block-dx > div \{\s*font-size: 19px;\s*font-weight: 700;\s*color: #000;/,
+    );
+    expect(route).toMatch(/section\.block-rx \.chips \{\s*display: block;/);
+    expect(route).toMatch(
+      /section\.block-rx \.chips li \{[^}]*font-size: 16px;\s*font-weight: 700;\s*color: #000;/,
+    );
   });
 });

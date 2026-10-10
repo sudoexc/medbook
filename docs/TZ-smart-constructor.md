@@ -178,6 +178,7 @@ copy-forward повторного визита с динамикой и дифф
      timesOfDay    String[]  // MORNING|NOON|EVENING|NIGHT
      mealRelation  MealRelation @default(NO_MATTER)
      durationDays  Int?
+     ongoing       Boolean   @default(false) // «Постоянно» (10.10.2026): ongoing ⇒ durationDays = null
      instructionRu String?   @db.Text // авто из Drug.defaultDosing/гайда → правится рукой
      instructionUz String?   @db.Text
      remindPatient Boolean   @default(true) // мостить в напоминания (Ф6)
@@ -193,7 +194,9 @@ copy-forward повторного визита с динамикой и дифф
    поиск по каталогу (бренд/МНН/ATC, top-12 как ICD), при выборе авто-подстановка:
    форма/дозировка из `Drug.forms`, схема из `Drug.defaultDosing.adult`,
    «как принимать» в `instructionRu/Uz`; сегмент-контролы утро/день/вечер/ночь,
-   до/во время/после еды, длительность. Кнопка «Свой препарат» — свободный ввод
+   до/во время/после еды, длительность (дни или «Постоянно» для приёма без срока,
+   от давления и т.п., 10.10.2026: ongoing=true ⇒ durationDays=null, взаимоисключающие;
+   доза таблеток чипами «1 таб.», «2 таб.», «½ таб.», «¼ таб.»). Кнопка «Свой препарат» — свободный ввод
    (только `displayName`+`dose`+схема). Всё редактируется после подстановки.
 3. **Диагноз-подсказки:** под полем — «Часто назначают при {диагноз}»: выборка
    `Drug.indications` по ICD-префиксу (механизм задуман в комменте `schema.prisma:906-908`,
@@ -316,6 +319,11 @@ copy-forward повторного визита с динамикой и дифф
    upsert `Prescription { drugName: displayName, dosage: dose+strength,
    schedule: {times: маппинг timesOfDay→часы клиники, days: durationDays},
    status: ACTIVE, remindersEnabled: clinic.medicationRemindersEnabled }`.
+   «Постоянно» (10.10.2026): `schedule {days: null, ongoing: true}`, курс напоминает,
+   пока его не снимет правка в 24ч-окне или не заменит курс того же препарата
+   с более позднего визита (supersede: старый курс → COMPLETED, `schedule.supersededByNote`;
+   заменяет только напоминающая строка, порядок по `firstFinalizedAt`), или пока следующий
+   визит того же врача не перестанет его называть (`schedule.stoppedByNote`, как «отменено» в печати).
    Идемпотентность по `visitNoteId+sortOrder`. Маппинг timesOfDay→времена —
    настройка клиники (дефолт 08:00/13:00/19:00/22:00).
 3. **Follow-up:** `VisitNote += followUpDays Int?, followUpNote String?`

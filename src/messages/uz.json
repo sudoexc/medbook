@@ -7188,7 +7188,7 @@
         "dose": "Bir qabulda qancha",
         "form": "Shakli va dozasi",
         "doseNeeded": "Dozani yozing: bu shakl uchun uni katalogdan olib bo‘lmaydi",
-        "dosePlaceholder": "Qancha qabul qilish: 10 birlik, 15 ml, 2 tomchi",
+        "dosePlaceholder": "Qancha qabul qilish: ¼ tabletka, 10 birlik, 15 ml, 2 tomchi",
         "timesLabel": "Qabul vaqti",
         "times": {
           "MORNING": "Ertalab",
@@ -7205,6 +7205,8 @@
           "NO_MATTER": "Farqi yo‘q"
         },
         "duration": "Davomiyligi, kun",
+        "ongoing": "Doimiy",
+        "ongoingHint": "Muddatsiz, masalan qon bosimiga qarshi: bemorga eslatmalar to‘xtamaydi",
         "instruction": "Qanday qabul qilish",
         "instructionPlaceholder": "Bemor eslatmasi uchun matn…",
         "searchPlaceholderTap": "Tez-tez yoziladigan dorilar yoki nomi bo‘yicha qidiruv…",
@@ -7771,6 +7773,7 @@
         "docsCount": "{n} hujjat",
         "labsCount": "{n} tahlil",
         "medications": "Tayinlovlar",
+        "medOngoing": "doimiy",
         "documents": "Hujjatlar",
         "labs": "Tahlillar",
         "advice": "Tavsiyalar",

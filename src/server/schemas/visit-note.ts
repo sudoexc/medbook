@@ -25,19 +25,26 @@ export const MealRelationEnum = z.enum([
 
 export const TimeOfDayEnum = z.enum(["MORNING", "NOON", "EVENING", "NIGHT"]);
 
-export const VisitPrescriptionItemSchema = z.object({
-  drugId: z.string().max(120).nullable().optional(),
-  displayName: z.string().min(1).max(300),
-  form: z.string().max(80).nullable().optional(),
-  strength: z.string().max(80).nullable().optional(),
-  dose: z.string().min(1).max(160),
-  timesOfDay: z.array(TimeOfDayEnum).max(4).default([]),
-  mealRelation: MealRelationEnum.default("NO_MATTER"),
-  durationDays: z.number().int().min(1).max(365).nullable().optional(),
-  instructionRu: z.string().max(2_000).nullable().optional(),
-  instructionUz: z.string().max(2_000).nullable().optional(),
-  remindPatient: z.boolean().default(true),
-});
+export const VisitPrescriptionItemSchema = z
+  .object({
+    drugId: z.string().max(120).nullable().optional(),
+    displayName: z.string().min(1).max(300),
+    form: z.string().max(80).nullable().optional(),
+    strength: z.string().max(80).nullable().optional(),
+    dose: z.string().min(1).max(160),
+    timesOfDay: z.array(TimeOfDayEnum).max(4).default([]),
+    mealRelation: MealRelationEnum.default("NO_MATTER"),
+    durationDays: z.number().int().min(1).max(365).nullable().optional(),
+    // «Постоянно» (doctor's request 10.10.2026): taken with no end, for life.
+    ongoing: z.boolean().default(false),
+    instructionRu: z.string().max(2_000).nullable().optional(),
+    instructionUz: z.string().max(2_000).nullable().optional(),
+    remindPatient: z.boolean().default(true),
+  })
+  // A lifelong course has no day count. Both set is normalized, never
+  // rejected: a 400 would roll back the doctor's replace-all autosave. The
+  // database guards the same invariant with a CHECK.
+  .transform((r) => (r.ongoing ? { ...r, durationDays: null } : r));
 
 export type VisitPrescriptionItemInput = z.infer<
   typeof VisitPrescriptionItemSchema

@@ -16,6 +16,7 @@ import { useTranslations } from "next-intl";
 import { PlusIcon, WandSparklesIcon, XIcon } from "lucide-react";
 
 import {
+  hasFractionalAmount,
   parseConclusionPrescriptions,
   unadoptedCandidates,
   type ParsedPrescription,
@@ -35,13 +36,23 @@ export function draftFromParsed(p: ParsedPrescription): VisitPrescriptionDraft {
     displayName: p.displayName,
     form: null,
     strength: p.strength,
-    dose: p.strength ?? "1",
+    // The count the line gives («по 1/4 таблетки» → «¼ таб.») is the dose,
+    // the strength stays in the name: written «Конкор 5 мг — по 1/4
+    // таблетки», the row used to print «по 5 мг», four times the dose. A
+    // line with a part of a tablet the count did not read («¼ утром») is
+    // never dosed with the strength or «1»: the dose stays empty and the
+    // row goes through the constructor's dose prompt (see the host's
+    // `onAdopt`), the doctor writes it.
+    dose:
+      p.count ??
+      (hasFractionalAmount(p.instruction) ? "" : (p.strength ?? "1")),
     // VW-11: the line says how often («2 раза в день» → утро и вечер), so the
     // row starts with those slots and the patient is actually reminded; the
     // bridge sends no reminder for a row without a time of day.
     timesOfDay: timesOfDayFromText(p.instruction),
     mealRelation: p.mealRelation,
-    durationDays: p.durationDays,
+    durationDays: p.ongoing ? null : p.durationDays,
+    ongoing: p.ongoing,
     instructionRu: p.instruction,
     instructionUz: null,
     remindPatient: true,

@@ -257,7 +257,7 @@ function renderHtml({
               <div class="item-meta">
                 ${it.frequency ? "По " + escapeHtml(it.frequency) : ""}
                 ${it.route ? " · " + escapeHtml(it.route) : ""}
-                ${it.durationDays ? " · в течение " + it.durationDays + " дн." : ""}
+                ${it.ongoing ? " · постоянно" : it.durationDays ? " · в течение " + it.durationDays + " дн." : ""}
               </div>
               ${it.instructions ? `<div class="item-instructions">${escapeHtml(it.instructions)}</div>` : ""}
             </td>

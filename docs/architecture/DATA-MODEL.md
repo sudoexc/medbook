@@ -142,7 +142,7 @@
 | Модель | Назначение |
 |---|---|
 | `VisitNote` | Заключение врача по визиту, 1:1 с Appointment — см. [§3](#visitnote) |
-| `VisitPrescription` | Структурное назначение внутри VisitNote (drugId?, снапшот `displayName`, дозировка, `timesOfDay`, `mealRelation`, `remindPatient`) |
+| `VisitPrescription` | Структурное назначение внутри VisitNote (drugId?, снапшот `displayName`, дозировка, `timesOfDay`, `mealRelation`, `durationDays` или `ongoing` «постоянно» (CHECK: ongoing ⇒ durationDays IS NULL), `remindPatient`) |
 | `Prescription` | Курс приёма для напоминаний пациенту (Mini App); привязан к MedicalCase **или** мостом из VisitNote (`@@unique([visitNoteId, visitNoteSortOrder])` — идемпотентный бридж) |
 | `EPrescription` | Э-рецепт: `rxNumber @unique`, `verifyToken @unique` (QR), снапшоты диагноза/подписи, `items Json`, `validUntilAt` |
 | `SickLeave` | Больничный: `certNumber @unique`, `verifyToken @unique`, режим OUTPATIENT/HOSPITAL/HOME, период `@db.Date` |

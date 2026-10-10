@@ -8,8 +8,9 @@
  * Ф5 — print v2:
  *   - `?lang` now defaults to the patient's `preferredLang` (explicit query
  *     still wins); a RU/UZ switcher sits in the print bar.
- *   - medication intake grid (deterministic model shared with the PDF worker
- *     via `render-handout.ts`) renders on every type that prints meds.
+ *   - prescriptions print in words («по 1 таблетке 2 раза в день: утром
+ *     после еды…», formatPatientLine); the intake grid that stood here was
+ *     removed at the doctor's request 10.10.2026, it was hard to read.
  *   - QR verification block when the conclusion Document carries a
  *     `verifyToken` (minted by the handout worker on finalize).
  *   - `?type=package` — conclusion + patient handout + issued e-prescriptions
@@ -922,7 +923,7 @@ export const GET = createApiListHandler(
       ? `<section><h2 class="md-h2">${escapeHtml(labels.followUp)}</h2><p><strong>${escapeHtml(followUpLine)}</strong></p></section>`
       : "";
 
-    // Ф7 — дифф рендерится при печати (как сетка приёма), а не вшивается в
+    // Ф7 — дифф рендерится при печати, а не вшивается в
     // markdown памятки: данные всегда свежие, двойной печати не бывает.
     const handoutDiffSection =
       diffLines.length > 0

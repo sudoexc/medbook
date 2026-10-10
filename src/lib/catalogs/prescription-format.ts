@@ -2,9 +2,12 @@
  * Ф2 (TZ-smart-constructor) — single source of truth for rendering a
  * structured VisitPrescription row as a human-readable line.
  *
- * Used by the reception constructor (row preview), the print route and the
- * patient-handout composer feed — keep the format identical everywhere so
- * what the doctor sees on screen is what prints.
+ * Two lines, each the same everywhere it is used:
+ *   - formatPatientLine, in words: the visit screen's rows, the print, the
+ *     patient handout and the past visit page, so what the doctor sees on
+ *     screen is what prints (doctor's request 10.10.2026, see below);
+ *   - formatPrescriptionLine, compact: the doctor's own lists, protocols,
+ *     revisions and the interaction check.
  */
 
 export type PrescriptionTimeOfDay = "MORNING" | "NOON" | "EVENING" | "NIGHT";
@@ -179,32 +182,81 @@ function ruPlural(n: number, one: string, few: string, many: string): string {
   return many;
 }
 
-// «по» + amount: «по 1 таблетке», «по 2 таблетки», «по 5 таблеток»,
-// «по ½ таблетки»; the same for capsules.
-const RU_UNITS: Array<{ re: RegExp; forms: [string, string, string, string] }> = [
-  { re: /^(?:таб|табл|таблет\p{L}*)\.?$/iu, forms: ["таблетке", "таблетки", "таблеток", "таблетки"] },
-  { re: /^(?:капс|капсул\p{L}*)\.?$/iu, forms: ["капсуле", "капсулы", "капсул", "капсулы"] },
+// A counted unit in the doctor's dose, written for the patient: «по» takes
+// the dative for 1 (21, 31…), the genitive for 2-4 and 5+ («по 1 таблетке»,
+// «по 2 таблетки», «по 5 таблеток», «по ½ таблетки»). Either language's
+// spelling is known, so a dose typed on the other screen reads right too.
+type CountedUnit = {
+  re: RegExp;
+  /** Dative singular, genitive singular, genitive plural, after a fraction. */
+  ru: [string, string, string, string];
+  uz: string;
+};
+
+const COUNTED_UNITS: CountedUnit[] = [
+  { re: /^(?:таб|табл|таблет\p{L}*|tab|tabletka\p{L}*)\.?$/iu, ru: ["таблетке", "таблетки", "таблеток", "таблетки"], uz: "tabletka" },
+  { re: /^(?:капс|капсул\p{L}*|kapsula\p{L}*)\.?$/iu, ru: ["капсуле", "капсулы", "капсул", "капсулы"], uz: "kapsula" },
+  { re: /^(?:кап|капл\p{L}*|капель|tomchi\p{L}*)\.?$/iu, ru: ["капле", "капли", "капель", "капли"], uz: "tomchi" },
+  { re: /^(?:свеч\p{L}*|sham\p{L}*)$/iu, ru: ["свече", "свечи", "свечей", "свечи"], uz: "sham" },
+  { re: /^(?:амп|ампул\p{L}*|ampula\p{L}*)\.?$/iu, ru: ["ампуле", "ампулы", "ампул", "ампулы"], uz: "ampula" },
+  { re: /^(?:пакетик\p{L}*|paketcha\p{L}*)$/iu, ru: ["пакетику", "пакетика", "пакетиков", "пакетика"], uz: "paketcha" },
+  { re: /^(?:впрыск\p{L}*|purkash\p{L}*)$/iu, ru: ["впрыску", "впрыска", "впрысков", "впрыска"], uz: "purkash" },
+  { re: /^(?:вдох\p{L}*|nafas\p{L}*)$/iu, ru: ["вдоху", "вдоха", "вдохов", "вдоха"], uz: "nafas" },
+  { re: /^(?:пластыр\p{L}*|plastir\p{L}*)$/iu, ru: ["пластырю", "пластыря", "пластырей", "пластыря"], uz: "plastir" },
+  { re: /^(?:доз[аыу]?|доз|doza\p{L}*)$/iu, ru: ["дозе", "дозы", "доз", "дозы"], uz: "doza" },
 ];
 
+/** An amount with its unit: «1 таб.», «½ таблетки», «1-2 таб.», «400 мг». */
+const AMOUNT = /^((?:½|¼|\d+(?:[.,]\d+)?)(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?)\s*(.*)$/u;
+
+/** «мг», «мл», «ЕД»: abbreviations read the same after «по». */
+const ABBREVIATION = /^(?:мг|г|мкг|мл|л|ед|ме|mg|g|mcg|ml|iu|%)$|\.$/iu;
+
 function ruDosePart(dose: string): string {
-  const m = /^(½|¼|\d+(?:[.,]\d+)?)\s*(\S+)$/u.exec(dose);
-  if (m) {
-    const unit = RU_UNITS.find((u) => u.re.test(m[2]));
-    if (unit) {
-      const whole = /^\d+$/.test(m[1]);
-      const [one, few, many, part] = unit.forms;
-      const word = whole ? ruPlural(Number(m[1]), one, few, many) : part;
-      return `по ${m[1]} ${word}`;
-    }
+  const m = AMOUNT.exec(dose);
+  // Words alone («тонким слоем», «по схеме») stay as written.
+  if (!m) return dose;
+  const [, amount, rest] = m;
+  const unit = rest ? COUNTED_UNITS.find((u) => u.re.test(rest)) : undefined;
+  // A range («1-2») takes the form of its last number.
+  const last = amount.split(/[-–]/).pop()!.trim();
+  const whole = /^\d+$/.test(last);
+  if (unit) {
+    const [one, few, many, part] = unit.ru;
+    return `по ${amount} ${whole ? ruPlural(Number(last), one, few, many) : part}`;
   }
-  // «по 400 мг», «по 10 капель»; words alone («тонким слоем») stay as written.
-  return /^[\d½¼]/u.test(dose) ? `по ${dose}` : dose;
+  // A word the declension above does not know, after a count ending in 1
+  // («1 чайная ложка»): without «по» it reads right, with it it does not.
+  const firstWord = rest.split(/\s+/)[0] ?? "";
+  if (whole && firstWord && !ABBREVIATION.test(firstWord) && ruPlural(Number(last), "one", "", "") === "one") {
+    return dose;
+  }
+  return `по ${dose}`;
+}
+
+function uzDosePart(dose: string): string {
+  const m = AMOUNT.exec(dose);
+  const unit = m?.[2] ? COUNTED_UNITS.find((u) => u.re.test(m[2])) : undefined;
+  return m && unit ? `${m[1]} ${unit.uz}` : dose;
 }
 
 /**
- * «по 1 таблетке 2 раза в день: утром и вечером после еды, курс 10 дней»;
- * «1 tabletka, kuniga 2 marta: ertalab va kechqurun ovqatdan keyin, 10 kun
- * davomida». Empty when the row has none of it.
+ * When, with the meal: «утром после еды», «утром после еды и вечером после
+ * еды» (the doctor's own words), «утром, днём и вечером, каждый раз после
+ * еды». A meal written once after a list read as if only the last time had it.
+ */
+function whenWithMeal(times: string[], meal: string, locale: PrescriptionLocale): string {
+  if (!meal) return joinHuman(times, locale);
+  if (times.length === 0) return meal;
+  if (times.length <= 2) return joinHuman(times.map((t) => `${t} ${meal}`), locale);
+  const each = locale === "uz" ? "har safar" : "каждый раз";
+  return `${joinHuman(times, locale)}, ${each} ${meal}`;
+}
+
+/**
+ * «по 1 таблетке 2 раза в день: утром после еды и вечером после еды, курс
+ * 10 дней»; «1 tabletka, kuniga 2 marta: ertalab ovqatdan keyin va
+ * kechqurun ovqatdan keyin, 10 kun davomida». Empty when the row has none.
  */
 export function formatPatientSchedule(
   row: Pick<PrescriptionLikeRow, "dose" | "timesOfDay" | "mealRelation" | "durationDays">,
@@ -216,23 +268,25 @@ export function formatPatientSchedule(
   );
   const meal = formatMealLabel(row.mealRelation, locale);
   const n = times.length;
-  const when = joinHuman(times, locale);
+  const when = whenWithMeal(times, meal, locale);
 
   if (locale === "uz") {
-    const freq = n >= 2 ? `kuniga ${n} marta: ${when}` : when;
-    const intake = [freq, meal].filter(Boolean).join(" ");
+    const intake = n >= 2 ? `kuniga ${n} marta: ${when}` : when;
     const course = row.durationDays != null ? `${row.durationDays} kun davomida` : "";
-    return [dose, intake, course].filter(Boolean).join(", ");
+    return [dose ? uzDosePart(dose) : "", intake, course].filter(Boolean).join(", ");
   }
 
-  const freq =
+  const intake =
     n >= 2 ? `${n} ${ruPlural(n, "раз", "раза", "раз")} в день: ${when}` : when;
-  const intake = [dose ? ruDosePart(dose) : "", freq, meal].filter(Boolean).join(" ");
+  const amount = dose ? ruDosePart(dose) : "";
+  // A bare number («1», «1-2») next to «2 раза» would read as one number.
+  const sep = /[\d½¼]$/u.test(amount) && /^\d/.test(intake) ? ", " : " ";
   const course =
     row.durationDays != null
       ? `курс ${row.durationDays} ${ruPlural(row.durationDays, "день", "дня", "дней")}`
       : "";
-  return [intake, course].filter(Boolean).join(", ");
+  const head = amount && intake ? `${amount}${sep}${intake}` : amount || intake;
+  return [head, course].filter(Boolean).join(", ");
 }
 
 export function formatPatientLine(
@@ -250,7 +304,9 @@ export function formatPatientLine(
         ? row.instructionUz?.trim() || row.instructionRu?.trim()
         : row.instructionRu?.trim() || row.instructionUz?.trim();
     if (instruction) {
-      line += line.endsWith(".") ? ` ${instruction}` : `. ${instruction}`;
+      // A sentence of its own: «… курс 10 дней. На поражённые участки».
+      const sentence = instruction.charAt(0).toUpperCase() + instruction.slice(1);
+      line += line.endsWith(".") ? ` ${sentence}` : `. ${sentence}`;
     }
   }
   return line;

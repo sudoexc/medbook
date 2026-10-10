@@ -116,7 +116,8 @@ export function quickDoseOptions(
 
   // Tablets and capsules: the count first, «1 таб.», with the strength left
   // in the drug's name («Карбамазепин 200 мг — по 1 таблетке», doctor's
-  // request 10.10.2026); a strength as the dose stays one click away.
+  // request 10.10.2026); its first strengths follow, and the form and
+  // strength picker above lists them all.
   const ordered = isUnitForm(form) ? [...generic, ...fromDrug] : [...fromDrug, ...generic];
   const seen = new Set<string>();
   const out: string[] = [];

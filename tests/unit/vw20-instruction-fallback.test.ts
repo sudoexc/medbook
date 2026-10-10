@@ -32,7 +32,8 @@ const withInstruction = { withInstruction: true };
 describe("the instruction reaches the print in either language", () => {
   it("ru print shows an instruction typed only in Uzbek", () => {
     for (const f of [formatPrescriptionLine, formatPatientLine]) {
-      expect(f(row(null, "ovqatdan keyin, 1 oy"), "ru", withInstruction)).toContain(
+      // The patient's line starts it as a sentence.
+      expect(f(row(null, "ovqatdan keyin, 1 oy"), "ru", withInstruction).toLowerCase()).toContain(
         "ovqatdan keyin, 1 oy",
       );
     }
@@ -40,7 +41,7 @@ describe("the instruction reaches the print in either language", () => {
 
   it("uz print still falls back on Russian", () => {
     expect(formatPatientLine(row("после еды", null), "uz", withInstruction)).toMatch(
-      /\. после еды$/,
+      /\. После еды$/,
     );
   });
 

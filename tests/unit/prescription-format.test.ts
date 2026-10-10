@@ -1,7 +1,7 @@
 /**
- * Ф2 (TZ-smart-constructor) — pins the shared prescription line format.
- * Constructor preview, print route and handout composer all render through
- * formatPrescriptionLine; these tests freeze the contract.
+ * Ф2 (TZ-smart-constructor) — pins the shared prescription line formats:
+ * the compact formatPrescriptionLine (the doctor's lists and checks) and the
+ * patient's formatPatientLine in words (print, handout, the visit screen).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -166,9 +166,46 @@ describe("formatPatientLine: the schedule in words", () => {
       ...over,
     });
 
-  it("count, how many times a day, when, the meal and the course", () => {
+  it("count, how many times a day, when with the meal, the course", () => {
     expect(formatPatientLine(carb(), "ru")).toBe(
-      "Карбамазепин 200 мг — по 1 таблетке 2 раза в день: утром и вечером после еды, курс 10 дней",
+      "Карбамазепин 200 мг — по 1 таблетке 2 раза в день: утром после еды и вечером после еды, курс 10 дней",
+    );
+  });
+
+  it("three or four times: the meal once, «каждый раз»", () => {
+    expect(formatPatientSchedule(carb({ timesOfDay: ["MORNING", "NOON", "EVENING", "NIGHT"] }), "ru")).toBe(
+      "по 1 таблетке 4 раза в день: утром, днём, вечером и на ночь, каждый раз после еды, курс 10 дней",
+    );
+  });
+
+  it("every counted unit in its case, either language's spelling", () => {
+    const amount = (dose: string) =>
+      formatPatientSchedule(carb({ dose, timesOfDay: [], mealRelation: "NO_MATTER", durationDays: null }), "ru");
+    expect(amount("1 капля")).toBe("по 1 капле");
+    expect(amount("21 капля")).toBe("по 21 капле");
+    expect(amount("2 капли")).toBe("по 2 капли");
+    expect(amount("10 капель")).toBe("по 10 капель");
+    expect(amount("1 свеча")).toBe("по 1 свече");
+    expect(amount("1 амп.")).toBe("по 1 ампуле");
+    expect(amount("1 впрыск")).toBe("по 1 впрыску");
+    expect(amount("1 пакетик")).toBe("по 1 пакетику");
+    expect(amount("1 вдох")).toBe("по 1 вдоху");
+    expect(amount("1 пластырь")).toBe("по 1 пластырю");
+    expect(amount("1 доза")).toBe("по 1 дозе");
+    expect(amount("1 tabletka")).toBe("по 1 таблетке");
+    expect(amount("1-2 таб.")).toBe("по 1-2 таблетки");
+    expect(amount("5-6 таб.")).toBe("по 5-6 таблеток");
+    expect(amount("400 мг")).toBe("по 400 мг");
+    expect(amount("5 ЕД")).toBe("по 5 ЕД");
+    expect(amount("2 мл")).toBe("по 2 мл");
+    // A word it cannot decline after a count ending in 1 goes without «по».
+    expect(amount("1 чайная ложка")).toBe("1 чайная ложка");
+    expect(amount("по 1 таб.")).toBe("по 1 таб.");
+  });
+
+  it("a bare number is kept apart from «2 раза»", () => {
+    expect(formatPatientSchedule(carb({ dose: "1", durationDays: null }), "ru")).toBe(
+      "по 1, 2 раза в день: утром после еды и вечером после еды",
     );
   });
 
@@ -187,7 +224,7 @@ describe("formatPatientLine: the schedule in words", () => {
       "Карбамазепин 200 мг — по 1 таблетке на ночь, курс 10 дней",
     );
     expect(formatPatientLine(carb({ dose: "200 мг" }), "ru")).toBe(
-      "Карбамазепин — по 200 мг 2 раза в день: утром и вечером после еды, курс 10 дней",
+      "Карбамазепин — по 200 мг 2 раза в день: утром после еды и вечером после еды, курс 10 дней",
     );
   });
 
@@ -200,10 +237,19 @@ describe("formatPatientLine: the schedule in words", () => {
     ).toBe("Карбамазепин");
   });
 
-  it("Uzbek: kuniga N marta, kun davomida", () => {
+  it("Uzbek: kuniga N marta, kun davomida; a Russian count in Uzbek words", () => {
     expect(formatPatientLine(carb({ dose: "1 tabletka" }), "uz")).toBe(
-      "Карбамазепин 200 мг — 1 tabletka, kuniga 2 marta: ertalab va kechqurun ovqatdan keyin, 10 kun davomida",
+      "Карбамазепин 200 мг — 1 tabletka, kuniga 2 marta: ertalab ovqatdan keyin va kechqurun ovqatdan keyin, 10 kun davomida",
     );
+    expect(formatPatientSchedule(carb({ dose: "2 таб.", timesOfDay: [], mealRelation: "NO_MATTER", durationDays: null }), "uz")).toBe(
+      "2 tabletka",
+    );
+  });
+
+  it("the instruction starts a sentence", () => {
+    expect(
+      formatPatientLine(carb({ instructionRu: "не разжёвывать" }), "ru", { withInstruction: true }),
+    ).toMatch(/курс 10 дней\. Не разжёвывать$/);
   });
 
   it("no dashes inside the schedule, only the one after the name", () => {

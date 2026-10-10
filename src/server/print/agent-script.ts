@@ -31,17 +31,31 @@ function ReadConf {
   }
   return $c
 }
-function SendToPrinter([string]$printerHost, [int]$port, [byte[]]$bytes) {
+function SendOnce([string]$printerHost, [int]$port, [byte[]]$bytes) {
   $client = New-Object System.Net.Sockets.TcpClient
   try {
     $wait = $client.BeginConnect($printerHost, $port, $null, $null)
-    if (-not $wait.AsyncWaitHandle.WaitOne(5000)) { throw "printer $printerHost not answering" }
+    if (-not $wait.AsyncWaitHandle.WaitOne(4000)) { throw "printer $printerHost not answering" }
     $client.EndConnect($wait)
     $stream = $client.GetStream()
+    $script:wrote = $true
     $stream.Write($bytes, 0, $bytes.Length)
     $stream.Flush()
     Start-Sleep -Milliseconds 300
   } finally { $client.Close() }
+}
+# A printer busy for a moment gets a second try before the CRM falls back
+# to the browser, whose slip could come out late as a second one. Only when
+# nothing was written yet: a half sent slip is not sent again.
+function SendToPrinter([string]$printerHost, [int]$port, [byte[]]$bytes) {
+  $script:wrote = $false
+  try { SendOnce $printerHost $port $bytes }
+  catch {
+    if ($script:wrote) { throw }
+    Log "retry: $($_.Exception.Message)"
+    Start-Sleep -Milliseconds 1000
+    SendOnce $printerHost $port $bytes
+  }
 }
 while ($true) {
   $conf = ReadConf

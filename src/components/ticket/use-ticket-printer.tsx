@@ -10,6 +10,8 @@ import { TicketPrintFrame } from "./ticket-print-frame";
 const PICKUP_MS = 8_000;
 /** How long to wait for the printer's answer once the agent took it. */
 const PRINT_MS = 12_000;
+/** How long the browser fallback's frame stays after a press (the print dialog may be open). */
+const FRAME_KEEP_MS = 120_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -24,11 +26,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export function useTicketPrinter() {
   const t = useTranslations("ticketPrint");
-  const [frame, setFrame] = React.useState<{ id: string; n: number } | null>(null);
+  const [frame, setFrame] = React.useState<{ id: string; n: number; token: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   const viaBrowser = React.useCallback((appointmentId: string) => {
-    setFrame((p) => ({ id: appointmentId, n: (p?.n ?? 0) + 1 }));
+    // A fresh token per press: the stub prints a token once, however often
+    // the frame reloads (owner report 10.10.2026, an old slip came out again).
+    const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    setFrame((p) => ({ id: appointmentId, n: (p?.n ?? 0) + 1, token }));
+    // The frame is not kept once its slip is out.
+    setTimeout(() => setFrame((p) => (p?.token === token ? null : p)), FRAME_KEEP_MS);
   }, []);
 
   const print = React.useCallback(
@@ -89,6 +96,6 @@ export function useTicketPrinter() {
     [busy, t, viaBrowser],
   );
 
-  const element = frame ? <TicketPrintFrame appointmentId={frame.id} job={frame.n} /> : null;
+  const element = frame ? <TicketPrintFrame appointmentId={frame.id} job={frame.n} token={frame.token} /> : null;
   return { print, busy, frame: element };
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 /**
  * Prints the ticket stub (`/ticket/<id>`, opened with the staff session)
  * from a hidden frame on the current page: the stub prints itself
@@ -15,10 +17,23 @@
  * alone, so while a job is pending the page's own print styles show nothing
  * but the frame: either way the paper carries the slip. Each new `job`
  * remounts the frame, so pressing again prints again.
+ *
+ * One slip per press (owner report 10.10.2026): the frame lives at the end
+ * of <body>, not in the queue row that asked for it, because a browser
+ * reloads a frame each time its element moves and the rows move whenever
+ * the queue reorders; and `?job=<token>` lets the stub print only once.
  */
-export function TicketPrintFrame({ appointmentId, job }: { appointmentId: string; job: number }) {
-  if (job === 0) return null;
-  return (
+export function TicketPrintFrame({
+  appointmentId,
+  job,
+  token,
+}: {
+  appointmentId: string;
+  job: number;
+  token: string;
+}) {
+  if (job === 0 || typeof document === "undefined") return null;
+  return createPortal(
     <>
       <style>{`
         @media print {
@@ -33,13 +48,14 @@ export function TicketPrintFrame({ appointmentId, job }: { appointmentId: string
       `}</style>
       <iframe
         key={job}
-        src={`/ticket/${appointmentId}`}
+        src={`/ticket/${encodeURIComponent(appointmentId)}?job=${encodeURIComponent(token)}`}
         title="ticket"
         aria-hidden="true"
         tabIndex={-1}
         className="ticket-print-frame"
         style={{ position: "absolute", width: 0, height: 0, border: 0, visibility: "hidden" }}
       />
-    </>
+    </>,
+    document.body,
   );
 }

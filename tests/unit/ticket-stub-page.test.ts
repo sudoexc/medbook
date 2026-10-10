@@ -216,7 +216,7 @@ describe("printing the slip from the desk and the iPad", () => {
   it("every ticket print goes through the print agent first, the browser frame as fallback", () => {
     const hook = read("src/components/ticket/use-ticket-printer.tsx");
     expect(hook).toContain('fetch("/api/crm/print-jobs", {');
-    expect(hook).toContain("<TicketPrintFrame appointmentId={frame.id} job={frame.n} />");
+    expect(hook).toContain("<TicketPrintFrame appointmentId={frame.id} job={frame.n} token={frame.token} />");
     // A job the agent did not take is cancelled before the browser prints.
     expect(hook).toContain("if (cancelled) viaBrowser(appointmentId);");
     for (const f of [
@@ -237,7 +237,22 @@ describe("printing the slip from the desk and the iPad", () => {
     const frame = read("src/components/ticket/ticket-print-frame.tsx");
     expect(frame).toContain("@page { size: 80mm auto; margin: 0; }");
     expect(frame).toContain("key={job}");
-    expect(frame).toContain("if (job === 0) return null;");
+    expect(frame).toContain("if (job === 0 || typeof document === \"undefined\") return null;");
+  });
+
+  // Owner report 10.10.2026: «сначала выходит A-023, потом правильный». The
+  // fallback frame of an earlier slip sat in its queue row; each reorder
+  // moved the row, the browser reloaded the frame and the old slip printed.
+  it("a browser slip prints once per press, whatever reloads its frame", () => {
+    const frame = read("src/components/ticket/ticket-print-frame.tsx");
+    expect(frame).toContain("createPortal(");
+    expect(frame).toContain("document.body,");
+    expect(frame).toContain("?job=${encodeURIComponent(token)}");
+    const hook = read("src/components/ticket/use-ticket-printer.tsx");
+    expect(hook).toContain("setTimeout(() => setFrame((p) => (p?.token === token ? null : p)), FRAME_KEEP_MS);");
+    const auto = read("src/app/ticket/[id]/_components/auto-print.tsx");
+    expect(auto).toContain("if (window.sessionStorage.getItem(PRINTED_JOB_KEY + job)) return;");
+    expect(auto).toContain("window.sessionStorage.setItem(PRINTED_JOB_KEY + job, \"1\");");
   });
 });
 

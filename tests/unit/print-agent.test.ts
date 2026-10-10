@@ -114,6 +114,13 @@ describe("the agent", () => {
     expect(AGENT_SCRIPT).toContain("'Local\\NeuroFaxPrintAgent'");
   });
 
+  it("a printer that does not answer gets one more try, never after bytes went out", () => {
+    expect(AGENT_SCRIPT).toContain("function SendOnce(");
+    expect(AGENT_SCRIPT).toContain("$script:wrote = $true\n    $stream.Write(");
+    expect(AGENT_SCRIPT).toContain("if ($script:wrote) { throw }");
+    expect(AGENT_SCRIPT.match(/SendOnce \$printerHost \$port \$bytes/g)).toHaveLength(2);
+  });
+
   it("the installer points the PC at the public address, not the app's own", () => {
     const route = read("src/app/api/crm/print-agent/installer/route.ts");
     expect(route).toContain("process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`");

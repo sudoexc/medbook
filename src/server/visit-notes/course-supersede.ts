@@ -19,17 +19,19 @@
  *     COMPLETED, marked `schedule.supersededByNote`. A row that does not
  *     remind (no time of day, «напоминать» off) replaces nothing: completing
  *     the old course would silently end the reminders of a lifelong drug.
- *   - STOPPED: the course is lifelong («постоянно»), was written by THIS
- *     doctor, and this note names the drug nowhere (no row, no text line),
- *     while it does write a treatment list. That is exactly what the print
- *     of this visit reports as «отменено: …» (the treatment diff against the
- *     same doctor's previous visit), so the bot stops reminding it too,
- *     marked `schedule.stoppedByNote`. An empty list is silence, not a stop.
  *
- * Both marks are undone by the next pass of the same note when the reason
- * is gone (an in-window correction): the course comes back to ACTIVE,
- * unless a course of the same drug from a visit signed after its own still
- * reminds, which then takes the mark instead. Only our own marks are undone.
+ * A visit that does not repeat a lifelong drug does NOT stop it (owner's
+ * decision 10.10.2026: blood pressure and sugar drugs are taken for life, and
+ * a control visit about something else need not list them again). A lifelong
+ * course ends only by a correction in the window or by the same drug written
+ * again. For a few hours on 10.10.2026 a «stopped by omission» rule was live
+ * and wrote `schedule.stoppedByNote`; the next pass of that note undoes such
+ * a mark like any other.
+ *
+ * A mark is undone by the next pass of the same note when the reason is gone
+ * (an in-window correction): the course comes back to ACTIVE, unless a course
+ * of the same drug from a visit signed after its own still reminds, which
+ * then takes the mark instead. Only our own marks are undone.
  *
  * The note's own courses follow the same order (`ownCourseState`): a row of
  * an older note re-bridged after a newer visit already took the drug over is
@@ -40,18 +42,17 @@
  *   - PAUSED courses: the patient's or reception's choice;
  *   - COMPLETED without our mark: the patient, reception or the end of days;
  *   - case courses (caseId set): written by reception, not a visit;
- *   - another specialist's lifelong course: not stopped because he did not
- *     repeat it.
  *
  * Pure: the bridge worker reads the rows and writes the plan, tested here.
  */
 import { foldCatalogText } from "@/lib/catalogs/search-fold";
-import { lineNamesDrug, type TreatmentDiffLine } from "@/lib/catalogs/treatment-diff";
-import { isOngoingSchedule } from "@/lib/patient-experience/medication-schedule";
 
 /** The key in `Prescription.schedule` naming the note that replaced it. */
 export const SUPERSEDED_BY_NOTE_KEY = "supersededByNote";
-/** The key naming the note of the same doctor that stopped it. */
+/**
+ * The key the removed «stopped by omission» rule wrote (10.10.2026, a few
+ * hours). Never written now; kept so the next pass of that note undoes it.
+ */
 export const STOPPED_BY_NOTE_KEY = "stoppedByNote";
 
 const MARK_KEYS = [SUPERSEDED_BY_NOTE_KEY, STOPPED_BY_NOTE_KEY] as const;
@@ -171,34 +172,16 @@ function laterReminding(
 
 /**
  * The courses to complete and to restore when note `noteId`, first signed
- * at `signedAt` by `doctorId`, is bridged.
- *
- * `replacing`: its rows whose own course reminds. `rows` and `lines`: every
- * row and every text line of the note, for «does it name the drug at all».
+ * at `signedAt`, is bridged. `replacing`: its rows whose own course reminds.
  */
 export function planCourseSupersede(input: {
   noteId: string;
   signedAt: Date;
-  doctorId?: string | null;
   replacing: readonly DrugIdentity[];
-  rows: readonly DrugIdentity[];
-  lines?: readonly (string | TreatmentDiffLine)[];
   candidates: readonly SupersedeCandidate[];
 }): SupersedePlan {
   const plan: SupersedePlan = { complete: [], restore: [] };
   const at = input.signedAt.getTime();
-  const lines = input.lines ?? [];
-  const writesList = input.rows.length > 0 || lines.length > 0;
-
-  // Named in any form: the print's diff matches by drug, not by form, and
-  // another form of it on the note is not «отменено».
-  const named = (drug: DrugIdentity, drugName: string): boolean =>
-    input.rows.some((r) => isSameDrug({ ...r, form: null }, drug)) ||
-    lines.some(
-      (l) =>
-        lineNamesDrug(l, drug) ||
-        lineNamesDrug(l, { drugId: null, displayName: drugName }),
-    );
 
   // Newest first: whether an older course comes back depends on what this
   // pass leaves of the courses between it and this note.
@@ -220,15 +203,6 @@ export function planCourseSupersede(input: {
     let target: { key: MarkKey; noteId: string } | null = null;
     if (earlier && input.replacing.some((r) => isSameDrug(r, drug))) {
       target = { key: SUPERSEDED_BY_NOTE_KEY, noteId: input.noteId };
-    } else if (
-      earlier &&
-      writesList &&
-      input.doctorId != null &&
-      c.noteDoctorId === input.doctorId &&
-      isOngoingSchedule(schedule) &&
-      !named(drug, c.drugName)
-    ) {
-      target = { key: STOPPED_BY_NOTE_KEY, noteId: input.noteId };
     } else if (markedByUs && c.noteSignedAt != null) {
       // Coming back: unless a newer visit's course of it still reminds.
       const later = laterReminding(drug, c.noteSignedAt.getTime(), ordered, statusOf, c.id);

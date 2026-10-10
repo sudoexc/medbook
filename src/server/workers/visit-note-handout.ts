@@ -44,7 +44,6 @@ import {
   type DrugIdentity,
   type SupersedeCandidate,
 } from "@/server/visit-notes/course-supersede";
-import { resolveLineDrugIds } from "@/server/visit-notes/legacy-line-drugs";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import {
@@ -585,13 +584,6 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
   // last Monday newer than Thursday's and complete Thursday's current dose.
   const signedAt = note.firstFinalizedAt ?? note.finalizedAt ?? now;
   const rows = note.visitPrescriptions.filter((vp) => vp.remindPatient);
-  // The text lines' catalog drugs, by the print's own matcher: a lifelong
-  // course continued as a line «Нормодипин 5 мг» is not stopped.
-  const textLines = note.prescriptions ?? [];
-  const lineDrugIds =
-    textLines.length > 0
-      ? await resolveLineDrugIds(textLines, { clinicId: note.clinicId })
-      : [];
 
   const correlationId = newCorrelationId();
   await prisma.$transaction(async (tx) => {
@@ -838,10 +830,7 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
       const plan = planCourseSupersede({
         noteId: note.id,
         signedAt,
-        doctorId: note.doctorId,
         replacing,
-        rows: note.visitPrescriptions,
-        lines: textLines.map((text, i) => ({ text, drugId: lineDrugIds[i] ?? null })),
         candidates,
       });
       for (const c of plan.complete) {

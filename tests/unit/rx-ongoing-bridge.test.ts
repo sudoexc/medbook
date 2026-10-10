@@ -11,8 +11,9 @@
  *      another form, PAUSED, case courses, other drugs and later visits
  *      (by FIRST signature) are left alone; a correction that takes the
  *      drug off the newer note brings the older course back, unless a
- *      visit between them still reminds it. A lifelong course its own
- *      doctor names nowhere at the next visit stops, as the print says.
+ *      visit between them still reminds it. A visit that does not repeat
+ *      a lifelong drug never stops it (owner, 10.10.2026); a mark the
+ *      removed stop rule wrote is undone by the next pass of its note.
  *   3. The bridge runs that pass in its transaction: a control visit that
  *      writes amlodipine «постоянно» again completes the earlier visit's
  *      amlodipine course instead of adding a second never-ending reminder.
@@ -217,24 +218,14 @@ describe("planCourseSupersede", () => {
   /** Default: the note writes amlodipine with a time of day (it reminds). */
   const plan = (
     candidates: SupersedeCandidate[],
-    opts: {
-      replacing?: DrugIdentity[];
-      rows?: DrugIdentity[];
-      lines?: string[];
-      doctorId?: string;
-    } = {},
-  ) => {
-    const replacing = opts.replacing ?? [AMLO];
-    return planCourseSupersede({
+    opts: { replacing?: DrugIdentity[] } = {},
+  ) =>
+    planCourseSupersede({
       noteId: NOTE,
       signedAt: SIGNED,
-      doctorId: opts.doctorId ?? "d1",
-      replacing,
-      rows: opts.rows ?? replacing,
-      lines: opts.lines ?? [],
+      replacing: opts.replacing ?? [AMLO],
       candidates,
     });
-  };
 
   it("the same drug from an earlier visit is completed, and marked", () => {
     const p = plan([course()]);
@@ -256,7 +247,7 @@ describe("planCourseSupersede", () => {
   it("a row that does not remind (no time of day, «напоминать» off) replaces nothing", () => {
     // The parsed «Амлодипин 5 мг — по 1 таб., постоянно» has no time words:
     // its course never reminds, so the 08:00 course must keep reminding.
-    expect(plan([course()], { replacing: [], rows: [AMLO] })).toEqual({
+    expect(plan([course()], { replacing: [] })).toEqual({
       complete: [],
       restore: [],
     });
@@ -290,9 +281,8 @@ describe("planCourseSupersede", () => {
 
   it("leaves other drugs, later visits and an unsigned source alone", () => {
     expect(
-      plan([course({ source: { drugId: "losartan", displayName: "Лозартан" }, drugName: "Лозартан" })], {
-        lines: ["Лозартан 50 мг утром"],
-      }).complete,
+      plan([course({ source: { drugId: "losartan", displayName: "Лозартан" }, drugName: "Лозартан" })])
+        .complete,
     ).toEqual([]);
     expect(plan([course({ noteSignedAt: new Date("2026-10-11T05:00:00.000Z") })]).complete).toEqual([]);
     expect(plan([course({ noteSignedAt: null })]).complete).toEqual([]);
@@ -310,7 +300,7 @@ describe("planCourseSupersede", () => {
     });
     // Another doctor's course: the stop rule does not touch it.
     const theirs = { ...marked, noteDoctorId: "d2" };
-    expect(plan([theirs], { replacing: [], rows: [] })).toEqual({
+    expect(plan([theirs], { replacing: [] })).toEqual({
       complete: [],
       restore: [{ id: "rx_old", schedule: { times: ["08:00"], days: null, ongoing: true } }],
     });
@@ -319,7 +309,7 @@ describe("planCourseSupersede", () => {
     expect(
       plan(
         [course({ status: "COMPLETED", schedule: { times: ["08:00"], [SUPERSEDED_BY_NOTE_KEY]: "other" } })],
-        { replacing: [], rows: [] },
+        { replacing: [] },
       ),
     ).toEqual({ complete: [], restore: [] });
   });
@@ -339,7 +329,7 @@ describe("planCourseSupersede", () => {
     });
     // The newer dose of the visit between goes on; the oldest course is
     // marked as replaced by that visit, so it can come back from there.
-    expect(plan([oldMarked, between], { replacing: [], rows: [] })).toEqual({
+    expect(plan([oldMarked, between], { replacing: [] })).toEqual({
       complete: [
         {
           id: "rx_old",
@@ -355,7 +345,7 @@ describe("planCourseSupersede", () => {
       status: "COMPLETED",
       schedule: { times: ["08:00"], ongoing: true, [SUPERSEDED_BY_NOTE_KEY]: NOTE },
     };
-    expect(plan([oldMarked, betweenMarked], { replacing: [], rows: [] })).toEqual({
+    expect(plan([oldMarked, betweenMarked], { replacing: [] })).toEqual({
       complete: [
         {
           id: "rx_old",
@@ -373,59 +363,22 @@ describe("planCourseSupersede", () => {
     expect(plan([newer])).toEqual({ complete: [], restore: [] });
   });
 
-  describe("a lifelong course its doctor no longer names stops", () => {
+  describe("a lifelong course is never stopped because a visit does not repeat it", () => {
+    // Owner's decision 10.10.2026: blood pressure and sugar drugs are taken
+    // for life; a control visit about something else need not list them.
     const other: DrugIdentity = { drugId: "nimesulide", displayName: "Нимесил", form: "TAB" };
 
-    it("same doctor, «постоянно», named nowhere: completed and marked as stopped", () => {
-      expect(plan([course()], { replacing: [other] })).toEqual({
-        complete: [
-          {
-            id: "rx_old",
-            schedule: {
-              times: ["08:00"],
-              days: null,
-              startsAt: EARLIER.toISOString(),
-              ongoing: true,
-              [STOPPED_BY_NOTE_KEY]: NOTE,
-            },
-          },
-        ],
-        restore: [],
-      });
+    it("the same doctor, «постоянно», named nowhere: left alone", () => {
+      expect(plan([course()], { replacing: [other] })).toEqual({ complete: [], restore: [] });
+      expect(plan([course()], { replacing: [] })).toEqual({ complete: [], restore: [] });
     });
 
-    it("another doctor's, a course with days, a mention anywhere, or no list at all: left alone", () => {
-      const none = { complete: [], restore: [] };
-      expect(plan([course({ noteDoctorId: "d2" })], { replacing: [other] })).toEqual(none);
-      expect(
-        plan([course({ schedule: { times: ["08:00"], days: 30 } })], { replacing: [other] }),
-      ).toEqual(none);
-      // A row that does not remind still names it.
-      expect(plan([course()], { replacing: [other], rows: [other, AMLO] })).toEqual(none);
-      // A text line names it, by the name or by its catalog drug.
-      expect(plan([course()], { replacing: [other], lines: ["Амлодипин 5 мг утром"] })).toEqual(none);
-      expect(
-        planCourseSupersede({
-          noteId: NOTE,
-          signedAt: SIGNED,
-          doctorId: "d1",
-          replacing: [other],
-          rows: [other],
-          lines: [{ text: "Нормодипин 5 мг утром", drugId: "amlodipine" }],
-          candidates: [course()],
-        }),
-      ).toEqual(none);
-      // An empty treatment list is silence, not a stop.
-      expect(plan([course()], { replacing: [], rows: [], lines: [] })).toEqual(none);
-    });
-
-    it("a correction that names it again undoes the stop", () => {
+    it("a mark the removed stop rule wrote is undone by the next pass of its note", () => {
       const stopped = course({
         status: "COMPLETED",
         schedule: { times: ["08:00"], ongoing: true, [STOPPED_BY_NOTE_KEY]: NOTE },
       });
-      // Named by a text line: the old course reminds again.
-      expect(plan([stopped], { replacing: [other], lines: ["Амлодипин 5 мг"] })).toEqual({
+      expect(plan([stopped], { replacing: [other] })).toEqual({
         complete: [],
         restore: [{ id: "rx_old", schedule: { times: ["08:00"], ongoing: true } }],
       });
@@ -433,8 +386,6 @@ describe("planCourseSupersede", () => {
       expect(plan([stopped], { replacing: [AMLO] }).complete).toEqual([
         { id: "rx_old", schedule: { times: ["08:00"], ongoing: true, [SUPERSEDED_BY_NOTE_KEY]: NOTE } },
       ]);
-      // Still absent: stays stopped, nothing written.
-      expect(plan([stopped], { replacing: [other] })).toEqual({ complete: [], restore: [] });
     });
   });
 });
@@ -702,38 +653,14 @@ describe("bridge: a control visit's «постоянно» replaces the earlier 
     });
   });
 
-  it("the same doctor not naming his lifelong drug stops it; a text line naming it does not", async () => {
+  it("the same doctor not naming his lifelong drug leaves it reminding", async () => {
+    // Owner's decision 10.10.2026: a control visit about something else does
+    // not stop a blood pressure drug taken for life.
     const { runMedicationBridgeTick } = await import("@/server/workers/visit-note-handout");
     const NIMESIL = { ...AMLO, drugId: "nimesulide", displayName: "Нимесил", ongoing: false, durationDays: 5 };
     state.bridgeNotes = [note([NIMESIL])];
     state.candidates = [OLD_AMLO()];
     state.sources = [OLD_SOURCE];
-    await runMedicationBridgeTick(new Date("2026-10-10T05:00:30.000Z"));
-    expect(state.updates).toEqual([
-      {
-        where: { id: "rx_amlo_old" },
-        data: {
-          status: "COMPLETED",
-          schedule: {
-            times: ["08:00"],
-            days: null,
-            startsAt: "2026-08-10T05:00:00.000Z",
-            ongoing: true,
-            [STOPPED_BY_NOTE_KEY]: "note_new",
-          },
-        },
-      },
-    ]);
-
-    // Continued as a text line under its brand: not stopped.
-    state.updates = [];
-    state.bridgeNotes = [{ ...note([NIMESIL]), prescriptions: ["Нормодипин 5 мг утром"] }];
-    await runMedicationBridgeTick(new Date("2026-10-10T05:00:30.000Z"));
-    expect(state.updates).toEqual([]);
-
-    // Another specialist's lifelong course: not his to stop.
-    state.bridgeNotes = [note([NIMESIL])];
-    state.candidates = [OLD_AMLO({ visitNote: { firstFinalizedAt: new Date("2026-08-10T05:00:00.000Z"), finalizedAt: null, doctorId: "d2" } })];
     await runMedicationBridgeTick(new Date("2026-10-10T05:00:30.000Z"));
     expect(state.updates).toEqual([]);
   });

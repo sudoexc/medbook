@@ -23,9 +23,7 @@ import path from "node:path";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 
-import type { PrescriptionLikeRow } from "@/lib/catalogs/prescription-format";
 import {
-  buildMedicationGrid,
   parseHandoutBlocks,
   stripInlineMarkers,
 } from "@/server/visit-notes/render-handout";
@@ -41,8 +39,6 @@ export interface ConclusionPdfInput {
   /** Ф0 — human-readable document number ("NF-2026-000123"), if allocated. */
   documentNumber?: string | null;
   handoutMarkdown: string;
-  /** Ф5 — structured rows for the medication intake grid (may be empty). */
-  prescriptions?: PrescriptionLikeRow[] | null;
   /** Ф5 — public /v/[token] URL; when set, a QR block is drawn at the end. */
   verifyUrl?: string | null;
   /** Ф6 — pre-formatted control-visit line ("через 10 дн. · ≈ 20.06.2026"). */
@@ -72,7 +68,6 @@ const LABELS = {
     doctor: "Врач",
     visitDate: "Дата приёма",
     generated: "Подготовлено",
-    grid: "Схема приёма",
     followUp: "Контрольный визит",
     amendments: "Исправления",
     amendmentReason: "Причина",
@@ -84,7 +79,6 @@ const LABELS = {
     doctor: "Shifokor",
     visitDate: "Tashrif sanasi",
     generated: "Tayyorlandi",
-    grid: "Qabul jadvali",
     followUp: "Nazorat tashrifi",
     amendments: "Tuzatishlar",
     amendmentReason: "Sababi",
@@ -238,92 +232,6 @@ export async function renderConclusionPdf(
         .fillColor("#1a1f2e")
         .text(stripInlineMarkers(block.text), { width: usableWidth });
       doc.moveDown(0.35);
-    }
-  }
-
-  // Ф5 — medication intake grid (shared model with the print route).
-  const gridRows = input.prescriptions ?? [];
-  if (gridRows.length > 0) {
-    const grid = buildMedicationGrid(gridRows, locale);
-    const bottomY = () => doc.page.height - doc.page.margins.bottom;
-    const cols: Array<{ w: number; align: "left" | "center" }> = [
-      { w: usableWidth * 0.34, align: "left" },
-      ...grid.headers.times.map(() => ({
-        w: usableWidth * 0.09,
-        align: "center" as const,
-      })),
-      { w: usableWidth * 0.16, align: "left" },
-      { w: usableWidth * 0.14, align: "left" },
-    ];
-
-    const drawGridRow = (
-      texts: string[],
-      note: string,
-      header: boolean,
-    ): void => {
-      const size = header ? 8 : 9;
-      doc.fontSize(size);
-      let maxH = 0;
-      texts.forEach((t, i) => {
-        const h = doc.heightOfString(t || " ", { width: cols[i].w - 6 });
-        if (h > maxH) maxH = h;
-      });
-      let noteH = 0;
-      if (note) {
-        doc.fontSize(7.5);
-        noteH = doc.heightOfString(note, { width: cols[0].w - 6 }) + 1;
-      }
-      const rowH = maxH + noteH + 6;
-      if (doc.y + rowH > bottomY()) doc.addPage();
-      const y = doc.y;
-      let x = left;
-      texts.forEach((t, i) => {
-        doc
-          .fontSize(size)
-          .fillColor(header ? "#525866" : "#1a1f2e")
-          .text(t, x + 3, y, { width: cols[i].w - 6, align: cols[i].align });
-        x += cols[i].w;
-      });
-      if (note) {
-        doc
-          .fontSize(7.5)
-          .fillColor("#666")
-          .text(note, left + 3, y + maxH + 1, { width: cols[0].w - 6 });
-      }
-      const lineY = y + rowH - 2;
-      doc
-        .moveTo(left, lineY)
-        .lineTo(left + usableWidth, lineY)
-        .strokeColor(header ? "#9aa0ab" : "#e3e6ea")
-        .lineWidth(header ? 0.8 : 0.5)
-        .stroke();
-      doc.y = lineY + 4;
-      doc.x = left;
-    };
-
-    doc.moveDown(0.4);
-    if (doc.y + 60 > bottomY()) doc.addPage();
-    doc
-      .fontSize(12)
-      .fillColor("#1a1f2e")
-      .text(labels.grid, left, doc.y, { width: usableWidth });
-    doc.moveDown(0.3);
-    drawGridRow(
-      [
-        grid.headers.drug,
-        ...grid.headers.times,
-        grid.headers.meal,
-        grid.headers.duration,
-      ],
-      "",
-      true,
-    );
-    for (const row of grid.rows) {
-      drawGridRow(
-        [row.name, ...row.cells, row.meal, row.duration],
-        row.note,
-        false,
-      );
     }
   }
 

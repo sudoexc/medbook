@@ -24,7 +24,7 @@ import {
 } from "@/lib/catalogs/handout-composer";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
 import {
-  formatPrescriptionLines,
+  formatPatientLines,
   type PrescriptionLikeRow,
 } from "@/lib/catalogs/prescription-format";
 
@@ -119,7 +119,7 @@ export function composeNoteHandout(
       ).map((d) => d.name),
       complaints: fields.complaints ?? [],
       prescriptions: [
-        ...formatPrescriptionLines(fields.visitPrescriptions ?? [], locale, {
+        ...formatPatientLines(fields.visitPrescriptions ?? [], locale, {
           withInstruction: true,
         }),
         ...(fields.prescriptions ?? []),

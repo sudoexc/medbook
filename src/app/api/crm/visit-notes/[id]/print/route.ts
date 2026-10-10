@@ -27,7 +27,7 @@ import { withClinicDrugPhotos } from "@/server/catalog/drug-photos";
 import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
-import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+import { formatPatientLines } from "@/lib/catalogs/prescription-format";
 import { composedHandoutLocale } from "@/lib/catalogs/handout-composer";
 import { composeNoteHandout } from "@/server/visit-notes/handout";
 import { followUpDue, formatFollowUpLine } from "@/lib/visit-follow-up";
@@ -56,11 +56,7 @@ import {
   formatTreatmentDiff,
 } from "@/lib/catalogs/treatment-diff";
 import { renderBodyMapSvg, type BodyMapPointLike } from "@/lib/body-map";
-import {
-  buildMedicationGrid,
-  renderHandoutHtml,
-  renderMedicationGridHtml,
-} from "@/server/visit-notes/render-handout";
+import { renderHandoutHtml } from "@/server/visit-notes/render-handout";
 import { findPreviousFinalizedVisit } from "@/server/visit-notes/previous-visit";
 import { resolveLineDrugIds } from "@/server/visit-notes/legacy-line-drugs";
 import { inlineStorageImage } from "@/server/storage/inline-image";
@@ -318,7 +314,6 @@ export const GET = createApiListHandler(
             aiGenerated: "AI yordamida tayyorlangan",
             date: "Sana",
             signature: "Imzo",
-            gridTitle: "Qabul jadvali",
             verify: "Haqiqiylikni QR orqali tekshiring",
             tgInvite: "Telegramga ulaning — hujjatlar va eslatmalar botda",
             rxTitle: "Retsept",
@@ -367,7 +362,6 @@ export const GET = createApiListHandler(
             aiGenerated: "Сформировано с участием AI",
             date: "Дата",
             signature: "Подпись",
-            gridTitle: "Схема приёма",
             verify: "Проверка подлинности — отсканируйте QR",
             tgInvite: "Подключите Telegram — документы и напоминания в боте",
             rxTitle: "Рецепт",
@@ -642,14 +636,6 @@ export const GET = createApiListHandler(
         ? `<section><h2 class="md-h2">${escapeHtml(labels.amendmentsTitle)}</h2>${amendmentItemsHtml}</section>`
         : "";
 
-    // ── Ф5 fragments shared by all print types ────────────────────────
-    const medGridTable =
-      note.visitPrescriptions.length > 0
-        ? renderMedicationGridHtml(
-            buildMedicationGrid(note.visitPrescriptions, locale),
-          )
-        : "";
-
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ??
       new URL(request.url).origin;
@@ -711,27 +697,6 @@ export const GET = createApiListHandler(
       font-size: 12px;
     }
     .lang-switch a.on { background: var(--brand); border-color: var(--brand); color: #fff; }
-    .med-grid {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-      font-size: 11px;
-    }
-    .med-grid th, .med-grid td {
-      border: 1px solid #e3e6ec;
-      padding: 5px 8px;
-      text-align: left;
-      vertical-align: top;
-    }
-    .med-grid th {
-      background: #f4f6fa;
-      color: #525866;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .med-grid th.med-slot, .med-grid td.med-slot { text-align: center; width: 9%; }
-    .med-grid .med-note { color: #8b909b; font-size: 10px; margin-top: 2px; font-weight: 400; }
     .verify { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
     .verify img { width: 64px; height: 64px; }
     .verify-title { font-weight: 600; font-size: 10px; color: #525866; }
@@ -912,10 +877,6 @@ export const GET = createApiListHandler(
       ? renderHandoutHtml(handoutMarkdown)
       : `<p class="empty">${escapeHtml(handoutLabels.emptyHint)}</p>`;
 
-    const handoutGridSection = medGridTable
-      ? `<section><h2 class="md-h2">${escapeHtml(labels.gridTitle)}</h2>${medGridTable}</section>`
-      : "";
-
     // «Как выглядит упаковка» — the patient walks into a pharmacy holding a
     // picture instead of a name they cannot pronounce. Rendered only for the
     // drugs this clinic has actually photographed. The photo is embedded:
@@ -980,7 +941,6 @@ export const GET = createApiListHandler(
 
     <article>${handoutBody}</article>
 
-    ${handoutGridSection}
 
     ${handoutPacksSection}
 
@@ -1169,13 +1129,6 @@ export const GET = createApiListHandler(
     }
 
     // ── Clinical conclusion fragment (standalone page + package) ──────
-    const clinicalGridSection = medGridTable
-      ? `<section class="block">
-      <h3>${escapeHtml(labels.gridTitle)}</h3>
-      ${medGridTable}
-    </section>`
-      : "";
-
     const clinicalInner = `${renderHeader(`${escapeHtml(labels.title)}${note.aiGenerated ? `<span class="ai-tag">${escapeHtml(labels.aiGenerated)}</span>` : ""}`)}
 
     <div class="meta-grid">
@@ -1245,14 +1198,14 @@ export const GET = createApiListHandler(
     <section class="block block-rx">
       <h3>${escapeHtml(labels.prescriptions)}</h3>
       ${renderChips([
-        ...formatPrescriptionLines(note.visitPrescriptions, locale, {
+        // In words, not a grid of slots (doctor's request 10.10.2026).
+        ...formatPatientLines(note.visitPrescriptions, locale, {
           withInstruction: true,
         }),
         ...note.prescriptions,
       ])}
     </section>
 
-    ${clinicalGridSection}
 
     ${treatmentDiffSection}
 

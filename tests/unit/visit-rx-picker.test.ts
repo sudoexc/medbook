@@ -386,13 +386,13 @@ describe("quickDoseOptions: the dose prompt answered with a click", () => {
     expect(opts).toEqual(["5 мл", "2,5 мл", "10 мл", "15 мл"]);
   });
 
-  it("tablets: the unit strengths, then counts; in the interface language", () => {
+  it("tablets: counts first, then the unit strengths; in the interface language", () => {
     expect(quickDoseOptions("TAB", ["50 мг", "150мг"], "ru")).toEqual([
-      "50 мг",
-      "150 мг",
       "1 таб.",
       "2 таб.",
       "½ таб.",
+      "50 мг",
+      "150 мг",
     ]);
     expect(quickDoseOptions("DROPS_EYE", [], "uz")).toEqual(["1 tomchi", "2 tomchi"]);
     expect(quickDoseOptions(null, [], "ru").length).toBeGreaterThan(0);

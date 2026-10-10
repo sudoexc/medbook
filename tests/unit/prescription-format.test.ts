@@ -3,9 +3,13 @@
  * Constructor preview, print route and handout composer all render through
  * formatPrescriptionLine; these tests freeze the contract.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  formatPatientLine,
+  formatPatientSchedule,
   formatPrescriptionLine,
   formatPrescriptionLines,
   type PrescriptionLikeRow,
@@ -144,5 +148,85 @@ describe("formatPrescriptionLines", () => {
       "Бисопролол 5 мг — 1 таб, утром, 30 дн.",
       "Амоксициллин — 1 таб, утром, 30 дн.",
     ]);
+  });
+});
+
+// Doctor's request 10.10.2026: the intake grid «Утро | День | Вечер | Ночь»
+// was hard to read; the patient gets the schedule in words, and a tablet's
+// count («1 таб.») can stand for the dose while its strength stays in the name.
+describe("formatPatientLine: the schedule in words", () => {
+  const carb = (over: Partial<PrescriptionLikeRow> = {}) =>
+    row({
+      displayName: "Карбамазепин",
+      strength: "200 мг",
+      dose: "1 таб.",
+      timesOfDay: ["EVENING", "MORNING"],
+      mealRelation: "AFTER_MEAL",
+      durationDays: 10,
+      ...over,
+    });
+
+  it("count, how many times a day, when, the meal and the course", () => {
+    expect(formatPatientLine(carb(), "ru")).toBe(
+      "Карбамазепин 200 мг — по 1 таблетке 2 раза в день: утром и вечером после еды, курс 10 дней",
+    );
+  });
+
+  it("declines the count and the days", () => {
+    expect(formatPatientSchedule(carb({ dose: "2 таб." }), "ru")).toMatch(/^по 2 таблетки /);
+    expect(formatPatientSchedule(carb({ dose: "5 таб." }), "ru")).toMatch(/^по 5 таблеток /);
+    expect(formatPatientSchedule(carb({ dose: "½ таб." }), "ru")).toMatch(/^по ½ таблетки /);
+    expect(formatPatientSchedule(carb({ dose: "1 капс." }), "ru")).toMatch(/^по 1 капсуле /);
+    expect(formatPatientSchedule(carb({ durationDays: 21 }), "ru")).toMatch(/курс 21 день$/);
+    expect(formatPatientSchedule(carb({ durationDays: 3 }), "ru")).toMatch(/курс 3 дня$/);
+    expect(formatPatientSchedule(carb({ durationDays: 11 }), "ru")).toMatch(/курс 11 дней$/);
+  });
+
+  it("one time a day is just the time; a strength as the dose leaves the name bare", () => {
+    expect(formatPatientLine(carb({ timesOfDay: ["NIGHT"], mealRelation: "NO_MATTER" }), "ru")).toBe(
+      "Карбамазепин 200 мг — по 1 таблетке на ночь, курс 10 дней",
+    );
+    expect(formatPatientLine(carb({ dose: "200 мг" }), "ru")).toBe(
+      "Карбамазепин — по 200 мг 2 раза в день: утром и вечером после еды, курс 10 дней",
+    );
+  });
+
+  it("words stay as written, nothing at all leaves the name", () => {
+    expect(formatPatientSchedule(carb({ dose: "тонким слоем", timesOfDay: [], durationDays: null, mealRelation: "NO_MATTER" }), "ru")).toBe(
+      "тонким слоем",
+    );
+    expect(
+      formatPatientLine(carb({ dose: "", timesOfDay: [], durationDays: null, strength: null, mealRelation: "NO_MATTER" }), "ru"),
+    ).toBe("Карбамазепин");
+  });
+
+  it("Uzbek: kuniga N marta, kun davomida", () => {
+    expect(formatPatientLine(carb({ dose: "1 tabletka" }), "uz")).toBe(
+      "Карбамазепин 200 мг — 1 tabletka, kuniga 2 marta: ertalab va kechqurun ovqatdan keyin, 10 kun davomida",
+    );
+  });
+
+  it("no dashes inside the schedule, only the one after the name", () => {
+    for (const r of [carb(), carb({ dose: "2 таб.", timesOfDay: ["MORNING", "NOON", "EVENING", "NIGHT"] })]) {
+      expect(formatPatientSchedule(r, "ru")).not.toMatch(/[—–]/);
+    }
+  });
+});
+
+describe("the grid is gone from every print", () => {
+  const read = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
+
+  it("print route, handout, bot PDF and the visit screen speak in words", () => {
+    const route = read("src/app/api/crm/visit-notes/[id]/print/route.ts");
+    expect(route).not.toMatch(/med-grid|MedicationGrid|gridTitle/);
+    expect(route).toContain("...formatPatientLines(note.visitPrescriptions, locale, {");
+    expect(read("src/server/visit-notes/handout.ts")).toContain(
+      "...formatPatientLines(fields.visitPrescriptions ?? [], locale, {",
+    );
+    expect(read("src/server/visit-notes/conclusion-pdf.ts")).not.toMatch(/buildMedicationGrid|drawGridRow/);
+    expect(read("src/server/visit-notes/render-handout.ts")).not.toContain("MedicationGrid");
+    expect(read("src/app/[locale]/doctor/reception/_components/prescription-constructor.tsx")).toContain(
+      "const line = formatPatientLine(row, locale, { withInstruction: true });",
+    );
   });
 });

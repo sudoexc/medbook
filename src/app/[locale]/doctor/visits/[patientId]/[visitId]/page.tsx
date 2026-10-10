@@ -9,7 +9,7 @@ import {
 import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
-import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+import { formatPatientLines } from "@/lib/catalogs/prescription-format";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { parseAdditionalDiagnoses } from "@/lib/visit-diagnoses";
@@ -192,7 +192,7 @@ export default async function VisitDetailPage({
           anamnesis: data.note.anamnesis,
           examination: data.note.examination,
           prescriptions: [
-            ...formatPrescriptionLines(
+            ...formatPatientLines(
               data.note.visitPrescriptions,
               locale === "uz" ? "uz" : "ru",
               { withInstruction: true },

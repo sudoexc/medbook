@@ -1,16 +1,20 @@
 /**
  * Audit VW-20 — the constructor edits only the instruction of the doctor's
  * interface language, so «ovqatdan keyin, 1 oy» typed on the Uzbek screen
- * lives in instructionUz alone. The Russian print line and the handout grid
+ * lives in instructionUz alone. The Russian print line and the handout
  * read instructionRu only, and the doctor's instruction vanished from the
  * Russian-speaking patient's paper.
  *
  * Pinned: each language falls back on the other; its own text still wins.
+ * Both the doctor's compact line and the patient's line in words (which
+ * replaced the intake grid, doctor's request 10.10.2026) do it.
  */
 import { describe, expect, it } from "vitest";
 
-import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
-import { buildMedicationGrid } from "@/server/visit-notes/render-handout";
+import {
+  formatPatientLine,
+  formatPrescriptionLine,
+} from "@/lib/catalogs/prescription-format";
 
 const row = (instructionRu: string | null, instructionUz: string | null) => ({
   displayName: "Мидокалм",
@@ -23,33 +27,34 @@ const row = (instructionRu: string | null, instructionUz: string | null) => ({
   instructionUz,
 });
 
+const withInstruction = { withInstruction: true };
+
 describe("the instruction reaches the print in either language", () => {
   it("ru print shows an instruction typed only in Uzbek", () => {
-    const line = formatPrescriptionLine(row(null, "ovqatdan keyin, 1 oy"), "ru", {
-      withInstruction: true,
-    });
-    expect(line).toContain("ovqatdan keyin, 1 oy");
-    const grid = buildMedicationGrid([row(null, "ovqatdan keyin, 1 oy")], "ru");
-    expect(grid.rows[0]!.note).toBe("ovqatdan keyin, 1 oy");
+    for (const f of [formatPrescriptionLine, formatPatientLine]) {
+      expect(f(row(null, "ovqatdan keyin, 1 oy"), "ru", withInstruction)).toContain(
+        "ovqatdan keyin, 1 oy",
+      );
+    }
   });
 
   it("uz print still falls back on Russian", () => {
-    const grid = buildMedicationGrid([row("после еды", null)], "uz");
-    expect(grid.rows[0]!.note).toBe("после еды");
+    expect(formatPatientLine(row("после еды", null), "uz", withInstruction)).toMatch(
+      /\. после еды$/,
+    );
   });
 
   it("the language's own instruction wins over the other", () => {
-    const line = formatPrescriptionLine(row("после еды", "ovqatdan keyin"), "ru", {
-      withInstruction: true,
-    });
-    expect(line).toContain("после еды");
-    expect(line).not.toContain("ovqatdan keyin");
-    const grid = buildMedicationGrid([row("после еды", "ovqatdan keyin")], "ru");
-    expect(grid.rows[0]!.note).toBe("после еды");
+    for (const f of [formatPrescriptionLine, formatPatientLine]) {
+      const line = f(row("Не разжёвывать", "Chaynamang"), "ru", withInstruction);
+      expect(line).toContain("Не разжёвывать");
+      expect(line).not.toContain("Chaynamang");
+    }
   });
 
   it("a blank instruction falls through to the other language", () => {
-    const grid = buildMedicationGrid([row("   ", "ovqatdan keyin")], "ru");
-    expect(grid.rows[0]!.note).toBe("ovqatdan keyin");
+    expect(formatPatientLine(row("   ", "Chaynamang"), "ru", withInstruction)).toMatch(
+      /\. Chaynamang$/,
+    );
   });
 });

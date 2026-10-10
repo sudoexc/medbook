@@ -61,7 +61,7 @@ import {
 } from "@/lib/catalogs/drug-forms";
 import {
   formatPrescriptionHead,
-  formatPrescriptionLine,
+  formatPatientLine,
   type PrescriptionLocale,
 } from "@/lib/catalogs/prescription-format";
 import { reminderStateOf } from "@/lib/catalogs/dosing-times";
@@ -969,8 +969,9 @@ function PrescriptionRowItem({
 }) {
   const t = useTranslations("doctor.reception");
   // With the instruction: whatever reaches the patient's handout and print
-  // must be readable without expanding the row (audit G4-06).
-  const line = formatPrescriptionLine(row, locale, { withInstruction: true });
+  // must be readable without expanding the row (audit G4-06). In words, as
+  // the print says it (doctor's request 10.10.2026).
+  const line = formatPatientLine(row, locale, { withInstruction: true });
   const rowForms = React.useMemo(
     () => normalizeForms(row.drug?.forms),
     [row.drug?.forms],
@@ -1113,7 +1114,9 @@ function PrescriptionRowItem({
             </LabeledRow>
           ) : null}
 
-          {/* Dose: typed, or one click on the doses this form is written in */}
+          {/* How much at a time: typed, or one click on the doses this form
+              is written in; a tablet's count first, its strength stays in
+              the name (doctor's request 10.10.2026). */}
           <LabeledRow label={t("rx.dose")}>
             <div className="flex flex-wrap items-center gap-1">
               <CommitInput

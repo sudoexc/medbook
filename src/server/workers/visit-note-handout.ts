@@ -219,7 +219,6 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     visitDateLabel,
     documentNumber: note.documentNumber,
     handoutMarkdown: note.patientHandoutMarkdown ?? "",
-    prescriptions: note.visitPrescriptions,
     verifyUrl,
     followUpLine,
     // Post-window corrections ride along as an appended block — the original

@@ -107,7 +107,7 @@ describe("the handout and print", () => {
       ),
       "utf8",
     );
-    expect(src).toContain("formatPrescriptionLine(row, locale, { withInstruction: true })");
+    expect(src).toContain("formatPatientLine(row, locale, { withInstruction: true })");
     expect(src).not.toMatch(/defaultDosing/);
   });
 });

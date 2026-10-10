@@ -7185,7 +7185,7 @@
         "remindOff": "Eslatmalarsiz",
         "remindNoTimes": "Qabul vaqti tanlanmagan, eslatmalar bo‘lmaydi",
         "deleteRow": "Tayinlovni o‘chirish",
-        "dose": "Doza",
+        "dose": "Bir qabulda qancha",
         "form": "Shakli va dozasi",
         "doseNeeded": "Dozani yozing: bu shakl uchun uni katalogdan olib bo‘lmaydi",
         "dosePlaceholder": "Qancha qabul qilish: 10 birlik, 15 ml, 2 tomchi",
